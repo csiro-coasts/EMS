@@ -5,6 +5,8 @@
 #
 # Internal CSIRO development only
 #
+exit 0
+
 BASE=$1
 FNAME=$BASE/lib/include/svn_rev.h
 REV=unknown
