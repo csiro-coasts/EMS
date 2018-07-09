@@ -1,0 +1,131 @@
+
+/*******************************************************************************
+
+    ENVIRONMENTAL MODELLING SUITE (EMS)
+
+    File: ems/model/lib/ecology/parameters.txt
+
+    Description:
+    Glossary file for the ecology library
+
+    Author(s):
+    Uwe Rosebrock(UR), CSIRO Marine Research
+
+    Revision history:
+    19/5/2005 JRW Created
+
+    Copyright:
+    Copyright(C) 2001-2005, CSIRO Australia, All rights reserved.
+    See COPYRIGHT file for copying, use and redistribution conditions.
+
+    EMS is derived from MECO, sjwlib and other libraries developed by
+    Stephen Walker (CSIRO Marine Research) and others.
+
+
+*******************************************************************************/
+
+
+PLEASE NOTE!
+There has been a significant change in the signature of some
+functions concerning likely all process library files.
+That change has taken place from revision 336 to revision 337
+Files are not exchangable from below and above that revision!
+
+
+
+
+Ecology parameters,
+
+
+
+# the input file for the biological parameters
+biofname <filename>
+
+# the integrator to use
+integrator [dopri5,dopri8,adapt2,adapt1,euler1]
+
+# integration precision
+integration_precision 1.0e-4
+
+# process filename, containing the list of enabled processes to instantiate
+processfname <filename>
+
+# check integrated tracers or state varaibles for NaN
+check_nans 1
+
+# check integrated tracers or state varaibles for negative values
+check_negs 1
+
+# verify diagnostic tracers in the host model
+# to exist and have the same state flag assigned to it as in the ecology
+# If the test fails ecology will exit with an error
+verify_diagn 0
+
+# define internal tracers, provide the tracers to the host model (1)
+# or use the by the host model provided tracers
+internal_tracers 0
+
+# define if water cells are required for the epibenthos, if so the model quits
+# if none are found, default is '1'
+mandatory_water <0,1>
+
+# define if sediment cells are required for the epibenthos, if so the model quits
+# if none are found, default is '1'
+mandatory_sediment <0,1>
+
+
+#####################################
+# Processes
+# processes are selected according to name they have been assigned in te
+# allprocesses.c:eprocesslist
+# entries are executed in order of entry as
+# Note: the number of parameters are defined in the allprocesses.c:eprocesslist
+# and must match the number of parameters provided as comma separated list
+
+water
+{
+  <processname>([<parameters>])
+}
+epibenthos
+{
+  <processname>([<parameters>])
+}
+sediment
+{
+  <processname>([<parameters>])
+}
+
+
+# Be aware of processes your process might depend on, even though there are
+# means to check by name if a process is active - that might not be a good
+# longterm solution, names may change.
+
+
+#######################################
+# Biological Parameters
+# parameter file defining biological constants
+# the file must be preceeded by the identifier indicating the number
+# parameters to be read.
+# in the form of
+#
+NPARAMETERS 8
+
+#
+# zero base entries of the form
+#
+# the unique name
+PARAMETER0.name [char]
+# human readable description
+PARAMETER0.desc [char]
+# the units applicable to the parameter eg. d-1
+PARAMETER0.units [char]
+# the value
+PARAMETER0.value [num,char]
+# if the parameter requires temperature adjustment
+PARAMETER0.adjust [0,1]
+
+
+
+
+
+

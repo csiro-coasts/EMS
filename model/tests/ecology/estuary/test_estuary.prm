@@ -1,0 +1,14223 @@
+# SHOC parameter file
+CODEHEADER           SHOC default version : leapfrog
+PARAMETERHEADER      auto grid
+DESCRIPTION          Automated grid
+NAME                 GRID0
+PROJECTION           proj=merc lon_0=83
+TIMEUNIT             seconds since 2000-01-01 00:00:00 +08
+LENUNIT              metre
+START_TIME           0 days
+STOP_TIME            3 days
+INPUT_FILE           in/in.nc
+# Output files
+#OutputPath           
+
+OutputFiles 1
+file0.name          out/out1.nc
+file0.filetype       standard
+file0.tstart         0 days
+file0.tinc           1 hours
+file0.tstop          365 days
+file0.bytespervalue  4
+file0.vars          ALL
+
+  
+file1.name          out/out_hr.nc
+file1.filetype       standard
+file1.tstart         0 days
+file1.tinc          1 hour
+file1.tstop          365 days
+file1.bytespervalue  4
+file1.vars  NO3 NH4 DIP DOR_N DOR_P DetR_N DetPL_N DetBL_N DetR_C DetR_P PhyS_N PhyL_N ZooS_N ZooL_N PhyL_N_pr PhyS_N_pr ZooL_N_rm ZooS_N_rm Den_fl NH4_pr MPB_N_pr PhyD_N_pr Oxy_pr Nfix TN TP MPB_N ptras PhyD_N MA_N SG_N Chl_a
+
+
+file2.name           out/est_trans_ps_nt.nc
+file2.filetype       sparse
+file2.tstart         0 days
+file2.tinc           1 hour
+file2.tstop          365 days
+file2.bytespervalue  4
+file2.vars           eta u1mean u2mean wmean temp salt Kzmean
+
+
+# Flags
+WINDOWS              1
+SHOW_WINDOWS         YES
+DP_MODE              openmp
+NONLINEAR            YES
+CALCDENS             YES
+2D-MODE              NO
+STABILITY            SUB-STEP-NOSURF
+RAMPSTART            0 days
+RAMPEND              1 days
+MERGE_THIN           YES
+HMIN                 0.1400
+SLIP                 1.0   
+SIGMA                NO
+
+# Time steps
+DT                   120 seconds
+IRATIO               20
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           VANLEER
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 70.0
+U2VH                 70.0
+U1KH                 0.0
+U2KH                 0.0
+
+# Vertical mixing
+MIXING_SCHEME        k-e
+VZ0                  1.0000e-05
+KZ0                  1.0000e-05
+ZS                   0.2
+
+# Bottom friction
+QBFC                 0.0030
+UF                   0.0100
+Z0		     0.0025
+
+# Constants
+G                   9.8100
+SPECHEAT            3990.0
+AIRDENS             1.2250
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS            1350
+-8.9672e-05
+
+# Diagnostics
+CFL                 PASSIVE
+MIX_LAYER           NONE
+MEAN                VEL3D
+MEAN_DT             1 hour
+ALERT               NONE
+MOM_TEND            NO
+NUMBERS             NONE
+
+# Grid
+GRIDTYPE            RECTANGULAR
+NCE1                50
+NCE2                27
+X00                 0.00000 
+Y00                 0.00000 
+DX                  1000.000
+DY                  1000.000
+ROTATION            0.0   
+
+# Vertical grid spacing
+LAYERFACES          24
+-110.00 
+-105.00 
+-100.00 
+-95.00  
+-90.00  
+-85.00  
+-80.00  
+-75.00  
+-70.00  
+-65.00  
+-60.00  
+-55.00  
+-50.00  
+-45.00  
+-40.00  
+-35.00  
+-30.00  
+-25.00  
+-20.00  
+-15.00  
+-10.00  
+-5.00   
+-2.00   
+0.00    
+
+# Bathymetry limits
+BATHYMIN            1.0  
+BATHYMAX            50.0 
+ETAMAX              10.0  
+MIN_CELL_THICKNESS  25%
+BATHY_MASK_IS       1
+BATHY_MASK_IE       30
+BATHY_MASK_DS       5.0
+BATHY_MASK_DE       20.0
+BATHY_MASK          30
+1 13
+2 13
+3 13
+4 13
+5 13
+6 13
+7 13
+8 13
+9 13
+10 13
+11 13
+12 13
+13 13
+14 13
+15 13
+16 13
+17 13
+18 13
+19 13
+20 13
+21 13
+22 13
+23 13
+24 13
+25 13
+26 13
+27 13
+28 13
+29 13
+30 13
+
+# Tracers
+NTRACERS           87
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.type         WATER SEDIMENT
+TRACER0.fill_value   35.0  
+TRACER0.valic_range  0.0    40.0  
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.type         WATER SEDIMENT
+TRACER1.units        degrees C
+TRACER1.fill_value   20.0  
+TRACER1.valic_range  0.0    40.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+
+
+
+#sediment
+TRACER2.name Mud
+TRACER2.long_name Mud
+TRACER2.type         WATER SEDIMENT
+TRACER2.units kg m-3
+TRACER2.valid_range_wc 0 1e+35
+TRACER2.valid_range_sed 0 1e+35
+TRACER2.diagn 0
+TRACER2.fill_value_wc 0.0
+TRACER2.fill_value_sed 600.0
+TRACER2.inwc 1
+TRACER2.insed 1
+TRACER2.dissol 0
+TRACER2.partic 1
+TRACER2.advect 1
+TRACER2.diffuse 1
+TRACER2.decay 0
+TRACER2.psize 0.00025
+TRACER2.b_dens 2.65e+03
+TRACER2.i_conc 0.5e+03
+TRACER2.f_conc 1.2e+03
+TRACER2.svel -2.e-4
+TRACER2.cohesive 1
+TRACER2.calcvol 1
+TRACER2.floc 1
+TRACER2.resuspend 1
+TRACER2.deposit 1
+
+TRACER3.name ustrcw_skin
+TRACER3.long_name ustrcw_skin
+TRACER3.units 
+TRACER3.type        BENTHIC
+TRACER3.fill_value_wc 0.0
+TRACER3.fill_value_sed 0.0
+TRACER3.valid_range_wc -1e35 1e35
+TRACER3.valid_range_sed -1e35 1e35
+TRACER3.diagn 1
+
+TRACER4.name Gravel
+TRACER4.long_name Gravel
+TRACER4.type         WATER SEDIMENT
+TRACER4.units kg m-3
+TRACER4.valid_range_wc 0 1e+35
+TRACER4.valid_range_sed 0 1e+35
+TRACER4.diagn 0
+TRACER4.fill_value_wc 0
+TRACER4.fill_value_sed 200
+TRACER4.inwc 1
+TRACER4.insed 1
+TRACER4.dissol 0
+TRACER4.partic 1
+TRACER4.advect 0
+TRACER4.diffuse 1
+TRACER4.decay 0
+TRACER4.psize 0.0005
+TRACER4.b_dens 2.65e+03
+TRACER4.i_conc 1.2e+03
+TRACER4.f_conc 1.2e+03
+TRACER4.svel -0.7
+TRACER4.cohesive 0
+TRACER4.calcvol 1
+TRACER4.resuspend 0
+TRACER4.deposit 1
+
+TRACER5.name Sand
+TRACER5.long_name Sand
+TRACER5.type         WATER SEDIMENT
+TRACER5.units kg m-3
+TRACER5.valid_range_wc 0 1e+35
+TRACER5.valid_range_sed 0 1e+35
+TRACER5.diagn 0
+TRACER5.fill_value_wc 0.0
+TRACER5.fill_value_sed 400.0
+TRACER5.inwc 1
+TRACER5.insed 1
+TRACER5.dissol 0
+TRACER5.partic 1
+TRACER5.advect 1
+TRACER5.diffuse 1
+TRACER5.decay 0
+TRACER5.psize 0.00025
+TRACER5.b_dens 2.65e+03
+TRACER5.i_conc 1.2e+03
+TRACER5.f_conc 1.2e+03
+TRACER5.svel -2e-3
+TRACER5.cohesive 1
+TRACER5.calcvol 1
+TRACER5.floc 0
+TRACER5.resuspend 0
+TRACER5.deposit 1
+
+TRACER6.name EFI
+TRACER6.long_name EFI
+TRACER6.type      WATER SEDIMENT
+TRACER6.units kg m-3
+TRACER6.fill_value_wc 0.0
+TRACER6.fill_value_sed 0.0
+TRACER6.valid_range_wc -1e35 1e35
+TRACER6.valid_range_sed -1e35 1e35
+TRACER6.diagn 2
+
+TRACER7.name FineSed
+TRACER7.long_name Fine sediment
+TRACER7.type         WATER SEDIMENT
+TRACER7.units kg m-3
+TRACER7.valid_range_wc 0 1e+35
+TRACER7.valid_range_sed 0 1e+35
+TRACER7.diagn 0
+TRACER7.fill_value_wc 0.0
+TRACER7.fill_value_sed 0.0
+TRACER7.inwc 1
+TRACER7.insed 1
+TRACER7.dissol 0
+TRACER7.partic 1
+TRACER7.advect 1
+TRACER7.diffuse 1
+TRACER7.decay 0
+TRACER7.psize 0.00025
+TRACER7.b_dens 2.65e+03
+TRACER7.i_conc 0.5e+03
+TRACER7.f_conc 1.2e+03
+TRACER7.svel -2.e-4
+TRACER7.cohesive 1
+TRACER7.calcvol 1
+TRACER7.floc 1
+TRACER7.resuspend 1
+TRACER7.deposit 1
+
+#tracer
+
+TRACER8.name stp_PON
+TRACER8.long_name stp_pon_Ctracer
+TRACER8.units mg N m-3
+TRACER8.valid_range_wc 0 1e+35
+TRACER8.valid_range_sed 0 1e+35
+TRACER8.diagn 0
+TRACER8.type         WATER SEDIMENT
+TRACER8.fill_value_wc 0.00
+TRACER8.fill_value_sed 0.0
+TRACER8.inwc 1
+TRACER8.insed 1
+TRACER8.dissol 0
+TRACER8.partic 1
+TRACER8.advect 1
+TRACER8.diffuse 1
+
+
+TRACER9.name stp_DIN
+TRACER9.long_name stp_din_Ctracer
+TRACER9.units mg N m-3
+TRACER9.valid_range_wc 0 1e+35
+TRACER9.valid_range_sed 0 1e+35
+TRACER9.diagn 0
+TRACER9.type         WATER SEDIMENT
+TRACER9.fill_value_wc 0.00
+TRACER9.fill_value_sed 0.0
+TRACER9.inwc 1
+TRACER9.insed 1
+TRACER9.dissol 1
+TRACER9.partic 0
+TRACER9.advect 1
+TRACER9.diffuse 1
+
+TRACER10.name loads_PON
+TRACER10.long_name loads_pon_Ctracer
+TRACER10.units 
+TRACER10.type      WATER SEDIMENT    
+TRACER10.fill_value_wc 0.0
+TRACER10.fill_value_sed 0.0
+TRACER10.valid_range_wc 0 1e35
+TRACER10.valid_range_sed 0 1e35
+TRACER10.inwc 1
+TRACER10.insed 1
+TRACER10.dissol 0
+TRACER10.partic 1
+TRACER10.advect 1
+TRACER10.diffuse 1
+
+
+TRACER11.name loads_din_Ctracer
+TRACER11.long_name loads_din_Ctracer
+TRACER11.units 
+TRACER11.type      WATER SEDIMENT    
+TRACER11.fill_value_wc 0.0
+TRACER11.fill_value_sed 0.0
+TRACER11.valid_range_wc 0 1e35
+TRACER11.valid_range_sed 0 1e35
+TRACER11.inwc 1
+TRACER11.insed 1
+TRACER11.dissol 1
+TRACER11.partic 0
+TRACER11.advect 1
+TRACER11.diffuse 1
+
+
+TRACER12.name ptras
+TRACER12.long_name e tracer
+TRACER12.type WATER SEDIMENT
+TRACER12.units kg m-3
+TRACER12.valid_range_wc 0 1e+35
+TRACER12.valid_range_sed 0 1e+35
+TRACER12.diagn 0
+TRACER12.fill_value_wc 0.0
+TRACER12.fill_value_sed 0.0
+TRACER12.inwc 1
+TRACER12.insed 0
+TRACER12.dissol 0
+TRACER12.partic 1
+TRACER12.advect 1
+TRACER12.diffuse 1
+
+TRACER13.name ptras2
+TRACER13.long_name passive tracer2
+TRACER13.type WATER SEDIMENT
+TRACER13.units kg m-3
+TRACER13.valid_range_wc 0 1e+35
+TRACER13.valid_range_sed 0 1e+35
+TRACER13.diagn 0
+TRACER13.fill_value_wc 10
+TRACER13.fill_value_sed 100
+TRACER13.inwc 1
+TRACER13.insed 0
+TRACER13.dissol 0
+TRACER13.partic 1
+TRACER13.advect 1
+TRACER13.diffuse 1
+
+
+#ecology state variables 
+
+TRACER14.name PhyL_N
+TRACER14.long_name Large Phytoplankton Nitrogen
+TRACER14.units mg N m-3
+TRACER14.valid_range_wc 0 1e+35
+TRACER14.valid_range_sed 0 1e+35
+TRACER14.diagn 0
+TRACER14.type         WATER SEDIMENT
+TRACER14.fill_value_wc 1
+TRACER14.fill_value_sed 0.01
+TRACER14.inwc 1
+TRACER14.insed 1
+TRACER14.dissol 0
+TRACER14.partic 1
+TRACER14.advect 1
+TRACER14.diffuse 1
+TRACER14.decay 0
+TRACER14.psize 1e-05
+TRACER14.b_dens 1e+09
+TRACER14.i_conc 2e+08
+TRACER14.f_conc 2e+08
+TRACER14.svel 0
+TRACER14.crit_stress 0.2
+TRACER14.resusp_rate 0
+
+TRACER15.name PhyS_N
+TRACER15.long_name Small Phytoplankton N
+TRACER15.units mg N m-3
+TRACER15.valid_range_wc 0 1e+35
+TRACER15.valid_range_sed 0 1e+35
+TRACER15.diagn 0
+TRACER15.type         WATER SEDIMENT
+TRACER15.fill_value_wc 0.1
+TRACER15.fill_value_sed 0.01
+TRACER15.inwc 1
+TRACER15.insed 1
+TRACER15.dissol 0
+TRACER15.partic 1
+TRACER15.advect 1
+TRACER15.diffuse 1
+TRACER15.decay 0
+TRACER15.psize 1e-05
+TRACER15.b_dens 1e+09
+TRACER15.i_conc 2e+06
+TRACER15.f_conc 2e+06
+TRACER15.svel 0
+TRACER15.crit_stress 0.2
+TRACER15.resusp_rate 0
+
+TRACER16.name MPB_N
+TRACER16.long_name Microphytobenthos N
+TRACER16.units mg N m-3
+TRACER16.valid_range_wc 0 1e+35
+TRACER16.valid_range_sed 0 1e+35
+TRACER16.diagn 0
+TRACER16.type         WATER SEDIMENT
+TRACER16.fill_value_wc 0.01
+TRACER16.fill_value_sed 100
+TRACER16.inwc 1
+TRACER16.insed 1
+TRACER16.dissol 0
+TRACER16.partic 1
+TRACER16.advect 1
+TRACER16.diffuse 1
+TRACER16.decay 0
+TRACER16.psize 1e-05
+TRACER16.b_dens 1e+09
+TRACER16.i_conc 2e+08
+TRACER16.f_conc 2e+08
+TRACER16.svel -5.79e-05
+TRACER16.crit_stress 0.2
+
+TRACER17.name ZooL_N
+TRACER17.long_name Zooplankton N
+TRACER17.units mg N m-3
+TRACER17.valid_range_wc 0 1e+35
+TRACER17.valid_range_sed 0 1e+35
+TRACER17.diagn 0
+TRACER17.type         WATER SEDIMENT
+TRACER17.fill_value_wc 0.5
+TRACER17.fill_value_sed 0.001
+TRACER17.inwc 1
+TRACER17.insed 0
+TRACER17.dissol 0
+TRACER17.partic 1
+TRACER17.advect 1
+TRACER17.diffuse 1
+TRACER17.decay 0
+TRACER17.psize 1e-05
+TRACER17.b_dens 1e+09
+TRACER17.i_conc 2e+08
+TRACER17.f_conc 2e+06
+TRACER17.svel 0
+TRACER17.resusp_rate 0
+
+TRACER18.name ZooS_N
+TRACER18.long_name Micro-Zooplankton Nitrogen
+TRACER18.units mg N m-3
+TRACER18.valid_range_wc 0 1e+35
+TRACER18.valid_range_sed 0 1e+35
+TRACER18.diagn 0
+TRACER18.type         WATER SEDIMENT
+TRACER18.fill_value_wc 0.5
+TRACER18.fill_value_sed 0.001
+TRACER18.inwc 1
+TRACER18.insed 0
+TRACER18.dissol 0
+TRACER18.partic 1
+TRACER18.advect 1
+TRACER18.diffuse 1
+TRACER18.decay 0
+TRACER18.psize 1e-05
+TRACER18.b_dens 1e+09
+TRACER18.i_conc 2e+08
+TRACER18.f_conc 2e+08
+TRACER18.resusp_rate 0
+
+TRACER19.name PhyD_N
+TRACER19.long_name Dinoflagellate Nitrogen
+TRACER19.units mg N m-3
+TRACER19.valid_range_wc 0 1e+35
+TRACER19.valid_range_sed 0 1e+35
+TRACER19.diagn 0
+TRACER19.type         WATER SEDIMENT
+TRACER19.fill_value_wc 0.01
+TRACER19.fill_value_sed 0.0001
+TRACER19.inwc 1
+TRACER19.insed 0
+TRACER19.dissol 0
+TRACER19.partic 1
+TRACER19.advect 2
+TRACER19.diffuse 1
+TRACER19.decay 0
+TRACER19.psize 1e-05
+TRACER19.b_dens 1e+09
+TRACER19.i_conc 2e+08
+TRACER19.f_conc 2e+08
+TRACER19.svel 0.0
+TRACER19.resusp_rate 0
+TRACER19.resuspend 0
+TRACER19.deposit 0
+
+TRACER20.name PhyD_C
+TRACER20.long_name Dinoflagellate C
+TRACER20.units mg C m-3
+TRACER20.valid_range_wc 0 1e+35
+TRACER20.valid_range_sed 0 1e+35
+TRACER20.diagn 0
+TRACER20.type         WATER SEDIMENT
+TRACER20.fill_value_wc 0.01
+TRACER20.fill_value_sed 0.001
+TRACER20.inwc 1
+TRACER20.insed 0
+TRACER20.dissol 0
+TRACER20.partic 1
+TRACER20.advect 2
+TRACER20.diffuse 1
+TRACER20.decay 0
+TRACER20.psize 1e-05
+TRACER20.b_dens 1e+09
+TRACER20.i_conc 2e+08
+TRACER20.f_conc 2e+08
+TRACER20.svel 0.0
+TRACER20.resusp_rate 0
+TRACER20.resuspend 0
+TRACER20.deposit 0
+
+TRACER21.name NH4
+TRACER21.long_name Ammonia
+TRACER21.units mg N m-3
+TRACER21.valid_range_wc 0 1e+35
+TRACER21.valid_range_sed 0 1e+35
+TRACER21.diagn 0
+TRACER21.type         WATER SEDIMENT
+TRACER21.fill_value_wc 0.2
+TRACER21.fill_value_sed 100
+TRACER21.inwc 1
+TRACER21.insed 1
+TRACER21.dissol 1
+TRACER21.partic 0
+TRACER21.advect 1
+TRACER21.diffuse 1
+TRACER21.decay 0
+TRACER21.svel 0
+TRACER21.resusp_rate 0
+
+TRACER22.name NO3
+TRACER22.long_name Nitrate
+TRACER22.units mg N m-3
+TRACER22.valid_range_wc 0 1e+35
+TRACER22.valid_range_sed 0 1e+35
+TRACER22.diagn 0
+TRACER22.type         WATER SEDIMENT
+TRACER22.fill_value_wc 0.0
+TRACER22.fill_value_sed 500.0
+TRACER22.inwc 1
+TRACER22.insed 1
+TRACER22.dissol 1
+TRACER22.partic 0
+TRACER22.advect 1
+TRACER22.diffuse 1
+TRACER22.decay 0
+TRACER22.svel 0
+TRACER22.resusp_rate 0
+
+
+
+TRACER23.name DIP
+TRACER23.long_name Dissolved Inorganic Phosphorus
+TRACER23.units mg P m-3
+TRACER23.valid_range_wc 0 1e+35
+TRACER23.valid_range_sed 0 1e+35
+TRACER23.diagn 0
+TRACER23.type         WATER SEDIMENT
+TRACER23.fill_value_wc 0.5
+TRACER23.fill_value_sed 100
+TRACER23.inwc 1
+TRACER23.insed 1
+TRACER23.dissol 1
+TRACER23.partic 0
+TRACER23.advect 1
+TRACER23.diffuse 1
+TRACER23.decay 0
+TRACER23.svel 0
+TRACER23.resusp_rate 0
+
+TRACER24.name PIP
+TRACER24.long_name  Particulate Inorganic Phosphorus
+TRACER24.units mg P m-3
+TRACER24.valid_range_wc 0 1e+35
+TRACER24.valid_range_sed 0 1e+35
+TRACER24.diagn 0
+TRACER24.type         WATER SEDIMENT
+TRACER24.fill_value_wc 0.1
+TRACER24.fill_value_sed 100
+TRACER24.inwc 1
+TRACER24.insed 1
+TRACER24.dissol 0
+TRACER24.partic 1
+TRACER24.advect 1
+TRACER24.diffuse 1
+TRACER24.decay 0
+TRACER24.psize 1
+TRACER24.b_dens 1e+09
+TRACER24.i_conc 2e+08
+TRACER24.svel -2.e-4
+TRACER24.f_conc 2e+08
+TRACER24.resusp_rate 0
+
+TRACER25.name PIPF
+TRACER25.long_name Flocculated Particulate Inorganic Phosphorus
+TRACER25.units mg P m-3
+TRACER25.valid_range_wc 0 1e+35
+TRACER25.valid_range_sed 0 1e+35
+TRACER25.diagn 0
+TRACER25.type         WATER SEDIMENT
+TRACER25.fill_value_wc 0.01
+TRACER25.fill_value_sed 5e+03
+TRACER25.inwc 1
+TRACER25.insed 1
+TRACER25.dissol 0
+TRACER25.partic 1
+TRACER25.advect 1
+TRACER25.diffuse 1
+TRACER25.decay 0
+TRACER25.psize 0.00025
+TRACER25.b_dens 1e+09
+TRACER25.i_conc 2e+08
+TRACER25.f_conc 2e+08
+TRACER25.resusp_rate 0
+
+TRACER26.name PIPI
+TRACER26.long_name Immobilised Particulate Inorganic Phosphorus
+TRACER26.units mg P m-3
+TRACER26.valid_range_wc 0 1e+35
+TRACER26.valid_range_sed 0 1e+35
+TRACER26.diagn 0
+TRACER26.type         WATER SEDIMENT
+TRACER26.fill_value_wc 0.01
+TRACER26.fill_value_sed 0.01
+TRACER26.inwc 1
+TRACER26.insed 1
+TRACER26.dissol 0
+TRACER26.partic 1
+TRACER26.advect 1
+TRACER26.diffuse 1
+TRACER26.decay 0
+TRACER26.psize 0.00025
+TRACER26.b_dens 1e+09
+TRACER26.i_conc 2e+08
+TRACER26.f_conc 2e+08
+TRACER26.svel -9.0e-4
+TRACER26.resusp_rate 0
+
+TRACER27.name DIC
+TRACER27.long_name Dissolved Inorganic Carbon
+TRACER27.units mg C m-3
+TRACER27.valid_range_wc 0 1e+35
+TRACER27.valid_range_sed 0 1e+35
+TRACER27.diagn 0
+TRACER27.type         WATER SEDIMENT
+TRACER27.fill_value_wc 2.4e+04
+TRACER27.fill_value_sed 2.4e+04
+TRACER27.inwc 1
+TRACER27.insed 1
+TRACER27.dissol 1
+TRACER27.partic 0
+TRACER27.advect 1
+TRACER27.diffuse 1
+TRACER27.decay 0
+TRACER27.svel 0
+TRACER27.resusp_rate 0
+
+TRACER28.name DOR_C
+TRACER28.long_name Dissolved Organic Carbon
+TRACER28.units mg C m-3
+TRACER28.valid_range_wc 0 1e+35
+TRACER28.valid_range_sed 0 1e+35
+TRACER28.diagn 0
+TRACER28.type         WATER SEDIMENT
+TRACER28.fill_value_wc 0.01
+TRACER28.fill_value_sed 500
+TRACER28.inwc 1
+TRACER28.insed 1
+TRACER28.dissol 1
+TRACER28.partic 0
+TRACER28.advect 1
+TRACER28.diffuse 1
+TRACER28.decay 0
+TRACER28.svel 0
+TRACER28.resusp_rate 0
+
+TRACER29.name DOR_N
+TRACER29.long_name Dissolved Organic Nitrogen
+TRACER29.units mg N m-3
+TRACER29.valid_range_wc 0 1e+35
+TRACER29.valid_range_sed 0 1e+35
+TRACER29.diagn 0
+TRACER29.type         WATER SEDIMENT
+TRACER29.fill_value_wc 0.01
+TRACER29.fill_value_sed 500
+TRACER29.inwc 1
+TRACER29.insed 1
+TRACER29.dissol 1
+TRACER29.partic 0
+TRACER29.advect 1
+TRACER29.diffuse 1
+TRACER29.decay 0
+TRACER29.svel 0
+TRACER29.crit_stress 0.2
+TRACER29.resusp_rate 0
+
+TRACER30.name DOR_P
+TRACER30.long_name Dissolved Organic Phosphorus
+TRACER30.units mg P m-3
+TRACER30.valid_range_wc 0 1e+35
+TRACER30.valid_range_sed 0 1e+35
+TRACER30.diagn 0
+TRACER30.type         WATER SEDIMENT
+TRACER30.fill_value_wc 0.01
+TRACER30.fill_value_sed 500
+TRACER30.inwc 1
+TRACER30.insed 1
+TRACER30.dissol 1
+TRACER30.partic 0
+TRACER30.advect 1
+TRACER30.diffuse 1
+TRACER30.decay 0
+TRACER30.svel 0
+TRACER30.crit_stress 0.2
+TRACER30.resusp_rate 0
+
+TRACER31.name DetR_C
+TRACER31.long_name Refractory Detrital Carbon
+TRACER31.units mg N m-3
+TRACER31.valid_range_wc 0 1e+35
+TRACER31.valid_range_sed 0 1e+35
+TRACER31.diagn 0
+TRACER31.type         WATER SEDIMENT
+TRACER31.fill_value_wc 0.01
+TRACER31.fill_value_sed 8e+04
+TRACER31.inwc 1
+TRACER31.insed 1
+TRACER31.dissol 0
+TRACER31.partic 1
+TRACER31.advect 1
+TRACER31.diffuse 1
+TRACER31.decay 0
+TRACER31.psize 1e-05
+TRACER31.b_dens 1e+09
+TRACER31.i_conc 2e+06
+TRACER31.f_conc 2e+06
+TRACER31.svel -2.31e-05
+TRACER31.crit_stress 0.2
+TRACER31.resusp_rate 0
+
+TRACER32.name DetR_N
+TRACER32.long_name Refractory Detrital Nitrogen
+TRACER32.units mg N m-3
+TRACER32.valid_range_wc 0 1e+35
+TRACER32.valid_range_sed 0 1e+35
+TRACER32.diagn 0
+TRACER32.type         WATER SEDIMENT
+TRACER32.fill_value_wc 0.01
+TRACER32.fill_value_sed 50
+TRACER32.inwc 1
+TRACER32.insed 1
+TRACER32.dissol 0
+TRACER32.partic 1
+TRACER32.advect 1
+TRACER32.diffuse 1
+TRACER32.decay 0
+TRACER32.psize 1e-05
+TRACER32.b_dens 1e+09
+TRACER32.i_conc 2e+08
+TRACER32.f_conc 2e+08
+TRACER32.svel -3.47e-05
+TRACER32.crit_stress 0.2
+TRACER32.resusp_rate 0 
+
+
+TRACER33.name DetR_P
+TRACER33.long_name Refractory Detrital Phosphorus
+TRACER33.units mg P m-3
+TRACER33.valid_range_wc 0 1e+35
+TRACER33.valid_range_sed 0 1e+35
+TRACER33.diagn 0
+TRACER33.type         WATER SEDIMENT
+TRACER33.fill_value_wc 0.01
+TRACER33.fill_value_sed 1.1e+03
+TRACER33.inwc 1
+TRACER33.insed 1
+TRACER33.dissol 0
+TRACER33.partic 1
+TRACER33.advect 1
+TRACER33.diffuse 1
+TRACER33.decay 0
+TRACER33.psize 1e-05
+TRACER33.b_dens 1e+09
+TRACER33.i_conc 2e+08
+TRACER33.f_conc 2e+08
+TRACER33.svel -2.31e-05
+TRACER33.crit_stress 0.2
+TRACER33.resusp_rate 0
+
+TRACER34.name DetPL_N
+TRACER34.long_name Labile Detrital Nitrogen Plank
+TRACER34.units mg N m-3
+TRACER34.valid_range_wc 0 1e+35
+TRACER34.valid_range_sed 0 1e+35
+TRACER34.diagn 0
+TRACER34.type         WATER SEDIMENT
+TRACER34.fill_value_wc 0.01
+TRACER34.fill_value_sed 500
+TRACER34.inwc 1
+TRACER34.insed 1
+TRACER34.dissol 0
+TRACER34.partic 1
+TRACER34.advect 1
+TRACER34.diffuse 1
+TRACER34.decay 0
+TRACER34.psize 1e-05
+TRACER34.b_dens 1e+09
+TRACER34.i_conc 2e+08
+TRACER34.f_conc 2e+08
+TRACER34.svel -3.47e-05
+TRACER34.crit_stress 0.2
+TRACER34.resusp_rate 0
+
+TRACER35.name DetBL_N
+TRACER35.long_name Labile Detrital Nitrogen Benthic
+TRACER35.units mg N m-3
+TRACER35.valid_range_wc 0 1e+35
+TRACER35.valid_range_sed 0 1e+35
+TRACER35.diagn 0
+TRACER35.type         WATER SEDIMENT
+TRACER35.fill_value_wc 0
+TRACER35.fill_value_sed 500
+TRACER35.inwc 1
+TRACER35.insed 1
+TRACER35.dissol 0
+TRACER35.partic 1
+TRACER35.advect 1
+TRACER35.diffuse 1
+TRACER35.decay 0
+TRACER35.psize 1e-05
+TRACER35.b_dens 1e+09
+TRACER35.i_conc 2e+08
+TRACER35.f_conc 2e+08
+TRACER35.svel -3.47e-05
+TRACER35.crit_stress 0.2
+TRACER35.resusp_rate 0
+
+TRACER36.name Oxygen
+TRACER36.long_name Dissolved Oxygen
+TRACER36.units mg O m-3
+TRACER36.valid_range_wc 0 1e+35
+TRACER36.valid_range_sed 0 1e+35
+TRACER36.diagn 0
+TRACER36.type         WATER SEDIMENT
+TRACER36.fill_value_wc 8e+03
+TRACER36.fill_value_sed 1e+03
+TRACER36.inwc 1
+TRACER36.insed 1
+TRACER36.dissol 1
+TRACER36.partic 0
+TRACER36.advect 1
+TRACER36.diffuse 1
+TRACER36.decay 0
+TRACER36.svel 0
+TRACER36.crit_stress 0.2
+TRACER36.resusp_rate 0
+
+
+
+# light stuff
+TRACER37.name Light
+TRACER37.long_name Average Light intensity
+TRACER37.units W m-2
+TRACER37.type         WATER SEDIMENT
+TRACER37.valid_range_wc 0 1e+35
+TRACER37.valid_range_sed 0 1e+35
+TRACER37.diagn 2
+TRACER37.fill_value_wc 0
+TRACER37.fill_value_sed 0
+
+TRACER38.name Kd
+TRACER38.long_name Attenuation coefficient in layer
+TRACER38.units d-1
+TRACER38.type         WATER SEDIMENT
+TRACER38.valid_range_wc 0 1e+35
+TRACER38.valid_range_sed 0 1e+35
+TRACER38.diagn 2
+TRACER38.fill_value_wc 0
+TRACER38.fill_value_sed 0
+
+#diagnostic state variab;es 
+
+TRACER39.name TN
+TRACER39.long_name Total N in a cell
+TRACER39.units mg N m-2
+TRACER39.type         WATER SEDIMENT
+TRACER39.valid_range_wc 0 1e+35
+TRACER39.valid_range_sed 0 1e+35
+TRACER39.diagn 2
+TRACER39.fill_value_wc 0
+TRACER39.fill_value_sed 0
+
+TRACER40.name TP
+TRACER40.long_name Total P in a cell
+TRACER40.units mg P m-2
+TRACER40.type         WATER SEDIMENT
+TRACER40.valid_range_wc 0 1e+35
+TRACER40.valid_range_sed 0 1e+35
+TRACER40.diagn 2
+TRACER40.fill_value_wc 0
+TRACER40.fill_value_sed 0
+
+TRACER41.name TC
+TRACER41.long_name Total C in a cell
+TRACER41.units mg C m-2
+TRACER41.type         WATER SEDIMENT
+TRACER41.valid_range_wc 0 1e+35
+TRACER41.valid_range_sed 0 1e+35
+TRACER41.diagn 2
+TRACER41.fill_value_wc 0
+TRACER41.fill_value_sed 0
+
+TRACER42.name DIN
+TRACER42.long_name Dissolved Inorganic Nitrogen
+TRACER42.units mg N m-3
+TRACER42.type         WATER SEDIMENT
+TRACER42.valid_range_wc 0 1e+35
+TRACER42.valid_range_sed 0 1e+35
+TRACER42.diagn 2
+TRACER42.fill_value_wc 0
+TRACER42.fill_value_sed 0
+
+
+
+TRACER43.name Chl_a
+TRACER43.long_name Chlorophyll
+TRACER43.units 
+TRACER43.type         WATER SEDIMENT
+TRACER43.valid_range_wc 0 1e+35
+TRACER43.valid_range_sed 0 1e+35
+TRACER43.diagn 2
+TRACER43.fill_value_wc 0
+TRACER43.fill_value_sed 0
+
+# fluxes variables 
+
+TRACER44.name PhyL_N_pr
+TRACER44.long_name Large Phytoplankton N production
+TRACER44.units
+TRACER44.type         WATER SEDIMENT
+TRACER44.valid_range_wc 0 1e+35
+TRACER44.valid_range_sed 0 1e+35
+TRACER44.diagn 1
+TRACER44.fill_value_wc 0
+TRACER44.fill_value_sed 0
+
+TRACER45.name PhyS_N_pr
+TRACER45.long_name Small Phytoplankton N production
+TRACER45.units 
+TRACER45.type         WATER SEDIMENT
+TRACER45.valid_range_wc 0 1e+35
+TRACER45.valid_range_sed 0 1e+35
+TRACER45.diagn 1
+TRACER45.fill_value_wc 0
+TRACER45.fill_value_sed 0
+
+TRACER46.name ZooL_N_rm
+TRACER46.long_name Large Zooplankton removal rate from Large Phytoplankton
+TRACER46.units 
+TRACER46.type         WATER SEDIMENT
+TRACER46.valid_range_wc 0 1e+35
+TRACER46.valid_range_sed 0 1e+35
+TRACER46.diagn 1
+TRACER46.fill_value_wc 0
+TRACER46.fill_value_sed 0
+
+TRACER47.name ZooS_N_rm
+TRACER47.long_name Small Zooplankton removal from Small Phytoplankton
+TRACER47.units 
+TRACER47.type         WATER SEDIMENT
+TRACER47.valid_range_wc 0 1e+35
+TRACER47.valid_range_sed 0 1e+35
+TRACER47.diagn 1
+TRACER47.fill_value_wc 0
+TRACER47.fill_value_sed 0
+TRACER47.inwc 1
+TRACER47.insed 1
+TRACER47.dissol 1
+TRACER47.partic 0
+TRACER47.advect 1
+TRACER47.diffuse 1
+TRACER47.decay 0
+TRACER47.svel 0
+TRACER47.crit_stress 0.2
+TRACER47.resusp_rate 0
+
+TRACER48.name Den_fl
+TRACER48.long_name Denitrfication flux
+TRACER48.units 
+TRACER48.type         WATER SEDIMENT
+TRACER48.valid_range_wc 0 1e+35
+TRACER48.valid_range_sed 0 1e+35
+TRACER48.diagn 1
+TRACER48.fill_value_wc 0
+TRACER48.fill_value_sed 0
+
+TRACER49.name Den_eff
+TRACER49.long_name Denitrification effectiveness
+TRACER49.units 
+TRACER49.type         WATER SEDIMENT
+TRACER49.valid_range_wc 0 1e+35
+TRACER49.valid_range_sed 0 1e+35
+TRACER49.diagn 1
+TRACER49.fill_value_wc 0
+TRACER49.fill_value_sed 0
+
+
+TRACER50.name NH4_pr
+TRACER50.long_name Ammonia production
+TRACER50.units mg N m-3
+TRACER50.type         WATER SEDIMENT
+TRACER50.valid_range_wc 0 1e+35
+TRACER50.valid_range_sed 0 1e+35
+TRACER50.diagn 1
+TRACER50.fill_value_wc 0
+TRACER50.fill_value_sed 0
+
+TRACER51.name MPB_N_pr
+TRACER51.long_name Microphytobenthos N production
+TRACER51.units 
+TRACER51.type         WATER SEDIMENT
+TRACER51.valid_range_wc 0 1e+35
+TRACER51.valid_range_sed 0 1e+35
+TRACER51.diagn 1
+TRACER51.fill_value_wc 0
+TRACER51.fill_value_sed 0
+
+TRACER52.name PhyL_N_gr
+TRACER52.long_name Large Phytoplankton N growth rate
+TRACER52.units 
+TRACER52.type         WATER SEDIMENT
+TRACER52.valid_range_wc 0 1e+35
+TRACER52.valid_range_sed 0 1e+35
+TRACER52.diagn 1
+TRACER52.fill_value_wc 0
+TRACER52.fill_value_sed 0
+
+TRACER53.name PhyS_N_gr
+TRACER53.long_name Small Phytoplankton N growth rate
+TRACER53.units 
+TRACER53.type         WATER SEDIMENT
+TRACER53.valid_range_wc 0 1e+35
+TRACER53.valid_range_sed 0 1e+35
+TRACER53.diagn 1
+TRACER53.fill_value_wc 0
+TRACER53.fill_value_sed 0
+
+TRACER54.name MPB_N_gr
+TRACER54.long_name Microphytobenthos N growth rate
+TRACER54.units 
+TRACER54.type         WATER SEDIMENT
+TRACER54.valid_range_wc 0 1e+35
+TRACER54.valid_range_sed 0 1e+35
+TRACER54.diagn 1
+TRACER54.fill_value_wc 0
+TRACER54.fill_value_sed 0
+
+TRACER55.name ZooL_N_gr
+TRACER55.long_name Large Zooplankton growth rate
+TRACER55.units 
+TRACER55.type         WATER SEDIMENT
+TRACER55.valid_range_wc 0 1e+35
+TRACER55.valid_range_sed 0 1e+35
+TRACER55.diagn 1
+TRACER55.fill_value_wc 0
+TRACER55.fill_value_sed 0
+
+TRACER56.name ZooS_N_gr
+TRACER56.long_name Micro-Zooplankton growth rate
+TRACER56.units 
+TRACER56.type         WATER SEDIMENT
+TRACER56.valid_range_wc 0 1e+35
+TRACER56.valid_range_sed 0 1e+35
+TRACER56.diagn 1
+TRACER56.fill_value_wc 0
+TRACER56.fill_value_sed 0
+
+TRACER57.name PhyD_N_gr
+TRACER57.long_name Dinoflagellate growth rate
+TRACER57.units 
+TRACER57.type         WATER SEDIMENT
+TRACER57.valid_range_wc 0 1e+35
+TRACER57.valid_range_sed 0 1e+35
+TRACER57.diagn 1
+TRACER57.fill_value_wc 0
+TRACER57.fill_value_sed 0
+
+TRACER58.name PhyD_N_pr
+TRACER58.long_name DF Production
+TRACER58.units 
+TRACER58.type         WATER SEDIMENT
+TRACER58.valid_range_wc 0 1e+35
+TRACER58.valid_range_sed 0 1e+35
+TRACER58.diagn 1
+TRACER58.fill_value_wc 0
+TRACER58.fill_value_sed 0
+
+TRACER59.name Oxy_pr
+TRACER59.long_name Oxygen production
+TRACER59.units 
+TRACER59.type         WATER SEDIMENT
+TRACER59.valid_range_wc 0 1e+35
+TRACER59.valid_range_sed 0 1e+35
+TRACER59.diagn 1
+TRACER59.fill_value_wc 0
+TRACER59.fill_value_sed 0
+
+TRACER60.name Nfix
+TRACER60.long_name N-fixation by Nodularia
+TRACER60.units 
+TRACER60.type         WATER SEDIMENT
+TRACER60.valid_range_wc 0 1e+35
+TRACER60.valid_range_sed 0 1e+35
+TRACER60.diagn 1
+TRACER60.fill_value_wc 0
+TRACER60.fill_value_sed 0
+
+TRACER61.name PhyN_N
+TRACER61.long_name Nodularia N
+TRACER61.units mg N m-3
+TRACER61.valid_range_wc 0 1e+35
+TRACER61.valid_range_sed 0 1e+35
+TRACER61.type         WATER SEDIMENT
+TRACER61.diagn 0
+TRACER61.fill_value_wc 0
+TRACER61.fill_value_sed 0
+TRACER61.inwc 1
+TRACER61.insed 0
+TRACER61.dissol 0
+TRACER61.partic 1
+TRACER61.advect 1
+TRACER61.diffuse 1
+TRACER61.decay 0
+TRACER61.psize 1e-05
+TRACER61.b_dens 1e+09
+TRACER61.i_conc 2e+08
+TRACER61.f_conc 2e+08
+TRACER61.svel 0
+TRACER61.crit_stress 0.2
+TRACER61.resusp_rate 0
+
+TRACER62.name PhyN_N_gr
+TRACER62.long_name Nodularia growth rate
+TRACER62.units 
+TRACER62.type         WATER SEDIMENT
+TRACER62.valid_range_wc 0 1e+35
+TRACER62.valid_range_sed 0 1e+35
+TRACER62.diagn 1
+TRACER62.fill_value_wc 0
+TRACER62.fill_value_sed 0
+
+TRACER63.name PhyN_N_pr
+TRACER63.long_name Nodularia production
+TRACER63.units 
+TRACER63.type         WATER SEDIMENT
+TRACER63.valid_range_wc 0 1e+35
+TRACER63.valid_range_sed 0 1e+35
+TRACER63.diagn 1
+TRACER63.fill_value_wc 0
+TRACER63.fill_value_sed 0
+
+
+
+# Epibenthic tracers (variables). The set is fixed by the ecological code; the
+# attributes may change from run to run (theoretically).
+TRACER64.name 		SG_N
+TRACER64.long_name 	Seagrass N
+TRACER64.units m	g N m-2
+TRACER64.type         	BENTHIC
+TRACER64.diagn 		0
+TRACER64.fill_value 	100.0
+ 
+TRACER65.name 		MA_N
+TRACER65.long_name 	Macroalgae N
+TRACER65.units 		mg N m-2
+TRACER65.type         	BENTHIC
+TRACER65.diagn 		0
+TRACER65.fill_value 	500.0
+
+TRACER66.name 		SG_N_pr
+TRACER66.long_name 	Seagrass production
+TRACER66.units 		mg N m-2
+TRACER66.type         	BENTHIC
+TRACER66.diagn 		1
+TRACER66.fill_value 	0.0
+
+TRACER67.name 		MA_N_pr
+TRACER67.long_name 	Macroalgae production
+TRACER67.units 		mg N m-2
+TRACER67.type         	BENTHIC
+TRACER67.diagn 		1
+TRACER67.fill_value 	0.0
+
+TRACER68.name 		SG_N_gr
+TRACER68.long_name 	Seagrass growth rate
+TRACER68.units 		mg N m-2 d-1
+TRACER68.type         	BENTHIC
+TRACER68.diagn 		1
+TRACER68.fill_value 	0.0
+
+TRACER69.name 		MA_N_gr
+TRACER69.long_name 	Macroalgae growth rate
+TRACER69.units 		mg N m-2 d-1
+TRACER69.type         	BENTHIC
+TRACER69.diagn 		1
+TRACER69.fill_value 	0.0
+
+TRACER70.name 		Epilight
+TRACER70.long_name 	Light intensity above epibenthos
+TRACER70.units 		W m-2
+TRACER70.type         	BENTHIC
+TRACER70.diagn 		2
+TRACER70.fill_value 	0.0
+
+TRACER71.name 		Epilightatt
+TRACER71.long_name 	Light attenuation in epibenthos
+TRACER71.units 		none
+TRACER71.type         	BENTHIC
+TRACER71.diagn 		2
+TRACER71.fill_value 	0.0
+
+TRACER72.name 		EpiTN
+TRACER72.long_name 	Total N in epibenthos
+TRACER72.units 		mg N m-2
+TRACER72.type         	BENTHIC
+TRACER72.diagn 		2
+TRACER72.fill_value 	0.0
+
+TRACER73.name 		EpiTP
+TRACER73.long_name 	Total P in epibenthos
+TRACER73.units 		mg P m-2
+TRACER73.type         	BENTHIC
+TRACER73.diagn 		2
+TRACER73.fill_value 	0.0
+
+TRACER74.name 		EpiTC
+TRACER74.long_name 	Total C in epibenthos
+TRACER74.units 		mg C m-2
+TRACER74.type         	BENTHIC
+TRACER74.diagn 		2
+TRACER74.fill_value 	0.0
+ 
+TRACER75.name 		EpiOxy_pr
+TRACER75.long_name 	Net Oxygen Production in epibenthos
+TRACER75.units 		mg O m-2
+TRACER75.type         	BENTHIC
+TRACER75.diagn 		1
+TRACER75.fill_value 	0.0
+
+
+
+
+
+
+# tracer state variables 
+
+TRACER76.name      	vint_TN
+TRACER76.long_name    	Vertical integral of TN
+TRACER76.units          mg/m2
+TRACER76.tracerstat   	vint(TN)
+TRACER76.type           WC2D
+TRACER76.fill_value     0
+TRACER76.valid_range    -1e-10 1e10
+TRACER76.advect         0
+TRACER76.diffuse        0
+TRACER76.diagn          0
+
+TRACER77.name         	vint_chl
+TRACER77.long_name    	Vertical integral of chl_a
+TRACER77.units          mg/m2
+TRACER77.type           WC2D
+TRACER77.tracerstat   	vint(Chl_a:0:12)
+TRACER77.fill_value     0
+TRACER77.valid_range    -1e-10 1e10
+TRACER77.advect         0
+TRACER77.diffuse        0
+TRACER77.diagn          0
+
+
+
+# waves tracers
+
+TRACER78.name 		wave_amp
+TRACER78.long_name 	Wave amplitude
+TRACER78.units 		m
+TRACER78.type         	WC2D
+TRACER78.diagn 		0
+TRACER78.fill_value 	0.0
+
+TRACER79.name 		wave_dir
+TRACER79.long_name 	Wave direction
+TRACER79.units 		deg T
+TRACER79.type         	WC2D
+TRACER79.diagn 		0
+TRACER79.fill_value 	0.0
+
+TRACER80.name 		wave_period
+TRACER80.long_name 	Wave period
+TRACER80.units 		s
+TRACER80.type         	WC2D
+TRACER80.diagn 		0
+TRACER80.fill_value 	0.0
+
+TRACER81.name 		wave_ub
+TRACER81.long_name 	Wave orbital velocity
+TRACER81.units 		ms-1
+TRACER81.type         	WC2D
+TRACER81.diagn 		0
+TRACER81.fill_value 	0.0
+
+TRACER82.name porosity
+TRACER82.long_name Sediment porosity
+TRACER82.type        WATER SEDIMENT
+TRACER82.units kg m-3
+TRACER82.fill_value_wc 0.99
+TRACER82.fill_value_sed 0.5
+TRACER82.valid_range_wc 0 0 1
+TRACER82.valid_range_sed 0 1
+TRACER82.diagn    1
+
+TRACER83.name Dust
+TRACER83.long_name Dust unflocculted
+TRACER83.type         WATER SEDIMENT
+TRACER83.units kg m-3
+TRACER83.valid_range_wc 0 1e+35
+TRACER83.valid_range_sed 0 1e+35
+TRACER83.diagn 0
+TRACER83.fill_value_wc 0.0
+TRACER83.fill_value_sed 0.0
+TRACER83.inwc 1
+TRACER83.insed 1
+TRACER83.dissol 0
+TRACER83.partic 1
+TRACER83.advect 1
+TRACER83.diffuse 1
+TRACER83.decay 0
+TRACER83.psize 0.00025
+TRACER83.b_dens 2.65e+03
+TRACER83.i_conc 0.5e+03
+TRACER83.f_conc 1.2e+03
+TRACER83.svel -1.e-5
+TRACER83.cohesive 1
+TRACER83.calcvol 1
+TRACER83.floc 0
+TRACER83.resuspend 1
+TRACER83.deposit 1
+
+
+TRACER84.name         passive
+TRACER84.long_name    Passive tracer 
+TRACER84.units        mg N m-3
+TRACER84.fill_value   0.0
+TRACER84.valid_range  -1e.10    1e10
+TRACER84.advect       1
+TRACER84.diffuse      1
+TRACER84.diagn        0
+
+TRACER85.name            Kzmean
+TRACER85.long_name       Mean Vertical Diffusivity
+TRACER85.units           m2s-1
+TRACER85.tracerstat      mean(Kz)
+TRACER85.dt              1 hour
+TRACER85.valid_range     0 10
+TRACER85.fill_value      0
+TRACER85.advect          0
+TRACER85.diffuse         0
+TRACER85.diagn           0
+
+TRACER86.name            BOD
+TRACER86.long_name       Biochemical Oxygen Demand
+TRACER86.units           mg O m-3
+TRACER86.fill_value      0.00e+00
+TRACER86.valid_range     0.00e+00 1.00e+35
+TRACER86.fill_value_sed  0.00e+00
+TRACER86.valid_range_sed 0.00e+00 1.00e+35
+TRACER86.advect          0
+TRACER86.diffuse         0
+TRACER86.diagn           2
+TRACER86.partic          0
+TRACER86.dissol          0
+TRACER86.type             WC3D  SED  ECOLOGY  DIAGNOSTIC 
+TRACER86.psize           0.00e+00
+TRACER86.b_dens          0.00e+00
+TRACER86.i_conc          0.00e+00
+TRACER86.svel            0.0
+TRACER86.cohesive        1
+TRACER86.calcvol         0
+TRACER86.floc            0
+TRACER86.resuspend       1
+TRACER86.deposit         1
+TRACER86.eco_flag            0
+
+
+
+###############################################################
+
+# Ecology. Has default value of DO_BM flag.
+#
+DO_ECOLOGY no
+ECOLOGY_DT 3600
+# Whether to use cell temperature values in parameter calculations. `true' by
+# default. If not - a uniform approximation is used (bm-like approach).
+USE_CELL_TEMP TRUE
+# Unrelevant if USE_CELL_TEMPERATURE set to `true'
+SEASONS    FALSE
+
+# New ecology
+#
+biofname in/bio.prm
+processfname in/processes.prm
+check_nans 0
+check_negs 0
+internal_tracers 1
+mandatory_water 0
+mandatory_sediment 0
+LIGHT			in/light.ts
+LIGHT_INPUT_DT		1 days
+ALBEDO_LIGHT		0.2
+
+
+
+####################seq_curvi_bgc.tran#######################################################
+############################################################################
+# Sediments
+
+# VERBOSE_SED 1
+
+# Sediment layer thicknesses
+NSEDLAYERS	4
+0.005
+0.020
+0.080
+0.320
+
+MAX_THICK_SED 1.
+
+
+# Activate Waves
+WAVE_VARS_INPUT_DT 1 hour
+WAVE_VARS in/wavedata1.txt
+
+
+# Activate process
+Default: 0
+DO_SEDIMENTS    1
+RESUSPEND      1
+DEPOSIT	1
+CONSOLIDATE 0
+
+# CRITICAL STRESSES
+# Critical shear stress of cohesive bed erosion N m-2
+# Modes: CSS0, CSS1, CSS2, CSS3
+# Default: css_er = 0.2
+CSS_ER_MODE       CSS4
+CSS_ER            4
+0.077
+0.4
+0.6
+0.7
+
+CSS_ER_DEPTH 4
+-0.
+-0.002
+-0.01
+-0.1
+
+# Critical shear stress of cohesive sediment deposition N m-2
+# Default: CSS_DEP = +inf
+#CSS_DEP	        0.04
+
+# FLOCCULATION
+# Modes: FLOC0, FLOC1, FLOC2, FLOC3
+# Default: FLOC0 - no flocculation
+FLOC_MODE        FLOC4
+FLOC_PRM1 2e-4
+FLOC_PRM2 3
+
+# CONSOLIDATION
+FINPOR_SED	0.4
+CONSOLRATE  	10.e+0
+
+# RIPPLES
+# Bed forms
+# Default: 0
+CALC_RIPPLES     0
+PHYSRIPH         0.005
+PHYSRIPL         0.3
+BIORIPH          0.001
+BIORIPL          0.03
+# Skin roughness
+Z0_SKIN  0.00003
+
+# Maximum depth for biological activity
+MAXBIODEPTH	0.2
+
+# Functional form for bioirrigarion and bioturbation activity
+# as a function of depth. Currently can be one of:
+#     constant
+#     linear
+#     parabolic
+#     gaussian
+# Only the first letter of this parameter is significant
+BIOSEDPROFILE	parabolic
+
+# Biological activity (standard animals per square metre?)
+BIODENS		10.0
+
+# Diffusion coefficient for bio-irrigation of sediments.
+# This value is scaled by the amount of biological
+# activity present, and also decreases with depth
+# in the sediment according to some
+# fixed profile. The value here is the value which
+# would apply at zero depth in the sediment.
+# Units are m2 s-1 per animal per m2.
+BI_DISSOL_KZ 	1.0e-8
+BI_DISSOL_KZ_I 	1.0e-13
+
+# Diffusion coefficient for bio-turbation of sediments.
+# This value is scaled by the amount of biological
+# activity present, and also decreases with depth
+# in the sediment according to some
+# fixed profile. The value here is the value which
+# would apply at zero depth in the sediment.
+# Units are m2 s-1 per animal per m2.
+BT_PARTIC_KZ	1.0e-9
+BT_PARTIC_KZ_I	1.0e-13
+
+
+
+# Forcing
+WIND_TS              in/forcing.ts
+WIND_INPUT_DT         10.0   days
+WIND_SPEED_SCALE      0.1
+DRAG_LAW_V0           10.0  
+DRAG_LAW_V1           26.0  
+DRAG_LAW_CD0          0.00114 
+DRAG_LAW_CD1          0.00218 
+
+
+# Point sources/sinks
+npointss 0
+
+pss0.name 	source
+#pss0.location 	5000.0 13500.0 -5.0 0.0
+pss0.location 83.218263 0.185313 -5.0 0 
+pss0.data 	in/passive0.ts
+
+HEATFLUX                ADVANCED
+RADIATION               in/met2.ts
+RADIATION_INPUT_DT      1 hours
+AIRTEMP                 in/met.ts
+AIRTEMP_INPUT_DT        1 hours
+CLOUD                   in/met.ts
+CLOUD_INPUT_DT          1 hours
+WET_BULB                in/met.ts
+WET_BULB_INPUT_DT       1 hours
+SWR_BOT_ABSORB          in/data.txt
+SWR_ATTENUATION         0.2
+SWR_TRANSMISSION        0.85
+HEATFLUX_REFH           4.0
+ HEATFLUX_ADVECT         NO
+BULK_SCHEME             K/W
+ALBEDO                  -0.07
+
+# Time series
+TSPOINTS             2
+
+TS0.name             out/loc1.ts 
+TS0.location         31500.0 13500.0 0
+TS0.dt               1 hour
+TS0.reference        msl
+
+TS1.name             out/loc2.ts
+TS1.location         42500.0 13500.0 0
+TS1.dt               1 hour
+TS1.reference        msl
+
+
+NRTSTATS 3
+
+RTSTAT0.name western_ocean
+RTSTAT0.func sectionflux(NO3,NH4,DetR_P,DetR_N,DOR_N,DetBL_N,DetPL_N,PhyS_N,PhyL_N,ZooS_N,ZooL_N,DIP,MPB_N,PhyD_N,PhyD_C,PIPI,PIPF,DIC,DOR_C,DOR_P,DetR_C,DetR_P:u1)
+RTSTAT0.dt 1 hours
+RTSTAT0.data in/bdr1.ij
+RTSTAT0.output ./out/bdr1.ts
+
+RTSTAT1.name river_b
+RTSTAT1.func  sectionflux(NO3,NH4,DetR_P,DetR_N,DOR_N,DetBL_N,DetPL_N,PhyS_N,PhyL_N,ZooS_N,ZooL_N,DIP,MPB_N,PhyD_N,PhyD_C,PIPI,PIPF,DIC,DOR_C,DOR_P,DetR_C,DetR_P:u1)
+
+RTSTAT1.dt 1 hours
+RTSTAT1.data in/bdr2.ij
+RTSTAT1.output ./out/bdr2.ts
+
+
+RTSTAT2.name region1
+RTSTAT2.func  sectionflux(NO3,NH4,DetR_P,DetR_N,DOR_N,DetBL_N,DetPL_N,PhyS_N,PhyL_N,ZooS_N,ZooL_N,DIP,MPB_N,PhyD_N,PhyD_C,PIPI,PIPF,DIC,DOR_C,DOR_P,DetR_C,DetR_P:u1)
+RTSTAT2.dt 1 hours
+RTSTAT2.data in/region1.ij
+RTSTAT2.output ./out/region1.ts
+
+WRITE_BDRY boundary.txt
+
+
+
+SURFACE    1350
+0
+
+# Open boundaries
+NBOUNDARIES           2
+
+BOUNDARY0.NAME          offshore
+BOUNDARY0.TYPE          u1
+BOUNDARY0.BCOND_ELE     TIDEBC
+BOUNDARY0.BCOND_NOR     NOGRAD
+BOUNDARY0.BCOND_TAN     CLAMPD
+BOUNDARY0.BCOND_TRA_ALL STATIS
+BOUNDARY0.BCOND_TRA0    CUSTOM
+BOUNDARY0.CUSTOM.salt   35
+BOUNDARY0.CUSTOM.MA_N   0
+BOUNDARY0.CUSTOM.SG_N   0
+
+BOUNDARY0.BCOND_TRA1    NOGRAD
+BOUNDARY0.BCOND_VZ      NOGRAD
+BOUNDARY0.BCOND_KZ      NOGRAD
+BOUNDARY0.INVERSE_BAROMETER NO
+BOUNDARY0.T_CONSTITUENTS 1
+BOUNDARY0.T_NAME         M2
+BOUNDARY0.T_XLOCATION    38500.0
+BOUNDARY0.T_YLOCATION    15500.0
+BOUNDARY0.T_AMPLITUDE    0.0
+BOUNDARY0.T_PERIOD       12.0 hours
+BOUNDARY0.T_MOD_AMP      0.0
+BOUNDARY0.T_DIR_AMP      0.0
+BOUNDARY0.T_MOD_PSE      0.0
+BOUNDARY0.T_DIR_PSE      0.0
+BOUNDARY0.RANGE         (49,1)-(49,25)
+
+BOUNDARY1.NAME          river
+BOUNDARY1.TYPE          u1
+BOUNDARY1.BCOND_ELE     NOTHIN
+BOUNDARY1.BCOND_NOR     CUSTOM
+BOUNDARY1.BCOND_TAN     CLAMPD
+BOUNDARY1.BCOND_TRA_ALL  NOGRAD
+BOUNDARY1.BCOND_TRA0     UPSTRM
+BOUNDARY1.BCOND_TRA1     UPSTRM
+BOUNDARY1.BCOND_TRA22    UPSTRM
+BOUNDARY1.BCOND_TRA21    UPSTRM
+BOUNDARY1.BCOND_TRA23    UPSTRM
+BOUNDARY1.BCOND_TRA32    UPSTRM
+BOUNDARY1.BCOND_TRA34    UPSTRM
+BOUNDARY1.BCOND_TRA12    UPSTRM
+BOUNDARY1.CUSTOM.MA_N   0
+BOUNDARY1.CUSTOM.SG_N   0
+
+BOUNDARY1.UPSTRM_METHOD ADAPTIVE
+BOUNDARY1.BCOND_VZ      NOGRAD
+BOUNDARY1.BCOND_KZ      NOGRAD
+BOUNDARY1.CUSTOM.u1     u1flowbdry
+BOUNDARY1.U1_FLOW      in/nutrient_loads.ts 
+BOUNDARY1.U1_HC         -5.0  
+BOUNDARY1.INVERSE_BAROMETER NO
+BOUNDARY1.DATA          in/nutrient_loads.ts in/flow.ts
+BOUNDARY1.POINTS        1
+1 13		# 1000.0 13500.0
+
+# Bathymetry
+BATHY 1350
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+9999.0
+5.0
+5.0
+5.0
+6.551724137931035
+7.068965517241379
+7.586206896551724
+8.10344827586207
+8.620689655172413
+9.137931034482758
+9.655172413793103
+10.0
+10.0
+10.0
+11.724137931034484
+12.241379310344827
+12.758620689655173
+13.275862068965518
+13.793103448275861
+14.310344827586206
+14.827586206896552
+15.0
+15.0
+16.379310344827587
+16.89655172413793
+17.413793103448278
+17.93103448275862
+18.448275862068968
+18.96551724137931
+19.482758620689655
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+20.0
+9999.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+-99.0
+
+# X coordinates
+XCOORDS 5555
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+0.0
+500.0
+1000.0
+1500.0
+2000.0
+2500.0
+3000.0
+3500.0
+4000.0
+4500.0
+5000.0
+5500.0
+6000.0
+6500.0
+7000.0
+7500.0
+8000.0
+8500.0
+9000.0
+9500.0
+10000.0
+10500.0
+11000.0
+11500.0
+12000.0
+12500.0
+13000.0
+13500.0
+14000.0
+14500.0
+15000.0
+15500.0
+16000.0
+16500.0
+17000.0
+17500.0
+18000.0
+18500.0
+19000.0
+19500.0
+20000.0
+20500.0
+21000.0
+21500.0
+22000.0
+22500.0
+23000.0
+23500.0
+24000.0
+24500.0
+25000.0
+25500.0
+26000.0
+26500.0
+27000.0
+27500.0
+28000.0
+28500.0
+29000.0
+29500.0
+30000.0
+30500.0
+31000.0
+31500.0
+32000.0
+32500.0
+33000.0
+33500.0
+34000.0
+34500.0
+35000.0
+35500.0
+36000.0
+36500.0
+37000.0
+37500.0
+38000.0
+38500.0
+39000.0
+39500.0
+40000.0
+40500.0
+41000.0
+41500.0
+42000.0
+42500.0
+43000.0
+43500.0
+44000.0
+44500.0
+45000.0
+45500.0
+46000.0
+46500.0
+47000.0
+47500.0
+48000.0
+48500.0
+49000.0
+49500.0
+50000.0
+
+# Y coordinates
+YCOORDS 5555
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+500.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1000.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+1500.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2000.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+2500.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3000.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+3500.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4000.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+4500.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5000.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+5500.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6000.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+6500.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7000.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+7500.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8000.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+8500.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9000.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+9500.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10000.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+10500.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11000.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+11500.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12000.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+12500.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13000.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+13500.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14000.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+14500.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15000.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+15500.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16000.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+16500.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17000.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+17500.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18000.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+18500.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19000.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+19500.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20000.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+20500.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21000.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+21500.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22000.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+22500.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23000.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+23500.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24000.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+24500.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25000.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+25500.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26000.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+26500.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+27000.0
+

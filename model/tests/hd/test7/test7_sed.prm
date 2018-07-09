@@ -1,0 +1,1800 @@
+# Test 7 of model shoc: 50 by 27 by 24 closed basin with sloping 
+# bottom (southern hemisphere) is forced with wind stress in the 
+# e1 ditrection having positive curl. Anti-cyclonic circulation
+# is set up due to topographically induced conservation of potential
+# vorticity, where the centre of the gyre biased to the west.
+# Conservation of potential vorticity theory (e.g. Herzfeld & Tomczak 
+# (1999), Aust. J. Marine Freshw. Res., 50, 613 - 627.) predicts that :
+# A poitive gradient of f/H (f < 0) results in an eastward biased gyre.
+# A poitive gradient of f/H (f > 0) results in an westward biased gyre.
+# Constant depth (BATHYMAX = 50) results in a gyre with no bias.
+# A change in sign of the wind curl (WIND_SPEED_SCALE = -1.0) results
+# in a cyclonic gyre with no change to the bias.
+   
+CODEHEADER           SHOC default version : leapfrog
+PARAMETERHEADER      Test 7 - closed basin with +ve wind curl
+DESCRIPTION          SHOC test 7
+NAME                 SHOC test7 grid
+PROJECTION           proj=merc lon_0=83
+TIMEUNIT             seconds since 2000-01-01 00:00:00 +08
+OUTPUT_TIMEUNIT      days since 2000-01-01 00:00:00 +08
+LENUNIT              metre
+START_TIME           0 days
+STOP_TIME            10 days
+
+INPUT_FILE           in7.nc
+
+# Output files
+OutputFiles 1
+
+file0.name           out7_sed.nc
+file0.filetype       simple
+file0.tstart         0 days
+file0.tinc           1 days
+file0.tstop          10 days
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Flags
+WINDOWS              1
+NONLINEAR            YES
+CALCDENS             YES
+HEATFLUX             NONE
+SALTFLUX             NONE
+2D-MODE              NO
+STABILITY            SUB-STEP-NOSURF
+RAMPSTART            0 days
+RAMPEND              1 days
+MERGE_THIN           YES
+HMIN                 0.1400
+SLIP                 1.0   
+SIGMA                NO
+COMPATIBLE           V4201
+
+# Time steps
+DT                   1200.00  seconds
+IRATIO               12
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           VANLEER
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 800.0
+U2VH                 800.0
+U1KH                 100.0
+U2KH                 100.0
+SMAGORINSKY          0.0000
+
+# Vertical mixing
+MIXING_SCHEME        k-e
+VZ0                  1.0000e-04
+KZ0                  1.0000e-05
+ZS                   1.0000
+
+# Bottom friction
+QBFC                 0.0030
+UF                   0.0100
+Z0                   0.0012
+
+# Constants
+G                    9.8100
+SPECHEAT             3990.0
+AIRDENS              1.2250
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS             1350
+-1.0e-4
+
+# Diagnostics
+CFL                  NONE
+MIX_LAYER            NONE
+MEAN                 NONE
+VORTICITY            NONE
+NUMBERS	             NONE
+ALERT      	     NONE
+MOM_TEND	     YES
+CALC_FLUXES          NONE
+FLUSHING_TR          NO
+STERIC_HEIGHT        0.00  
+TOTALS               YES Sand Silt Fine tss
+
+# Grid
+GRIDTYPE             GEOGRAPHIC_RECTANGULAR
+NCE1                 50
+NCE2                 27
+X00                  0.00000 
+Y00                  0.00000 
+DX                   25000.000
+DY                   25000.000
+ROTATION             0.0   
+
+# Vertical grid spacing
+LAYERFACES           24
+-110.00 
+-105.00 
+-100.00 
+-95.00  
+-90.00  
+-85.00  
+-80.00  
+-75.00  
+-70.00  
+-65.00  
+-60.00  
+-55.00  
+-50.00  
+-45.00  
+-40.00  
+-35.00  
+-30.00  
+-25.00  
+-20.00  
+-15.00  
+-10.00  
+-5.00   
+-2.00   
+0.00    
+
+# Bathymetry limits
+BATHYMIN             50.0  
+BATHYMAX             120.0 
+ETAMAX               10.0  
+MIN_CELL_THICKNESS   25%
+
+# Tracers
+NTRACERS             8
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.type         WATER SEDIMENT
+TRACER0.units        PSU
+TRACER0.fill_value   35.0  
+TRACER0.valid_range  0.0    40.0  
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.diagn        0
+TRACER0.data         profile.nc
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.type         WATER SEDIMENT
+TRACER1.units        degrees C
+TRACER1.fill_value   20.0  
+TRACER1.valid_range  0.0    40.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+TRACER1.data         profile.nc
+
+TRACER2.name            Sand
+TRACER2.long_name       Sand
+TRACER2.type            WATER SEDIMENT
+TRACER2.units           kg m-3
+TRACER2.valid_range_wc  0 1e+35
+TRACER2.valid_range_sed 0 1e+35
+TRACER2.diagn           0
+TRACER2.fill_value_wc   0.0
+TRACER2.fill_value_sed  912
+TRACER2.inwc            1
+TRACER2.insed           1
+TRACER2.dissol          0
+TRACER2.partic          1
+TRACER2.advect          0
+TRACER2.diffuse         1
+TRACER2.decay           0
+TRACER2.psize           0.0005
+TRACER2.b_dens          2.65e+03
+TRACER2.i_conc          1.2e+03
+TRACER2.f_conc          1.2e+03
+TRACER2.svel            -0.7
+TRACER2.cohesive        0
+TRACER2.floc            0
+TRACER2.calcvol         1
+TRACER2.resuspend       0
+TRACER2.deposit         1
+
+TRACER3.name            Silt
+TRACER3.long_name       Silt
+TRACER3.type            WATER SEDIMENT
+TRACER3.units           kg m-3
+TRACER3.valid_range_wc  0 1e+35
+TRACER3.valid_range_sed 0 1e+35
+TRACER3.diagn           0
+TRACER3.fill_value_wc   0.0
+TRACER3.fill_value_sed  216
+TRACER3.inwc            1
+TRACER3.insed           1
+TRACER3.dissol          0
+TRACER3.partic          1
+TRACER3.advect          1
+TRACER3.diffuse         1
+TRACER3.decay           0
+TRACER3.psize           0.00025
+TRACER3.b_dens          2.65e+03
+TRACER3.i_conc          1.2e+03
+TRACER3.f_conc          1.2e+03
+TRACER3.svel            -1e-3
+TRACER3.cohesive        1
+TRACER3.calcvol         1
+TRACER3.floc            0
+TRACER3.resuspend       1
+TRACER3.deposit         1
+
+TRACER4.name            Fine
+TRACER4.long_name       Fine
+TRACER4.type            WATER SEDIMENT
+TRACER4.units           kg m-3
+TRACER4.valid_range_wc  0 1e+35
+TRACER4.valid_range_sed 0 1e+35
+TRACER4.diagn           0
+TRACER4.fill_value_wc   0.0001
+TRACER4.fill_value_sed  72.
+TRACER4.inwc            1
+TRACER4.insed           1
+TRACER4.dissol          0
+TRACER4.partic          1
+TRACER4.advect          1
+TRACER4.diffuse         1
+TRACER4.decay           0
+TRACER4.psize           0.00025
+TRACER4.b_dens          2.65e+03
+TRACER4.i_conc          1.2e+03
+TRACER4.f_conc          1.2e+03
+TRACER4.svel            -3e-5
+TRACER4.cohesive        1
+TRACER4.calcvol         1
+TRACER4.floc            0
+TRACER4.resuspend       1
+TRACER4.deposit         1
+
+TRACER5.name            tss
+TRACER5.long_name       tss
+TRACER5.type            WATER SEDIMENT
+TRACER5.units           kg m-3
+TRACER5.fill_value_wc   0.0
+TRACER5.fill_value_sed  0.0
+TRACER5.valid_range_wc  0 1000
+TRACER5.valid_range_sed 0 1e35
+TRACER5.diagn           1
+TRACER5.inwc            1
+TRACER5.insed           1
+TRACER5.dissol          0
+TRACER5.partic          1
+TRACER5.advect          0
+TRACER5.diffuse         0
+TRACER5.bm              0
+TRACER5.decay           0.0
+TRACER5.svel            0.0
+TRACER5.psize           0.0
+TRACER5.b_dens          0.0
+TRACER5.i_conc          0.0
+TRACER5.f_conc          0.0
+TRACER5.calcvol         0
+TRACER5.cohesive        0
+
+TRACER6.name            depth_sed
+TRACER6.long_name       depth_sed
+TRACER6.type            BENTHIC
+TRACER6.units 
+TRACER6.fill_value_wc   0.0
+TRACER6.fill_value_sed  0.0
+TRACER6.valid_range_wc  0 10
+TRACER6.valid_range_sed 0 1e35
+TRACER6.diagn           1
+TRACER6.inwc            0
+TRACER6.insed           1
+TRACER6.dissol          0
+TRACER6.partic          0
+TRACER6.advect          0
+TRACER6.diffuse         0
+TRACER6.bm              0
+TRACER6.decay           0.0
+TRACER6.svel            0.0
+TRACER6.psize           0.0
+TRACER6.b_dens          0.0
+TRACER6.i_conc          0.0
+TRACER6.f_conc          0.0
+TRACER6.calcvol         0
+TRACER6.cohesive        0
+
+TRACER7.name            ustrcw_skin
+TRACER7.long_name       ustrcw_skin
+TRACER7.type            BENTHIC
+TRACER7.units 
+TRACER7.fill_value_wc   0.0
+TRACER7.fill_value_sed  0.0
+TRACER7.valid_range_wc  0 30
+TRACER7.valid_range_sed 0 1e35
+TRACER7.inwc            1
+TRACER7.insed           1
+TRACER7.dissol          0
+TRACER7.partic          0
+TRACER7.advect          0
+TRACER7.diffuse         0
+TRACER7.bm              0
+TRACER7.decay           0.0
+TRACER7.svel            0.0
+TRACER7.psize           0.0
+TRACER7.b_dens          0.0
+TRACER7.i_conc          0.0
+TRACER7.f_conc          0.0
+TRACER7.calcvol         0
+TRACER7.cohesive        0
+
+
+# Forcing
+WIND_TS              wind_test7.nc
+WIND_INPUT_DT        10   days
+WIND_SPEED_SCALE     1.0   
+DRAG_LAW_V0          10.0  
+DRAG_LAW_V1          26.0  
+DRAG_LAW_CD0         0.00114 
+DRAG_LAW_CD1         0.00218 
+
+# Time series
+TSPOINTS             1
+
+TS0.name              loc_sed.ts
+TS0.location          612500.000000 62500.000000 0 	#(24,2,22)
+TS0.dt                3600 seconds
+TS0.reference         msl
+
+
+# Waves
+WAVE_ENHANCED_BOTTOM_FRICTION 	0
+ORBITAL_VEL	                wave_test7.ts
+ORBITAL_VEL_INPUT_DT		1 hour
+
+DO_WAVES	      YES
+WAVES_DT              1 hour
+WAVE_VARS             wave_test7.ts
+WAVE_VARS_INPUT_DT    1 hour
+WAVES                 TAN_RADIATION BOT_STRESS
+
+# Alternative wave parameterisations
+#WAVE_VARS             YES
+#WIND_WAVE             TOBA
+
+
+##############################################################################
+# Sediments
+
+# Sediment layers thicknesses
+NSEDLAYERS	3
+0.005
+0.01
+0.50
+
+# Activate process
+Default: 0
+DO_SEDIMENTS    1
+CONSOLIDATE	0
+
+# CRITICAL STRESSES
+# Critical shear stress of cohesive bed erosion N m-2
+# Modes: CSS0, CSS1, CSS2, CSS3
+# Default: CSS0: css_er = 0.2
+CSS_ER_MODE       CSS0
+CSS_ER            0.2
+
+# Critical shear stress of cohesive sediment deposition N m-2
+# Default: CSS_DEP = +inf
+#CSS_DEP	        0.3
+
+# FLOCCULATION
+# Modes: FLOC0, FLOC1
+# Default: FLOC0 - no flocculation 
+FLOC_MODE        FLOC0
+FLOC_PRM1  0.01
+FLOC_PRM2  3
+
+# CONSOLIDATION
+FINPOR_SED	0.4
+CONSOLRATE  	10.e+0
+
+# RIPPLES
+# Bed forms
+# Default: 0
+CALC_RIPPLES     0
+PHYSRIPH         0.03
+PHYSRIPL         0.4
+BIORIPH          0.001
+BIORIPL          0.02
+# Skin roughness
+Z0_SKIN  0.00001
+
+# Maximum depth for biological activity
+MAXBIODEPTH	0.2
+
+# Functional form for bioirrigarion and bioturbation activity
+# as a function of depth. Currently can be one of:
+#     constant
+#     linear
+#     parabolic
+#     gaussian
+# Only the first letter of this parameter is significant
+BIOSEDPROFILE	parabolic
+
+# Biological activity (standard animals per square metre?)
+BIODENS		10.0
+
+# Diffusion coefficient for bio-irrigation of sediments.
+# This value is scaled by the amount of biological
+# activity present, and also decreases with depth
+# in the sediment according to some
+# fixed profile. The value here is the value which
+# would apply at zero depth in the sediment.
+# Units are m2 s-1 per animal per m2.
+BI_DISSOL_KZ 	1.0e-9
+BI_DISSOL_KZ_I 	1.0e-12
+
+# Diffusion coefficient for bio-turbation of sediments.
+# This value is scaled by the amount of biological
+# activity present, and also decreases with depth
+# in the sediment according to some
+# fixed profile. The value here is the value which
+# would apply at zero depth in the sediment.
+# Units are m2 s-1 per animal per m2.
+BT_PARTIC_KZ	1.0e-9
+BT_PARTIC_KZ_I	0.20e-12
+
+##############################################################################
+
+# Open boundaries
+NBOUNDARIES           0
+
+# Bathymetry
+BATHY    1350
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+  50.000
+ -99.000
+ -99.000
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+  52.500
+ -99.000
+ -99.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+  55.000
+ -99.000
+ -99.000
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+  57.500
+ -99.000
+ -99.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+  60.000
+ -99.000
+ -99.000
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+  62.500
+ -99.000
+ -99.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+  65.000
+ -99.000
+ -99.000
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+  67.500
+ -99.000
+ -99.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+  70.000
+ -99.000
+ -99.000
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+  72.500
+ -99.000
+ -99.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+  75.000
+ -99.000
+ -99.000
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+  77.500
+ -99.000
+ -99.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+  80.000
+ -99.000
+ -99.000
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+  82.500
+ -99.000
+ -99.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+  85.000
+ -99.000
+ -99.000
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+  87.500
+ -99.000
+ -99.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+  90.000
+ -99.000
+ -99.000
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+  92.500
+ -99.000
+ -99.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+  95.000
+ -99.000
+ -99.000
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+  97.500
+ -99.000
+ -99.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ 100.000
+ -99.000
+ -99.000
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ 102.500
+ -99.000
+ -99.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ 105.000
+ -99.000
+ -99.000
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ 107.500
+ -99.000
+ -99.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ 110.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+

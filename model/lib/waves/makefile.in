@@ -1,0 +1,72 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=@program_transform_name@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+libdir = @libdir@
+includedir = @includedir@
+mandir = @mandir@/manl
+
+# Directory in which to install library files.
+datarootdir = @datadir@
+acdatadir = $(datadir)/autoconf
+
+# Directory in which to install documentation info files.
+infodir = @infodir@
+
+
+#### End of system configuration section. ####
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS=-I./include -g @PROJINC@
+else
+ CFLAGS=-I./include @CFLAGS@ @PROJINC@
+endif
+
+#RANLIB = @RANLIB@
+AR = @AR@
+
+NETCDFINC=@NETCDFINC@
+DEBUGINC=@DMALLOCINC@
+EMSINC=@EMSLIBINC@
+
+
+ARFLAGS = cr
+
+TSOBJS = waves.o
+
+.c.o:;
+	$(CC) -c $(CFLAGS) -Iinclude $(EMSINC) $(NETCDFINC) $*.c -o $*.o
+
+all: libwaves.a
+
+libwaves.a: $(TSOBJS)
+	$(AR) $(ARFLAGS) libwaves.a $(TSOBJS)
+	chmod go+r libwaves.a
+
+clean:
+	rm -f *.a *.o
+
+configclean:
+	rm -f makefile
+
+distclean: clean configclean

@@ -1,0 +1,20 @@
+# ignore objects and archives, anywhere in the tree.
+*.[oa]
+
+# Auto-backup files
+*~
+
+# Auto-generated files
+TAGS
+config.log
+config.status
+shoc*
+compas*
+makefile
+svn_rev.h
+ems_conf.h
+
+# No other version control files
+.svn
+.hg
+

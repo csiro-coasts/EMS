@@ -1,0 +1,79 @@
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=@program_transform_name@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+libdir = @libdir@
+includedir = @includedir@
+mandir = @mandir@/manl
+
+# Directory in which to install library files.
+datarootdir = @datadir@
+acdatadir = $(datadir)/autoconf
+
+#### End of system configuration section. ####
+
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS= -g
+else
+ CFLAGS= @CFLAGS@ 
+endif
+
+AR = @AR@
+ARFLAGS = cr
+
+NETCDFINC=@NETCDFINC@
+EMSINC=@EMSLIBINC@
+EMSLIB=@EMSLIBLIB@
+PROJLIB=@PROJLIB@
+MLIB=-lm
+
+BASEINC=
+
+INCS=-Iinclude $(EMSINC) $(BASEINC) $(NETCDFINC)
+LIBS=$(EMSLIB) $(MLIB)
+
+# Explicit list of sources to exclude (wip)
+EX_SRCS := nn/nnbathy.c
+SRCS    := $(filter-out $(EX_SRCS), $(wildcard */*.c *.c))
+
+OBJS := $(patsubst %.c,%.o,$(SRCS))
+
+GRID_LIB := libgrid.a
+
+PROGRAMS=
+
+ALL_TARGETS := $(OBJS) $(GRID_LIB) # nnai nnpi svd_test lsq_test
+all : $(ALL_TARGETS)
+
+# Special rule for triangle
+delaunay/triangle.o : delaunay/triangle.c
+	$(CC) $(CFLAGS) -DTRILIBRARY $(INCS) -c $< -o $@
+
+.c.o:
+	$(CC) $(CFLAGS) $(INCS) -c $*.c -o $*.o
+
+# programs: all $(PROGRAMS)
+
+$(GRID_LIB) : $(OBJS)
+	$(AR) $(ARFLAGS) $@ $^
+	chmod go+r $@
+
+clean:
+	rm -f *.o *~ */*.o */*~ *.log *.a tmp* core $(PROGRAMS)
+

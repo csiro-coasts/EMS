@@ -1,0 +1,29 @@
+#!/bin/csh -f
+
+# Script to run test
+
+# check shoc
+if (! -e ../../../hd/shoc) then
+    echo "cannot find the shoc executable, please build and try again"
+    exit(0)
+endif
+
+# check output dir
+if (! -d out) then
+    mkdir out
+else
+    rm -r out/*
+endif
+
+# Kick off model
+echo "Starting model ..."
+../../../hd/shoc -p basic.prm
+
+if ($status) then
+    echo ".... uh oh!"
+else
+    echo "... done!"
+    echo " "
+    echo "Run out.m in Matlab to see results"
+endif
+

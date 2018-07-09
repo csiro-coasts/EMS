@@ -1,0 +1,54 @@
+#!/bin/csh -f
+
+echo "Testing 'z' model..."
+rm in7.nc
+rm out7_z.nc
+rm out_pt.nc
+rm *.eps
+
+../shoc -g test7_diag.prm in7.nc
+
+echo "Running, takes ~ 3 minutes...."
+../shoc -p test7.prm
+
+echo "Running diagnostic test, takes ~ 40 minutes...."
+rm out7_d.nc
+rm out_pt.nc
+../shoc -p test7_diag.prm
+mv totals.ts totals_diag.ts
+
+echo "Running explicit mapping test, takes ~ 2 minutes...."
+rm in7.nc
+rm out7_e.nc
+../shoc -g test7_em.prm in7.nc
+../shoc -p test7_em.prm
+
+echo "Running grid refinement test, takes ~ 3 minutes...."
+rm in7.nc
+rm out7_r.nc
+../shoc -g test7_zoom.prm in7.nc
+../shoc -p test7_zoom.prm
+
+echo "Running sigma model test, takes ~ 3 minutes...."
+rm in7.nc
+rm out7_s.nc
+../shoc -g test7_s.prm in7.nc
+../shoc -p test7_s.prm
+
+echo "Running sediment test, takes ~ 3 minutes...."
+rm in7.nc
+rm out7_sed.nc
+../shoc -g test7_sed.prm in7.nc
+../shoc -p test7_sed.prm
+
+echo "Running multiple window test, takes ~ 6 minutes...."
+rm in7.nc
+rm out7_1w.nc
+rm out7_4w.nc
+../shoc -g test7_1w.prm in7.nc
+../shoc -p test7_1w.prm
+../shoc -p test7_4w.prm
+
+echo "DONE"
+
+rm in7.nc

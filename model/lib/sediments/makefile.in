@@ -1,0 +1,67 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=@program_transform_name@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+mandir = @mandir@/manl
+
+# Directory in which to install library files.
+datarootdir = @datarootdir@
+acdatadir   = $(datadir)/autoconf
+
+# Directory in which to install documentation info files.
+infodir = @infodir@
+
+#### End of system configuration section. ####
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS=-g @OPENMP_CFLAGS@ -DDEBUG
+else
+ CFLAGS=@CFLAGS@ @OPENMP_CFLAGS@
+endif
+
+
+NETCDFINC=@NETCDFINC@
+EMSINC=@EMSLIBINC@
+EMSLIB=@EMSLIBLIB@
+
+AR = ar
+ARFLAGS = cru
+
+SEDOBJS = bbl.o vtransp.o trvdiffsettl.o sed_init.o hd2sed.o sed2hd.o
+
+.c.o:;
+	$(CC) -c $(CFLAGS) -Iinclude $(EMSINC) $(NETCDFINC) $*.c -o $*.o
+
+all: libsediments.a
+
+libsediments.a: $(SEDOBJS)
+	$(AR) $(ARFLAGS) libsediments.a $(SEDOBJS)
+	chmod go+r libsediments.a
+
+clean:
+	rm -f *.a *.o
+
+configclean:
+	rm -f makefile
+
+distclean: clean configclean

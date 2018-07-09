@@ -1,0 +1,9 @@
+Further things to test:
+----------------------
+
+*) other statistics. eg. correlation and fluxes
+*) more system level testing, i.e. larger domains to make ultra sure
+   we're mapping the cells correctly
+*) different periods in the same run
+*) different pre-steps
+*) stats of stats

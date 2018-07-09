@@ -1,0 +1,662 @@
+#bioprm from dentrecasteaux no changes
+
+NPARAMETERS 108
+
+PARAMETER0.name ZL_E
+PARAMETER0.desc Growth efficiency, large zooplankton
+PARAMETER0.units none
+PARAMETER0.value 0.38
+PARAMETER0.adjust 0
+
+PARAMETER1.name ZS_E
+PARAMETER1.desc Growth efficiency, small zooplankton
+PARAMETER1.units none
+PARAMETER1.value 0.38
+PARAMETER1.adjust 0
+
+PARAMETER2.name SG_KN
+PARAMETER2.desc Half-saturation of SG N uptake in SED
+PARAMETER2.units mg N m-3
+PARAMETER2.value 5.0
+PARAMETER2.adjust 0
+
+PARAMETER3.name SG_KP
+PARAMETER3.desc Half-saturation of SG P uptake in SED
+PARAMETER3.units mg N m-3
+PARAMETER3.value 5.0
+PARAMETER3.adjust 0
+
+PARAMETER4.name PhyL_mL
+PARAMETER4.desc Natural (linear) mortality rate, large phytoplankton (in sediment)
+PARAMETER4.units d-1
+PARAMETER4.value 0.14
+PARAMETER4.adjust 1
+
+PARAMETER5.name PhyS_mL
+PARAMETER5.desc Natural (linear) mortality rate, small phytoplankton (in sediment)
+PARAMETER5.units d-1
+PARAMETER5.value 0.14
+PARAMETER5.adjust 1
+
+PARAMETER6.name MA_mL
+PARAMETER6.desc Natural (linear) mortality rate, macroalgae
+PARAMETER6.units d-1
+PARAMETER6.value 0.01
+PARAMETER6.adjust 1
+
+PARAMETER7.name SG_mL
+PARAMETER7.desc Natural (linear) mortality rate, seagrass
+PARAMETER7.units d-1
+PARAMETER7.value 0.00274
+PARAMETER7.adjust 1
+
+PARAMETER8.name MPB_mQ
+PARAMETER8.desc Natural (quadratic) mortality rate, microphytobenthos
+PARAMETER8.units d-1 (mg N m-3)-1
+PARAMETER8.value 0.0003
+PARAMETER8.adjust 1
+
+PARAMETER9.name ZL_mQ
+PARAMETER9.desc Natural (quadratic) mortality rate, large zooplankton
+PARAMETER9.units d-1 (mg N m-3)-1
+PARAMETER9.value 0.0004
+PARAMETER9.adjust 1
+
+PARAMETER10.name ZS_mQ
+PARAMETER10.desc Natural (quadratic) mortality rate, small zooplankton
+PARAMETER10.units d-1 (mg N m-3)-1
+PARAMETER10.value 0.02
+PARAMETER10.adjust 1
+
+PARAMETER11.name ZL_FDG
+PARAMETER11.desc Fraction of growth inefficiency lost to detritus, large zooplankton
+PARAMETER11.units none
+PARAMETER11.value 0.5
+PARAMETER11.adjust 0
+
+PARAMETER12.name ZL_FDM
+PARAMETER12.desc Fraction of mortality lost to detritus, large zooplankton
+PARAMETER12.units none
+PARAMETER12.value 0.5
+PARAMETER12.adjust 0
+
+PARAMETER13.name ZS_FDG
+PARAMETER13.desc Fraction of growth inefficiency lost to detritus, small zooplankton
+PARAMETER13.units none
+PARAMETER13.value 0.5
+PARAMETER13.adjust 0
+
+PARAMETER14.name ZS_FDM
+PARAMETER14.desc Fraction of mortality lost to detritus, small zooplankton
+PARAMETER14.units none
+PARAMETER14.value 0.5
+PARAMETER14.adjust 0
+
+PARAMETER15.name F_LD_RD
+PARAMETER15.desc Fraction of labile detritus converted to refractory detritus
+PARAMETER15.units none
+PARAMETER15.value 0.19
+PARAMETER15.adjust 0
+
+PARAMETER16.name F_LD_DOM
+PARAMETER16.desc Fraction of labile detritus converted to dissolved organic matter
+PARAMETER16.units none
+PARAMETER16.value 0.01
+PARAMETER16.adjust 0
+
+PARAMETER17.name NtoCHL
+PARAMETER17.desc Nitrogen:Chlorophyll A ratio in phytoplankton by weight
+PARAMETER17.units m-1
+PARAMETER17.value 7
+PARAMETER17.adjust 0
+
+PARAMETER18.name k_w
+PARAMETER18.desc Background light attenuation coefficient
+PARAMETER18.units none
+PARAMETER18.value 0.1
+#PARAMETER18.value 0.2
+PARAMETER18.adjust 0
+
+PARAMETER19.name k_DOR_N
+PARAMETER19.desc DOR_N-specific light attenuation coefficient
+PARAMETER19.units m-1 (mg N m-3)-1
+PARAMETER19.value 0.0009
+PARAMETER19.adjust 0
+
+PARAMETER20.name k_DetL
+PARAMETER20.desc Detrital N-specific light attenuation coefficient
+PARAMETER20.units m-1 (mg N m-3)-1
+PARAMETER20.value 0.0038
+PARAMETER20.adjust 0
+
+PARAMETER21.name k_TSS
+PARAMETER21.desc TSS-specific light attenuation coefficient
+PARAMETER21.units m-1 (kg m-3)-1
+PARAMETER21.value 30.0
+PARAMETER21.adjust 0
+
+PARAMETER22.name k_C_fw
+PARAMETER22.desc CDOM attentuation coefficient of freshwater
+PARAMETER22.units m-1
+PARAMETER22.value 4.4
+#PARAMETER22.value 2.2
+PARAMETER22.adjust 0
+
+PARAMETER23.name k_SWR_PAR
+PARAMETER23.desc fraction of incident solar radiation that is PAR
+PARAMETER23.units none
+PARAMETER23.value 0.43
+PARAMETER23.adjust 0
+
+PARAMETER24.name Q10
+PARAMETER24.desc Temperature coefficient for rate parameters
+PARAMETER24.units none
+PARAMETER24.value 2.0
+PARAMETER24.adjust 0
+
+PARAMETER25.name PLumax
+PARAMETER25.desc Maximum growth rate of PL at Tref
+PARAMETER25.units d-1
+PARAMETER25.value 2.0
+PARAMETER25.adjust 1
+
+PARAMETER26.name PLrad
+PARAMETER26.desc Radius of the large phytoplankton cells
+PARAMETER26.units m
+PARAMETER26.value 10e-06 
+PARAMETER26.adjust 0
+
+PARAMETER27.name PLabsorb
+PARAMETER27.desc Absorption coefficient of a PL cell
+PARAMETER27.units m-1
+PARAMETER27.value 30000.
+PARAMETER27.adjust 0
+
+PARAMETER28.name PLSh
+PARAMETER28.desc Sherwood number for the PS dimensionless
+PARAMETER28.units none
+PARAMETER28.value 1
+PARAMETER28.adjust 0
+
+PARAMETER29.name PLtable
+PARAMETER29.desc Netcdf lookup table
+PARAMETER29.units none
+PARAMETER29.value /home/mgproja/fitz/data/biology/10plkINP.nc
+PARAMETER29.adjust 0
+
+PARAMETER30.name PLn
+PARAMETER30.desc Number of limiting nutrients
+PARAMETER30.units none
+PARAMETER30.value 3
+PARAMETER30.adjust 0
+
+PARAMETER31.name PSumax
+PARAMETER31.desc Maximum growth rate of PS at Tref
+PARAMETER31.units d-1
+PARAMETER31.value 1.25 
+PARAMETER31.adjust 1
+
+PARAMETER32.name PSrad
+PARAMETER32.desc Radius of the large phytoplankton cells
+PARAMETER32.units m
+PARAMETER32.value 2.5e-06
+PARAMETER32.adjust 0
+
+PARAMETER33.name PSabsorb
+PARAMETER33.desc Absorption coefficient of a PS cell
+PARAMETER33.units m-1
+PARAMETER33.value 50000
+PARAMETER33.adjust 0
+
+PARAMETER34.name PSSh
+PARAMETER34.desc Sherwood number for the PL dimensionless
+PARAMETER34.units none
+PARAMETER34.value 1
+PARAMETER34.adjust 0
+
+PARAMETER35.name PStable
+PARAMETER35.desc Netcdf lookup table
+PARAMETER35.units none
+PARAMETER35.value /home/mgproja/fitz/data/biology/10plkINP.nc
+PARAMETER35.adjust 0
+
+PARAMETER36.name PSn
+PARAMETER36.desc Number of limiting nutrients
+PARAMETER36.units none
+PARAMETER36.value 3
+PARAMETER36.adjust 0
+
+PARAMETER37.name MBumax
+PARAMETER37.desc Maximum growth rate of MB at Tref
+PARAMETER37.units d-1
+PARAMETER37.value 1.35
+PARAMETER37.adjust 1
+
+PARAMETER38.name MBrad
+PARAMETER38.desc Radius of the large phytoplankton cells
+PARAMETER38.units m
+PARAMETER38.value 1e-05
+PARAMETER38.adjust 0
+
+PARAMETER39.name MBabsorb
+PARAMETER39.desc Absorption coefficient of a MB cell
+PARAMETER39.units m-1
+PARAMETER39.value 100000
+PARAMETER39.adjust 0
+
+PARAMETER40.name MBSh
+PARAMETER40.desc Sherwood number for the PL dimensionless
+PARAMETER40.units none
+PARAMETER40.value 1
+PARAMETER40.adjust 0
+
+PARAMETER41.name MBtable
+PARAMETER41.desc Netcdf lookup table
+PARAMETER41.units none
+PARAMETER41.value /home/mgproja/fitz/data/biology/10plkINP.nc
+PARAMETER41.adjust 0
+
+PARAMETER42.name MBn
+PARAMETER42.desc Number of limiting nutrients
+PARAMETER42.units none
+PARAMETER42.value 3
+PARAMETER42.adjust 0
+
+PARAMETER43.name MAumax
+PARAMETER43.desc Maximum growth rate of MA at Tref
+PARAMETER43.units d-1
+PARAMETER43.value 0.02
+PARAMETER43.adjust 1
+
+PARAMETER44.name MAaA
+PARAMETER44.desc Nitrogen specific absorption cross-section of MA
+PARAMETER44.units m2 mgN-1
+PARAMETER44.value 1e-03
+PARAMETER44.adjust 0
+
+PARAMETER45.name MAtable
+PARAMETER45.desc Netcdf lookup table
+PARAMETER45.units none
+PARAMETER45.value /home/mgproja/fitz/data/biology/10benINP.nc
+PARAMETER45.adjust 0
+
+PARAMETER46.name MAn
+PARAMETER46.desc Number of limiting nutrients
+PARAMETER46.units none
+PARAMETER46.value 3
+PARAMETER46.adjust 0
+
+PARAMETER47.name MAm
+PARAMETER47.desc Stoichometry coefficient of Phosphorus
+PARAMETER47.units none
+PARAMETER47.value 2.4e-06
+PARAMETER47.adjust 0
+
+PARAMETER48.name SGumax
+PARAMETER48.desc Maximum growth rate of SG at Tref
+PARAMETER48.units d-1
+PARAMETER48.value 0.1
+PARAMETER48.adjust 1
+
+PARAMETER49.name SGaA
+PARAMETER49.desc Nitrogen specific absorption cross-section of SG
+PARAMETER49.units m2 mgN-1
+PARAMETER49.value 1e-05
+PARAMETER49.adjust 0
+
+PARAMETER50.name SGm
+PARAMETER50.desc Stoichometry coefficient of Phosphorus
+PARAMETER50.units none
+PARAMETER50.value 2.4e-06
+PARAMETER50.adjust 0
+
+PARAMETER51.name ZSumax
+PARAMETER51.desc Maximum growth rate of ZS at Tref
+PARAMETER51.units d-1
+PARAMETER51.value 0.6
+PARAMETER51.adjust 1
+
+PARAMETER52.name ZSrad
+PARAMETER52.desc Radius of the small zooplankton cells
+PARAMETER52.units m-1
+PARAMETER52.value 12.5e-06
+PARAMETER52.adjust 0
+
+PARAMETER53.name ZSswim
+PARAMETER53.desc Swimming velocity for small zooplankton
+PARAMETER53.units m s-1
+PARAMETER53.value 2.0e-4
+PARAMETER53.adjust 0
+
+PARAMETER54.name ZSmeth
+PARAMETER54.desc Grazing technique of small zooplankton
+PARAMETER54.units none
+PARAMETER54.value rect
+PARAMETER54.adjust 0
+
+PARAMETER55.name ZLumax
+PARAMETER55.desc Maximum growth rate of ZL at Tref
+PARAMETER55.units d-1
+PARAMETER55.value 1.2
+PARAMETER55.adjust 1
+
+PARAMETER56.name ZLrad
+PARAMETER56.desc Radius of the large zooplankton cells
+PARAMETER56.units m-1
+PARAMETER56.value 5.0e-04
+PARAMETER56.adjust 0
+
+PARAMETER57.name ZLswim
+PARAMETER57.desc Swimming velocity for large zooplankton
+PARAMETER57.units m s-1
+#PARAMETER57.value 2.0e-4
+PARAMETER57.value 2.0e-3
+PARAMETER57.adjust 1
+
+PARAMETER58.name ZLmeth
+PARAMETER58.desc Grazing technique of small zooplankton
+PARAMETER58.units none
+PARAMETER58.value rect
+PARAMETER58.adjust 0
+
+PARAMETER59.name TKEeps
+PARAMETER59.desc TKE dissipation in water column
+PARAMETER59.units m2s-3
+PARAMETER59.value 1.0e-6 
+PARAMETER59.adjust 0
+
+PARAMETER60.name cf
+PARAMETER60.desc drag coefficient of the benthic surface
+PARAMETER60.units none
+PARAMETER60.value 0.005
+PARAMETER60.adjust 0
+
+PARAMETER61.name Ub
+PARAMETER61.desc velocity at the top of the ben. bound. layer
+PARAMETER61.units m s-1
+PARAMETER61.value 0.1
+PARAMETER61.adjust 0
+
+PARAMETER62.name ks
+PARAMETER62.desc sand-grain roughness of the benthos
+PARAMETER62.units m
+PARAMETER62.value 0.1
+PARAMETER62.adjust 0
+
+PARAMETER63.name F_RD_DOM
+PARAMETER63.desc fraction of refractory detritus that breaks down to DOM
+PARAMETER63.units none
+PARAMETER63.value 0.05
+PARAMETER63.adjust 0
+
+PARAMETER64.name r_floc
+PARAMETER64.desc rate at which TSS floculates above 10 PSU
+PARAMETER64.units d-1
+PARAMETER64.value 0.01
+PARAMETER64.adjust 1
+
+PARAMETER65.name r_DetPL
+PARAMETER65.desc Breakdown rate of labile detritus at 106:16:1
+PARAMETER65.units d-1
+PARAMETER65.value 0.1
+PARAMETER65.adjust 1
+
+PARAMETER66.name r_DetBL
+PARAMETER66.desc Breakdown rate of labile detritus at 550:30:1
+PARAMETER66.units d-1
+PARAMETER66.value 0.1
+PARAMETER66.adjust 1
+
+PARAMETER67.name r_RD
+PARAMETER67.desc Breakdown rate of refractory detritus
+PARAMETER67.units d-1
+PARAMETER67.value 0.0036
+PARAMETER67.adjust 1
+
+PARAMETER68.name r_DOM
+PARAMETER68.desc Breakdown rate of dissolved organic matter
+PARAMETER68.units d-1
+PARAMETER68.value 0.00176
+PARAMETER68.adjust 1
+
+PARAMETER69.name Tref
+PARAMETER69.desc Reference temperature
+PARAMETER69.units Deg C
+PARAMETER69.value 15.0
+PARAMETER69.adjust 0
+
+PARAMETER70.name Plank_resp
+PARAMETER70.desc Respiration as a fraction of umax
+PARAMETER70.units none
+PARAMETER70.value 0.025
+PARAMETER70.adjust 1
+
+PARAMETER71.name Benth_resp
+PARAMETER71.desc Respiration as a fraction of umax
+PARAMETER71.units none
+PARAMETER71.value 0.025
+PARAMETER71.adjust 0
+
+PARAMETER72.name DFumax
+PARAMETER72.desc Maximum growth rate of dinoflagellate at Tref
+PARAMETER72.units d-1
+PARAMETER72.value 0.4
+PARAMETER72.adjust 1
+
+PARAMETER73.name DFrad
+PARAMETER73.desc Radius of Dinoflagellate cells
+PARAMETER73.units m
+#PARAMETER73.value 20.0e-6
+PARAMETER73.value 10.0e-6
+PARAMETER73.adjust 0
+
+PARAMETER74.name DFabsorb
+PARAMETER74.desc Absorption coefficient of a Dinoflagellate cell
+PARAMETER74.units m-1
+PARAMETER74.value 40000.0
+PARAMETER74.adjust 0
+
+PARAMETER75.name DFSh
+PARAMETER75.desc Sherwood number for Dinoflagellate
+PARAMETER75.units none
+PARAMETER75.value 1.0
+PARAMETER75.adjust 0
+
+PARAMETER76.name DFn
+PARAMETER76.desc Number of limiting nutrients for Dinoflagellate
+PARAMETER76.units none
+PARAMETER76.value 3
+PARAMETER76.adjust 0
+
+PARAMETER77.name DFtable
+PARAMETER77.desc Netcdf lookup table for Dinoflagellate
+PARAMETER77.units none
+PARAMETER77.value /home/mgproja/fitz/data/biology/10plkINP.nc
+PARAMETER77.adjust 
+
+PARAMETER78.name NOumax
+PARAMETER78.desc Maximum growth rate of Nodularia at Tref
+PARAMETER78.units d-1
+PARAMETER78.value 0.4
+PARAMETER78.adjust 1
+
+PARAMETER79.name NOrad
+PARAMETER79.desc Radius of Nodularia cells
+PARAMETER79.units m
+PARAMETER79.value 20.0e-6
+PARAMETER79.adjust 0
+
+PARAMETER80.name NOabsorb
+PARAMETER80.desc Absorption coefficient of a Nodularia cell
+PARAMETER80.units m-1
+PARAMETER80.value 20000.0
+PARAMETER80.adjust 0
+
+PARAMETER81.name NO_TG
+PARAMETER81.desc Temperature below which growth of Nodularia cells slows down
+PARAMETER81.units Deg
+PARAMETER81.value 19.0
+PARAMETER81.adjust 0
+
+PARAMETER82.name NO_SG
+PARAMETER82.desc Salinity above which growth of Nodularia cells slows down
+PARAMETER82.units PSU
+PARAMETER82.value 25.0
+PARAMETER82.adjust 0
+
+PARAMETER83.name NOSh
+PARAMETER83.desc Sherwood number for Nodularia
+PARAMETER83.units none
+PARAMETER83.value 1.0
+PARAMETER83.adjust 0
+
+PARAMETER84.name NOn
+PARAMETER84.desc Number of limiting nutrients for Nodularia
+PARAMETER84.units none
+PARAMETER84.value 3
+PARAMETER84.adjust 0
+
+PARAMETER85.name NOtable
+PARAMETER85.desc NetCDF lookup table for Nodularia
+PARAMETER85.units none
+PARAMETER85.value /home/mgproja/fitz/data/biology/10plkINP.nc
+PARAMETER85.adjust 0
+
+PARAMETER86.name NO_mL
+PARAMETER86.desc Linear mortality rate, nodularia
+PARAMETER86.units d-1
+PARAMETER86.value 0.1
+PARAMETER86.adjust 1
+
+PARAMETER87.name NO_mQ
+PARAMETER87.desc Quadratic mortality rate for nodularia
+PARAMETER87.units d-1
+PARAMETER87.value 0.0002
+PARAMETER87.adjust 1
+
+PARAMETER88.name DFCtoNvar
+PARAMETER88.desc Maximal to minimal C:N ratio in Dinoflagellate
+PARAMETER88.units none
+PARAMETER88.value 1.5
+PARAMETER88.adjust 0
+
+PARAMETER89.name KO_aer
+PARAMETER89.desc Oxygen half-saturation for aerobic respiration
+PARAMETER89.units mg O m-3
+PARAMETER89.value 500.0
+PARAMETER89.adjust 0
+
+PARAMETER90.name r_nit_wc
+PARAMETER90.desc Maximal nitrification rate in water column
+PARAMETER90.units d-1
+PARAMETER90.value 0.1
+PARAMETER90.adjust 1
+
+PARAMETER91.name r_nit_sed
+PARAMETER91.desc Maximal nitrification rate in water sediment
+PARAMETER91.units d-1
+#PARAMETER91.value 0.4   14/04/04
+PARAMETER91.value 20.0
+PARAMETER91.adjust 1
+
+PARAMETER92.name KO_nit
+PARAMETER92.desc Oxygen half-saturation for nitrification
+PARAMETER92.units mg O m-3
+#PARAMETER92.value 10000.0 14/04/04
+PARAMETER92.value 500.0
+PARAMETER92.adjust 0
+
+PARAMETER93.name Pads_r
+PARAMETER93.desc Rate at which P reaches adsorbed/desorbed equilibrium
+PARAMETER93.units d-1
+#PARAMETER93.value 1.0
+PARAMETER93.value 0.04
+PARAMETER93.adjust 1
+
+PARAMETER94.name Pads_Kwc
+PARAMETER94.desc Freundlich Isothermic Const P adsorption to TSS in water column
+PARAMETER94.units mg P kg TSS-1
+PARAMETER94.value 300.0
+PARAMETER94.adjust 1
+
+PARAMETER95.name Pads_Ksed
+PARAMETER95.desc Freundlich Isothermic Const P adsorption to TSS in sediment
+PARAMETER95.units mg P kg TSS-1
+PARAMETER95.value 74.0
+PARAMETER95.adjust 1
+
+PARAMETER96.name Pads_KO
+PARAMETER96.desc Oxygen half-saturation for P adsorption
+PARAMETER96.units mg O m-3
+PARAMETER96.value 2000.0
+PARAMETER96.adjust 0
+
+PARAMETER97.name Pads_exp
+PARAMETER97.desc Exponent for Freundlich Isotherm
+PARAMETER97.units none
+PARAMETER97.value 1.0
+PARAMETER97.adjust 0
+
+PARAMETER98.name PD_mL
+PARAMETER98.desc Linear mortality for dinoflagellate in sediment
+PARAMETER98.units d-1
+PARAMETER98.value 0.14
+PARAMETER98.adjust 1
+
+PARAMETER99.name r_den
+PARAMETER99.desc Maximum denitrification rate
+PARAMETER99.units d-1
+#PARAMETER99.value 5.0  14/04/04
+PARAMETER99.value 40.0
+PARAMETER99.adjust 1
+
+PARAMETER100.name KO_den
+PARAMETER100.desc Oxygen content at 50% denitrification rate
+PARAMETER100.units mg O m-3
+#PARAMETER100.value 500.0  14/04/04
+#PARAMETER100.value 4000.0  15/04/04
+PARAMETER100.value 10000.0
+PARAMETER100.adjust 0
+
+PARAMETER101.name r_floc_sed
+PARAMETER101.desc Rate of the TSS floculation in sediment
+PARAMETER101.units d-1
+PARAMETER101.value 0.001
+PARAMETER101.adjust 1
+
+PARAMETER102.name r_bury_TSS
+PARAMETER102.desc Rate of the TSS burying
+PARAMETER102.units d-1
+PARAMETER102.value 0.001
+PARAMETER102.adjust 1
+
+PARAMETER103.name r_immob_PIP
+PARAMETER103.desc Rate of conversion of PIP to immobilised PIP
+PARAMETER103.units d-1
+PARAMETER103.value 0.0012
+PARAMETER103.adjust 1
+
+PARAMETER104.name IDF
+PARAMETER104.desc Saturation light intensity for  dinoflagellates
+PARAMETER104.units mol photons m-2 s-1
+PARAMETER104.value 1.0e-4
+PARAMETER104.adjust 0
+
+PARAMETER105.name Fmax_Nit_sed
+PARAMETER105.desc Maximum nitrification efficiency
+PARAMETER105.units
+PARAMETER105.value 1.0
+PARAMETER105.adjust 0
+
+PARAMETER106.name EpiDiffCoeff
+PARAMETER106.desc Diffusion Coefficient
+PARAMETER106.units m2s-1
+PARAMETER106.value 3e-9
+PARAMETER106.adjust 0
+
+PARAMETER107.name EpiDiffDz
+PARAMETER107.desc Thickness of diffusive layer
+PARAMETER107.units m
+PARAMETER107.value 0.0065
+PARAMETER107.adjust 0
+

@@ -1,0 +1,31 @@
+## COLUMNS 3
+##
+## COLUMN1.name lon
+## COLUMN1.long_name Longitude
+## COLUMN1.units deg
+## COLUMN1.fill_value 0
+## COLUMN1.missing_value -999999999
+##
+## COLUMN2.name lat
+## COLUMN2.long_name Latitude
+## COLUMN2.units deg
+## COLUMN2.fill_value 0
+## COLUMN2.missing_value -999
+##
+## COLUMN3.name swr_bot_absorb
+## COLUMN3.long_name SWR bottom absorption
+## COLUMN3.units 
+## COLUMN3.fill_value 0
+## COLUMN3.missing_value -999
+##
+537500.000000 112500.000000 1.0
+962500.000000 237500.000000 0.8
+287500.000000 262500.000000 0.4
+737500.000000 412500.000000 0.1
+162500.000000 462500.000000 0.7
+12500.000000 12500.000000   1.0
+1237500.000000 12500.000000 1.0
+12500.000000 662500.000000  1.0
+1237500.000000 662500.00000 1.0
+
+

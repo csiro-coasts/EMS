@@ -1,0 +1,645 @@
+dnl Configure.in for the environmental modelling suite.
+dnl "$Id: configure.in,v 1.3 2004/08/27 04:30:00 war324 Exp $"
+AC_INIT()
+AC_CONFIG_HEADER(lib/include/ems_conf.h)
+
+
+dnl AC_FIND_MODULE(MODULE [, ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
+dnl Search for a directory within the local path. If missing then the
+dnl module cannot be included.
+dnl module_found=yes and module_path=the path where found.
+dnl If not located, then module_found=no and module_path is
+dnl null.
+dnl
+AC_DEFUN(AC_FIND_MODULE,
+[AC_MSG_CHECKING(for module $1)
+
+dnl --------------------------------
+dnl START EMS CUSTOMIZATION UR
+dnl --------------------------------
+dnl Added prefix for sub model paths
+dnl from current dir
+dnl UR - Dec 2004
+dnl --------------------------------
+MODEL_LIB_PREFIX=model/lib/
+MODEL_HD_PREFIX=model/
+MODEL_BOX_PREFIX=model/
+EMS_LIB_PREFIX=
+dnl additional path directive to get back to current dir/model form hd
+MODEL_LIB_OFFSET=../
+MODEL_HD_OFFSET=
+EMS_LIB_OFFSET=../
+MODEL_BOX_OFFSET=
+
+dnl External library path
+EXT_LIB_PATH=ext/
+
+dnl END EMS CUSTOMIZATION
+dnl ---------------------------------
+module_path=
+module_found=missing
+if test -r "$1"; then
+   module_path=$1
+   module_found=present
+fi
+AC_MSG_RESULT($module_found)
+
+test "$module_found" = present && $2
+test "$module_found" = missing && $3
+])
+
+dnl AC_ADD_MODULE(MODULE_PATH, ACTION-IF-FOUND)
+dnl Add a module for compilation.
+dnl
+AC_DEFUN(AC_BUILD_MODULE_DEPS,
+[AC_MSG_CHECKING(adding module $1)
+    for ac_file in `find $1 -name "makefile.in" -print`;
+    do
+       if test -r "$ac_file"; then
+          mkpath=`dirname ${ac_file}`/makefile
+          out_path="${out_path} ${mkpath}"
+       fi
+    done
+AC_MSG_RESULT(done)
+])
+
+
+dnl AC_FIND_HEADER(LIB [, ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
+dnl Check for the library. If located then
+dnl found_lib=yes and lib_path=the path where found.
+dnl AC_FIND_HEADER(HEADER [, ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
+dnl Check for the specified header. If located then
+dnl found_header=yes and header_path=the path where found.
+dnl If not located, then found_header=no and header_path is
+dnl null.
+dnl
+AC_DEFUN(AC_FIND_HEADER,
+[AC_MSG_CHECKING(for $1)
+header_path=
+found_header=no
+# Look for the header file in a standard set of common directories.
+   for ac_dir in                \
+      $includedir               \
+      $prefix/include           \
+      /usr/include              \
+      /usr/include/sys          \
+      /usr/local/include        \
+      ; \
+   do
+     if test -r "$ac_dir/$1"; then
+        header_path=$ac_dir
+	found_header=yes
+	break
+     fi
+   done
+AC_MSG_RESULT($found_header)
+
+test "$found_header" = yes && $2
+test "$found_header" = no && $3
+])
+
+
+
+dnl AC_FIND_LIB(LIB [, ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]])
+dnl Check for the library. If located then
+dnl found_lib=yes and lib_path=the path where found.
+dnl If not located, then found_lib=no and lib_path is
+dnl null.
+dnl
+AC_DEFUN(AC_FIND_LIB,
+[AC_MSG_CHECKING(for -l$1)
+rqst_lib=$1
+lib_path=
+found_lib=no
+# Look for the library file in a standard set of common directories.
+   for ac_dir in                \
+      $libdir               \
+      $prefix/lib${LIBEXT}           \
+      /usr/lib64                     \
+      /usr/lib${LIBEXT}              \
+      /usr/lib/x86_64-linux-gnu      \
+      /usr/local/lib${LIBEXT}        \
+      ; \
+do
+  for ac_extension in a so sl; do
+    if test -r $ac_dir/lib${rqst_lib}.$ac_extension; then
+      lib_path=$ac_dir
+      found_lib=yes
+      break 2
+    fi
+  done
+done
+AC_MSG_RESULT($found_lib)
+
+test "$found_lib" = yes && $2
+test "$found_lib" = no && $3
+])
+
+
+dnl Get the shell variable to override local customisations.
+AC_DEFUN([AC_CUSTOMISE],
+[dnl
+    AC_BEFORE([$0], [AC_DEFAULT])dnl
+    if test -r CUSTOMISE; then
+        . ./CUSTOMISE
+    fi
+])
+
+
+AC_CUSTOMISE
+
+dnl ###########################################################################
+dnl Checks for programs.
+AC_PROG_CC
+AC_PROG_CXX
+AC_PROG_INSTALL
+AC_CHECK_PROG(AR, ar, ar, :)
+
+dnl Fix up for the intel compiler
+dnl * takes care of mpicc and mpiicc
+AS_CASE($CC, *icc, CFLAGS+=" -no-gcc")
+
+dnl Checks for system header files and functions.
+AC_HEADER_STDC
+AC_FUNC_ALLOCA
+AC_HEADER_TIME
+AC_CHECK_HEADERS(sys/param.h values.h unistd.h)
+AC_TYPE_SIGNAL
+AC_CHECK_FUNCS(getcwd strstr)
+
+out_path="makefile"
+basepath=`dirname ${PWD}`
+
+dnl ################
+dnl Versioning stuff
+dnl ################
+AC_MSG_CHECKING(svn version)
+AC_CONFIG_COMMANDS([svn_rev.h], [conf/gen_svn_rev.sh .])
+AC_MSG_RESULT(done)
+
+dnl ###########################################################################
+dnl Check for internal modules.
+
+dnl ###########################################################################
+dnl #### CHECK FOR EMSLIB
+dnl ###########################################################################
+AC_FIND_MODULE(${EMS_LIB_PREFIX}lib, EMSLIBDIR=$module_path, EMSLIBDIR=)
+if test -z "$EMSLIBDIR" ; then
+   AC_MSG_ERROR('Unable to locate the the library module: ems lib.')
+   EMSLIBINC=
+   EMSLIBLIB=
+else
+   AC_DEFINE(HAVE_EMSLIB_MODULE)
+   AC_BUILD_MODULE_DEPS(${EMSLIBDIR})
+
+   EMSLIBINC=-I../${MODEL_LIB_OFFSET}${EMS_LIB_OFFSET}${EMSLIBDIR}/include
+   EMSLIBLIB="-L../${MODEL_LIB_OFFSET}${EMS_LIB_OFFSET}${EMSLIBDIR} -lemslib"
+   EMSHDINC=-I../${EMS_LIB_OFFSET}${EMSLIBDIR}/include
+   EMSHDLIB="-L../${EMS_LIB_OFFSET}${EMSLIBDIR} -lemslib"
+
+fi
+AC_SUBST(EMSLIBDIR)
+AC_SUBST(EMSLIBINC)
+AC_SUBST(EMSLIBLIB)
+AC_SUBST(EMSHDINC)
+AC_SUBST(EMSHDLIB)
+AC_SUBST(EMSHDDIR)
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR JIGSAW library
+dnl ###########################################################################
+AC_FIND_MODULE(${EXT_LIB_PATH}jigsaw, JIGSAW_PATH=$module_path, JIGSAW_PATH=)
+if test -z "$JIGSAW_PATH" ; then
+   AC_MSG_WARN('JIGSAW library not found - linking disabled')
+   JIGSAWINC=
+   JIGSAWLIB=
+   JIGSAWRPATH=
+   JIGSAWDIR=
+else
+   AC_DEFINE(HAVE_JIGSAWLIB)
+   dnl Make this all relative to model/hd-us
+   JIGSAWINC=-I../../${JIGSAW_PATH}/inc
+   JIGSAWLIB="-L../../${JIGSAW_PATH}/lib -ljigsaw64r"
+   JIGSAWRPATH="-Xlinker -rpath=${PWD}/${JIGSAW_PATH}/lib"
+   JIGSAWDIR=${JIGSAW_PATH}/src
+   AC_BUILD_MODULE_DEPS(${JIGSAWDIR})
+fi
+AC_SUBST(JIGSAWLIB)
+AC_SUBST(JIGSAWINC)
+AC_SUBST(JIGSAWRPATH)
+AC_SUBST(JIGSAWDIR)
+
+dnl ###########################################################################
+dnl #### CHECK FOR SEDIMENT
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_LIB_PREFIX}sediments, SEDIMENTDIR=$module_path, SEDIMENTDIR=)
+if test -z "$SEDIMENTDIR" ; then
+   AC_MSG_WARN('sediment module not located - disabled.')
+   SEDIMENTINC=
+   SEDIMENTLIB=
+else
+   AC_DEFINE(HAVE_SEDIMENT_MODULE)
+   AC_BUILD_MODULE_DEPS(${SEDIMENTDIR})
+   AC_MSG_WARN('Sediments are enabled.');
+   SEDIMENTINC=-I../${MODEL_LIB_OFFSET}${SEDIMENTDIR}/include
+   SEDIMENTLIB="-L../${MODEL_LIB_OFFSET}${SEDIMENTDIR} -lsediments"
+fi
+AC_SUBST(SEDIMENTDIR)
+AC_SUBST(SEDIMENTINC)
+AC_SUBST(SEDIMENTLIB)
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR ECOLOGY
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_LIB_PREFIX}ecology, ECOLOGYDIR=$module_path, ECOLOGYDIR=)
+if test -z "$ECOLOGYDIR" ; then
+   AC_MSG_WARN('ecology module not located - disabled.')
+   ECOLOGYINC=
+   ECOLOGYLIB=
+else
+ if  test -r "${MODEL_HD_PREFIX}hd" ; then
+   if test -z "$SEDIMENTDIR" ; then
+      AC_MSG_ERROR('Sediment module must be present to enable ecology.');
+   fi
+ fi
+   AC_DEFINE(HAVE_ECOLOGY_MODULE)
+   AC_BUILD_MODULE_DEPS(${ECOLOGYDIR})
+   AC_ARG_ENABLE(ecology-custom, --enable-ecology-custom=standard|anm|... - The ecological model custom version, ECOCUST=$enableval, ECOCUST=standard)
+   AC_MSG_WARN('${ECOCUST} ecological model is enabled.')
+   ECOLOGYINC=-I../${MODEL_LIB_OFFSET}${ECOLOGYDIR}/include
+   ECOLOGYLIB="-L../${MODEL_LIB_OFFSET}${ECOLOGYDIR} -lecology"
+fi
+AC_SUBST(ECOLOGYDIR)
+AC_SUBST(ECOLOGYINC)
+AC_SUBST(ECOLOGYLIB)
+
+dnl ###########################################################################
+dnl #### Timing profiler
+dnl ###########################################################################
+AC_ARG_ENABLE(do-timing, [  --enable-do-timing      enables timing profile], DO_TIMING=yes, DO_TIMING=)
+if test "$DO_TIMING"; then
+   AC_DEFINE(DO_TIMING)
+fi
+
+dnl ###########################################################################
+dnl #### DA library
+dnl ###########################################################################
+oldincludedir=$includedir
+oldlibdir=$libdir
+if test -n $GSL_ROOT ; then
+   includedir="$includedir $GSL_ROOT/include"
+   libdir="$libdir $GSL_ROOT/lib"
+fi
+AC_ARG_ENABLE(da, [  --enable-da         enables building with the DA library], HAVE_DA=yes, HAVE_DA=)
+if test "$HAVE_DA"; then
+    AC_FIND_MODULE(${MODEL_LIB_PREFIX}da, DADIR=$module_path, DADIR=)
+    if test -z "$DADIR" ; then
+       AC_MSG_ERROR('da module is missing!')
+    else
+       dnl DA lib exists
+       AC_BUILD_MODULE_DEPS(${DADIR})
+       DAINC=-I../${MODEL_LIB_OFFSET}${DADIR}/include
+       DALIB="-L../${MODEL_LIB_OFFSET}${DADIR} -lda"
+       dnl Locate GSL
+       AC_FIND_HEADER(gsl/gsl_matrix.h, GSL_INC=$header_path, GSL_INC=) 
+       if test -z "$GSL_INC" ; then
+       	 AC_MSG_ERROR('Unable to find the gsl headers as needed by DA')
+       fi
+       AC_FIND_LIB(gsl, GSLLIB=$lib_path, GSLLIB=)
+       if test -z "$GSLLIB" ; then
+       	 AC_MSG_ERROR('Unable to find libgsl as needed by DA')
+       fi
+       AC_FIND_LIB(gslcblas, GSL_CBLAS_LIB=$lib_path, GSL_CBLAS_LIB=)
+       if test -z "$GSL_CBLAS_LIB" ;
+       then
+       	 AC_MSG_ERROR('Unable to find libgslcblas as needed by DA')
+       fi
+       dnl dnl All good, setup defines
+       GSLINC="-I${GSLINC}/gsl"
+       GSLLIB="-L${GSLLIB} -lgsl"
+       dnl Check for Intel Math Kernel library
+       dnl Automatically links if found
+       if test $CC = "icc"; then
+	  if test "${MKLROOT}X" = X ; then
+	     GSLLIB+=" -lgslcblas"
+	  else
+	     GSLLIB+=" -mkl"
+	  fi
+       else
+	  GSLLIB+=" -lgslcblas"
+       fi
+       AC_DEFINE(HAVE_DA)
+   fi
+fi
+AC_SUBST(DADIR)
+AC_SUBST(DAINC)
+AC_SUBST(DALIB)
+AC_SUBST(GSLLIB)
+AC_SUBST(GSLINC)
+includedir=$oldincludedir
+libdir=$oldlibdir
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR WAVES
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_LIB_PREFIX}waves, WAVEDIR=$module_path, WAVEDIR=)
+if test -z "$WAVEDIR" ; then
+   AC_MSG_WARN('waves module not located - disabled.')
+   WAVEINC=
+   WAVELIB=
+else
+   AC_DEFINE(HAVE_WAVE_MODULE)
+   AC_BUILD_MODULE_DEPS(${WAVEDIR})
+   AC_MSG_WARN('waves are enabled.');
+   WAVEINC=-I../${MODEL_LIB_OFFSET}${WAVEDIR}/include
+   WAVELIB="-L../${MODEL_LIB_OFFSET}${WAVEDIR} -lwaves"
+fi
+AC_SUBST(WAVEDIR)
+AC_SUBST(WAVEINC)
+AC_SUBST(WAVELIB)
+
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR TRACER STATISTICS
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_LIB_PREFIX}tracerstats, TRACERSTATSDIR=$module_path, TRACERSTATSDIR=)
+if test -z "$TRACERSTATSDIR" ; then
+   AC_MSG_WARN('tracerstats module not located - disabled.')
+   TRACERSTATSINC=
+   TRACERSTATSLIB=
+else
+   AC_DEFINE(HAVE_TRACERSTATS_MODULE)
+   AC_BUILD_MODULE_DEPS(${TRACERSTATSDIR})
+   TRACERSTATSINC=-I../${MODEL_LIB_OFFSET}${TRACERSTATSDIR}/include
+   TRACERSTATSLIB="-L../${MODEL_LIB_OFFSET}${TRACERSTATSDIR} -ltracerstats"
+fi
+AC_SUBST(TRACERSTATSDIR)
+AC_SUBST(TRACERSTATSINC)
+AC_SUBST(TRACERSTATSLIB)
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR GRID
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_LIB_PREFIX}grid, GRIDDIR=$module_path, GRIDDIR=)
+if test -z "$GRIDDIR" ; then
+   AC_MSG_WARN('grid module not located - disabled.')
+   GRIDINC=
+   GRIDLIB=
+else
+   AC_DEFINE(HAVE_GRID_MODULE)
+   AC_BUILD_MODULE_DEPS(${GRIDDIR})
+   GRIDINC=-I../${MODEL_LIB_OFFSET}${GRIDDIR}/include
+   GRIDLIB="-L../${MODEL_LIB_OFFSET}${GRIDDIR} -lgrid"
+fi
+AC_SUBST(GRIDDIR)
+AC_SUBST(GRIDINC)
+AC_SUBST(GRIDLIB)
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR EXCHANGE LIB
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_LIB_PREFIX}exchange, EXCHANGEDIR=$module_path, EXCHANGEDIR=)
+if test -z "$EXCHANGEDIR" ; then
+   AC_MSG_WARN('exchange module not located - disabled.')
+   EXCHANGEINC=
+   EXCHANGELIB=
+else
+   AC_DEFINE(HAVE_EXCHANGE_MODULE)
+   AC_BUILD_MODULE_DEPS(${EXCHANGEDIR})
+   EXCHANGEINC=-I../${MODEL_LIB_OFFSET}${EXCHANGEDIR}/include
+   EXCHANGELIB="-L../${MODEL_LIB_OFFSET}${EXCHANGEDIR} -lexchanges"
+fi
+AC_SUBST(EXCHANGEDIR)
+AC_SUBST(EXCHANGEINC)
+AC_SUBST(EXCHANGELIB)
+
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR HYDRODYNAMICS
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_HD_PREFIX}hd-us, HDUSDIR=$module_path, HDUSDIR=)
+if test -z "$HDUSDIR" ; then
+   AC_MSG_WARN('hd-us module not located - disabled.')
+else
+   AC_DEFINE(HAVE_HD_US_MODULE)
+   AC_BUILD_MODULE_DEPS(${HDUSDIR})
+fi
+AC_SUBST(HDUSDIR)
+
+dnl ###########################################################################
+dnl #### CHECK FOR HYDRODYNAMICS
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_HD_PREFIX}hd, HDDIR=$module_path, HDDIR=)
+if test -z "$HDDIR" ; then
+   AC_MSG_WARN('hd module not located - disabled.')
+else
+   AC_DEFINE(HAVE_HD_MODULE)
+   AC_BUILD_MODULE_DEPS(${HDDIR})
+fi
+AC_SUBST(HDDIR)
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR BOXMODEL
+dnl ###########################################################################
+AC_FIND_MODULE(${MODEL_BOX_PREFIX}boxhd, BMDIR=$module_path, BMDIR=)
+if test -z "$BMDIR" ; then
+   AC_MSG_WARN('boxhd module not located - Box Model disabled.')
+else
+	 if test -z "$EXCHANGEDIR" ; then
+      AC_MSG_ERROR('Exchanges module must be present to enable Box Model.');
+   fi
+   AC_DEFINE(HAVE_BM_MODULE)
+   AC_BUILD_MODULE_DEPS(${BMDIR})
+fi
+AC_SUBST(BMDIR)
+
+
+dnl ###########################################################################
+dnl #### CHECK FOR UTILITIES
+dnl ###########################################################################
+AC_FIND_MODULE(utilities, UTILSDIR=$module_path, UTILSDIR=)
+if test -z "$UTILSDIR" ; then
+   AC_MSG_WARN('utilities module not located - disabled.')
+else
+   AC_DEFINE(HAVE_UTILS_MODULE)
+   AC_BUILD_MODULE_DEPS(${UTILSDIR})
+fi
+AC_SUBST(UTILSDIR)
+
+
+
+dnl ###########################################################################
+dnl Locate external header files and libraries.
+
+dnl Mandatory NetCDF libraries.
+oldincludedir=$includedir
+oldlibdir=$libdir
+if test -n $NETCDF_ROOT ; then
+   includedir="$includedir $NETCDF_ROOT/include"
+   libdir="$libdir $NETCDF_ROOT/lib"
+fi
+AC_FIND_HEADER(netcdf.h, NETCDFINC=$header_path, NETCDFINC=)
+if test -z "$NETCDFINC" ; then
+   AC_MSG_ERROR('Unable to locate the netcdf header')
+fi   
+dnl Try the dap extension first
+AC_FIND_LIB(nc-dap, NETCDFLIB=$lib_path, NETCDFLIB=)
+if test -z "$NETCDFLIB" ; then
+   AC_MSG_WARN('Unable to locate the optional library (nc-dap)')
+   AC_FIND_LIB(netcdf, NETCDFLIB=$lib_path, NETCDFLIB=)
+   dnl
+   if test -z "$NETCDFLIB" ; then
+      AC_MSG_ERROR('Unable to locate the netcdf library')
+   fi   
+fi
+NETCDFINC="-I${NETCDFINC}"
+NETCDFLIB="-L${NETCDFLIB} -lnetcdf"
+AC_SUBST(NETCDFINC)
+AC_SUBST(NETCDFLIB)
+includedir=$oldincludedir
+libdir=$oldlibdir
+
+dnl #################
+dnl HDF5 Threadsafety
+dnl ##################
+AC_MSG_CHECKING(HDF5 threadsafety)
+# Run test script
+X=`conf/hdf5test.sh`
+if test "X$X" = "X" ; then
+   AC_MSG_RESULT(no)
+else
+   AC_DEFINE(HDF5_THREADSAFE)
+   AC_MSG_RESULT(yes)
+fi
+
+dnl AC_ARG_ENABLE(dmalloc,[  --enable-dmalloc      compile with dmalloc],dmalloc=yes,dmalloc=no)
+dnl AC_MSG_CHECKING(whether dmalloc was requested)
+dnl AC_MSG_RESULT($dmalloc)
+
+if test "$dmalloc" = yes; then
+  AC_FIND_HEADER(dmalloc.h, DMALLOCINC=$header_path, DMALLOCINC=)
+  if test -z "$DMALLOCINC" ; then
+    AC_MSG_WARN('Unable to locate the required header (dmalloc.h)')
+    AC_MSG_WARN('[  Disable dmalloc]')
+    dmalloc=no
+    DMALLOCINC=
+  else
+     AC_DEFINE(HAVE_DMALLOC)
+     DMALLOCINC="-I$DMALLOCINC "
+  fi
+fi
+
+AC_SUBST(DMALLOCINC)
+
+dnl ---
+dnl MPI, implies openmp
+dnl ---
+AC_ARG_WITH(mpi, [  --with-mpi=<path>       Path of MPI], MPI_ROOT=$withval, MPI_ROOT=)
+if test "$MPI_ROOT"; then
+   oldincludedir=$includedir
+   oldlibdir=$libdir
+
+   includedir="$includedir $MPI_ROOT/include $MPI_ROOT/include64 $MPI_ROOT/include/mpi"
+   libdir="$libdir $MPI_ROOT/lib64 $MPI_ROOT/lib"
+
+   AC_FIND_LIB(mpi, MPI_LIB=$lib_path, MPI_LIB=)
+   if test -z "$MPI_LIB"; then
+      AC_MSG_ERROR('Unable to find libmpi in $MPI_ROOT/lib64')
+   fi
+   AC_FIND_HEADER(mpi.h, MPI_INC=$header_path, MPI_INC=)
+   if test -z "$MPI_LIB"; then
+      AC_MSG_ERROR('Unable to find libmpi in $MPI_ROOT/lib64')
+   fi
+   MPI_INC="-I${MPI_INC}"
+   MPI_LIB="-L${MPI_LIB} -lmpi -lmpi_cxx"
+   AC_SUBST(MPI_INC)
+   AC_SUBST(MPI_LIB)
+   AC_DEFINE(HAVE_MPI)
+   AC_OPENMP
+   if test -z "$OPENMP_CFLAGS"; then
+      AC_MSG_WARN('(MPI) Could not find OpenMP support on this machine')
+   fi
+   includedir=$oldincludedir
+   libdir=$oldlibdir
+fi
+
+dnl Network socket layer library. Only required on some systems/compilers.
+dnl AC_FIND_LIB(nsl, NSLLIB=$lib_path, NSLLIB=)
+dnl if test -n "$NSLLIB"; then
+dnl   NSLLIB="-L${NSLLIB} -lnsl"
+dnl fi
+dnl AC_SUBST(NSLLIB)
+
+dnl AC_ARG_ENABLE(pthreads,[  --enable-pthreads      compile with pthreads],pthreads=yes,pthreads=no)
+dnl AC_MSG_CHECKING(whether pthreads were requested)
+dnl AC_MSG_RESULT($pthreads)
+
+PTHREAD_CFLAG=""
+AC_FIND_HEADER(pthread.h, pthread_inc=$header_path, pthread_inc=)
+if test -z "$pthread_inc"; then
+  AC_MSG_WARN('Unable to locate the required library (pthread)')
+  AC_MSG_WARN('[  Switching multi-threading off]')
+  pthreads=no
+else
+   AC_DEFINE(HAVE_PTHREADS)
+   PTHREAD_CFLAG="-pthread"
+fi
+
+AC_SUBST(PTHREAD_CFLAG)
+
+dnl ###########################################################################
+dnl #### OpenMP
+dnl ###########################################################################
+AC_ARG_ENABLE(omp, [  --enable-omp              enables building with OpenMP], USE_OMP=yes, USE_OMP=)
+if test "$USE_OMP"; then
+   dnl bail out if also MPI
+   if test "$MPI_ROOT"; then
+      AC_MSG_ERROR('Specifying OpenMP with MPI is currently not supported')
+   fi
+   AC_OPENMP
+   if test -z "$OPENMP_CFLAGS"; then
+      AC_MSG_ERROR('Cannot find OpenMP support on this machine')
+   fi
+   AC_DEFINE(HAVE_OMP)
+fi
+
+
+dnl Optional USGS Map Projection library.
+dnl AC_FIND_HEADER(projects.h, PROJINC=$header_path, PROJINC=)
+dnl AC_FIND_LIB(proj, PROJLIB=$lib_path, PROJLIB=)
+dnl if test -z "$PROJINC" ||  test -z "$PROJLIB"; then
+dnl    AC_MSG_WARN('Unable to locate PROJ 4 library; limited projections
+dnl available.')
+dnl    PROJINC=
+dnl    PROJLIB=
+dnl else
+dnl    AC_DEFINE(HAVE_USGS_PROJ)
+dnl    PROJINC=-I${PROJINC}
+dnl    PROJLIB="-L${PROJLIB} -lproj"
+dnl fi
+PROJINC=
+PROJLIB=
+AC_SUBST(PROJINC)
+AC_SUBST(PROJLIB)
+
+dnl Math library
+AC_FIND_LIB(m, MLIB=$lib_path, MLIB=)
+AC_SUBST(MLIB)
+
+dnl dynamiclink library library
+AC_FIND_LIB(dl, DLLIB=$lib_path, DLLIB=)
+AC_SUBST(DLLIB)
+
+
+dnl ###########################################################################
+dnl Miscellaneous
+AC_SUBST(OS)
+AC_OUTPUT($out_path)

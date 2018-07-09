@@ -1,0 +1,497 @@
+# Test 3 of model shoc: 12 by 28 by 2 swimming pool with constant
+# wind forcing of 1 Nm-2. Sea level is set up with slope 9.958e-6 
+# and depth averaged currents are zero everywhere.
+
+CODEHEADER           SHOC default version
+PARAMETERHEADER      Test 3 - linear, rectangular wind forced.
+DESCRIPTION          SHOC test 3
+NAME                 SHOC test 3 grid
+TIMEUNIT             seconds since 1990-01-01 00:00:00 +10
+OUTPUT_TIMEUNIT      seconds since 1990-01-01 00:00:00 +10
+LENUNIT              metre
+START_TIME           0.0
+STOP_TIME            1 day
+
+INPUT_FILE           in3.nc
+
+# Output files
+OutputFiles 1
+
+file0.name           out3_z.nc
+file0.filetype       standard
+file0.tstart         0.0
+file0.tinc           0.2 days
+file0.tstop          2 day
+file0.bytespervalue  4
+file0.vars           ALL
+file0.fill_rule      cascade_search
+
+# Flags
+WINDOWS              1
+NONLINEAR            NO
+CALCDENS             YES
+HEATFLUX             NONE
+SALTFLUX             NONE
+2D-MODE              NO
+STABILITY            SUB-STEP-NOSURF
+RAMPSTART            0
+RAMPEND              1 hour
+MERGE_THIN           YES
+HMIN                 0.1000
+SLIP                 1.0   
+SIGMA                NO
+
+# Time steps
+DT                   50.00    seconds
+IRATIO               2
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           VANLEER
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 0.0 
+U2VH                 0.0 
+U1KH                 0.0 
+U2KH                 0.0 
+SMAGORINSKY          0.0000
+
+# Vertical mixing
+MIXING_SCHEME        mellor_yamada_2_0
+VZ0                  1.0000e-05
+KZ0                  1.0000e-05
+ZS                   1.0
+
+# Bottom friction
+QBFC                 0.005
+UF                   1.0000
+Z0                   1e-8
+
+# Constants
+G                    9.8100
+SPECHEAT             3990.0
+AIRDENS              1.2200
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS 	     336
+0
+
+# Diagnostics
+CFL                  NONE
+MIX_LAYER            NONE
+MEAN                 NONE
+VORTICITY            NONE
+NUMBERS              NONE
+ALERT                NONE
+MOM_TEND             NO
+CALC_FLUXES          NONE
+FLUSHING_TR          NO
+STERIC_HEIGHT        0.00  
+
+# Grid
+GRIDTYPE             RECTANGULAR
+NCE1                 12
+NCE2                 28
+X00                  1000.0
+Y00                  1000.0
+DX                   2000.0
+DY                   2000.0
+ROTATION             0.0   
+
+# Vertical grid spacing
+LAYERFACES           2
+-10.00  
+-0
+
+# Bathymetry limits
+BATHYMIN             10.0  
+BATHYMAX             20.0  
+ETAMAX               10.0  
+MIN_CELL_THICKNESS   0.1
+
+# Tracers
+NTRACERS             2
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0  
+TRACER0.valid_range  0.0    40.0  
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.fill_value   20.0  
+TRACER1.valid_range  0.0    40.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+
+# Forcing
+WIND_TS              wind_test3.ts
+WIND_INPUT_DT        10.0   minutes
+WIND_SPEED_SCALE     1.0   
+DRAG_LAW_V0          10.0  
+DRAG_LAW_V1          26.0  
+DRAG_LAW_CD0         0.00114 
+DRAG_LAW_CD1         0.00218 
+
+# Time series
+TSPOINTS             2
+
+TS0.name             loc_z1.ts
+TS0.location         4000.000000 28000.000000 0
+TS0.dt               1 hour
+TS0.reference        msl
+
+TS1.name             loc_z2.ts
+TS1.location         22000.000000 28000.000000 0
+TS1.dt               1 hour
+TS1.reference        msl
+
+# Open boundaries
+NBOUNDARIES           0
+
+# Bathymetry
+BATHY    336
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+  10.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+

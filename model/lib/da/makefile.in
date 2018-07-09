@@ -1,0 +1,84 @@
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+libdir = @libdir@
+includedir = @includedir@
+mandir = @mandir@/manl
+
+# Directory in which to install library files.
+datarootdir = @datadir@
+acdatadir = $(datadir)/autoconf
+
+#### End of system configuration section. ####
+
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS= -g
+else
+ CFLAGS= @CFLAGS@ 
+endif
+
+CFLAGS+=-D_GLIBCXX_GTHREAD_USE_WEAK=0
+
+AR = @AR@
+ARFLAGS = cru
+
+NETCDFINC=@NETCDFINC@
+NETCDFLIB=@NETCDFLIB@
+EMSINC=@EMSLIBINC@
+EMSLIB=@EMSLIBLIB@
+GSLLIB=@GSLLIB@
+MLIB=-lm
+
+BASEINC=
+
+INCS=-Iinclude $(EMSINC) $(BASEINC) $(NETCDFINC) $(GSL_INC)
+
+# Make a list of all c-files
+SRCS_C   := $(wildcard *.c)
+SRCS_CPP := $(wildcard *.cpp)
+
+OBJS_C   := $(patsubst %.c,%.o,$(SRCS_C))
+OBJS_CPP := $(patsubst %.cpp,%.o,$(SRCS_CPP))
+
+DA_LIB := libda.a
+
+ALL_TARGETS := $(DA_LIB)
+LIBSHR:=libda.so
+SFLAGS:=
+ifdef SHARED
+ CFLAGS += -fPIC
+ ALL_TARGETS += $(LIBSHR)
+ SFLAGS:=-shared
+endif
+
+all : $(ALL_TARGETS)
+
+.c.o:
+	$(CC) $(CFLAGS) $(INCS) -c $*.c -o $*.o
+
+.cpp.o:
+	$(CC) $(CFLAGS) $(INCS) -c $*.cpp -o $*.o
+
+$(DA_LIB) : $(OBJS_C) $(OBJS_CPP)
+	$(AR) $(ARFLAGS) $@ $^
+	chmod go+r $@
+
+$(LIBSHR) : $(OBJS_C) $(OBJS_CPP)
+	$(CC) $(SFLAGS) -o $@ $^ $(EMSLIB) $(GSLLIB) $(NETCDFLIB)
+
+clean:
+	rm -f *.o *~ */*.o */*~ *.log *.a tmp $(DA_LIB) $(LIBSHR)
+
+.PHONY: doc
+doc:
+	doxygen doxy.config

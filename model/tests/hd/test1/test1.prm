@@ -1,0 +1,204 @@
+# Test 1 of model shoc: 5 by 5 by 9 swimming pool with no forcing
+# All values should remain unchanged for the duration of the run
+
+CODEHEADER           SHOC default version
+PARAMETERHEADER	     Test 1 - no forcing
+DESCRIPTION          SHOC test 1
+NAME                 SHOC test 1 grid
+TIMEUNIT             seconds since 1990-01-01 00:00:00 +10
+OUTPUT_TIMEUNIT      seconds since 1990-01-01 00:00:00 +10
+LENUNIT              metre
+START_TIME           0.0
+STOP_TIME            1000
+
+INPUT_FILE           in1.nc
+
+# Output files
+OutputFiles 1
+
+file0.name           out1_z.nc
+file0.filetype       standard
+file0.tstart         0.0
+file0.tinc           100
+file0.tstop          1000
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Flags
+WINDOWS              1
+NONLINEAR            YES
+CALCDENS             YES
+HEATFLUX             NONE
+SALTFLUX             NONE
+2D-MODE              NO
+STABILITY            SUB-STEP-NOSURF
+RAMPSTART            0 days
+RAMPEND              0.25 days
+MERGE_THIN           YES
+HMIN                 0.0700
+SLIP                 1.0   
+SIGMA                NO
+
+# Time steps
+DT                   2.00     seconds
+IRATIO               2
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           VANLEER
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 100.0 
+U2VH                 100.0 
+U1KH                 100.0 
+U2KH                 100.0 
+SMAGORINSKY          0.000
+
+# Vertical mixing
+MIXING_SCHEME        constant
+VZ0                  0.0000e0.0
+KZ0                  0.0000e0.0
+
+# Bottom friction
+QBFC                 0.0020
+UF                   0.0500
+Z0                   0.001
+
+# Constants
+G                    9.8100
+SPECHEAT             3990.0
+AIRDENS              1.2250
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS             50
+1.0000e-04
+
+# Diagnostics
+CFL                  NONE
+MIX_LAYER            NONE
+MEAN                 NONE
+VORTICITY            NONE
+NUMBERS              NONE
+ALERT                NONE
+MOM_TEND             NO
+CALC_FLUXES          NONE
+FLUSHING_TR          NO
+STERIC_HEIGHT        0.00  
+
+# Grid
+GRIDTYPE             RECTANGULAR
+NCE1                 5
+NCE2                 10
+X00                  1000.0
+Y00                  1000.0
+DX                   500.0 
+DY                   500.0 
+ROTATION             20.0  
+
+# Vertical grid spacing
+LAYERFACES           9
+-40.00
+-35.00
+-30.00
+-25.00   
+-20.00   
+-15.00   
+-10.00   
+-5.00   
+0.00    
+
+# Bathymetry limits
+BATHYMIN             1.0   
+BATHYMAX             50.0  
+ETAMAX               10.0  
+MIN_CELL_THICKNESS   0.1
+
+# Tracers
+NTRACERS             2
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0  
+TRACER0.valid_range  0.0    40.0  
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.diagn        0
+TRACER0.data         profile.nc
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.fill_value   20.0  
+TRACER1.valid_range  0.0    40.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+TRACER1.data         profile.nc
+
+# Forcing
+# Time series
+TSPOINTS             1
+
+TS0.name             loc_z.ts
+TS0.location         1234.0604  4011.6799  0
+TS0.dt               4 seconds
+TS0.reference        msl
+
+# Open boundaries
+NBOUNDARIES           0
+
+# Bathymetry
+BATHY    50
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+   5.000
+   5.000
+   5.000
+ -99.000
+ -99.000
+   10.000
+   10.000
+   10.000
+ -99.000
+ -99.000
+   15.000
+   15.000
+   15.000
+ -99.000
+ -99.000
+   20.00
+   20.00
+   20.00
+ -99.000
+ -99.000
+   25.00
+   25.00
+   25.00
+ -99.000
+ -99.000
+   30.00
+   30.00
+   30.00
+ -99.000
+ -99.000
+   35.000
+   35.000
+   35.000
+ -99.000
+ -99.000
+   40.000
+   40.000
+   40.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+ -99.000
+

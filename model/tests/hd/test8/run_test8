@@ -1,0 +1,23 @@
+#!/bin/csh -f
+
+echo "Testing 'z' model..."
+rm in8.nc
+rm out8_z.nc
+rm out8_msl_z.nc
+
+../shoc -g test8.prm in8.nc
+
+echo "Running, takes ~ 10 minutes...."
+../shoc -p test8.prm
+
+echo "DONE"
+
+echo "Running msl, takes ~ 10 minutes...."
+../shoc -p test8_msl.prm
+
+echo "DONE"
+
+rm in8.nc
+
+
+

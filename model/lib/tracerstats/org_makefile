@@ -1,0 +1,68 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+# $Id: makefile.in,v 1.2 2004/08/27 04:30:05 war324 Exp $
+#
+
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = .
+
+
+INSTALL = /usr/bin/ginstall -c
+INSTALL_PROGRAM = ${INSTALL}
+INSTALL_DATA = ${INSTALL} -m 644
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=s,x,x,
+
+prefix = /home/ros260/projects/ems/eclipse/build
+exec_prefix = ${prefix}
+
+# Directory in which to install scripts.
+bindir = ${exec_prefix}/bin
+mandir = ${prefix}/man/manl
+
+# Directory in which to install library files.
+datadir = ${prefix}/share
+acdatadir = $(datadir)/autoconf
+
+# Directory in which to install documentation info files.
+infodir = ${prefix}/info
+
+#### End of system configuration section. ####
+
+
+CC=gcc
+CFLAGS=-g  -Wall
+#-O3
+GENINC=-I/usr/local/include
+EMSINC=-I../lib/include
+CDFINC=-I../../../include
+
+AR = ar
+ARFLAGS = cru
+
+TSOBJS = tracerstats.o statistics.o
+
+.c.o:;
+	$(CC) -c $(CFLAGS) -Iinclude $(EMSINC) $(CDFINC) $(GENINC) $*.c -o $*.o
+
+all:  libtracerstats.a
+	$(AR) $(ARFLAGS) libtracerstats.a $(TSOBJS)
+	chmod go+r libtracerstats.a
+
+libtracerstats.a: $(TSOBJS)
+
+
+all: $(PROGRAMS)
+
+clean:
+	rm -f *.a *.o
+
+configclean:
+	rm -f makefile
+
+distclean: clean configclean

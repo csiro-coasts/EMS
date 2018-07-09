@@ -1,0 +1,15 @@
+#!/bin/csh -f
+
+echo "Testing 'z' model..."
+rm in6.nc
+rm out6_z.nc
+
+../shoc -g test6.prm in6.nc
+
+echo "Running, takes ~ 2 minutes...."
+../shoc -p test6.prm
+
+echo "DONE"
+
+rm in6.nc
+

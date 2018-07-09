@@ -1,0 +1,194 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=@program_transform_name@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+libdir = @libdir@
+# Directory in which to install library files.
+datarootdir = @datadir@
+acdatadir = $(datadir)/autoconf
+
+includedir = @includedir@
+mandir = @mandir@/manl
+
+GRIDINC=-I../model/lib/grid/include
+
+#### End of system configuration section. ####
+
+# Generate include/svn_rev.h
+JUNK:=$(shell ../conf/gen_svn_rev.sh ..)
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS= -fPIC -I./include -g @PROJINC@
+else
+ CFLAGS= -I./include @CFLAGS@ @PROJINC@
+endif
+
+EMSLIB = libemslib.a
+ifdef SHARED
+ CFLAGS += -fPIC
+ EMSLIB += libemslib.so
+endif
+
+#RANLIB = @RANLIB@
+AR = @AR@
+ARFLAGS = cr
+
+NETCDFINC=@NETCDFINC@
+
+DEBUGINC=#@DMALLOCINC@
+
+IOOBJS = \
+io/coast.o \
+io/datafile.o \
+io/dfcoords.o \
+io/dfeval.o \
+io/ncw.o \
+io/nc_buffered.o \
+io/poly_coast.o \
+io/prmfile.o \
+io/ptrack.o \
+io/tf_nc_cmr.o \
+io/tf_nc_cmr_tiled.o \
+io/tf_xyz_cmr.o \
+io/tiled_coast.o \
+io/topo_tile_misc.o \
+io/timeseries.o \
+io/ts_serial.o \
+io/topo.o \
+io/emslogger.o \
+io/topo_factory.o
+
+GEOMOBJS = \
+geom/poly.o \
+geom/spline.o
+
+GRIDOBJS = \
+grid/ellipt_coord.o \
+grid/cstmesh.o \
+grid/gridangle.o \
+grid/gridmetric.o \
+grid/gridmisc.o \
+grid/polar_coord.o \
+grid/rect_coord.o \
+grid/xytoij.o
+
+MATHOBJS = \
+math/cfft.o \
+math/decay.o \
+math/diffusion.o \
+math/drandom.o \
+math/integrator.o \
+math/interp.o \
+math/nan.o \
+math/underwater.o \
+math/weight_fn.o
+
+MISCOBJS = \
+misc/colourtable.o \
+misc/error_handlers.o \
+misc/eqn_parser.o \
+misc/hash.o \
+misc/hqueue.o \
+misc/memory.o \
+misc/solar.o \
+misc/string_utils.o \
+misc/stringtable.o \
+misc/time.o \
+misc/tracer_utils.o \
+misc/pointsourcesink.o \
+misc/istack.o
+
+
+GEODESYOBJS= \
+geodesy/geodetic.o \
+geodesy/mapproj.o 
+
+TIMEOBJS = \
+
+OBJECTS = ems.o \
+$(IOOBJS) \
+$(GEOMOBJS) \
+$(GRIDOBJS) \
+$(MATHOBJS) \
+$(MISCOBJS) \
+$(GEODESYOBJS)
+
+TESTS= \
+tests/check_dfmap.o \
+tests/check_inv_eval.o \
+tests/check_mapproj.o \
+tests/check_rect_eval.o \
+tests/check_xytoij.o \
+tests/dftest.o
+
+
+.c.o:
+	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.c
+
+.cpp.o:
+	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.cpp
+
+all:	$(EMSLIB)
+
+misc/eqn_parser.o : misc/eqn_parser.cpp
+	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.cpp -D_GLIBCXX_GTHREAD_USE_WEAK=0
+
+io/nc_buffered.o : io/nc_buffered.cpp
+	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.cpp -D_GLIBCXX_GTHREAD_USE_WEAK=0
+
+libemslib.a: $(OBJECTS)
+	$(AR) $(ARFLAGS) libemslib.a $(OBJECTS)
+	chmod go+r libemslib.a
+
+libemslib.so: $(OBJECTS)
+	$(CC) -shared -o libemslib.so $(OBJECTS)
+
+installdocs: docs
+
+colourtable: colourtable.o memory.o quit.o
+	$(CC) $(CFLAGS) -DTEST -o colourtable colourtable.o memory.o quit.o -lm
+	rm -f colourtable.o
+
+installdirs:
+	$(SHELL) ${srcdir}/mkinstalldirs $(libdir) $(includedir) $(mandir)
+
+install: all installdirs
+
+clean:	
+	rm -f $(OBJECTS) libemslib.a *.so include/svn_rev.h
+#	cd tests; make clean; cd ..
+
+configclean:
+	rm -f makefile config.cache config.status config.log
+#	cd tests; make configclean; cSd ..
+
+distclean: clean configclean
+
+tests: check
+
+check: all
+	cd tests; make; cd ..
+
+.PHONY: doc
+doc:
+	doxygen doxy.config

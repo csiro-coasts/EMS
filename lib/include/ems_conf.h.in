@@ -1,0 +1,119 @@
+/**
+ *
+ *  ENVIRONMENTAL MODELLING SUITE (EMS)
+ *
+ *  \file lib/include/ems_conf.h.in
+ *
+ *  \brief Input file for configure to generate ems_conf.h
+ *
+ *  \copyright
+ *  Copyright (c) 2018. Commonwealth Scientific and Industrial
+ *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
+ *  reserved. See the license file for disclaimer and full
+ *  use/redistribution conditions.
+ *
+ *  $Id: $
+ */
+
+/* Define if using alloca.c.  */
+#undef C_ALLOCA
+
+/* Define to one of _getb67, GETB67, getb67 for Cray-2 and Cray-YMP systems.
+   This function is required for alloca.c support on those systems.  */
+#undef CRAY_STACKSEG_END
+
+/* Define if you have alloca, as a function or macro.  */
+#undef HAVE_ALLOCA
+
+/* Define if you have <alloca.h> and it should be used (not on Ultrix).  */
+#undef HAVE_ALLOCA_H
+
+/* Define as the return type of signal handlers (int or void).  */
+#undef RETSIGTYPE
+
+/* If using the C implementation of alloca, define if you know the
+   direction of stack growth for your system; otherwise it will be
+   automatically deduced at run-time.
+ STACK_DIRECTION > 0 => grows toward higher addresses
+ STACK_DIRECTION < 0 => grows toward lower addresses
+ STACK_DIRECTION = 0 => direction of growth unknown
+ */
+#undef STACK_DIRECTION
+
+/* Define if you have the ANSI C header files.  */
+#undef STDC_HEADERS
+
+/* Define if you can safely include both <sys/time.h> and <time.h>.  */
+#undef TIME_WITH_SYS_TIME
+
+/* Define if you have the getcwd function.  */
+#undef HAVE_GETCWD
+
+/* Define if you have the strstr function.  */
+#undef HAVE_STRSTR
+
+/* Define if you have the <sys/param.h> header file.  */
+#undef HAVE_SYS_PARAM_H
+
+/* Define if you have the <unistd.h> header file.  */
+#undef HAVE_UNISTD_H
+
+/* Define if you have the <values.h> header file.  */
+#undef HAVE_VALUES_H
+
+/* Define if configured with --enable-threading. */
+#undef HAVE_PTHREADS
+
+/* Define whether if we have the USGS map projections */
+#undef HAVE_USGS_PROJ
+
+/* Define whether if we have the general module */
+#undef HAVE_EMSLIB_MODULE
+
+/* Define whether if we have the hydrodynamic module */
+#undef HAVE_HD_MODULE
+
+/* Define whether if we have the hydrodynamic unstructured module */
+#undef HAVE_HD_US_MODULE
+
+/* Define whether if we have the ecology module */
+#undef HAVE_ECOLOGY_MODULE
+
+/* Define whether if we have the sediment module */
+#undef HAVE_SEDIMENT_MODULE
+
+/* Define whether if we have the wave module */
+#undef HAVE_WAVE_MODULE
+
+/* Define whether if we have the tracerstats module */
+#undef HAVE_TRACERSTATS_MODULE
+
+
+/* Define whether if we have the exchange module */
+#undef HAVE_EXCHANGE_MODULE
+
+
+/* Define whether if we have the Boxmodel module */
+#undef HAVE_BM_MODULE
+
+
+/* Define whether if we have 'gprof' profiling enabled */
+#undef HAVE_GPROF
+
+/* Define if timing profiling is enabled */
+#undef DO_TIMING
+
+/* Define whether OpenMP is enabled */
+#undef HAVE_OMP
+
+/* Define whether building the DA is enabled */
+#undef HAVE_DA
+
+/* Define whether the hdf5 library linked with netcdf is threadsafe */
+#undef HDF5_THREADSAFE
+
+/* Define wether building with MPI */
+#undef HAVE_MPI
+
+/* See if the JIGSAW library is available */
+#undef HAVE_JIGSAWLIB

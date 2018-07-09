@@ -1,0 +1,25 @@
+#!/bin/csh -f
+
+echo "Testing 'z' model..."
+rm in4.nc
+rm out4_z.nc
+
+../shoc -g test4.prm in4.nc
+
+echo "Running, takes ~ 1 minute...."
+../shoc -p test4.prm
+
+echo "DONE"
+
+echo "Testing sigma model..."
+rm in4.nc
+rm out4_s.nc
+
+../shoc -g test4_s.prm in4.nc
+
+echo "Running, takes ~ 1 minute...."
+../shoc -p test4_s.prm
+
+echo "DONE"
+
+rm in4.nc

@@ -1,0 +1,88 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+
+SHELL=/bin/sh
+
+DIRS = \
+@EMSLIBDIR@ \
+@ECOLOGYDIR@ \
+@SEDIMENTDIR@ \
+@TRACERSTATSDIR@ \
+@GRIDDIR@ \
+@EXCHANGEDIR@ \
+@WAVEDIR@ \
+@DADIR@ \
+@HDDIR@ \
+@JIGSAWDIR@ \
+@HDUSDIR@ \
+@UTILSDIR@ \
+
+DIRSHD = \
+@EMSLIBDIR@ \
+@ECOLOGYDIR@ \
+@SEDIMENTDIR@ \
+@WAVEDIR@ \
+@TRACERSTATSDIR@ \
+@GRIDDIR@ \
+@HDDIR@ \
+
+DIRSBM = \
+@EMSLIBDIR@ \
+@ECOLOGYDIR@ \
+@SEDIMENTDIR@ \
+@EXCHANGEDIR@ \
+@BMDIR@ \
+
+all:
+	@for d in $(DIRS); do \
+           current=`pwd`; cd $$d; make; cd $${current}; \
+        done
+
+hd: cleanhd
+	@for d in $(DIRSHD); do \
+           current=`pwd`; cd $$d; make; cd $${current}; \
+        done
+
+bm: cleanbm
+	@for d in $(DIRSBM); do \
+           current=`pwd`; cd $$d; make; cd $${current}; \
+        done
+
+install: all
+	@for d in $(DIRS); do \
+           current=`pwd`; cd $$d; make install; cd $${current}; \
+        done
+
+clean:	
+	@for d in $(DIRS); do \
+           current=`pwd`; cd $$d; make clean; cd $${current}; \
+        done
+
+	@for d in $(DIRSHD); do \
+           current=`pwd`; cd $$d; make clean; cd $${current}; \
+        done
+cleanbm:	
+	@for d in $(DIRSBM); do \
+           current=`pwd`; cd $$d; make clean; cd $${current}; \
+        done
+
+configclean:
+	@for d in $(DIRS); do \
+           current=`pwd`; cd $$d; make configclean; cd $${current}; \
+        done
+
+distclean: clean configclean
+	rm -f makefile config.status config.log
+	rm -rf autom4te.cache
+	@for d in $(DIRS); do \
+           current=`pwd`; cd $$d; make distclean; cd $${current}; \
+        done
+
+tests: check
+
+check: all
+	@for d in $(DIRS); do \
+           current=`pwd`; cd $$d; make check; cd $${current}; \
+	done
+

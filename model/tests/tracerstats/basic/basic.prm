@@ -1,0 +1,353 @@
+# SHOC parameter file
+CODEHEADER           SHOC default version
+PARAMETERHEADER      Auto grid
+DESCRIPTION          Automated grid from shoc.auto
+NAME                 SHOC grid
+PROJECTION           geographic
+TIMEUNIT             seconds since 1990-01-01 00:00:00 +10
+OUTPUT_TIMEUNIT      days since 1990-01-01 00:00:00 +10
+LENUNIT              metre
+START_TIME     100   days
+STOP_TIME      100.15   days
+RAMPSTART      100   days
+RAMPEND        101   days
+INPUT_FILE in.nc
+
+OutputFiles 2
+file0.name  out/all.nc
+file0.tstart   100.00   days
+file0.tstop    6964.00   days
+file0.filetype       standard
+# file0.tinc           1 hour
+file0.tinc           100 seconds
+file0.bytespervalue  4
+file0.vars           ALL
+
+file1.name  out/salt.nc
+file1.tstart   100.00   days
+file1.tstop    100.00   days
+file1.filetype       standard
+file1.tinc           1 hour
+file1.bytespervalue  4
+file1.vars           eta u1 u2 salt
+
+log_file	    runlog
+
+# Flags
+WINDOWS              1
+# DP_MODE              PTHREADS
+DP_MODE              NONE
+# SCHED_MODE           PTHREADS
+NONLINEAR            YES
+CALCDENS             YES
+2D-MODE              NO
+STABILITY            SUB-STEP-NOSURF
+MERGE_THIN           YES
+HMIN                 0.1400
+SLIP                 1.0   
+SIGMA                NO
+
+# Time steps
+DT                   100.00    seconds
+IRATIO               6
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           QUICKEST
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 100.0 
+U2VH                 100.0 
+U1KH                 100.0 
+U2KH                 100.0 
+SMAGORINSKY          0.000
+
+# Vertical mixing
+MIXING_SCHEME        mellor_yamada_2_0
+ZS		     0.2
+VZ0                  1.0000e-05
+KZ0                  1.0000e-05
+LMIN		     0.01
+E		     3
+MIN_TKE              7.6000e-06
+MIN_DIFF             1.0000e-05
+
+# Bottom friction
+QBFC                 0.0020
+UF                   0.0500
+Z0                   0.001
+
+# Constants
+G                    9.8100
+SPECHEAT             3990.0
+AIRDENS              1.2250
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS             50
+1.0000e-04
+
+# Diagnostics
+CFL                  NONE
+MIX_LAYER            NONE
+MEAN                 NONE
+VORTICITY            NONE
+NUMBERS              NONE
+ALERT                NONE
+MOM_TEND             NO
+CALC_FLUXES          NONE
+FLUSHING_TR          NO
+STERIC_HEIGHT        0.00  
+
+# Grid
+GRIDTYPE             RECTANGULAR
+NCE1                 1
+NCE2                 1
+X00                  147.216
+Y00                  -43.2
+DX                   500.0 
+DY                   500.0 
+ROTATION             0.0  
+
+# Vertical grid spacing
+LAYERFACES           2
+-9
+0
+
+# Sediments
+
+# Sediment layers thicknesses
+NSEDLAYERS	2
+0.005
+0.20
+
+DO_SEDIMENTS	YES
+
+BIOSEDPROFILE	constant
+
+# Bathymetry limits
+
+# Tracers
+NTRACERS             16
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0  
+TRACER0.type         	WATER SEDIMENT
+TRACER0.valid_range  0.0    50.0  
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.reset_file   in_salt.ts
+TRACER0.reset_dt     100 seconds
+# TRACER0.reset_file   in_salt.nc
+# TRACER0.reset_dt     100 seconds
+# TRACER1.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.type         	WATER SEDIMENT
+TRACER1.fill_value   15.0  
+TRACER1.valid_range  0.0    50.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+
+TRACER2.name 		HM_salt
+TRACER2.long_name 	Mean salinity
+TRACER2.units		PSU
+TRACER2.tracerstat      mean(salt)
+TRACER2.type           WATER SEDIMENT
+TRACER2.fill_value     35.0  
+TRACER2.dt             1 hour
+TRACER2.valid_range_wc 0 45
+TRACER2.valid_range_sed 0 45
+TRACER2.diagn 		0
+TRACER2.advect         0
+TRACER2.diffuse        0
+
+TRACER3.name 		VAR_salt
+TRACER3.long_name 	Variance salinity
+TRACER3.units		PSU
+TRACER3.tracerstat      variance(salt)
+TRACER3.type           WATER SEDIMENT
+TRACER3.fill_value      0.0  
+TRACER3.dt             1 hour
+TRACER3.valid_range_wc 0 45
+TRACER3.valid_range_sed 0 45
+TRACER3.diagn 		0
+TRACER3.advect         0
+TRACER3.diffuse        0
+
+TRACER4.name 		MAX_salt
+TRACER4.long_name 	Max salinity
+TRACER4.units		PSU
+TRACER4.tracerstat      max(salt)
+TRACER4.type           WATER SEDIMENT
+TRACER4.fill_value      0.0  
+TRACER4.dt             1 hour
+TRACER4.valid_range_wc 0 45
+TRACER4.valid_range_sed 0 45
+TRACER4.diagn 		0
+TRACER4.advect         0
+TRACER4.diffuse        0
+
+TRACER5.name 		MIN_salt
+TRACER5.long_name 	Min salinity
+TRACER5.units		PSU
+TRACER5.tracerstat      min(salt)
+TRACER5.type           WATER SEDIMENT
+TRACER5.fill_value      0.0  
+TRACER5.dt             1 hour
+TRACER5.valid_range_wc 0 45
+TRACER5.valid_range_sed 0 45
+TRACER5.diagn 		0
+TRACER5.advect         0
+TRACER5.diffuse        0
+
+TRACER6.name 		STDEV_salt
+TRACER6.long_name 	stdev salinity
+TRACER6.units		PSU
+TRACER6.tracerstat      stdev(salt)
+TRACER6.type           WATER SEDIMENT
+TRACER6.fill_value      0.0  
+TRACER6.dt             1 hour
+TRACER6.valid_range_wc 0 45
+TRACER6.valid_range_sed 0 45
+TRACER6.diagn 		0
+TRACER6.advect         0
+TRACER6.diffuse        0
+
+TRACER7.name 		SUM_TS
+TRACER7.long_name 	Sum of salt and temp
+TRACER7.units		rubbish
+TRACER7.tracerstat      sum(salt,temp)
+TRACER7.type           WATER SEDIMENT
+TRACER7.fill_value      0.0  
+TRACER7.dt             1 hour
+TRACER7.valid_range_wc 0 45
+TRACER7.valid_range_sed 0 45
+TRACER7.diagn 		0
+TRACER7.advect         0
+TRACER7.diffuse        0
+
+TRACER8.name 		HM_temp
+TRACER8.long_name 	Mean temperature
+TRACER8.units		PSU
+TRACER8.tracerstat      mean(temp)
+TRACER8.type           WATER SEDIMENT
+TRACER8.fill_value     0.0  
+TRACER8.dt             1 hour
+TRACER8.valid_range_wc 0 45
+TRACER8.valid_range_sed 0 45
+TRACER8.diagn 		0
+TRACER8.advect         0
+TRACER8.diffuse        0
+
+TRACER9.name 		COV_TS
+TRACER9.long_name 	Cov of salt and temp
+TRACER9.units		rubbish
+TRACER9.tracerstat      cov(salt temp)
+TRACER9.type           WATER
+TRACER9.fill_value      0.0  
+TRACER9.dt             1 hour
+TRACER9.valid_range_wc 0 45
+TRACER9.valid_range_sed 0 45
+TRACER9.diagn 		0
+TRACER9.advect         0
+TRACER9.diffuse        0
+
+TRACER10.name phi0
+TRACER10.long_name Sand
+TRACER10.units kg m-3
+TRACER10.valid_range_wc 0 1e+35
+TRACER10.valid_range_sed 0 1e+35
+TRACER10.type         WATER SEDIMENT
+TRACER10.diagn 0
+TRACER10.fill_value_wc 0
+TRACER10.fill_value_sed 600
+TRACER10.inwc 1
+TRACER10.insed 1
+TRACER10.dissol 0
+TRACER10.partic 1
+TRACER10.advect 0
+TRACER10.diffuse 1
+TRACER10.decay 0
+TRACER10.psize 0.0005
+TRACER10.b_dens 2.65e+03
+TRACER10.i_conc 1.2e+03
+TRACER10.f_conc 1.2e+03
+TRACER10.svel -0.7
+TRACER10.crit_stress 0.2
+TRACER10.calcvol 1
+TRACER10.cohesive 0
+TRACER10.resuspend 0
+
+TRACER11.name 		depth_sed
+TRACER11.long_name	Sediment thickness
+TRACER11.units 		m
+TRACER11.type         	BENTHIC
+TRACER11.diagn 		1
+TRACER11.fill_value 	0.0
+TRACER11.valid_range_wc 0.0 100.0
+
+TRACER12.name 		dzactive
+TRACER12.long_name	Sediment active layer thickness
+TRACER12.units 		m
+TRACER12.type         	BENTHIC
+TRACER12.diagn 		1
+TRACER12.fill_value 	0.0
+TRACER12.valid_range_wc 0.0 100.0
+
+TRACER13.name 		hripples
+TRACER13.long_name 	Ripple height
+TRACER13.units 		m
+TRACER13.type         	BENTHIC
+TRACER13.diagn 		1
+TRACER13.fill_value 	0.0
+TRACER13.valid_range_wc 0.0 100.0
+
+TRACER14.name 		lripples
+TRACER14.long_name 	Ripple length
+TRACER14.units 		m
+TRACER14.type         	BENTHIC
+TRACER14.diagn 		1
+TRACER14.fill_value 	0.0
+TRACER14.valid_range_wc 0.0 100.0
+
+TRACER15.name 		ustrcw_skin
+TRACER15.long_name 	Skin friction velocity
+TRACER15.units
+TRACER15.type         	BENTHIC
+TRACER15.diagn 		1
+TRACER15.fill_value 	0.0
+TRACER15.valid_range_wc 0.0 100.0
+
+# Time series output
+TSPOINTS	2
+
+TS0.name	out/out.ts
+TS0.location	147.2190 -43.1977  0
+TS0.reference   bottom
+TS0.dt		1 hour
+TS0.vars        HM_salt
+
+TS1.name	out/out_100.ts
+TS1.location	147.2190 -43.1977  0
+TS1.reference   bottom
+TS1.dt		100 seconds
+TS1.vars        salt
+
+# Forcing
+SURFACE              1
+0
+
+# Open boundaries
+NBOUNDARIES               0
+
+ETAMAX               10.0  
+
+# Bathymetry
+BATHY  1
+9

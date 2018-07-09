@@ -1,0 +1,170 @@
+The tracerstats library offers a convenient way to perform processing
+on the fly rather than post-processing an output file.
+The advantage of using processing while the model is running is that
+statistics are computed at every time-step, rather than at the times
+data is dumped in an output file. Note that the tracerstats library
+must be present when the code is configured for the user to access
+this functionality.
+
+Output as Tracer:
+To initiate a tracerstat operation, an additional attribute
+TRACER?.tracerstat in the tracer list must be specified.
+The form of this attribute is of the type operation(tracer_name),
+where operation is the statistic from the list below, and tracer_name
+is the name of the tracer to operate on. Additional attributes maybe
+specified depending on the type of statistics tracer. Attributes are of the
+form  TRACER?.<attribute name>
+
+Please note! Some functions do not require a tracer as output. These can be initialized in
+different way which is outlined at the end of this file!
+
+Important! if you expect negative values and rely on previous values of the output tracer
+for output tracers the minimum value must be set, otherwise it may be reset to zero!
+(i.e use TRACER?.valid_range_wc -1e+35 1e+35)
+
+
+fluxe1	# Flux of 3D tracer in the e1 direction
+					as fluxe1(<3dtracer>)
+
+fluxe2	# Flux of 3D tracer in the e2 direction
+					as fluxe2(<3dtracer>)
+
+fluxw		# Flux of 3D tracer in the vertical direction
+					as fluxw(<3dtracer>)
+
+meanfluxe1  # Mean flux of 3D tracer in the e1 direction
+					as meanfluxe1(<3dtracer>)
+					attribute
+						'dt' optional, the time interval over which to create the mean
+
+meanfluxe2	# Mean flux of 3D tracer in the e2 direction
+					as meanfluxe2(<3dtracer>)
+					attribute
+						'dt' optional, the time interval over which to create the mean
+
+meanfluxw	# Mean flux of 3D tracer in the vertical direction
+					as meanfluxw(<3dtracer>)
+					attribute
+						'dt' optional, the time interval over which to create the mean
+
+mean		# Mean of 2D or 3D tracer
+					as mean(<3dtracer>)
+					attribute
+						'dt' optional, the time interval over which to create the mean
+
+variance	# Variance of 2D or 3D tracer
+					as variance(<3dtracer>)
+
+stdev		# Standard deviation of 2D or 3D tracer
+					as stdev(<3dtracer>)
+
+corr		# Correlation coefficient of two 2D or 3D tracers
+					as stdev(<3dtracer>:<3dtracer>)
+
+cov		# Covariance of two 2D or 3D tracers
+					as stdev(<3dtracer>:<3dtracer>)
+
+diff		# Difference of two 2D or 3D tracers
+					as stdev(<3dtracer>:<3dtracer>)
+
+vint		# Vertical integral of 3D tracer
+					as vint(<3dtracer>)
+
+vmean		# Vertical mean of 3D tracer
+					as vmean(<3dtracer>)
+
+sectionflux	# The sum of 3D tracer given a list of i,j and optionally
+					the top and bottom layer limits to sum up. It is only feasable to
+					create section along adjacent columns, changing planes will skew
+					results.
+					sectionflux(<3dtracer>:(<direction>))
+					where
+						'3dtracer' the tracer name
+				  optional
+				  	'direction' as [u1,u2,w] reflecting the u1, u2 direction and vertical
+				  	meaning exchanges between the top layer given and top-1, if the value
+				  	is negative the relevant bottom layer +1 is used,
+				  	valid example: i j or i j tk or i j tk bk
+				  attributes
+				  	'data' mandatory, the path to file containing the ij and optional the
+				    	top and bottom layer as space delimited list per row
+				    'output' mandatory, the path and filename for the output file
+				    'dt' optional but recommended, the time over which the flux is integrated
+				    	if not present the integration is reset every 10 timesteps and written to file.
+				    'startt' optional, the model time from which to start output, default immediately
+				    	a unit may be given if not seconds
+				    'tscale' optional, the scaling factor for the time (used as 1/factor), default is days
+				    'tunit' optional, the time unit if tscale is used
+				    'outscale' optional, the scaling factor for the output (used as 1/factor),
+				    	default 1 with the unit of the actual 3d tracer
+				    'outunit' optional, the out put unit used if outscale is given
+
+
+vdiff		# the ratio of a series of layers of a 3d tracer
+					as vdiff(<3dtracer>:<toprange>:<botrange>:(strict):(mode))
+					where
+						toprange & botrange are a string of a mix of ints
+						defining a range as 'from _ to' '<int>_<int>'
+						separated by comma as well as individual ints
+						valid example: '2,6,9_12 or 9_12,2,6 would result in
+						layers 2,6,9,10,11,12
+				  the result is a 2d tracer calculated by sum(toprange) -sum(botrange)
+				  optional
+				  	'strict' as [0,1] default 0, if 1 than calculation is only valid
+				  	  if all layers given are present, result 0 otherwise.
+				  	'mode' how to interpret the the tracer value:
+				  	  0 - unaltered (default), 1 - convert from concentration to total mass in cell
+				  	  2 - create ratio instead of difference, 3 - create total mass first and then ratio
+
+
+Output independently:
+Applicable only to functions:
+
+sectionflux
+
+
+The parameter file containing the runtime details can also intialised as follows.
+Key ID; RTSTAT<index>
+Number to consider: NRTSTATS <total number to consider>
+
+entries follow the same outline as Tracers, only difference the TRACER<tracer index>.tracerstat
+becomes RTSTAT<rtstat index>.func. Please note that a name is also mandatory and
+must be unique amongst RTSTAT and TRACER for the function concerned.
+An entry for sectionflux would therefore change from:
+
+
+TRACER#.name section1
+TRACER#.tracerstat sectionflux(<tracer>:u1)
+TRACER#.data ij.ij
+TRACER#.output section1.ts
+TRACER#.dt 1 hour
+TRACER#.advect 0
+TRACER#.diffuse 0
+TRACER#.diagn 0
+
+<optional>
+TRACER#.startt      1 day
+TRACER#.outscale    1000
+TRACER#.tscale      86400
+TRACER#.outunit     <tracer unit> h-1 section-1
+TRACER#.tunit       days
+
+to:
+
+NRTSTATS #+1
+
+RTSTAT#.name section1
+RTSTAT#.func sectionflux(<tracer>:u1)
+RTSTAT#.data ij.ij
+RTSTAT#.output section1.ts
+RTSTAT#.dt 1 hour
+
+<optional>
+RTSTAT#.startt      1 day
+RTSTAT#.outscale    1000
+RTSTAT#.tscale      86400
+RTSTAT#.outunit     <tracer unit> h-1 section-1
+RTSTAT#.tunit       days
+
+
+

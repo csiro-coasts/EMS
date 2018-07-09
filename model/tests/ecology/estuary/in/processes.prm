@@ -1,0 +1,52 @@
+water
+{
+  tfactor
+  viscosity
+  moldiff
+#  oxygen_exchange_wc
+  remineralization
+#  dinoflagellate_grow_wc
+#  microphytobenthos_grow_wc
+#  nodularia_grow_wc
+#  nodularia_mortality_wc
+  phytoplankton_grow_wc(small)
+  phytoplankton_grow_wc(large)
+  zooplankton_large_grow_wc
+  zooplankton_small_grow_wc
+  zooplankton_mortality_wc(small)
+  zooplankton_mortality_wc(large)
+  nitrification_wc
+  p_adsorption_wc
+  values_common
+#  massbalance_wc
+  light_wc
+}
+epibenthos
+{
+  macroalgae_grow_epi
+  macroalgae_mortality_epi
+  seagrass_grow_epi
+  seagrass_mortality_epi
+  values_common_epi
+#  massbalance_epi
+  light_epi
+  diffusion_epi
+}
+sediment
+{
+ tfactor
+ viscosity
+  moldiff
+  remineralization
+#  microphytobenthos_grow_sed
+#  microphytobenthos_mortality_sed
+#  nodularia_mortality_sed
+  phytoplankton_mortality_sed(small)
+  phytoplankton_mortality_sed(large)
+  nitrification_denitrification_sed
+#  nitrification_denitrification_fraction_sed
+  p_adsorption_sed
+ values_common
+#  massbalance_sed
+  light_sed
+}

@@ -1,0 +1,52 @@
+#!/bin/csh -f
+
+echo "Running test1..."
+cd test1
+cat README
+./run_test1
+echo "Done test1"
+echo "-------------------------------"
+echo "Running test2..."
+cd ../test2
+cat README
+./run_test2
+echo "Done test2"
+echo "-------------------------------"
+echo "Running test3..."
+cd ../test3
+cat README
+./run_test3
+echo "Done test3"
+echo "-------------------------------"
+echo "Running test4..."
+cd ../test4
+cat README
+./run_test4
+echo "Done test4"
+echo "-------------------------------"
+echo "Running test5..."
+cd ../test5
+cat README
+./run_test5
+echo "Done test5"
+echo "-------------------------------"
+echo "Running test6..."
+cd ../test6
+cat README
+./run_test6
+echo "Done test6"
+echo "-------------------------------"
+echo "Running test7..."
+cd ../test7
+cat README
+./run_test7
+echo "Done test7"
+echo "-------------------------------"
+echo "Running test8..."
+cd ../test8
+cat README
+./run_test8
+echo "Done test8"
+
+
+

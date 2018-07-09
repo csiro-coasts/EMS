@@ -1,0 +1,23 @@
+#!/bin/csh -f
+
+echo "Testing 'z' model..."
+rm in2.nc
+rm out2_z.nc
+
+../shoc -g test2.prm in2.nc
+
+../shoc -p test2.prm
+
+echo "DONE"
+
+echo "Testing sigma model..."
+rm in2.nc
+rm out2_s.nc
+
+../shoc -g test2_s.prm in2.nc
+
+../shoc -p test2_s.prm
+
+echo "DONE"
+
+rm in2.nc

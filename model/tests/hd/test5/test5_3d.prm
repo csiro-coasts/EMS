@@ -1,0 +1,309 @@
+# Test 5 of model shoc: 50 by 27 by 24 channel with open boundaries
+# at the eastern and western ends forced with constant cross-channel
+# wind 0f 0.1 Nm-2. Sea level is set up and depth averaged velocities
+# are zero everywhere. This test is executed in 3D mode with quadratic
+# bottom friction.
+
+CODEHEADER           SHOC default version : leapfrog
+PARAMETERHEADER      Test 5 - open channel cross-shore wind in 3D
+DESCRIPTION          SHOC test 5 (3D)
+NAME                 SHOC test5 grid (3D)
+PROJECTION           proj=merc lon_0=83
+TIMEUNIT             seconds since 2000-01-01 00:00:00 +08
+OUTPUT_TIMEUNIT      days since 2000-01-01 00:00:00 +08
+LENUNIT              metre
+START_TIME           0 days
+STOP_TIME            10 days
+
+INPUT_FILE           in5.nc
+
+# Output files
+OutputFiles 1
+
+file0.name           out5_3dz
+file0.filetype       simple
+file0.tstart         0 days
+file0.tinc           1 day
+file0.tstop          100 days
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Flags
+WINDOWS              1
+NONLINEAR            YES
+CALCDENS             YES
+HEATFLUX             NONE
+SALTFLUX             NONE
+2D-MODE              NO
+STABILITY            NONE
+RAMPSTART            0 days
+RAMPEND              0 days
+MERGE_THIN           NO
+HMIN                 0.0100
+SLIP                 1.0   
+SIGMA                NO
+
+# Time steps
+DT                   1200.00  seconds
+IRATIO               12
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           VANLEER
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 800.0
+U2VH                 800.0
+U1KH                 0.0
+U2KH                 0.0
+SMAGORINSKY          0.000
+
+# Vertical mixing
+MIXING_SCHEME        constant
+VZ0                  0.05070
+KZ0                  0.10000
+
+# Bottom friction
+QBFC                 0.003
+UF                   1e-8
+Z0                   1e-8
+
+# Constants
+G                    9.8100
+SPECHEAT             3990.0
+AIRDENS              1.2250
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS             204
+1.0e-4
+
+# Diagnostics
+CFL                  NONE
+MIX_LAYER            NONE
+MEAN                 NONE
+VORTICITY            NONE
+NUMBERS	             NONE
+ALERT      	     NONE
+MOM_TEND	     NO
+CALC_FLUXES          -1
+FLUSHING_TR          -1
+STERIC_HEIGHT        0.00  
+
+# Grid
+GRIDTYPE             GEOGRAPHIC_RECTANGULAR
+NCE1                 17
+NCE2                 12
+X00                  0.00000 
+Y00                  0.00000 
+DX                   10000.000
+DY                   10000.000
+ROTATION             0.0   
+
+# Vertical grid spacing
+LAYERFACES           24
+-2000.00 
+-105.00 
+-100.00 
+-95.00  
+-90.00  
+-85.00  
+-80.00  
+-75.00  
+-70.00  
+-65.00  
+-60.00  
+-55.00  
+-50.00  
+-45.00  
+-40.00  
+-35.00  
+-30.00  
+-25.00  
+-20.00  
+-15.00  
+-10.00  
+-5.00   
+-2.00   
+0.00    
+
+# Bathymetry limits
+BATHYMIN             5.0  
+BATHYMAX             2200.0 
+ETAMAX               10.0  
+MIN_CELL_THICKNESS   25%
+
+# Tracers
+NTRACERS             2
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   0.0  
+TRACER0.valid_range  0.0    40.0  
+TRACER0.type	     WC3D
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.type	     WC3D
+TRACER1.fill_value   20.0
+TRACER1.valid_range  0.0    40.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+
+# Forcing
+WIND_TS              /home/mgs/sms/hd/shoc_tests/wind_test5.ts
+WIND_INPUT_DT        10 days
+WIND_SPEED_SCALE     1.0
+DRAG_LAW_V0          10.0  
+DRAG_LAW_V1          26.0  
+DRAG_LAW_CD0         0.00114 
+DRAG_LAW_CD1         0.00218 
+
+# Time series
+# Time series
+TSPOINTS             10
+
+TS0.name              loc1_z.ts
+TS0.location          85000.000000 15000.000000  0
+TS0.dt                1 day
+TS0.reference         msl
+
+TS1.name              loc2_z.ts
+TS1.location          85000.000000 25000.000000  0
+TS1.dt                1 day
+TS1.reference         msl
+
+TS2.name              loc3_z.ts
+TS2.location          85000.000000 35000.000000  0
+TS2.dt                1 day
+TS2.reference         msl
+
+TS3.name              loc4_z.ts
+TS3.location          85000.000000 45000.000000  0
+TS3.dt                1 day
+TS3.reference         msl
+
+TS4.name              loc5_z.ts
+TS4.location          85000.000000 55000.000000  0
+TS4.dt                1 day
+TS4.reference         msl
+
+TS5.name              loc6_z.ts
+TS5.location          85000.000000 65000.000000  0
+TS5.dt                1 day
+TS5.reference         msl
+
+TS6.name              loc7_z.ts
+TS6.location          85000.000000 75000.000000  0
+TS6.dt                1 day
+TS6.reference         msl
+
+TS7.name              loc8_z.ts
+TS7.location          85000.000000 85000.000000  0
+TS7.dt                1 day
+TS7.reference         msl
+
+TS8.name              loc9_z.ts
+TS8.location          85000.000000 95000.000000  0
+TS8.dt                1 day
+TS8.reference         msl
+
+TS9.name              loc10_z.ts
+TS9.location          85000.000000 105000.000000  0
+TS9.dt                1 day
+TS9.reference         msl
+
+# Open boundaries
+NBOUNDARIES             3
+
+BOUNDARY0.NAME          West
+BOUNDARY0.TYPE          u1
+BOUNDARY0.BCOND_NOR     CYCLIC
+BOUNDARY0.BCOND_ELE     CYCLIC
+BOUNDARY0.BCOND_TAN     CYCLIC
+BOUNDARY0.BCOND_TRA_ALL CYCLIC
+BOUNDARY0.BCOND_VZ      NOGRAD
+BOUNDARY0.BCOND_KZ      NOGRAD
+BOUNDARY0.POINTS        11
+0 1
+0 2
+0 3
+0 4
+0 5
+0 6
+0 7
+0 8
+0 9
+0 10
+0 11
+
+BOUNDARY1.NAME          East
+BOUNDARY1.TYPE          u1
+BOUNDARY1.BCOND_NOR     CYCLIC
+BOUNDARY1.BCOND_ELE     CYCLIC
+BOUNDARY1.BCOND_TAN     CYCLIC
+BOUNDARY1.BCOND_TRA_ALL CYCLIC
+BOUNDARY1.BCOND_VZ      NOGRAD
+BOUNDARY1.BCOND_KZ      NOGRAD
+BOUNDARY1.POINTS        11
+17 1
+17 2
+17 3
+17 4
+17 5
+17 6
+17 7
+17 8
+17 9
+17 10
+17 11
+
+BOUNDARY2.NAME          Offshore
+BOUNDARY2.TYPE          u2
+BOUNDARY2.BCOND_NOR     CLAMPD
+BOUNDARY2.BCOND_ELE     CLAMPD
+BOUNDARY2.BCOND_TAN     CLAMPD
+BOUNDARY2.BCOND_TRA_ALL NOGRAD
+BOUNDARY2.BCOND_VZ      NOGRAD
+BOUNDARY2.BCOND_KZ      NOGRAD
+BOUNDARY2.POINTS        17
+0 12
+1 12
+2 12
+3 12
+4 12
+5 12
+6 12
+7 12
+8 12
+9 12
+10 12
+11 12
+12 12
+13 12
+14 12
+15 12
+16 12
+
+
+# Bathymetry
+BATHY    204
+-99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 -99.00 
+  5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00   5.00 
+ 15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00  15.00 
+ 25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00  25.00 
+ 35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00  35.00 
+ 45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00  45.00 
+ 55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00  55.00 
+ 65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00  65.00 
+ 75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00  75.00 
+ 85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00  85.00 
+ 95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00  95.00 
+2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 2000.00 
+

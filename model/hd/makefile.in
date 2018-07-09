@@ -1,0 +1,234 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=@program_transform_name@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+mandir = @mandir@/manl
+
+# Directory in which to install library files.
+datarootdir = @datadir@
+acdatadir = $(datadir)/autoconf
+
+# Directory in which to install documentation info files.
+infodir = @infodir@
+
+#### End of system configuration section. ####
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS=-g @PTHREAD_CFLAG@ @OPENMP_CFLAGS@
+else
+ CFLAGS=@CFLAGS@ @PTHREAD_CFLAG@ @OPENMP_CFLAGS@
+endif
+
+CXX=@CXX@
+
+VERS=standard
+
+NETCDFINC=@NETCDFINC@
+NETCDFLIB=@NETCDFLIB@
+EMSINC=@EMSHDINC@ -I../../conf
+EMSLIB=@EMSHDLIB@
+PROJLIB=@PROJLIB@
+SEDINC=@SEDIMENTINC@
+SEDLIB=@SEDIMENTLIB@
+ECOINC=@ECOLOGYINC@
+TSINC=@TRACERSTATSINC@
+ECOLIB=@ECOLOGYLIB@
+TSLIB=@TRACERSTATSLIB@
+MLIB= -lm
+WAVELIB=@WAVELIB@
+WAVEINC=@WAVEINC@
+GRIDLIB=@GRIDLIB@
+GRIDINC=@GRIDINC@
+DALIB=@DALIB@
+DAINC=@DAINC@
+GSLLIB=@GSLLIB@
+MPI_INC=@MPI_INC@
+MPI_LIB=@MPI_LIB@
+
+LDFLAGS := $(LDFLAGS) -rdynamic
+
+# Generate include/svn_rev.h
+JUNK:=$(shell ../../conf/gen_svn_rev.sh ../..)
+
+#########################################################################
+# hydrodynamic model 
+
+BDRYOBJS=boundary/boundaryio.o boundary/bdryeval.o \
+boundary/bdryfuncs.o boundary/riverflow.o boundary/tide.o boundary/bdrycond.o
+
+CTRLOBJS= control/dp.o control/dp_none.o control/dp_pthreads.o \
+	control/dp_mpi.o control/main.o control/globals.o \
+	control/scheduler.o
+
+DASSIMOBJ= dassim/da.o
+
+DEBUGOBJS= debug/dbgfuncs.o debug/totals.o debug/debug.o
+
+DENOBJS=density/density.o
+
+DIAGOBJS= diagnostics/monitor.o diagnostics/run_setup.o
+
+ECOOBJS=ecology/ecology.o ecology/ecology_tracer_defaults.o
+
+FRCOBJS=forcings/airtemp.o forcings/cloud.o forcings/evap.o \
+forcings/forcings.o forcings/patm.o forcings/precip.o forcings/rh.o \
+forcings/swr.o forcings/webf.o forcings/wind.o forcings/wetbulb.o \
+forcings/hftemp.o forcings/heatflux.o forcings/storm.o forcings/eta_relax.o \
+forcings/vel_relax.o forcings/crash.o forcings/regulate.o forcings/dhw.o
+
+GINTEROBJS = ginterface/ginterface.o
+
+INOBJS= inputs/sourcesink.o inputs/choosedump.o inputs/opendump.o \
+inputs/readdump.o inputs/readparam.o inputs/readparam_t.o inputs/readparam_r.o
+
+MASTOBJS= master/hd_init.o master/hd_step.o \
+master/preprocess.o master/sigma.o master/pp.o
+
+MISCOBJS=misc/filevars.o misc/messages.o misc/index.o misc/tsfiles.o misc/timing.o
+
+MIXOBJS=closure/constant.o closure/csanady.o closure/k-e-implicit.o \
+closure/k-w-implicit.o closure/MY2-0.o closure/MY2-5.o closure/MY2-5_HAR.o closure/closure.o
+
+MOMOBJS=momentum/vel2d.o momentum/vel3d.o momentum/mommix.o momentum/mommisc.o momentum/advect.o
+
+OUTOBJS=outputs/closedump.o outputs/createdump.o outputs/writedump.o \
+outputs/dumpfile.o outputs/writeatts.o outputs/landfill.o outputs/timeseries.o \
+outputs/dumpdata.o outputs/df_sparse.o outputs/mom_grid.o outputs/df_mom.o outputs/roms_grid.o outputs/df_roms.o
+
+PTOBJS = particles/pt.o
+
+SEDOBJS=sediments/sediments.o
+
+SLAVEOBJS= slaves/windows.o slaves/zoom.o slaves/transfers.o slaves/TransferBuffer.o
+
+TRACEROBJS= tracers/tracers.o tracers/relaxation.o tracers/reset.o \
+tracers/load_tracer.o tracers/tracer_decay.o tracers/tracer_info.o \
+tracers/transport.o tracers/regions.o
+
+
+MODELOBJS=$(BDRYOBJS) $(CTRLOBJS) $(DASSIMOBJ) $(DEBUGOBJS) $(DENOBJS) $(DIAGOBJS) \
+$(ECOOBJS) $(FRCOBJS) $(GINTEROBJS) $(INOBJS) $(MASTOBJS) $(MISCOBJS) $(MIXOBJS) $(MOMOBJS) \
+$(OUTOBJS) $(PTOBJS) $(SEDOBJS) $(SLAVEOBJS) $(TRACEROBJS)
+
+ALLINCS=include/boundary.h include/hd.h \
+include/hd_macros.h include/hd_params.h include/sparse.h include/proto.h \
+include/scheduler.h include/sparse.h include/globals.h \
+include/debug.h include/dp.h
+
+#include/tracer.h include/pointsourcesink.h 
+
+PROGRAMS=\
+shoc
+
+
+TESTDIRS= \
+tests/test1/rect \
+tests/test1/polar \
+tests/test1/ellip \
+tests/test2/rect_x \
+tests/test2/rect_y \
+tests/test2/rect_rot \
+tests/test2/ellip_x \
+tests/test2/ellip_y \
+tests/test2/5levelellip \
+tests/test4/1layer_x \
+tests/test4/1layer_y \
+tests/test4/4layer_x \
+tests/test4/4layer_y \
+tests/test5/1layer \
+tests/test5/20layer  
+
+all: $(PROGRAMS)
+
+slaves/TransferBuffer.o : slaves/TransferBuffer.cpp
+	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(MPI_INC) $*.cpp -o $*.o  -D_GLIBCXX_GTHREAD_USE_WEAK=0
+
+.c.o:;
+	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(MPI_INC) $*.c -o $*.o
+
+.cpp.o:
+	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(MPI_INC) $*.cpp -o $*.o
+
+installdirs:;
+	$(SHELL) ${srcdir}/mkinstalldirs $(bindir) $(bindir)/scripts $(mandir)
+
+install: all installdirs
+	for i in $(PROGRAMS); do \
+	   fname=`basename $$i`; \
+	   $(INSTALL_PROGRAM) $$i $(bindir)/`echo $$fname|sed '$(transform)'`; \
+	done
+
+	for i in scripts/*.mk scripts/safemeco scripts/m3dtomeco; do \
+	   fname=`basename $$i`; \
+	   $(INSTALL_PROGRAM) $$i $(bindir)/scripts/`echo $$fname|sed '$(transform)'`; \
+	done
+
+	for i in $(srcdir)/docs/mans/*.l; do \
+	   fname=`basename $$i`; \
+           $(INSTALL_DATA) $$i $(mandir)/`echo $$fname|sed '$(transform)'`; \
+        done
+
+	test ! -d /home/software/man/manl || cp $(srcdir)/docs/mans/*.l /home/software/man/manl
+
+installdocs: docs
+	rm -rf /home/software/WWW/models/meco
+	cp -rf docs/meco /home/software/WWW/models/meco
+	chmod -R o+rX /home/software/WWW/models/meco
+
+shoc:    $(ALLINCS) $(MODELOBJS)
+	$(CXX) $(CFLAGS) -o shoc $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GRIDLIB) $(GSLLIB) $(DALIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(MLIB)  
+
+force_test_model:
+	rm -f shoc gendump printdump
+	$(MAKE) shoc gendump printdump
+
+tests: force_test_model
+#	@for d in $(TESTDIRS); do \
+#	   current=`pwd`; cd $$d; make mecotest; cd $${current}; \
+#	done
+#	@for d in $(TESTDIRS); do \
+#	   current=`pwd`; cd $$d; make tests; cd $${current}; \
+#	done
+
+check: tests
+
+
+# Clean-up target
+clean: cleantests
+	rm -f */*.o $(PROGRAMS) include/svn_rev.h
+
+cleantests:
+#	@for d in $(TESTDIRS); do \
+#	   current=`pwd`; cd $$d; make clean; cd $${current}; \
+#	done
+
+configclean:
+	rm -f makefile
+#	@for d in $(TESTDIRS); do \
+#	   current=`pwd`; cd $$d; make distclean; cd $${current}; \
+#	done
+
+distclean: clean configclean
+
+archive:
+	scripts/mkextdist

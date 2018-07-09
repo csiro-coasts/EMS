@@ -1,0 +1,84 @@
+#!/bin/csh -f
+
+echo "Cleaning directory test1..."
+rm test1/out1_z.nc
+rm test1/out1_s.nc
+rm test1/loc_*.ts
+rm test1/*.txt
+rm test1/runlog
+rm test1/*.eps
+rm test1/in1.nc
+echo "Done test1"
+
+echo "Cleaning directory test2..."
+rm test2/out2_z.nc
+rm test2/out2_s.nc
+rm test2/loc*_*.ts
+rm test2/*.txt
+rm test2/runlog
+rm test2/*.eps
+rm test2/in2.nc
+echo "Done test2"
+
+echo "Cleaning directory test3.."
+rm test3/out3_z.nc
+rm test3/out3_s.nc
+rm test3/loc*.ts
+rm test3/*.txt
+rm test3/runlog
+rm test3/*.eps
+rm test3/in3.nc
+echo "Done test3"
+
+echo "Cleaning directory test4.."
+rm test4/out4_z.nc
+rm test4/out4_s.nc
+rm test4/loc_*.ts
+rm test4/*.txt
+rm test4/runlog
+rm test4/*.eps
+rm test4/in4.nc
+echo "Done test4"
+
+echo "Cleaning directory test5.."
+rm test5/out5_z.nc
+rm test5/out5_s.nc
+rm test5/loc*.ts
+rm test5/*.txt
+rm test5/runlog
+rm test5/*.eps
+rm test5/in5.nc
+echo "Done test5"
+
+echo "Cleaning directory test6.."
+rm test6/out6_z.nc
+rm test6/*.txt
+rm test6/runlog
+rm test6/in6.nc
+echo "Done test6"
+
+echo "Cleaning directory test7.."
+rm test7/out7_*.nc
+rm test7/out_pt.nc
+rm test7/loc_*.ts
+rm test7/flushing.ts
+rm test7/totals.ts
+rm test7/*.txt
+rm test7/runlog
+rm test7/*.eps
+rm test7/in7.nc
+rm test7/alert.ts
+echo "Done test7"
+
+echo "Cleaning directory test8.."
+rm test8/out8_z.nc
+rm test8/loc_z.ts
+rm test8/out8_msl_z.nc
+rm test8/loc_msl_z.ts
+rm test8/*.txt
+rm test8/runlog
+rm test8/*.eps
+rm test8/in8.nc
+echo "Done test8"
+
+

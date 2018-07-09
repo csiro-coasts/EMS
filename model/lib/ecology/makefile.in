@@ -1,0 +1,192 @@
+#
+# makefile.in - Input makefile for the configure script.
+#
+# $Id: makefile.in,v 1.2 2004/08/27 04:30:05 war324 Exp $
+#
+
+SHELL=/bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MAKEINFO = makeinfo
+TEXI2DVI = texi2dvi
+transform=@program_transform_name@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+# Directory in which to install scripts.
+bindir = @bindir@
+mandir = @mandir@/manl
+
+# Directory in which to install library files.
+datarootdir = @datadir@
+acdatadir = $(datadir)/autoconf
+
+# Directory in which to install documentation info files.
+infodir = @infodir@
+
+#### End of system configuration section. ####
+
+CC=@CC@
+ifdef DEBUG
+ CFLAGS=-g @OPENMP_CFLAGS@ -DDEBUG
+else
+ CFLAGS=@CFLAGS@ @OPENMP_CFLAGS@
+endif
+
+ECOLIB = libecology.a
+ifdef SHARED
+ CFLAGS += -fPIC
+ ECOLIB += libecology.so
+endif
+
+EMSINC=@EMSLIBINC@
+NETCDFINC=@NETCDFINC@
+
+AR = ar
+ARFLAGS = cr
+
+
+
+ECOOBJS = \
+allprocesses.o \
+bio_opt.o \
+cell.o \
+column.o \
+constants.o \
+ecofunct.o \
+ecology.o \
+eprocess.o \
+externallibs.o \
+grow_data.o \
+parameter_info.o \
+parameter_defaults.o \
+process_defaults.o \
+utils.o \
+process_library/diffusion_epi.o \
+process_library/dinoflagellate_grow_wc.o \
+process_library/dinoflagellate_mortality_sed.o \
+process_library/anm_epi.o \
+process_library/light_epi.o \
+process_library/light_sed.o \
+process_library/light_wc.o \
+process_library/macroalgae_grow_epi.o \
+process_library/macroalgae_mortality_epi.o \
+process_library/massbalance_epi.o \
+process_library/massbalance_sed.o \
+process_library/massbalance_wc.o \
+process_library/microphytobenthos_grow_sed.o \
+process_library/microphytobenthos_grow_wc.o \
+process_library/microphytobenthos_mortality_sed.o \
+process_library/moldiff.o \
+process_library/nitrification_denitrification_sed.o \
+process_library/nitrification_denitrification_fraction_sed.o \
+process_library/nitrification_wc.o \
+process_library/nodularia_grow_wc.o \
+process_library/nodularia_mortality_wc.o \
+process_library/nodularia_mortality_sed.o \
+process_library/oxygen_exchange_wc.o \
+process_library/oxygen_exchange_sed.o \
+process_library/p_adsorption_sed.o \
+process_library/p_adsorption_wc.o \
+process_library/phytoplankton_grow_wc.o \
+process_library/phytoplankton_mortality_sed.o \
+process_library/remineralization.o \
+process_library/seagrass_grow_epi.o \
+process_library/seagrass_mortality_epi.o \
+process_library/tfactor.o \
+process_library/trichodesmium_grow_wc.o \
+process_library/trichodesmium_mortality_sed.o \
+process_library/trichodesmium_mortality_wc.o \
+process_library/values_common.o \
+process_library/values_common_epi.o \
+process_library/viscosity.o \
+process_library/anm_wc.o \
+process_library/zooplankton_large_grow_wc.o \
+process_library/zooplankton_small_grow_wc.o \
+process_library/chlorophyll_normalized_wc.o \
+process_library/zooplankton_mortality_wc.o\
+process_library/zooplankton_mortality_sed.o\
+process_library/carbon_chemistry_wc.o\
+process_library/dinoflagellate_diel_grow_wc.o \
+process_library/dinoflagellate_diel_mortality_sed.o \
+process_library/microphytobenthos_diel_grow_sed.o \
+process_library/microphytobenthos_diel_grow_wc.o \
+process_library/microphytobenthos_diel_mortality_sed.o \
+process_library/phytoplankton_diel_grow_wc.o \
+process_library/phytoplankton_diel_mortality_sed.o \
+process_library/zooplankton_large_diel_grow_wc.o \
+process_library/zooplankton_small_diel_grow_wc.o \
+process_library/phytoplankton_spectral_grow_wc.o \
+process_library/phytoplankton_spectral_mortality_wc.o \
+process_library/phytoplankton_spectral_mortality_sed.o \
+process_library/zooplankton_small_spectral_grow_wc.o \
+process_library/zooplankton_large_spectral_grow_wc.o \
+process_library/zooplankton_large_carnivore_spectral_grow_wc.o \
+process_library/microphytobenthos_spectral_grow_wc.o \
+process_library/microphytobenthos_spectral_grow_sed.o \
+process_library/microphytobenthos_spectral_mortality_sed.o \
+process_library/dinoflagellate_spectral_grow_wc.o \
+process_library/dinoflagellate_spectral_mortality_sed.o \
+process_library/light_spectral_wc.o \
+process_library/light_spectral2par_epi.o \
+process_library/seagrass_spectral_grow_epi.o \
+process_library/seagrass_spectral_grow_uq_epi.o \
+process_library/seagrass_spectral_grow_proto_epi.o \
+process_library/macroalgae_spectral_grow_epi.o \
+process_library/light_spectral_epi.o \
+process_library/light_spectral_uq_epi.o \
+process_library/light_spectral_sed.o \
+process_library/light_spectral_proto_epi.o \
+process_library/seagrass_spectral_mortality_epi.o \
+process_library/seagrass_spectral_mortality_proto_epi.o \
+process_library/coral_spectral_grow_epi.o \
+process_library/coral_spectral_grow_bleach_epi.o \
+process_library/coral_spectral_carb_epi.o \
+process_library/age_wc.o \
+process_library/co2_exchange_wc.o \
+process_library/gas_exchange_wc.o \
+process_library/gas_exchange_epi.o \
+process_library/coral_growth.o \
+process_library/lyngbya_wc.o\
+process_library/macroalgae_grow_wc.o\
+process_library/macroalgae_mortality_wc.o\
+process_library/macroalgae_spectral_mortality_wc.o\
+process_library/macroalgae_spectral_grow_wc.o \
+process_library/salmon_waste.o \
+process_library/recom_extras.o \
+process_library/variable_parameter.o 
+
+
+
+WIZARDOBJS = process_library/light_optical_wc.o
+
+#OBJECTMARKER - do not move or change this line
+
+
+.c.o:;
+	$(CC) -c -DEMSLIB $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $*.c -o $*.o
+
+all:  $(ECOLIB)
+
+libecology.a: $(ECOOBJS) $(WIZARDOBJS)
+	$(AR) $(ARFLAGS) libecology.a $(ECOOBJS) $(WIZARDOBJS)
+	chmod go+r libecology.a
+
+libecology.so: $(ECOOBJS) $(WIZARDOBJS)
+	$(CC) -fopenmp -shared -o libecology.so  $(ECOOBJS) $(WIZARDOBJS)
+
+clean:
+	rm -f *.a *.o process_library/*.o *.so
+
+configclean:
+	rm -f makefile
+
+distclean: clean configclean
