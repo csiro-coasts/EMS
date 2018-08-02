@@ -3,7 +3,8 @@
 ## Features
 * Hydrodynamic models for [structured](model/hd) and [unstructured](model/hd-us) grids
 * [Sediment transport, resuspension and deposition](model/lib/sediments)
-* [NPZD, benthic processes and spectral light propogation](model/lib/ecology)
+* [Spectrally-resolved semi-empirical optical model] (model/lib/ecology)
+* [Biogeochemical (nutrients, plankton, carbon chemistry) and benthic (seagrass, corals) processes](model/lib/ecology)
 
 ## Background
 The CSIRO Coastal Environmental Modelling (CEM) team develops, maintains and uses the EMS software that allows investigation of the physical, sediment and biogeochemical processes in marine environments. This is achieved by a ‘driver’ hydrodynamic code into which are linked various libraries to perform sediment transport and biogeochemistry, all supported by a core library. The ‘driver’ may be any model that manages the tracers required for sediments and biogeochemistry. The sediment and biogeochemical libraries are stand-alone modules that are linked to the driver via an interface, and in principle may be linked to any hydrodynamic code. Currently the ‘drivers’ available are a full hydrodynamic mode, a transport model that uses offline data to advect and diffuse sediment /  biogeochemical variables, and a box model. The hydrodynamic code may further operate in reduced dimensions of 1D, 2D vertically averaged or 2D laterally averaged. A waves and tracer statistic library also exist; the latter allowing various operations to be performed during run-time on any tracers supported by the driver (e.g. means, fluxes, vertical integrals).
