@@ -3,7 +3,7 @@
 ## Features
 * Hydrodynamic models for [structured](model/hd) and [unstructured](model/hd-us) grids
 * [Sediment transport, resuspension and deposition](model/lib/sediments)
-* [Spectrally-resolved semi-empirical optical model] (model/lib/ecology)
+* [Spectrally-resolved semi-empirical optical model](model/lib/ecology)
 * [Biogeochemical (nutrients, plankton, carbon chemistry) and benthic (seagrass, corals) processes](model/lib/ecology)
 
 ## Background
