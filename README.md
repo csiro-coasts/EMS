@@ -42,7 +42,7 @@ See [this page](conf/README.md) for full explaination of the build procedure
 There are many tests available for each module. See [model/tests](model/tests) for a complete list.
 
 ## Contributing
-Please read [CONTRIBUTING.md](#) for details on our code of conduct, and the process for submitting pull requests to us.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
 
 ## Authors
 
