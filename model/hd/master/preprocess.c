@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: preprocess.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: preprocess.c 5901 2018-08-28 02:10:22Z riz008 $
  *
  */
 
@@ -2523,6 +2523,12 @@ void build_sparse_map(parameters_t *params  /* Input parameters data
   /* Set up the dump data structure */
   dumpdata = dumpdata_build(params, geom, master, flg, layers, bathy);
 
+  /* Set geographical flag */
+  geom->is_geog = 0;
+  if (!(params->compatible & V5895))
+    geom->is_geog = (strlen(params->projection) > 0) &&
+      (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
+  
   /*-----------------------------------------------------------------*/
   /* Free memory */
   l_free_3d((long ***)flg);

@@ -1,7 +1,7 @@
 #
 # makefile.in - Input makefile for the configure script.
 #
-# $Id: makefile.in 5875 2018-07-06 07:46:39Z riz008 $
+# $Id: makefile.in 5915 2018-09-05 03:30:40Z riz008 $
 #
 
 SHELL=/bin/sh
@@ -66,6 +66,8 @@ GRIDINC=@GRIDINC@
 DALIB=@DALIB@
 DAINC=@DAINC@
 GSLLIB=@GSLLIB@
+MPI_INC=@MPI_INC@
+MPI_LIB=@MPI_LIB@
 
 JIGSAWINC=@JIGSAWINC@
 JIGSAWLIB=@JIGSAWLIB@
@@ -82,7 +84,7 @@ BDRYOBJS=boundary/boundaryio.o boundary/bdryeval.o \
 boundary/bdryfuncs.o boundary/riverflow.o boundary/tide.o boundary/bdrycond.o
 
 CTRLOBJS= control/dp.o control/dp_none.o control/dp_pthreads.o control/main.o \
-control/globals.o control/scheduler.o
+control/globals.o control/scheduler.o control/dp_mpi.o 
 
 DASSIMOBJ= dassim/da.o
 
@@ -164,10 +166,10 @@ tests/test5/1layer \
 tests/test5/20layer  
 
 .c.o:;
-	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(GRIDINC) $(DAINC) $(JIGSAWINC) $*.c -o $*.o
+	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(GRIDINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $*.c -o $*.o
 
 .cpp.o:
-	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $*.cpp -o $*.o
+	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(MPI_INC) $*.cpp -o $*.o
 
 all: $(PROGRAMS)
 
@@ -198,7 +200,7 @@ installdocs: docs
 	chmod -R o+rX /home/software/WWW/models/meco
 
 compas:    $(ALLINCS) $(MODELOBJS)
-	$(CXX) $(CFLAGS) -o $@ $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GRIDLIB) $(GSLLIB) $(DALIB) $(JIGSAWLIB) $(EMSLIB) $(NETCDFLIB) $(MLIB)  
+	$(CXX) $(CFLAGS) -o $@ $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GRIDLIB) $(GSLLIB) $(DALIB) $(JIGSAWLIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(MLIB)  
 
 # Clean-up target
 clean: cleantests

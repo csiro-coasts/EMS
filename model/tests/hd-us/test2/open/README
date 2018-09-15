@@ -1,0 +1,14 @@
+Test 2 of model shoc: 4 by 5 by 21 swimming pool with constant
+wind forcing of 0.01 Nm-2 at 30 deg to the grid. An Ekman spiral 
+is set up with surface current equal to 0.0043 ms-1 and bottom 
+current 0.00019 ms-1.
+
+This test has 19 layers and sloping bottom. The southern boundary
+is forced with a 1m tide.
+
+test2.prm 	 : SHOC
+test2_quad.prm	 : COMPAS quad grid
+test2_quad2w.prm : COMPAS quad grid, 2 windows
+test2_hex.prm	 : COMPAS hex grid
+
+Time series output can be viewed in matlab using out.m.

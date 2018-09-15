@@ -13,11 +13,94 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommisc.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: mommisc.c 5918 2018-09-05 05:07:40Z her127 $
  *
  */
 
 #include "hd.h"
+
+/*-------------------------------------------------------------------*/
+/* Sets a sponge zone where friction increases towards the boundary  */
+/*-------------------------------------------------------------------*/
+void set_sponge_c(geometry_t *window, /* Window geometry             */
+		  double *AH,         /* Viscosity                   */
+		  double dt           /* 3D time step                */
+		  )
+{
+  open_bdrys_t *open;           /* Open boudary data structure       */
+  int c, cc, cs, cb, cp;        /* Centre counters                   */
+  double vb, vp, vm;            /* Diffusivities                     */
+  double sfact = 0.9;           /* Safety factor                     */
+  int  n;                       /* Boundary counter                  */
+
+  for (n = 0; n < window->nobc; ++n) {
+    int cb, cp;
+    open = window->open[n];
+    if (open->sponge_zone_h) {
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = cs = open->spc[cc];
+	cb = open->snc[cc];
+	cp = open->smc[cc];
+
+	while (c != window->zm1[c]) {
+	  vp = AH[cp];
+	  vm = sfact * window->cellarea[cs] / (4.0 * dt);
+	  if (open->sponge_f)
+	    vb = open->sponge_f * vp;
+	  else {
+	    vb = vm;
+	  }
+	  AH[c] = min(vm, open->swc[cc] * (vp - vb) + vb);
+	  c = window->zm1[c];
+	  cb = window->zm1[cb];
+	  if (cb == window->zm1[cb]) cb = window->zp1[cb];
+	  cp = window->zm1[cp];
+	  if (cp == window->zm1[cp]) cp = window->zp1[cp];
+	}
+      }
+    }
+  }
+}
+
+void set_sponge_e(geometry_t *window, /* Window geometry             */
+		  double *AH,         /* Viscosity                   */
+		  double dt           /* 3D time step                */
+ 	  )
+{
+  open_bdrys_t *open;           /* Open boudary data structure       */
+  int e, ee, es, eb, ep;        /* Edge counters                     */
+  double vb, vp, vm;            /* Diffusivities                     */
+  double sfact = 0.9;           /* Safety factor                     */
+  int  n;                       /* Boundary counter                  */
+
+  for (n = 0; n < window->nobc; ++n) {
+    int cb, cp;
+    open = window->open[n];
+    if (open->sponge_zone_h) {
+      for (ee = 1; ee <= open->nspe1; ee++) {
+	e = es = open->spe1[ee];
+	eb = open->sne1[ee];
+	ep = open->sme1[ee];
+	while (e != window->zm1e[e]) {
+	  vp = AH[ep];
+	  vm = 1.0 / (window->h1au1[es] * window->h1au1[es]) +
+	    1.0 / (window->h2au1[es] * window->h2au1[es]);
+	  vm = sfact / (4.0 * vm * dt);
+	  if (open->sponge_f)
+	    vb = open->sponge_f * vp;
+	  else
+	    vb = vm;
+	  AH[e] = min(vm, open->swe1[ee] * (vp - vb) + vb);
+	  e = window->zm1e[e];
+	  eb = window->zm1e[eb];
+	  if (eb == window->zm1e[eb]) eb = window->zp1e[eb];
+	  ep = window->zm1e[ep];
+	  if (ep == window->zm1e[ep]) ep = window->zp1e[ep];
+	}
+      }
+    }
+  }
+}
 
 
 /*-------------------------------------------------------------------*/

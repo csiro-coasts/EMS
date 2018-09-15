@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: windows.c 5901 2018-08-28 02:10:22Z riz008 $
  *
  */
 
@@ -7713,6 +7713,10 @@ void window_init(geometry_t *geom,  /* Sparse global geometry structure */
 
     window[n]->topgrid = geom->topgrid;
     window[n]->totarea = geom->totarea;
+
+    /* Set geog flag */
+    window[n]->is_geog = geom->is_geog;
+    
     for (cc = 1; cc <= window[n]->enon; cc++) {
       c = window[n]->wsa[cc];
       i = geom->s2i[c];

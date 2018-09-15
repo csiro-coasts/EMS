@@ -5,7 +5,20 @@
  *  File: model/lib/ecology/process_library/light_spectral_sed.c
  *  
  *  Description:
- *  Process implementation
+ *  
+ *  Sediment spectrally-resolved optical model. Model calculates:
+ *  
+ *  - scalar irradiance and absorption for MPB (output time - ECOLOGY_DT).
+ *
+ *  MPB assumed to sit as single layer above the sediments and below the water column.
+ *
+ *  WARNING: variables output in precalc are calculated at output time - ECOLOGY_DT, but are stored in
+ *           output files at output time.
+ *
+ *  Options: light_spectral_wc(G|H)
+ *  
+ *  G - Gaussian approx. of chl-a and non chl-a specific absorption.
+ *  H - HPLC-determined of pigment-specific absorption.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_spectral_sed.c 5935 2018-09-12 04:59:19Z bai155 $
  *
  */
 
@@ -162,7 +175,7 @@ void light_spectral_sed_postinit(eprocess* p)
 
   if (ws->pig == 'H'){  // HPLC determined absorption coefficients
 
-    eco_write_setup(e,"\n HPLC determined absorption coefficients in sediments \n");
+    eco_write_setup(e,"\nHPLC determined absorption coefficients in sediments \n");
     
     bio_opt_prop *bio = e->bio_opt;
     
@@ -231,11 +244,9 @@ void light_spectral_sed_precalc(eprocess* p, void* pp)
     
     /* now do it for microphytobenthos */
     
-    double rad = ws->rad_MPB; // get_parameter_value(e, "MBrad");
+    double rad = ws->rad_MPB;
     double vol = 4.0 / 3.0 * M_PI * rad * rad * rad;
-    double m   = ws->m_MPB;
-    // double xan2chl   = ws->xan2chl_MPB;
-    
+    double m   = ws->m_MPB;    
     double sumlight,yCfac;
     
     double MPB_N = y[ws->MPB_N_i];
@@ -284,7 +295,6 @@ void light_spectral_sed_precalc(eprocess* p, void* pp)
     Kd_s[w] = (bio->kw_s[w] + y[ws->MPB_N_i] / (ws->m_MPB*red_A_N * 1000.0 * MW_Nitr) * aA_s_MPB[w]) * dz;   /* vertical attenuation */
     lighttop_s[w] = lighttop * exp(-Kd_s[w]);
     light_s[w] = (lighttop - lighttop_s[w] ) / Kd_s[w];
-    // printf("wave %e, kd_s %e, lighttop %e lightbelow %e, light %e \n",ws->wave[w],Kd_s[w],lighttop,lighttop_s[w],light_s[w]);
     c->cv[ws->KI_MPB_i] += light_s[w] * 8.359335857479461e-09 * ws->wave[w] * aA_s_MPB[w];
   }
 

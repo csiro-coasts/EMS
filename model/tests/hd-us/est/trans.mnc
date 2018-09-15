@@ -1,0 +1,3 @@
+multi-netcdf-version 1.0
+nfiles 1
+file0.filename  est_trans_2000-01.nc

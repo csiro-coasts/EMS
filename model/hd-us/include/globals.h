@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: globals.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: globals.h 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -90,6 +90,9 @@ extern int threaded;
 extern int autof;               /* automated initialization */
 extern int wnnum;
 extern FILE *op;
+
+extern int mpi_rank;
+extern int mpi_size;
 
 /*
  * The following are related to the timing profile

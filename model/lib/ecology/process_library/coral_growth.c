@@ -4,8 +4,12 @@
  *  
  *  File: model/lib/ecology/process_library/coral_growth.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Growth terms for Mathieu Mongin's Heron study. Not for use with spectral model.
+ *
+ *  Reference:
+ *
+ *  Mongin, M. and M. E. Baird (2014) The interacting effects of photosynthesis, calcification and 
+ *   water circulation on carbon chemistry variability on a coral reef flat: a modelling study. Ecol. Mod. 284, 19-34.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_growth.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: coral_growth.c 5948 2018-09-14 00:30:49Z bai155 $
  *
  */
 

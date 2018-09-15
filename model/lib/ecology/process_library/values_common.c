@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: values_common.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: values_common.c 5903 2018-08-28 06:09:16Z bai155 $
  *
  */
 
@@ -214,16 +214,16 @@ void values_common_postcalc(eprocess* p, void* pp)
     double* y = ((cell*) pp)->y;
 
     if (ws->EPO_i > -1){
-      /*y[ws->EPO_i] = ((y[ws->PhyS_N_i] + y[ws->PhyL_N_i] + y[ws->MPB_N_i] + y[ws->Tricho_N_i] + y[ws->ZooS_N_i] + y[ws->ZooL_N_i] + y[ws->DetPL_N_i]) * (106.0*12.01/16.0/14.01) + y[ws->DetBL_N_i] * (550.0*12.01/30.0/14.01) + y[ws->DetR_C_i])/1.0e6;*/
-      y[ws->EPO_i] = ((y[ws->PhyS_N_i] + y[ws->PhyL_N_i] + y[ws->MPB_N_i] + y[ws->ZooS_N_i] + y[ws->ZooL_N_i] + y[ws->DetPL_N_i]) * (106.0*12.01/16.0/14.01) + y[ws->DetBL_N_i] * (550.0*12.01/30.0/14.01) + y[ws->DetR_C_i])/1.0e6;
+      y[ws->EPO_i] = ((y[ws->PhyS_N_i] + y[ws->PhyL_N_i] + y[ws->MPB_N_i] + y[ws->ZooS_N_i] + y[ws->ZooL_N_i] + y[ws->DetPL_N_i]) * red_W_C + y[ws->DetBL_N_i] * atk_W_C + y[ws->DetR_C_i]) / (1.0e-6);  // kg C m-3
 
       if (ws->PhyD_N_i > -1){
-      y[ws->EPO_i] +=  y[ws->PhyD_N_i] * (106.0*12.01/16.0/14.01);
+	y[ws->EPO_i] +=  y[ws->PhyD_N_i] * (106.0*12.01/16.0/14.01)/1.0e6;
       }
       if (ws->Tricho_N_i > -1){
-      y[ws->EPO_i] += y[ws->Tricho_N_i] * (106.0*12.01/16.0/14.01);
-      }}
-
+	y[ws->EPO_i] += y[ws->Tricho_N_i] * (106.0*12.01/16.0/14.01)/1.0e6;
+      }
+    }
+    
     y[ws->DIN_i] = y[ws->NO3_i] + y[ws->NH4_i];
 
     y[ws->EFI_i] = y[ws->FineSed_i];

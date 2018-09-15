@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: monitor.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -591,7 +591,7 @@ void get_tendv(geometry_t *window, /* Window geometry                */
     }
     if (!(wincon->means & TENDENCY)) {
       /* Rotate into east and north cell centered components         */
-      vel_cen(window, windat, wincon, tend, tend1, tend2, NULL, NULL, 0);
+      vel_cen(window, windat, wincon, tend, NULL, tend1, tend2, NULL, NULL, 0);
     } else {
       t = windat->dtf;
       for (cc = 1; cc <= window->b3_t; cc++) {
@@ -1401,8 +1401,8 @@ void alerts_w(geometry_t *window,  /* Window geometry                */
 	  int ym1, cl = (windat->mu1a > wincon->velmax2d) ? ee : 1;
 	  double shear;
 
-	  vel_grad(window, windat, wincon, windat->u1av, wincon->d1, 
-		   wincon->d2, GRAD_2D|GRAD_TAN);
+	  vel_grad(window, windat, wincon, windat->u1av, windat->u2av,
+		   wincon->d1, wincon->d2, GRAD_2D|GRAD_TAN);
 
 	  for (ee = 1; ee <= window->v2_e1; ee++) {
 	    e = window->w2_e1[ee];
@@ -1505,8 +1505,8 @@ void alerts_w(geometry_t *window,  /* Window geometry                */
 	  int cl = (windat->mu1 > wincon->velmax) ? ee : 1;
 	  double shear;
 
-	  vel_grad(window, windat, wincon, windat->u1av, wincon->w5, 
-		   wincon->w6, GRAD_2D|GRAD_TAN);
+	  vel_grad(window, windat, wincon, windat->u1av, windat->u2av,
+		   wincon->w5, wincon->w6, GRAD_2D|GRAD_TAN);
 
 	  for (ee = 1; ee <= window->v3_e1; ee++) {
 	    e = window->w3_e1[ee];
@@ -2574,7 +2574,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
 
   if (windat->tau_bm) {
     memcpy(wincon->w8, windat->tau_be1, window->szeS * sizeof(double));
-    vel_cen(window, windat, wincon, wincon->w8, windat->tau_be1, windat->tau_be2,
+    vel_cen(window, windat, wincon, wincon->w8, NULL, windat->tau_be1, windat->tau_be2,
 	    windat->tau_bm, NULL, 1);
   }
 
@@ -3476,9 +3476,9 @@ void vorticity(geometry_t *window,  /* Window geometry               */
     }
 
     /* Gradient of (bottom stress) / depth normal to edges           */
-    vel_grad(window, windat, wincon, bsc, ew1, ns1, GRAD_2D|GRAD_NOR);
+    vel_grad(window, windat, wincon, bsc, NULL, ew1, ns1, GRAD_2D|GRAD_NOR);
     /* Center the bottom stress gradient                             */
-    vel_cen(window, windat, wincon, ew1, ew2, ns2, NULL, NULL, 1);
+    vel_cen(window, windat, wincon, ew1, NULL, ew2, ns2, NULL, NULL, 1);
     /* 5. BSC                                                        */
     for (cc = 1; cc <= wincon->vcs; cc++) {
       c = window->m2d[wincon->s1[cc]];
@@ -3486,9 +3486,9 @@ void vorticity(geometry_t *window,  /* Window geometry               */
     }
 
     /* Gradient of (wind stress) / depth normal to edges             */
-    vel_grad(window, windat, wincon, wsc, ew1, ns1, GRAD_2D|GRAD_NOR);
+    vel_grad(window, windat, wincon, wsc, NULL, ew1, ns1, GRAD_2D|GRAD_NOR);
     /* Center the wind stress gradient                               */
-    vel_cen(window, windat, wincon, ew1, ew2, ns2, NULL, NULL, 1);
+    vel_cen(window, windat, wincon, ew1, NULL, ew2, ns2, NULL, NULL, 1);
     /* 6. WSC                                                        */
     for (cc = 1; cc <= wincon->vcs; cc++) {
       c = window->m2d[wincon->s1[cc]];
@@ -3529,7 +3529,7 @@ void reset_means(geometry_t *window,  /* Window geometry             */
   if (mode & WIND && wincon->means & WIND) {
     int cc, c;
     double ns = windat->dtf;
-    vel_cen(window, windat, wincon, windat->wind1, w1, w2, NULL, NULL, 1);
+    vel_cen(window, windat, wincon, windat->wind1, NULL, w1, w2, NULL, NULL, 1);
     if (windat->w1m) {
       for (cc = 1; cc <= window->b2_t; cc++) {
         c = window->w2_t[cc];
@@ -3601,6 +3601,9 @@ void reset_means(geometry_t *window,  /* Window geometry             */
       else if (wincon->means_dt == MONTHLY)
 	wincon->means_next = windat->t + next_month(windat->t, 
 						    wincon->timeunit, &c);
+      else if (wincon->means_dt == DAILY)
+	wincon->means_next = windat->t + next_day(windat->t, 
+						  wincon->timeunit, &c);
       else
 	wincon->means_next = windat->t + wincon->means_dt;
     }
@@ -3664,7 +3667,7 @@ void reset_means(geometry_t *window,  /* Window geometry             */
 void reset_means_m(master_t *master)
 {
   geometry_t *geom = master->geom;
-  int mon;
+  int mon, day;
   double itc;
   int n;
 
@@ -3696,6 +3699,10 @@ void reset_means_m(master_t *master)
       master->means_next = master->t + next_month(master->t, 
 						  master->timeunit, &mon);
       master->meancs[mon] = itc;
+    } else if (master->means_dt == DAILY) {
+      master->means_next = master->t + next_day(master->t, 
+						  master->timeunit, &day);
+      master->meancs[day] = itc;
     }
     else
       master->means_next = master->t + master->means_dt;
@@ -3727,6 +3734,10 @@ void reset_means3d_m(master_t *master, int trm)
     if (master->means_dt == MONTHLY) {
       t = prev_month(master->t, master->timeunit, &mon);
       sf = MONTHLY;
+    }
+    if (master->means_dt == DAILY) {
+      t = prev_day(master->t, master->timeunit, &mon);
+      sf = DAILY;
     }
     if (read_mean_3d(master, t, sf, vname, master->tr_wc[trm], 
 		     dumpdata->tr_wc[trd])) {
@@ -3767,6 +3778,8 @@ int read_mean_3d(master_t *master, double t, int sf, char *var,
   strcpy(incname, "SEASONAL");
   if (sf == MONTHLY)
     strcpy(incname, "MONTHLY");
+  if (sf == DAILY)
+    strcpy(incname, "DAILY");
 
   /*-----------------------------------------------------------------*/
   /* Loop through the dump files                                     */
@@ -3903,6 +3916,10 @@ void reset_means2d_m(master_t *master, int trm)
       t = prev_month(master->t, master->timeunit, &mon);
       sf = MONTHLY;
     }
+    if (master->means_dt == DAILY) {
+      t = prev_day(master->t, master->timeunit, &mon);
+      sf = DAILY;
+    }
     if (read_mean_2d(master, t, sf, vname, master->tr_wcS[trm], 
 		     dumpdata->tr_wcS[trd])) {
       if (master->meanc[0]) {
@@ -3941,6 +3958,8 @@ int read_mean_2d(master_t *master, double t, int sf, char *var,
   strcpy(incname, "SEASONAL");
   if (sf == MONTHLY)
     strcpy(incname, "MONTHLY");
+  if (sf == DAILY)
+    strcpy(incname, "DAILY");
 
   /*-----------------------------------------------------------------*/
   /* Loop through the dump files                                     */
@@ -4249,15 +4268,14 @@ void mass_diag(geometry_t *window,     /* Window geometry            */
     vel = windat->u1;
     hat = window->h1au1;
     cv = open->obc_e1;
-    if (!open->ocodec) sc = -1.0;
-
 
     windat->vf[n] = 0.0;
     for (ee = 1; ee <= open->no3_e1; ee++) {
       e = open->obc_e1[ee];
       es = window->m2de[e];
       c = open->obc_e2[ee];
-      v = vel[e];	
+      sc = -1.0 * (double)open->dir[ee];
+      v = vel[e];
       windat->vf[n] += (sc * v * hat[es] * wincon->dz[c]);
     }
   }

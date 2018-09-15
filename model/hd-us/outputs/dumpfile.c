@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 5875 2018-07-06 07:46:39Z riz008 $
+ *  $Id: dumpfile.c 5898 2018-08-23 02:07:21Z her127 $
  *
  */
 
@@ -231,6 +231,8 @@ double dump_event(sched_event_t *event, double t)
       dumpdata->dumplist[i].tinc = next_season(t, master->timeunit, &mon);
     if (dumpdata->dumplist[i].incf == MONTHLY)
       dumpdata->dumplist[i].tinc = next_month(t, master->timeunit, &mon);
+    if (dumpdata->dumplist[i].incf == DAILY)
+      dumpdata->dumplist[i].tinc = next_day(t, master->timeunit, &mon);
 
     /* Skip dump if the DA flag doesn't match for this dumpfile */
     if (master->da && !(dumpdata->dumplist[i].da_cycle & master->da)) continue;
@@ -947,6 +949,9 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
       } else if (contains_token(buf, "MONTHLY")) {
 	list->incf = MONTHLY;
 	list->tinc = 30.0;
+      } else if (contains_token(buf, "DAILY")) {
+	list->incf = DAILY;
+	list->tinc = 1.0;
       } else
 	hd_quit("dumpfile_init: Can't read file %d time increment\n", f);
     }
@@ -6568,6 +6573,60 @@ double prev_month(double time, char *unit, int *smon)
   }
   *smon = mon;
   sprintf(buf, "%d-%d-01 00:00:00", yr, mon);
+  prev = tm_datestr_to_julsecs(buf, unit);
+  return(prev);
+}
+
+
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Finds the time corresponding to the next day                     */
+/*------------------------------------------------------------------*/
+double next_day(double time, char *unit, int *sday)
+{
+  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char *date;
+  double next;
+  int yr, mon, day;
+
+  date = tm_time_to_datestr(time, unit);
+  sscanf(date, "%d-%d-%d %s\n",&yr, &mon, &day, buf);
+  *sday = yrday(yr, mon, day);
+  if (mon == 12 && day == 31) {
+    day = 1;
+    mon = 1;
+    yr++;
+  } else
+    day++;
+  sprintf(buf, "%d-%d-%d 00:00:00", yr, mon, day);
+  next = tm_datestr_to_julsecs(buf, unit);
+  return(next-time);
+}
+
+/*------------------------------------------------------------------*/
+/* Finds the time corresponding to the end of the equivalent day    */
+/* in the previous year.                                            */
+/*------------------------------------------------------------------*/
+double prev_day(double time, char *unit, int *sday)
+{
+  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char *date;
+  double prev;
+  int yr, mon, day;
+
+  date = tm_time_to_datestr(time, unit);
+  sscanf(date, "%d-%d-%d %s\n",&yr, &mon, &day, buf);
+  if (mon == 12 && day == 31) {
+    mon = 1;
+    day = 1;
+  } else {
+    day++;
+    yr--;
+  }
+  *sday = yrday(yr, mon, day);
+  sprintf(buf, "%d-%d-%d 00:00:00", yr, mon, day);
   prev = tm_datestr_to_julsecs(buf, unit);
   return(prev);
 }

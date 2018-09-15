@@ -1,0 +1,23 @@
+Process to build an unstructured model.
+
+1. Make a full parameter file (in.prm) using the -ag option. This generates the
+mesh using coastmesh and a coastline file. The weighting function is a function
+of bathymetry.
+
+compas -ag auto.prm
+
+The mesh may be plotted using the matlab script plot_cetas.m.
+The files created using -ag are described in auto_meshfiles.txt.
+in.nc may be mouted on THREDDS and visualized with GODIVA3.
+
+2. Edit the in.prm file to include the open boundaries and forcing, then remake
+the input file. Such an edited file is provided as cetas.prm, however, note that
+this is an example only and the forcing files required to run are not supplied.
+
+rm in.nc
+compas -g in.prm in.nc
+
+3. Run the model.
+
+compas -p in.prm
+

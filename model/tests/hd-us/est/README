@@ -1,0 +1,12 @@
+Estuarine test case with 1km grid spacing, 22 layers and flat bottom.
+Forced with a constant westerly wind, 1m tide on the eastern boundary and freshwater
+inflow of 100 m3/s at the head on the estuary.
+
+est.prm 	: SHOC
+est_quad.prm	: COMPAS quad grid
+est_quad5w.prm  : COMPAS quad grid, 5 windows
+est_hex.prm	: COMPAS hex grid
+est_hex5w.prm	: COMPAS hex grid, 5 windows
+
+The hex grid can be viewed with plot_est.m.
+View results with out.m.

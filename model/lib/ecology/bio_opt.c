@@ -5,7 +5,10 @@
  *  File: lib/ecology/bio_opt.c
  *  
  *  Description:
- *  Routines related to the bio_optical properties of the model
+ *  Contains data related to the spectrally-resolved optical model
+ *
+ *  Thanks to: Nagur Cherekuru, Kadija Oubelkheir, Lesley Clementson, Dariusz Stramski and 
+ *             Katherina Petrou for data that appears below.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bio_opt.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: bio_opt.c 5950 2018-09-14 05:34:53Z bai155 $
  *
  */
 
@@ -1254,12 +1257,16 @@ double SGHabsorbance[1467] = {0.73083931, 0.719744441, 0.718474962, 0.715785638,
       if (isnan(xan2chl_DF))
 	xan2chl_DF = 0.0;
     }
-    double rad_TR = get_parameter_value(e, "Tricho_rad");
-    double m_TR = PhyCellMass(rad_TR);
-    double Chl_TR = PhyCellChl(rad_TR);
-    double xan2chl_TR = try_parameter_value(e, "Trichoxan2chl");
-    if (isnan(xan2chl_TR))
-      xan2chl_TR = 0.0;
+    double rad_TR, m_TR, Chl_TR, xan2chl_TR;
+    int Tricho_N_i = e->try_index(e->tracers, "Tricho_N", e);
+    if (Tricho_N_i > -1) {
+      rad_TR = get_parameter_value(e, "Tricho_rad");
+      m_TR = PhyCellMass(rad_TR);
+      Chl_TR = PhyCellChl(rad_TR);
+      xan2chl_TR = try_parameter_value(e, "Trichoxan2chl");
+      if (isnan(xan2chl_TR))
+	xan2chl_TR = 0.0;
+    }
     
     eco_write_setup(e,"\nType \t cell radius \t P content \t Chl content \t xan2chl \n");
     eco_write_setup(e,"%s \t %e \t %e \t %e \t %e \n","PL",rad_l,m_l,Chl_l,xan2chl_l);
@@ -1267,7 +1274,8 @@ double SGHabsorbance[1467] = {0.73083931, 0.719744441, 0.718474962, 0.715785638,
     eco_write_setup(e,"%s \t %e \t %e \t %e \t %e \n","MPB",rad_MPB,m_MPB,Chl_MPB,xan2chl_MPB);
     if (PhyD_N_i > -1)
       eco_write_setup(e,"%s \t %e \t %e \t %e \t %e \n","DF",rad_DF,m_DF,Chl_DF,xan2chl_DF);
-    eco_write_setup(e,"%s \t %e \t %e \t %e \t %e \n","TR",rad_TR,m_TR,Chl_TR,xan2chl_TR);
+    if (Tricho_N_i > -1)
+      eco_write_setup(e,"%s \t %e \t %e \t %e \t %e \n","TR",rad_TR,m_TR,Chl_TR,xan2chl_TR);
     
     /* Get the other optical parameters: */
     

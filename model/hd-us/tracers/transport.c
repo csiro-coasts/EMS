@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: transport.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -67,7 +67,6 @@ void vel_center_w(geometry_t *window, window_t *windat, win_priv_t *wincon, doub
 void delaunay_reinit(geometry_t *window, delaunay **d, int vid, double *v);
 void grid_spec_init_tran(geometry_t *window, window_t *windat, win_priv_t *wincon,
 			 int vid);
-double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, double z, int c, int co, int vid);
 void set_trans_sed(geometry_t *window, int vid, double *v);
 void weights_v(geometry_t *window, int co, double rin,double *dzz, double *wgt, int osl);
 void print_tri_k(delaunay *d, int k);
@@ -90,8 +89,6 @@ int get_pos(geometry_t *window, int c, int ci, double u, double v, double w,
             double *cx, double *cy, double *cz, double dt);
 int find_cell(geometry_t *window, int c, double x, double y, double *xi, double *yi);
 double get_dist(double x1, double y1, double x2, double y2);
-int intersect(geometry_t *window, int c, int j, double xn, double yn,
-	      double xs, double ys, double *xi, double *yi);
 void ffsl_doc(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 	      double *ntr, double dtu, int mode);
 
@@ -204,8 +201,8 @@ void transport_step(master_t *master, geometry_t **window,
 
     /*---------------------------------------------------------------*/
     /* Set the cell centered velocities                              */
-    vel_cen(window[n], windat[n], wincon[n], windat[n]->u1, windat[n]->u, windat[n]->v,
-	    NULL, NULL, 0);
+    vel_cen(window[n], windat[n], wincon[n], windat[n]->u1, windat[n]->u2,
+	    windat[n]->u, windat[n]->v, NULL, NULL, 0);
 
     /*---------------------------------------------------------------*/
     /* Set the lateral boundary conditions for tracers.  */
@@ -1078,6 +1075,7 @@ int get_pos(geometry_t *window, /* Window geometry                   */
     */
     /* Unstructured meshes: walk through the Voronoi mesh            */
     cn = find_cell(window, c, slon, slat, &nx, &ny);
+    if (!cn) cn = c;
     cns = window->m2d[cn];
   }
 
@@ -1093,9 +1091,9 @@ int get_pos(geometry_t *window, /* Window geometry                   */
   if (window->gcm[k][cns] & L_GHOST) {
     if (window->us_type & US_IJ) {
       int es, vs, found = 0;
-      for (j = 1; j <= window->npe[cns]; j++) {
-	if (intersect(window, cns, j, xin, yin, slon, slat, &nx, &ny));
-	break;
+      for (j = 1; j <= window->npe[cis]; j++) {
+	if (intersect(window, cis, j, xin, yin, slon, slat, &nx, &ny))
+	  break;
       }
     }
 
@@ -1116,6 +1114,7 @@ int get_pos(geometry_t *window, /* Window geometry                   */
       cns = geom->tri2c[cns];
       */
       cns = find_cell(window, c, slon, slat, &nx, &ny);
+      if (!cns) cns = c;
       cns = window->m2d[cns];
     }
   }
@@ -1215,12 +1214,14 @@ int find_cell(geometry_t *window, /* Window geometry                 */
   /* need to convert distance to m.                                  */
   dmx = dmn = d = get_dist(xs, ys, xn, yn);
   while (d < dmn) {
+    int found = 0;
     for (j = 1; j <= window->npe[cs]; j++) {
-      if (intersect(window, cn, j, xn, yn, xs, ys, xi, yi)) {
+      if ((found = intersect(window, cn, j, xn, yn, xs, ys, xi, yi))) {
 	cn = window->c2c[j][cn];
 	break;
       }
     }
+    if (!found) return(0);
     cs = window->m2d[cn];
     xn = window->cellx[cs];
     yn = window->celly[cs];
@@ -1261,16 +1262,16 @@ double get_dist(double x1, double y1, double x2, double y2) {
 /* edge j. If so, the location of the intersection are returned in   */
 /* (xi, yi).                                                         */
 /*-------------------------------------------------------------------*/
- int intersect(geometry_t *window,    /* Window geometry             */
-	       int c,                 /* Cell containing destination */
-	       int j,                 /* Edge to check               */
-	       double xn,             /* x location of destination   */
-	       double yn,             /* y location of destination   */
-	       double xs,             /* x location of source        */
-	       double ys,             /* y location of source        */
-	       double *xi,            /* x location of intersection  */
-	       double *yi             /* y location of intersection  */
-	       )
+int intersect(geometry_t *window,    /* Window geometry              */
+	      int c,                 /* Cell containing destination  */
+	      int j,                 /* Edge to check                */
+	      double xn,             /* x location of destination    */
+	      double yn,             /* y location of destination    */
+	      double xs,             /* x location of source         */
+	      double ys,             /* y location of source         */
+	      double *xi,            /* x location of intersection   */
+	      double *yi             /* y location of intersection   */
+	      )
 {
   int cs = window->m2d[c];
   int es = window->c2e[j][cs];   /* Edge of surface source cell      */
@@ -1287,6 +1288,7 @@ double get_dist(double x1, double y1, double x2, double y2) {
       double x1, x2, y1, y2;
       double dx = fabs(v1x - v2x);
       double dy = fabs(v1y - v2y);
+
       /* Get the location where edge and streamline intersect       */
       if (dx) {
 	if (xs == xn) {
@@ -1299,11 +1301,24 @@ double get_dist(double x1, double y1, double x2, double y2) {
 	*xi = (s2 * xn - s1 * v1x + v1y - yn) / (s2 - s1);
 	*yi = s1 * (*xi - v1x) + v1y;
       } else {
+	s2 = (ys - yn) / (xs - xn);
 	*xi = v1x;
 	*yi = s2 * (v1x - xn) + yn;
       }
       /* If the intersection lies between the bounds of the vertices */
       /* then the streamline crosses this edge.                      */
+      if (*xi >= min(v1x, v2x) &&
+	  *xi <= max(v1x, v2x) &&
+	  *yi >= min(v1y, v2y) &&
+	  *yi <= max(v1y, v2y)) {
+	if (*xi >= min(xn, xs) &&
+	    *xi <= max(xn, xs) &&
+	    *yi >= min(yn, ys) &&
+	    *yi <= max(yn, ys)) {
+	  return(1);
+	}
+      }
+      /*
       x1 = fabs(*xi - v1x);
       x2 = fabs(*xi - v2x);
       y1 = fabs(*yi - v1y);
@@ -1311,6 +1326,7 @@ double get_dist(double x1, double y1, double x2, double y2) {
       if (x1 <= dx && x2 <= dx && y1 <= dy && y2 <= dy) {
 	return(1);
       }
+      */
     }
   }
   return(found);
@@ -2023,6 +2039,9 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   int *mask;
   int newcode = 1;
 
+  if (window->nwindows > 1)
+    hd_quit("Lagrangian tracking does not operate with more than one window: exiting.\n");
+
   /* Allocate                                                        */
   n = window->szcS + window->szvS;
   p = (point **)alloc_2d(n, nz+1, sizeof(point));
@@ -2424,6 +2443,7 @@ void delaunay_reinit(geometry_t *window, delaunay **d, int vid, double *v)
     gs = windat->gst;
     set_tr_nograd(window, v);
   }
+
   /*
   if (vid == 3)
     reset_npt(window, d, windat->nptt);
@@ -2479,7 +2499,6 @@ void delaunay_reinit(geometry_t *window, delaunay **d, int vid, double *v)
       c2 = window->m2d[c];
       id = window->c2p[k][c2];
       d[k]->points[id].z = v[c];
-
     }
     /* OBC ghosts                                                    */
     for (n = 0; n < window->nobc; n++) {
@@ -2651,10 +2670,10 @@ void set_trans_sed(geometry_t *window, int vid, double *v)
   /* Set the sediment cells beneath wet cells                        */
   for (cc = 1; cc <= window->b2_t; cc++) {
     c = window->bot_t[cc];
-    c2 = window->zm1[c];
+    c2 = window->m2d[c];
     var[c2] = s * v[c];
-    /*if(windat->temp==v)printf("%d %d %f\n",c,c2,v[c]);*/
   }
+
   /* Set the ghost cells adjacent to wet cells                       */
   for (cc = 1; cc <= window->nbptS; cc++) {
     c = window->bpt[cc];
@@ -2668,7 +2687,7 @@ void set_trans_sed(geometry_t *window, int vid, double *v)
     for (ee = 1; ee <= open->no3_e1; ee++) {
       c = open->ogc_t[ee];
       c2 = open->obc_e2[ee];
-      var[c] = var[c2];
+      v[c] = v[c2];
     }
   }
   */
@@ -4625,7 +4644,7 @@ double obc_tr_mass(geometry_t *window, /* Window geometry            */
 		   )
 {
   int c, cc, nn;
-  double t, sc;
+  double t;
   int ci, cp, cm;
   int *ct, *cp1, *cm1, cv;
   double *tr = windat->tr_wc[n];
@@ -4635,7 +4654,7 @@ double obc_tr_mass(geometry_t *window, /* Window geometry            */
   for (nn = 0; nn < window->nobc; nn++) {
     open_bdrys_t *open = window->open[nn];
     if(!wincon->trinfo_3d[n].advect) continue; 
-    sc = 1.0;
+
     if (vecf) {
       ct = open->oi1_t;
       cp1 = open->oi2_t;
@@ -4645,7 +4664,6 @@ double obc_tr_mass(geometry_t *window, /* Window geometry            */
       cp1 = open->oi1_t;
       cm1 = open->obc_t;
     }
-    if (!open->ocodec) sc = -1.0;
     if (ord == 1) {
       vel = windat->u1;
       cv = (vecf) ? open->ocodex : open->ocodey;
@@ -4656,7 +4674,7 @@ double obc_tr_mass(geometry_t *window, /* Window geometry            */
       cm = cm1[cc];
       if (ord == 1) {          /* 1st order                          */
 	ci = window->c2e[cv][c];
-	t = (sc * vel[ci] > 0.0) ? tr[cm] : tr[c];
+	t = (window->eSc[cv][window->m2d[c]] * vel[ci] > 0.0) ? tr[cm] : tr[c];
       } else if (ord == 2) {   /* 2nd order                          */
 	t = 0.5 *(tr[c] + tr[cm]);
       } else if (ord == 4) {   /* 4th order                          */
@@ -4684,26 +4702,24 @@ double obc_flux(geometry_t *window, /* Window geometry               */
 {
   int c, cc, e, es, nn, j;
   double *vel;
-  double *hat, *dz, sc;
+  double *hat, *dz;
   int *cv;
   double dobc = 0.0;
 
   for (nn = 0; nn < window->nobc; nn++) {
     open_bdrys_t *open = window->open[nn];
     open->bflux_3d = 0.0;
-    sc = 1.0;
 
     vel = windat->u1;
     hat = window->h1au1;
     dz = windat->dzu1;
     cv = (vecf) ? open->oi1_t : open->obc_t;
     j = (vecf) ? open->ocodex : open->ocodey;
-    if (!open->ocodec) sc = -1.0;
     for (cc = 1; cc <= open->no3_t; cc++) {
       c = cv[cc];
       e = window->c2e[j][c];
       es = window->m2de[e];
-      open->dum[cc] = (sc * vel[e] * hat[es] * dz[e] * windat->dttr);
+      open->dum[cc] = (window->eSc[j][window->m2d[c]] * vel[e] * hat[es] * dz[e] * windat->dttr);
       open->bflux_3d += open->dum[cc];
     }
     dobc += open->bflux_3d;
@@ -4832,18 +4848,17 @@ void global_tfill(geometry_t *window,  /* Window geometry            */
     open_bdrys_t *open = window->open[nn];
     double *vel, v;
     double *hat;
-    int sc = 1.0, *cv;
+    int sc, *cv;
 
     vel = windat->u1;
     hat = window->h2au1;
-
-    if (!open->ocodec) sc = -1.0;
 
     for (ee = 1; ee <= open->no3_e1; ee++) {
       e = open->obc_e1[ee];
       c = open->obc_e2[ee];
       v = vel[e];
       es = window->m2de[e];
+      sc = -(double)open->dir[ee];
       vol = sc * v * hat[es] * wincon->dz[e] * windat->dttr;
       for (nn = 0; nn < wincon->ntbdy; nn++) {
 	tn = wincon->tbdy[nn];

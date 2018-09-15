@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: ecology.c 5902 2018-08-28 02:10:34Z riz008 $
  *
  */
 
@@ -781,7 +781,8 @@ double einterface_calc_zenith(void *model, double t, int b)
   lat = asin(window->wincon->coriolis[c2] / (2.0 * ang));
 
   /* Call the library function to calculate the solar elevation */
-  elev = calc_solar_elevation(ounit, tunit, t, lat, NULL);
+  // xxx this needs fixing
+  elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
 
   /* zenith */
   return ( (PI/2.0) - elev);

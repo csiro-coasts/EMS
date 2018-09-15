@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: k-e-implicit.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: k-e-implicit.c 5898 2018-08-23 02:07:21Z her127 $
  *
  */
 
@@ -187,7 +187,7 @@ void closure_k_e_implicit(geometry_t *window,  /* Window geometry    */
 
   /*-----------------------------------------------------------------*/
   /* Get the east and north cell centered wind stress                */
-  vel_cen(window, windat, wincon, windat->wind1, wu, wv, NULL, NULL, 1);
+  vel_cen(window, windat, wincon, windat->wind1, NULL, wu, wv, NULL, NULL, 1);
 
   /*-----------------------------------------------------------------*/
   /* Calculate gradients over the whole grid */

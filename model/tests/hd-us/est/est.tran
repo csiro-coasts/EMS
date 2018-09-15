@@ -1,0 +1,113 @@
+# SHOC transport file
+CODEHEADER           SHOC default version
+PARAMETERHEADER      Chile Lagos transport
+DESCRIPTION          SIMA Austral Lagos model
+NAME                 Lagos
+TIMEUNIT             seconds since 2000-01-01 00:00:00 +08
+OUTPUT_TIMEUNIT      days since 2000-01-01 00:00:00 +08
+LENUNIT              metre
+START_TIME           0 days
+STOP_TIME            30 days
+
+INPUT_FILE           est_quad.nc
+#INPUT_FILE           est.nc
+TRANS_DATA           est_trans_2000-01.nc(u1=umean)(w=wmean)(Kz=Kzmean)
+#TRANS_DATA           esti_2000-01.nc
+#TRANS_DATA           ests_trans_2000-01.nc(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)
+
+TRANS_MODE           SP_FFSL
+FILL_METHOD          MONOTONIC
+TRA_SCHEME           FFSL
+STABILITY            SUB-STEP-NOSURF
+CONSERVATION         ETA W
+
+#TRA_SCHEME           LAGRANGE
+#ORDER_SL             BAYCENTRIC
+#ORDER_SL             LINEAR
+#ORDER_SL             BILINEAR
+ORDER_SL             QUADRATIC
+#ORDER_SL             CUBIC
+#ORDER_SL             NN_NON_SIBSON
+ULTIMATE             YES
+
+DT                   6 hour
+HMIN                 0.07
+Z0                   0.001
+MERGE_THIN           YES
+COMPATIBLE           V4201
+NUMBERS              DUMMIES
+
+# Horizontal mixing
+#U1VH                 4690.0
+#U1KH                 -120.0
+#SMAGORINSKY          0.1
+
+#TRANS_OMP_NUM_THREADS 8
+
+OutputFiles          1
+
+file0.name           out1_tran.nc
+file0.filetype       standard
+file0.tinc           1 hour
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Tracers
+NTRACERS             3
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0
+TRACER0.valid_range  0.00e+00 4.00e+01
+TRACER0.advect       0
+TRACER0.diffuse      0
+TRACER0.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.fill_value   25.0  
+TRACER1.valid_range  0.00e+00 4.00e+01
+TRACER1.advect       0
+TRACER1.diffuse      0
+TRACER1.diagn        0
+
+TRACER2.name         passive
+TRACER2.long_name    Passive tracer
+TRACER2.units        
+TRACER2.fill_value   35.0  
+TRACER2.valid_range  0.00e+00 1e3
+TRACER2.advect       1
+TRACER2.diffuse      1
+TRACER2.diagn        0
+
+#npointss 1   
+
+pss0.name       source1
+pss0.location   31500.0 13500.0 0
+pss0.data       source.ts
+
+# Open boundaries
+NBOUNDARIES 2
+
+BOUNDARY0.NAME          Offshore
+BOUNDARY0.TYPE          u1
+BOUNDARY0.BCOND_NOR     NOTHIN
+BOUNDARY0.BCOND_TAN     NOTHIN
+BOUNDARY0.BCOND_ELE     NOTHIN
+BOUNDARY0.BCOND_TRA_ALL NOTHIN
+BOUNDARY0.BCOND_passive NOGRAD
+BOUNDARY0.RANGE         (49,1)-(49,25)
+
+
+BOUNDARY1.NAME          River
+BOUNDARY1.TYPE          u2
+BOUNDARY1.BCOND_NOR     NOTHIN
+BOUNDARY1.BCOND_TAN     NOTHIN
+BOUNDARY1.BCOND_ELE     NOTHIN
+BOUNDARY1.BCOND_TRA_ALL NOTHIN
+BOUNDARY1.BCOND_passive CUSTOM
+BOUNDARY1.CUSTOM.passive 0.0
+BOUNDARY1.POINTS        1
+1 13

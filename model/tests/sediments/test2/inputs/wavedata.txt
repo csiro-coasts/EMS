@@ -1,0 +1,25 @@
+##
+## COLUMNS 3
+##
+## COLUMN1.name Time
+## COLUMN1.long_name Time
+## COLUMN1.units seconds since 2018-01-05 12:00:00 +10
+## COLUMN1.missing_value -999
+## COLUMN1.fill_value 0.0
+##
+## COLUMN2.name period
+## COLUMN2.long_name period
+## COLUMN2.units m s-1
+## COLUMN2.missing_value -999
+## COLUMN2.fill_value 1.0
+##
+## COLUMN3.name amplitude
+## COLUMN3.long_name amplitude
+## COLUMN3.units m
+## COLUMN3.missing_value -999
+## COLUMN3.fill_value 1.0
+
+
+0  8 0
+1.e+13 8 0
+

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: pt.c 5916 2018-09-05 03:51:46Z riz008 $
  *
  */
 
@@ -24,11 +24,17 @@
 #include <netcdf.h>
 #include "hd.h"
 
+#define RADIUS 6370997.0
+#define ECC 0.0
+
 #define MAX_COL    127
 #define HIST_SCALE 5
 #define CONSTANT 2 /*settling velocity tpes*/
 #define PSTOKES  4
 #define DIURNAL  8
+
+#define DEG2RAD(d) ((d)*M_PI/180.0)
+#define RAD2DEG(r) ((r)*180.0/M_PI)
 
 /* Prototypes */
 void particles_to_conc(master_t *master, long np, particle_t *p);
@@ -42,11 +48,9 @@ void pt_set_age(master_t *master, particle_t *p, double dt);
 void pt_set_size(master_t *master, particle_t *p, double dt, int n);
 void pt_set_svel(master_t *master, particle_t *p, double dt, int n);
 void pt_new(master_t *master, long np, particle_t *p);
-double time_to_face(master_t *master, double ul, double ur, double f,
-                    double *u, double *du);
-double pt_step_dist(master_t *master, double u, double du, double dt);
 int hd_pt_create(master_t *master, char *name);
-
+int get_pos_m(master_t *master, particle_t *p, int c, int ci, double u, double v, double w,
+	      double *cx, double *cy, double *cz, double dt);
 
 /*-------------------------------------------------------------------*/
 /* Event called by the time scheduler. This routine writes out the   */
@@ -57,7 +61,7 @@ double ptrack_event(sched_event_t *event, double t)
 {
   double tout = schedule->stop_time;
   master_t *master = (master_t *)schedGetPublicData(event);
-
+    int n;
   /* If no particle output file is open, then assume nothing needs */
   /* to be done.  */
   if (master->ptfid < 0)
@@ -79,6 +83,7 @@ double ptrack_event(sched_event_t *event, double t)
 
     pt_read(master->ptinname, master->ptinrec, &master->ptn,
             &master->ptp, NULL, NULL, NULL);
+
     if (master->pt_nsource <= 0) {
       ptgrid_xytoij(master, master->ptn, master->ptp);
       pt_fit_to_grid(master, master->ptn, master->ptp);
@@ -546,6 +551,15 @@ void pt_params_init(master_t *master, FILE * fp)
 
   if (master->pt_nsource > 0) {
     pt_new(master, master->ptn, master->ptp);
+    for (i = 0; i < master->ptn; i++) {
+      /*
+      master->ptp[i].e1 = master->pt_x1[0];
+      master->ptp[i].e2 = master->pt_y1[0];
+      */
+      master->ptp[i].e1 = 0.0;
+      master->ptp[i].e2 = 0.0;
+      master->ptp[i].e3 = 0.0;
+    }
     if (restart) {
       ptgrid_xytoij(master, master->ptn, master->ptp);
       pt_fit_to_grid(master, master->ptn, master->ptp);
@@ -590,17 +604,44 @@ void pt_params_init(master_t *master, FILE * fp)
 
 
 /*-------------------------------------------------------------------*/
+/* Sets up global arrays required for velocity interpolation from    */
+/* the windows.                                                      */
+/*-------------------------------------------------------------------*/
+void pt_setup(master_t *master,
+	      geometry_t **window,
+	      window_t **windat,
+	      win_priv_t **wincon
+	      )
+{
+  geometry_t *geom = master->geom;
+  int wn, cc, c, k;
+
+  if (master->do_pt) {
+    /* Get the global ghost cell mask from the windows               */
+    geom->gcm = i_alloc_2d(geom->szcS, geom->nz+1);
+    for (wn = 1; wn <= geom->nwindows; wn++) {
+      for (cc = 1; cc < window[wn]->szcS; cc++) {
+	c = window[wn]->wsa[cc];
+	for (k = 0; k < window[wn]->nz; k++) {
+	  geom->gcm[k][c] = window[wn]->gcm[k][cc];
+	}
+      }
+    }
+  }
+}
+
+/* END pt_setup()                                                    */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Convert horizontal particle world coords to grid coords           */
 /*-------------------------------------------------------------------*/
 void ptgrid_xytoij(master_t *master, long np, particle_t *p)
 {
-  int n;
+  int n, i, j;
   for (n = 0; n < np; n++) {
-    double fi;
-    grid_xytofij(master->xyij_tree, p[n].e1, p[n].e2, &fi, &p[n].e2);
-    p[n].e1 =
-      geom->map[geom->nz - 1][(int)floor(p[n].e2)][(int)floor(fi)] +
-      fmod(fi, 1);
+    p[n].c = hd_grid_xytoij(master, p[n].e1, p[n].e2, &i, &j);
   }
 }
 
@@ -614,10 +655,7 @@ void ptgrid_xytoij(master_t *master, long np, particle_t *p)
 void ptgrid_ijtoxy(master_t *master, long np, particle_t *p)
 {
   int n;
-  for (n = 0; n < np; n++) {
-    double fi = geom->s2i[(int)floor(p[n].e1)] + fmod(p[n].e1, 1);
-    grid_fgrid_ijtoxy(master->xyij_tree, fi, p[n].e2, &p[n].e1, &p[n].e2);
-  }
+  return;
 }
 
 /* END ptgrid_ijtoxy()                                               */
@@ -660,6 +698,7 @@ void pt_new(master_t *master, long np, particle_t *p)
     /* Process the new release particles */
     while (count < ptint) {
       /* Look for inactive or lost particles */
+
       if (!(p[n].flag & PT_ACTIVE) || (p[n].flag & PT_LOST)) {
         double r1 = ran3(&raninit);
         double r2 = ran3(&raninit);
@@ -710,6 +749,7 @@ void pt_new(master_t *master, long np, particle_t *p)
       }
     }
   }
+
 }
 
 /* END pt_new()                                                      */
@@ -772,7 +812,7 @@ void pt_split(master_t *master, long np, particle_t *p,
     }
     n++;
     if (n >= np) {
-      hd_warn("pt_new: All particles already in use\n");
+      hd_warn("pt_split: All particles already in use\n");
       return;
     }
   }
@@ -799,7 +839,7 @@ void particles_to_conc(master_t *master, long np, particle_t *p)
   /* Count the number of particles per cell.  */
   for (n = 0; n < np; n++) {
     unsigned long f = p[n].flag;
-    c = ztoc_m(master, floor(p[n].e1), p[n].e3);
+    c = p[n].c;
     if ((f & PT_ACTIVE) && (!(f & PT_LOST))) {
       master->ptconc[c] += mass;
     }
@@ -825,7 +865,7 @@ void pt_fit_to_grid(master_t *master, long np, particle_t *p)
   int n;
 
   for (n = 0; n < np; n++) {
-    int c = floor(p[n].e1);
+    int c = p[n].c;
     int cs = geom->m2d[c];
     if (!c || p[n].e3 < geom->botz[cs] || p[n].e3 > master->topz[cs])
       p[n].flag &= ~PT_ACTIVE;
@@ -856,30 +896,19 @@ void pt_fit_to_grid(master_t *master, long np, particle_t *p)
 
 
 /*-------------------------------------------------------------------*/
-/* Copy particles and convert to real-world coordinates. Note that   */
-/* previously used to convert the working particles to x,y space,    */
-/* write them and then convert back to i,j space. This saved having  */
-/* to make a copy of the particles, but introduced rounding errors   */
-/* which fouls up the particle tracking.                             */
+/* Copy particles and convert to real-world coordinates.             */
 /*-------------------------------------------------------------------*/
 void pt_write_at_t(master_t *master, double t)
 {
   particle_t *pcopy;
   double newt = t;
-
-
+  int n;
   if (DEBUG("particles"))
     dlog("particles", "Writing particles to file at t=%f\n", master->t);
 
-  if ((pcopy =
-       (particle_t *)malloc(master->ptn * sizeof(particle_t))) == NULL)
-    hd_quit("pt_update: No memory for copy of particles\n");
-  memcpy(pcopy, master->ptp, master->ptn * sizeof(particle_t));
-  ptgrid_ijtoxy(master, master->ptn, pcopy);
   /* Write particles and free memory */
   tm_change_time_units(master->timeunit, master->output_tunit, &newt, 1);
-  pt_write(master->ptfid, master->ptrec, newt, master->ptn, pcopy);
-  free(pcopy);
+  pt_write(master->ptfid, master->ptrec, newt, master->ptn, master->ptp);
   master->ptrec++;
   master->ptout_t += master->ptoutinc;
   if (master->ptout_t > master->ptend) {
@@ -895,7 +924,11 @@ void pt_write_at_t(master_t *master, double t)
 /*-------------------------------------------------------------------*/
 /* Routine to track all the particles for a single timestep          */
 /*-------------------------------------------------------------------*/
-void pt_update(master_t *master)
+void pt_update(master_t *master,
+	       geometry_t **window,
+	       window_t **windat,
+	       win_priv_t **wincon
+	       )
 {
   geometry_t *geom = master->geom;
 
@@ -998,6 +1031,11 @@ void pt_update(master_t *master)
 	  master->ptp[n].flag |= PT_LOST;
 	}
       }
+    }
+
+    /* Initialize cell centered velocities                           */
+    for (n = 1; n <= geom->nwindows; n++) {
+      ffsl_init(window[n], windat[n], wincon[n]);
     }
 
     /*---------------------------------------------------------------*/
@@ -1157,6 +1195,7 @@ void pt_set_svel(master_t *master, /* Master data                    */
 /* END pt_set_vel()                                                  */
 /*-------------------------------------------------------------------*/
 
+
 /*-------------------------------------------------------------------*/
 /* Values indicating which face a particle goes through              */
 #define F_NONE     0
@@ -1172,12 +1211,10 @@ void pt_set_svel(master_t *master, /* Master data                    */
 /*-------------------------------------------------------------------*/
 /* This routine moves a single particle for a specified time         */
 /* The position of the particle is :                                 */
-/* Integer part of p->e1 = sparse location of the particle.          */
-/* Fractional part of p->e1 = x sub-grid distance of the particle in */
-/*                            the cell.                              */
-/* p->e2 = j location of particle (integer part) and y sub grid      */
-/*         distance (fractional part).                               */
-/* p->e3 = depth of particle.                                        */
+/* p->c = mesh index of the particle                                 */
+/* p->e1 = x location of the particle                                */
+/* p->e2 = y location of the particle                                */
+/* p->e3 = depth of particle                                         */
 /*-------------------------------------------------------------------*/
 void pt_move(master_t *master,    /* Pointer to model grid structure */
              dump_data_t *dumpdata, /* Dump data structure           */
@@ -1186,39 +1223,46 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
              double maxdh   /* Maximum possible horizontal diffusion */
   )
 {
-  /*printf("Is doing pt_move\n");*/
-  int i, j, k;
+  geometry_t *geom = master->geom;
   double diffu1;
   double diffu2;
   double diffw;
   double tleft = dt;
+  double u, v, w;
   double upt, vpt, wpt;
+  double cx, cy, cz;
+  double SCALE = 0.95;          /* Use 95% of allowable sub-timestep */
   int raninit = 0;
   int nloop = 0;
-  int c, c2;
-  geometry_t *geom = master->geom;
+  int c, c2, co, wn, cl;
   pt_ts_t *u_i = master->uvel_i;
   pt_ts_t *v_i = master->vvel_i;
   pt_ts_t *w_i = master->wvel_i;
+  int *c2cc = i_alloc_1d(geom->szcS);
+
+  for (c2 = 1; c2 <= geom->n2_t; c2++) {
+    c = geom->w2_t[c2];
+    c2cc[c] = c2;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Find the horizontal (i,j) indices for the model cell that the   */
   /* particle is currently in, and check that it is sensible.        */
-  c2 = floor(p->e1);
-  i = geom->s2i[c2];
-  j = floor(p->e2);
+  c = co = p->c;
+  c2 = geom->m2d[c];
+  cx = p->e1;
+  cy = p->e2;
+  cz = p->e3;
 
   /*-----------------------------------------------------------------*/
   /* Convert the p.e1 sparse coordinate to Cartesian                 */
-  p->e1 = geom->s2i[(int)floor(p->e1)] + fmod(p->e1, 1);
-  if (!c2 || i == -9999 || j == -9999) {
+  if (c < 0 || c >= geom->szc) {
     /* Something wrong - print a message, flag this particle as      */
     /* lost, and give up. Note -9999 are the (i,j) coordinates for   */
     /* ghost cells.                                                  */
     hd_warn
-      ("ptmove start: Particle not in water horizontally, %d %d %.12f %.12f\n",
-       i, j, p->e1, p->e2);
-      printf("ptmove start: Particle not in water horizontally, %d %d %.12f %.12f\n", i,j,p->e1, p->e2);
+      ("ptmove start: Particle not in water horizontally, %d %.12f %.12f\n",
+       c, p->e1, p->e2);
     p->flag |= PT_LOST;
     return;
   }
@@ -1228,18 +1272,12 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
   if (p->e3 > master->eta[c2])
     p->e3 = master->eta[c2];
 
-  /* Get vertical layer index for the current particle position, and */
-  /* check for sanity.                                               */
-  c = ztoc_m(master, c2, p->e3);
-  k = geom->s2k[c];
-
-  if (!c || p->e3 < geom->botz[c2]) {
+  if (p->e3 < geom->botz[c2]) {
     /* Something wrong - print a message, flag this particle as lost */
     /* and give up.                                                  */
-    i = geom->s2i[c];
-    j = geom->s2j[c];
     if (DEBUG("particles"))
-      dlog("particles", "Particle not in water vertically, i=%d j=%d k=%d x=%.12f y=%.12f z=%.12f\n",i, j, k, p->e1, j + p->e2, p->e3);
+      dlog("particles", "Particle not in water vertically, c=%d k=%d x=%.12f y=%.12f z=%.12f\n",
+	   c, geom->s2k[c], p->e1, p->e2, p->e3);
     p->flag |= PT_LOST;
     return;
   }
@@ -1266,352 +1304,84 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
   /* Loop to move particle through grid. Each pass through this loop */
   /* (usually) moves the particle across one model cell.             */
   while (tleft > 0) {
-    int cb = geom->bot_t[geom->c2cc[c2]];
-    int cs = geom->sur_t[geom->c2cc[c2]];
-    double u1_l;
-    double u1_r;
-    double u2_b;
-    double u2_f;
-    double w_b;
-    double w_t;
-    double zbot = (c == cb) ? geom->botz[c2] : geom->gridz[c];
-    double ztop = (c == cs) ? master->eta[c2] : geom->gridz[geom->zp1[c]];
-    double fbot = zbot;
-    double ftop = ztop;
-    double fh;
-    double dz = ztop - zbot;
-    double frac_b;
-    double frac_t;
     double tmin;
-    double wkp1 = (c == cs) ? master->wtop[c2] : master->w[geom->zp1[c]];
-    double wk = (c == cb) ? 0.0 : master->w[c];
-    double tmp;
-    double u1_p;
-    double u2_p;
-    double w_p;
-    double du1;
-    double du2;
-    double dw;
-    int fr = geom->xp1[c2];
-    int ff = geom->yp1[c2];
-    int face;
-    int solid_l = 0;
-    int solid_r = 0;
-    int solid_b = 0;
-    int solid_f = 0;
+    double q, r, ua;
+    int cl, wn;
+
+    /* Get the local window amd coordinate                           */
+    wn = geom->fm[c].wn;     /* Window for this particle             */
+    cl = geom->fm[c].sc;     /* Local coordinate for this particle   */
 
     /*---------------------------------------------------------------*/
-    /* Check whether that portion of the face to the left, at the    */
-    /* same vertical height as the particle, is solid or not, and    */
-    /* adjust the vertical fraction of the cell we are dealing with. */
-    if (p->e3 < geom->botzu1[c2] || dumpdata->flag[k][j][i] & U1SOLID) {
-      ftop = min(ftop, geom->botzu1[c2]);
-      solid_l = 1;
-    } else {
-      fbot = max(fbot, geom->botzu1[c2]);
+    /* Get the velocities at the particle location                   */
+    u = hd_trans_interp(window[wn], windat[wn]->gsx, cx, cy, cz, cl, 0, 0);
+    v = hd_trans_interp(window[wn], windat[wn]->gsy, cx, cy, cz, cl, 0, 1);
+    w = hd_trans_interp(window[wn], windat[wn]->gsz, cx, cy, cz, cl, 0, 2);
+
+    /*---------------------------------------------------------------*/
+    /* Add diffusion velocities                                      */
+    u = u + diffu1 + upt;
+    v = v + diffu2 + vpt;
+    w = w + diffw + wpt;
+
+    /*---------------------------------------------------------------*/
+    /* Get the sub time-step for the move                            */
+    q = sqrt(geom->cellarea[c2]);
+    ua = sqrt(u * u + v * v);
+    r = (w < 0.0) ? wincon[wn]->dzz[c] : wincon[wn]->dzz[window[wn]->zm1[c]];
+    tmin = SCALE * fabs(q / ua);
+    tmin = (r) ? min(tmin, SCALE * fabs(r / w)) : tmin;
+
+    /*---------------------------------------------------------------*/
+    /* Get the new location and cell the particle resides in         */
+    c = get_pos_m(master, p, co, c, u, v, w, &cx, &cy, &cz, tmin);
+    c2 = geom->m2d[c];
+
+    /*---------------------------------------------------------------*/
+    /* Check if it landed in unknown territory                       */
+    if (c <= 0 || c >= geom->szc) {
+      hd_warn
+	("ptmove end: Particle not in water horizontally, c=%d x=%.12f y=%.12f z=%.12f\n",c, p->e1, p->e2, p->e3);
+      p->flag |= PT_LOST;
+      return;
+    }
+
+    /* Check the particle didn't go through the bottom or surface    */
+    if (cz <= geom->botz[c2]) {
+      cz = geom->botz[c2] + TINY_INSIDE;
+      c = geom->bot_t[c2cc[c2]];
+    }
+    if (cz >= master->eta[c2]) {
+      cz = master->eta[c2] - TINY_INSIDE;
+      c = geom->sur_t[c2cc[c2]];
     }
 
     /*---------------------------------------------------------------*/
-    /* Check whether that portion of the face to the right, at the   */
-    /* same vertical height as the particle, is solid or not, and    */
-    /* adjust the vertical fraction of the cell we are dealing with. */
-    if (p->e3 < geom->botzu1[fr] || dumpdata->flag[k][j][i + 1] & U1SOLID) {
-      ftop = min(ftop, geom->botzu1[fr]);
-      solid_r = 1;
-    } else {
-      fbot = max(fbot, geom->botzu1[fr]);
-    }
-
-    /*---------------------------------------------------------------*/
-    /* Check whether that portion of the face to the back, at the    */
-    /* same vertical height as the particle, is solid or not, and    */
-    /* adjust the vertical fraction of the cell we are dealing with. */
-    if (p->e3 < geom->botzu2[c2] || dumpdata->flag[k][j][i] & U2SOLID) {
-      ftop = min(ftop, geom->botzu2[c2]);
-      solid_b = 1;
-    } else {
-      fbot = max(fbot, geom->botzu2[c2]);
-    }
-
-    /*---------------------------------------------------------------*/
-    /* Check whether that portion of the face to the front, at the   */
-    /* same vertical height as the particle, is solid or not, and    */
-    /* adjust the vertical fraction of the cell we are dealing with. */
-    if (p->e3 < geom->botzu2[ff] || dumpdata->flag[k][j + 1][i] & U2SOLID) {
-      ftop = min(ftop, geom->botzu2[ff]);
-      solid_f = 1;
-    } else {
-      fbot = max(fbot, geom->botzu2[ff]);
-    }
-
-    /*---------------------------------------------------------------*/
-    /* Get horizontal velocity component values at each of the 4     */
-    /* faces.                                                        */
-    u1_l = solid_l ? 0.0 : master->u1[c];
-    u1_r = solid_r ? 0.0 : master->u1[geom->xp1[c]];
-    u2_b = solid_b ? 0.0 : master->u2[c];
-    u2_f = solid_f ? 0.0 : master->u2[geom->yp1[c]];
-
-    /*---------------------------------------------------------------*/
-    /* Add diffusion velocities and scale the total by the cell      */
-    /* dimensions.                                                   */
-    u1_l = (u1_l + diffu1 + upt) / geom->h1acell[c2];
-    u1_r = (u1_r + diffu1 + upt) / geom->h1acell[c2];
-    u2_b = (u2_b + diffu2 + vpt) / geom->h2acell[c2];
-    u2_f = (u2_f + diffu2 + vpt) / geom->h2acell[c2];
-
-    /*---------------------------------------------------------------*/
-    /* Calculate the fractional positions of slice top and bottom    */
-    /* within this layer.                                            */
-    frac_b = (fbot - zbot) / dz;
-    frac_t = (ftop - zbot) / dz;
-
-    /*---------------------------------------------------------------*/
-    /* Interpolate vertical advection velocities to the slice top    */
-    /* and bottom. Note that the vertical diffusion velocity is      */
-    /* added later, at the third call to time_to_face() below, so    */
-    /* that vertical velocity values can be examined in detail if    */
-    /* the particle tries to leave the water surface (code further   */
-    /* below).                                                       */
-    /* Also add the settling velocity if required.                   */
-    w_b = (1 - frac_b) * wk + frac_b * wkp1 + wpt;
-    w_t = (1 - frac_t) * wk + frac_t * wkp1 + wpt;
-
-    /*---------------------------------------------------------------*/
-    /* Scale by thickness of this slice                              */
-    fh = ftop - fbot;
-    w_b /= fh;
-    w_t /= fh;
-
-    /*---------------------------------------------------------------*/
-    /* Calculate the minimum time required to reach one of the faces */
-    face = F_NONE;
-    tmin = tleft;
-    if ((tmp =
-         time_to_face(master, u1_l, u1_r, p->e1 - i, &u1_p,
-                      &du1)) < tmin) {
-      tmin = tmp;
-      face = (u1_p < 0) ? F_LEFT : F_RIGHT;
-    }
-    if ((tmp =
-         time_to_face(master, u2_b, u2_f, p->e2 - j, &u2_p,
-                      &du2)) < tmin) {
-      tmin = tmp;
-      face = (u2_p < 0) ? F_BACK : F_FORWARD;
-    }
-    if ((tmp =
-         time_to_face(master, w_b + diffw / fh, w_t + diffw / fh,
-                      (p->e3 - fbot) / fh, &w_p, &dw)) < tmin) {
-      tmin = tmp;
-      if (w_p < 0 && fbot == zbot)
-        face = F_BOTTOM;
-      else if (w_p > 0 && ftop == ztop)
-        face = F_TOP;
-    }
-
-    /*---------------------------------------------------------------*/
-    /* Move the particle for this minimum time                       */
-    p->e1 += pt_step_dist(master, u1_p, du1, tmin);
-    p->e2 += pt_step_dist(master, u2_p, du2, tmin);
-    p->e3 += fh * pt_step_dist(master, w_p, dw, tmin);
-
-    /*---------------------------------------------------------------*/
-    /* Update i, j, k and particle coords as appropriate             */
-    switch (face) {
-    case F_LEFT:
-      if (solid_l) {
-        /* Don't allow movement through solid face                   */
-        p->e1 = i + TINY_INSIDE;
-        if (diffu1 < 0)
-          diffu1 = -diffu1;
-      } else {
-        i--;
-        p->e1 = i + 1 - TINY_INSIDE;
-        if (!validcelli(i) ||
-            dumpdata->flag[geom->nz - 1][j][i] & (OUTSIDE | ETASPEC)) {
-          /* particle_t going out of model                           */
-          if (master->pt_stickybdry) {
-            i++;
-            p->e1 = i + TINY_INSIDE;
-          } else {
-            p->flag |= PT_LOST;
-	    if (master->ptmsk == NULL) {
-	      master->mage += p->age;
-	      master->magec += 1.0;
-	      if(master->phist)
-		master->phist[(int)min(master->shist,
-				       floor(p->age / 86400))]++;
-	    }
-	  }
-          tmin = tleft;
-        }
+    /* If the particle lands in a ghost cell, flag it as lost        */
+    if (geom->wgst[c]) {
+      p->flag |= PT_LOST;
+      tmin = tleft;
+      if (master->ptmsk == NULL) {
+	master->mage += p->age;
+	master->magec += 1.0;
+	if(master->phist)
+	  master->phist[(int)min(master->shist,
+				 floor(p->age / 86400))]++;
       }
-      break;
-    case F_RIGHT:
-      if (solid_r) {
-        /* Don't allow movement through solid face                   */
-        p->e1 = i + 1 - TINY_INSIDE;
-        if (diffu1 > 0)
-          diffu1 = -diffu1;
-      } else {
-        i++;
-        p->e1 = i + TINY_INSIDE;
-        if (!validcelli(i) ||
-            dumpdata->flag[geom->nz - 1][j][i] & (OUTSIDE | ETASPEC)) {
-          /* particle_t going out of model                           */
-          if (master->pt_stickybdry) {
-            i--;
-            p->e1 = i + 1 - TINY_INSIDE;
-          } else {
-            p->flag |= PT_LOST;
-	    if (master->ptmsk == NULL) {
-	      master->mage += p->age;
-	      master->magec += 1.0;
-	      if(master->phist)
-		master->phist[(int)min(master->shist,
-				       floor(p->age/ 86400))]++;
-	    }
-	  }
-          tmin = tleft;
-        }
-      }
-      break;
-    case F_BACK:
-      if (solid_b) {
-        /* Don't allow movement through solid face                   */
-        p->e2 = j + TINY_INSIDE;
-        if (diffu2 < 0)
-          diffu2 = -diffu2;
-      } else {
-        j--;
-        p->e2 = j + 1 - TINY_INSIDE;
-        if (!validcellj(j) ||
-            dumpdata->flag[geom->nz - 1][j][i] & (OUTSIDE | ETASPEC)) {
-          /* particle going out of model                             */
-          if (master->pt_stickybdry) {
-            j++;
-            p->e2 = j + TINY_INSIDE;
-          } else {
-            p->flag |= PT_LOST;
-	    if (master->ptmsk == NULL) {
-	      master->mage += p->age;
-	      master->magec += 1.0;
-	      if(master->phist)
-		master->phist[(int)min(master->shist,
-				       floor(p->age) / 86400)]++;
-	    }
-	  }
-          tmin = tleft;
-        }
-      }
-      break;
-    case F_FORWARD:
-      if (solid_f) {
-        /* Don't allow movement through solid face                   */
-        p->e2 = j + 1 - TINY_INSIDE;
-        if (diffu2 > 0)
-          diffu2 = -diffu2;
-      } else {
-        j++;
-        p->e2 = j + TINY_INSIDE;
-        if (!validcellj(j) ||
-            dumpdata->flag[geom->nz - 1][j][i] & (OUTSIDE | ETASPEC)) {
-          /* particle going out of model                             */
-          if (master->pt_stickybdry) {
-            j--;
-            p->e2 = j + 1 - TINY_INSIDE;
-          } else {
-            p->flag |= PT_LOST;
-	    if (master->ptmsk == NULL) {
-	      master->mage += p->age;
-	      master->magec += 1.0;
-	      if(master->phist)
-		master->phist[(int)min(master->shist,
-				       floor(p->age) / 86400)]++;
-	    }
-	  }
-          tmin = tleft;
-        }
-      }
-      break;
-
-    case F_BOTTOM:
-      k--;
-      p->e3 = zbot - TINY_INSIDE;
-      if (p->e3 <= geom->botz[c2]) {
-        /* Don't allow movement through bottom                       */
-        k++;
-        p->e3 = geom->botz[c2] + TINY_INSIDE;
-        if (diffw <= 0) {
-          /* particle was trying to diffuse through surface, so      */
-          /* reverse diffusion velocity to reflect it.               */
-          diffw = -diffw + EPS;
-	}
-	if((tleft - tmin) * (-w_b + diffw / fh) > 10 *  TINY_INSIDE){
-	  /* particle trying to advect through bottom many times     */
-	  /* we modify the diffusion upwards to counteract it        */
-	  /* and avoid the particle from being lost.                 */
-	  diffw = fh * -w_b + EPS;
-	}
-      }
-      break;
-    
-    case F_TOP:
-      k++;
-      p->e3 = ztop;
-      if (k > geom->s2k[cs]) {
-        /* The particle went through the water surface - put it back */
-        /* in the water, and try to ensure that it doesn't happen    */
-        /* again.                                                    */
-        k = geom->s2k[cs];
-        p->e3 = master->eta[c2] - TINY_INSIDE;
-        if (diffw > 0) {
-          /* particle was trying to diffuse through surface, so      */
-          /* reverse diffusion velocity to reflect it.               */
-          diffw = -diffw;
-        }
-        if ((tleft - tmin) * (w_t + diffw / fh) > 10 * TINY_INSIDE) {
-          /* Potential trouble here, as particle will probably want  */
-          /* to advect back through the surface again many times.    */
-          /* The only sure way to prevent this is to modify the      */
-          /* vertical diffusion downwards to counteract it.          */
-          diffw = -fh * w_t - EPS;
-        }
-      }
-      break;
-    case F_NONE:
-    default:
-      break;
     }
 
     /*---------------------------------------------------------------*/
-    /* Rounding error checks                                         */
-    if (p->e1 < i)
-      p->e1 = i;
-    if (p->e1 >= i + 1)
-      p->e1 = i + 1 - TINY_INSIDE;
-    if (p->e2 < j)
-      p->e2 = j;
-    if (p->e2 >= j + 1)
-      p->e2 = j + 1 - TINY_INSIDE;
-    c2 = geom->map[geom->nz - 1][j][i];
-    if (p->e3 <= geom->botz[c2]) {
-      p->e3 = geom->botz[c2] + TINY_INSIDE;
-      k = geom->s2k[geom->bot_t[geom->c2cc[c2]]];
-    }
-    if (p->e3 > master->eta[c2]) {
-      p->e3 = master->eta[c2];
-      k = geom->s2k[geom->sur_t[geom->c2cc[c2]]];
-    }
+    /* Update the particle position                                  */
+    p->e1 = cx;
+    p->e2 = cy;
+    p->e3 = cz;
+    p->c = c;
 
     /*---------------------------------------------------------------*/
     /* Sanity checks                                                 */
     if (++nloop > 100) {
       if (DEBUG("particles")) {
-	dlog("particles", "nloop = %d, tmin = %g, %d %d %d %.12f %.12f %.12f\n",nloop, tmin, i, j, k, p->e1, p->e2, p->e3);
-	dlog("particles", "ftop %.12f fbot %.12f fh %.12f u1_l %.12f u1_r %.12f u2_b %.12f u2_f %.12f\n",ftop, fbot, fh, u1_l, u1_r, u2_b, u2_f);
-	dlog("particles", "w_b %.12f w_t %.12f u1_p %.12f u2_p %.12f w_p %.12f \n",w_b, w_t, u1_p, u2_p, w_b);
-	dlog("particles", "diffw %.12f maxdiffw %.12f\n", diffw,master->maxdiffw[c2]);
+	dlog("particles", "nloop = %d, tmin = %g, %d %.12f %.12f %.12f\n",nloop, tmin, c, p->e1, p->e2, p->e3);
       }
       if (nloop > 110) {
 	if (DEBUG("particles"))
@@ -1620,22 +1390,6 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
         tmin = tleft;
       }
     }
-
-    /*---------------------------------------------------------------*/
-    /* Check if it landed in a ghost cell. Note -9999 are the (i,j)  */
-    /* coordinates for ghost cells. */
-    if (i < 0 || i > geom->nce1 || j < 0 || j > geom->nce2 || k < 0) {
-      hd_warn
-	("ptmove end: Particle not in water horizontally, %d %d %d %.12f %.12f\n",
-	 i, j, k, p->e1, p->e2);
-      p->flag |= PT_LOST;
-      return;
-    }
-
-    /*---------------------------------------------------------------*/
-    /* Convert the p.e1 sparse coordinate to Cartesian               */
-    c = geom->map[k][j][i];
-    c2 = geom->m2d[c];
 
     /*---------------------------------------------------------------*/
     /* Check whether it has left the age region                      */
@@ -1658,14 +1412,165 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
 
     /* Decrease time left for this step                              */
     tleft -= tmin;
+  
   }
-
-  p->e1 =
-    geom->map[geom->nz - 1][(int)floor(p->e2)][(int)floor(p->e1)] +
-    fmod(p->e1, 1);
+  i_free_1d(c2cc);
 }
 
 /* END pt_move()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+
+/*-------------------------------------------------------------------*/
+/* Computes the new location of the streamline origin. If this lands */
+/* in a ghost cell, then shift the streamline in the wet interior    */
+/* and re-compute a new location.                                    */
+/* Destination cell is the origin of the streamline.                 */
+/* Source cell is the end point of the streamline track.             */
+/* Returns a new source cell after moving a distance increment.      */
+/* The new geographic location is returned in cx, cy and cz.         */
+/*-------------------------------------------------------------------*/
+int get_pos_m(master_t *master,   /* Window geometry                 */
+	      particle_t *p,      /* Particle                        */
+	      int c,              /* Location of destination         */
+	      int ci,             /* Current source cell             */
+	      double u,           /* East velocity                   */
+	      double v,           /* North velocity                  */
+	      double w,           /* Vertical velocity               */
+	      double *cx,         /* x location of streamline        */
+	      double *cy,         /* y location of streamline        */
+	      double *cz,         /* z location of streamline        */
+	      double dt           /* Time step                       */
+	      )
+{
+  geometry_t *geom = master->geom;
+  int cs = geom->m2d[c];
+  int cis = geom->m2d[ci];
+  int cn, cns, zm1;
+  double xin = *cx;
+  double yin = *cy;
+  double zin = *cz;
+  double dist, dir, s1, s2;
+  double slat, slon;
+  double sinth, costh;
+  double dx, dy;
+  double nx, ny;
+  double m2deg = 1.0 / (60.0 * 1852.0);
+  int isghost = 0;
+  int has_proj = (strlen(projection) > 0);
+  int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
+  int sodanos = 0;  /* Compute distances on the spheroid             */
+  int j, k = geom->s2k[ci];
+  int found = 0;
+
+  /* Get the new horizontal location                                 */
+  if (!is_geog) m2deg = 1.0;
+  if (sodanos) {
+    dist = sqrt(u * u + v * v) * dt;
+    dir =  PI / 2.0 - atan2(v, u);  /* deg T                         */
+    geod_fwd_sodanos(DEG2RAD(xin), DEG2RAD(yin), dir, dist, RADIUS, ECC, &slon, &slat);
+    slon = RAD2DEG(slon);
+    slat = RAD2DEG(slat);
+  } else {
+    /* Get the new distances                                         */
+    dist = sqrt(u * u + v * v) * dt * m2deg;
+    dir =  atan2(v, u);
+    /* Update the origin location                                    */
+    sinth = sin(dir);
+    costh = cos(dir);
+    slon = xin - dist * costh;
+    slat = yin - dist * sinth;
+  }
+
+  /* Get the cell the new horizontal location resides in, i.e. at    */
+  /* the same depth as that of the input location, c.                */
+  if (geom->us_type & US_IJ) {
+    /* Structured grids: use the xytoi tree                          */
+    int i = -1, j = -1;
+    if (grid_xytoij(master->xyij_tree, slon, slat, &i, &j))
+      cn = geom->map[geom->nz - 1][j][i];
+    else {
+      cn = geom->m2d[ci];
+      isghost = 1;
+    }
+    cns = geom->m2d[cn];
+  } else {
+    /* Unstructured meshes: walk through the Voronoi mesh            */
+    cn = found = find_cell(geom, c, slon, slat, &nx, &ny);
+    cns = geom->m2d[cn];
+  }
+
+  /* Get the vertical layer of the source cell                       */
+  if (cn == geom->zm1[cn]) cn = geom->zp1[cn];
+  if (geom->wgst[cn]) cn = geom->wgst[cn];
+  k = geom->s2k[cn];
+  if (k > geom->nz - 1) 
+    hd_quit("Can't find streamline position: destination = %d[%f %f]\n",
+	    c, geom->cellx[cs], geom->celly[cs]);
+
+  /* If the new location ixs a ghost cell, send it inside the mesh.   */
+  if (geom->gcm[k][cns] & L_GHOST) isghost = 1;
+  if (isghost) {
+    if (master->pt_stickybdry) {
+      if (geom->us_type & US_IJ) {
+	int es, vs;
+	for (j = 1; j <= geom->npe[cis]; j++) {
+	  if ((found = intersect(geom, cis, j, xin, yin, slon, slat, &nx, &ny)))
+	    break;
+	}
+	if (!found) {
+	  nx = slon;
+	  ny = slat;
+	}
+      }
+      dx = nx - xin;
+      dy = ny - yin;
+      dist = sqrt(dx * dx + dy * dy) - TINY_INSIDE;
+      slon = xin - dist * costh;
+      slat = yin - dist * sinth;
+
+      if (geom->us_type & US_IJ) {
+	int i = -1, j = -1;
+	if (grid_xytoij(master->xyij_tree, slon, slat, &i, &j))
+	  cn = geom->map[geom->nz - 1][j][i];
+	else
+	  cn = geom->m2d[ci];
+	cns = geom->m2d[cn];
+      } else {
+	cns = found = find_cell(geom, c, slon, slat, &nx, &ny);
+	cns = geom->m2d[cns];
+      }
+    } else {
+      p->flag |= PT_LOST;
+      if (master->ptmsk == NULL) {
+	master->mage += p->age;
+	master->magec += 1.0;
+	if(master->phist)
+	  master->phist[(int)min(master->shist,
+				 floor(p->age / 86400))]++;
+      }
+    }
+  }
+  if (isghost && !found) p->flag |= PT_LOST;
+  *cx = slon;
+  *cy = slat;
+  *cz -= w * dt;
+
+  /* Find the vertical position in the mesh                          */
+  cn = cns;
+  /* First get the layer of the free surface                         */
+  while (master->eta[cns] < geom->gridz[cn] && c != geom->zm1[cn]) {
+    cn = geom->zm1[cn];
+  }
+  /* Get the first cellz layer less than z                           */
+  while (*cz <= max(geom->botz[cns], geom->gridz[cn]) && cn != geom->zm1[cn]) {
+    cn = geom->zm1[cn];
+  }
+  return(cn);
+}
+
+/* END get_pos_m()                                                   */
 /*-------------------------------------------------------------------*/
 
 
@@ -1903,61 +1808,6 @@ int hd_pt_create(master_t *master,
   return (ncid);
 }
 
-
+/* END hd_pt_create()                                                */
 /*-------------------------------------------------------------------*/
-double time_to_face(master_t *master, double ul, double ur, double f,
-                    double *u, double *du)
-{
-  double a = ur - ul;
-  double up;
-  double t = HUGE_VAL;
 
-  /* Calculate velocity at particle, avoiding rounding error in f */
-  if (f <= 0) {
-    up = ul;
-    f = 0;
-  } else if (f >= 1) {
-    up = ur;
-    f = 1;
-  } else
-    up = ul + f * a;
-
-  /* Store returned velocity and gradient values */
-  *du = a;
-  *u = up;
-
-  /* Can particle reach left face? */
-  if (ul < 0 && up < 0) {
-    double q = ul / up;
-    if (fabs(1.0 - q) < EPS)
-      /* Always move particle by at least EPS */
-      t = max(-f / up, -EPS / up);
-    else
-      t = log(q) / a;
-  }
-
-  /* Can particle reach right face? */
-  if (ur > 0 && up > 0) {
-    double q = ur / up;
-    if (fabs(1.0 - q) < EPS)
-      /* Always move particle by at least EPS */
-      t = max((1 - f) / up, EPS / up);
-    else
-      t = log(q) / a;
-  }
-
-  if (t <= 0)
-    hd_quit("time_to_face: t = %g\n", t);
-
-  return (t);
-}
-
-double pt_step_dist(master_t *master, double u, double du, double dt)
-{
-  double x = du * dt;
-
-  if (fabs(x) < EPS)
-    return (u * dt);
-  else
-    return (u * (exp(x) - 1) / du);
-}

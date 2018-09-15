@@ -66,14 +66,14 @@
              >
     class hash_table  :
         public containers::array_list<D,A>
-	{
+    {
 /*------------------------- a dynamic, chained hash-table */
-	public	:     
-	
-    typedef D				            data_type ;
-    typedef H				            hash_type ;
-	typedef P				            pred_type ;
-    typedef A				            allocator ;
+    public  :     
+    
+    typedef D                           data_type ;
+    typedef H                           hash_type ;
+    typedef P                           pred_type ;
+    typedef A                           allocator ;
     
     typedef containers::array_list  <
                     data_type   ,
@@ -81,12 +81,12 @@
     
     typedef typename
             base_type::size_type        size_type ;
-	typedef typename
-	        base_type::diff_type        diff_type ;
-	typedef typename
-	        base_type::item_type        item_type ;
-	typedef typename
-	        base_type::lptr_list        lptr_list ;
+    typedef typename
+            base_type::diff_type        diff_type ;
+    typedef typename
+            base_type::item_type        item_type ;
+    typedef typename
+            base_type::lptr_list        lptr_list ;
    
     typedef typename
             base_type::_write_it        _write_it ;
@@ -97,7 +97,7 @@
                     data_type   , 
                     hash_type   ,
                     pred_type   , 
-                    allocator   >	    self_type ;
+                    allocator   >       self_type ;
 
     size_type static const _mini_count = +8 ;
 
@@ -286,14 +286,14 @@
                         % this->_lptr.count();
                         
     /*------------------------------- scan list from head */
-        item_type*_sptr = this->_lptr[_hpos] ;
+        item_type*_spos = this->_lptr[_hpos] ;
     /*------------------------------- check exact matches */
-        for( ; _sptr != nullptr; 
-                    _sptr = _sptr->_next)
+        for( ; _spos != nullptr; 
+                    _spos = _spos->_next)
         {
-            if (this->_pred(_sptr->_data,_data))
+            if (this->_pred(_spos->_data,_data))
             {
-                _same = _write_it (_sptr, 
+                _same = _write_it (_spos, 
                         (base_type*)this) ; 
                 
                 return true ;

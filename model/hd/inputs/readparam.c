@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: readparam.c 5901 2018-08-28 02:10:22Z riz008 $
  *
  */
 
@@ -6595,6 +6595,8 @@ void read_compatible(parameters_t *params, FILE *fp)
       params->compatible |= V4201;
     if (contains_token(buf, "V5342") != NULL)
       params->compatible |= V5342;
+    if (contains_token(buf, "V5895") != NULL)
+      params->compatible |= V5895;
   }
 }
 

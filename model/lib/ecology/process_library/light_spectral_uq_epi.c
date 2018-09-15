@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_uq_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_spectral_uq_epi.c 5906 2018-08-29 03:27:43Z bai155 $
  *
  */
 
@@ -147,6 +147,7 @@ typedef struct {
   int EpiPAR_i;
   int EpiPAR_sg_i;
   int Secchi_i;
+  int Zenith_i;
 
 } workspace;
 
@@ -210,6 +211,10 @@ void light_spectral_uq_epi_init(eprocess* p)
     ws->Secchi_i += OFFSET_EPI;
     ws->z_secchi_i = find_index_or_add(e->cv_column, "z_secchi", e);
   }
+  
+  ws->Zenith_i = e->try_index(epis, "Zenith2D", e);
+  if (ws->Zenith_i >=0)
+    ws->Zenith_i += OFFSET_EPI;
   
   ws->SWR_bot_abs_i = e->try_index(epis, "SWR_bot_abs", e);
   if (ws->SWR_bot_abs_i >= 0)
@@ -846,15 +851,18 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
 
   bio_opt_prop *bio = e->bio_opt;
 
+  double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
+  
+  y[ws->Zenith_i] = zenith;
+
+  zenith = (fabs(zenith)<1.0e-15)? 1.0e-15:zenith;
+  zenith = ((zenith-M_PI/2.0)-fabs(zenith-M_PI/2.0))/2.0+M_PI/2.0;
+
   if (e->num_rsr_waves) {
-    double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
-    zenith = (fabs(zenith)<1.0e-15)? 1.0e-15:zenith;
-    zenith = ((zenith-M_PI/2.0)-fabs(zenith-M_PI/2.0))/2.0+M_PI/2.0;
-    
     double* u_surf = col->cv[ws->u_surf_i];
     int w2;
     
-    if (zenith > (M_PI/2.0 - 0.1)){
+    if (zenith > (M_PI/2.0 - 0.01)){
       for (w2=0; w2<num_rrs_waves; w2++){
 	y[ws->RRS_i[w2]] = 0.0;
       }
@@ -1201,9 +1209,13 @@ static void finalise_reflectances(workspace *ws, cell *c)
   }
 
   /* MODIS nFLH */
+
+  /* nFLH uses nLw, which is normalised (to zero zenith) water leaving irradiance 
+     for MODIS 678, and has units mW / cm2 / um / sr-1. This includes a factor fo = 148.097 mW / cm2 / um
+     pi - sr-1 */
   
   if (ws->nFLH_i > -1){
-    y[ws->nFLH_i] = 3.14159 * 10.0 * (y[ws->RRS_i[ws->w678]] - (70.0/81.0) * y[ws->RRS_i[ws->w667]] - (11.0/81.0) * y[ws->RRS_i[ws->w748]]);
+    y[ws->nFLH_i] = (148.097 / 3.145926535) * (y[ws->RRS_i[ws->w678]] - (70.0/81.0) * y[ws->RRS_i[ws->w667]] - (11.0/81.0) * y[ws->RRS_i[ws->w748]]);
   }
 
   /* TSS algorithm - use local coastal relationship from Petus et al., 2014 */

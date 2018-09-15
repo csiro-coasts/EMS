@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: heatflux.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: heatflux.c 5902 2018-08-28 02:10:34Z riz008 $
  *
  */
 
@@ -1001,8 +1001,6 @@ void surf_heat_flux(geometry_t *window,
   double Cv = 4e3;              /* Specific heat at constant volume */
   double ang = 7.29e-5;         /* Earth's angular velocity (s-1) */
 
-  /* Get the year and Julian day */
-  dtime(master->params->output_tunit, master->timeunit, windat->t, &yr, &day);
   dt = windat->dt;
   es = sg = 0.0;
 
@@ -1010,6 +1008,12 @@ void surf_heat_flux(geometry_t *window,
   for (cc = 1; cc <= window->b2_t; cc++) {
     c = window->w2_t[cc];
 
+    /* Get the year and Julian day */
+    if (window->is_geog)
+      dtime(NULL, master->timeunit, windat->t, &yr, &day, &window->cellx[c]);
+    else
+      dtime(master->params->output_tunit, master->timeunit, windat->t, &yr, &day, NULL);
+    
     wt = (windat->hftemp) ? windat->hftemp[c] : windat->temp[c];
     sal = windat->sal[c];
     at = windat->airtemp[c];
@@ -2542,7 +2546,7 @@ double swr_from_mean(double swr, double lat, double t)
   /* Get time of dawn to the nearest inc                             */
   ps = 0.0;
   for (n = st; n < st + 86400.0; n += inc) {
-    dtime(master->params->output_tunit, master->timeunit, n, &yr, &day);
+    dtime(master->params->output_tunit, master->timeunit, n, &yr, &day, NULL);
     s = swrad(yr, day, at, es, cld, lat);    
     if (ps <= 0.0 && s > 0) {
       dawn = n;
@@ -2553,7 +2557,7 @@ double swr_from_mean(double swr, double lat, double t)
   /* Get time of dusk to the nearest inc                             */
   ps = 0.0;
   for (n = st + 86400.0; n > st; n -= inc) {
-    dtime(master->params->output_tunit, master->timeunit, n, &yr, &day);
+    dtime(master->params->output_tunit, master->timeunit, n, &yr, &day, NULL);
     s = swrad(yr, day, at, es, cld, lat);    
     if (ps <= 0.0 && s > 0) {
       dusk = n;

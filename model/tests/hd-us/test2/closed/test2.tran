@@ -1,0 +1,77 @@
+# Test 2 of model shoc: 4 by 5 by 21 swimming pool with constant
+# wind forcing of 0.01 Nm-2 at 30 deg to the grid. An Ekman spiral 
+# is set up with surface current equal to 0.0043 ms-1 and bottom 
+# current 0.00019 ms-1.
+
+CODEHEADER           SHOC default version
+PARAMETERHEADER      Test 2 - Ekman spiral in open ocean
+DESCRIPTION          SHOC test2
+NAME                 SHOC test 2 grid
+TIMEUNIT             seconds since 1990-01-01 00:00:00 +10
+OUTPUT_TIMEUNIT      days since 1990-01-01 00:00:00 +10
+LENUNIT              metre
+START_TIME           0.0 days
+STOP_TIME            20 days
+
+INPUT_FILE_TYPE      STRUCTURED
+INPUT_FILE           in1_quad.nc
+TRANS_DATA           closed_trans_1990-01.nc(u1=umean)(w=wmean)(Kz=Kzmean)
+
+TRANS_MODE   SP_EXACT
+FILL_METHOD  NONE
+
+TRA_SCHEME           LAGRANGE
+ORDER_SL             LINEAR
+#ORDER_SL             BAYCENTRIC
+#ORDER_SL             QUADRATIC
+#ORDER_SL             CUBIC
+#ORDER_SL             NN_SIBSON
+
+DT                   1 hour
+HMIN                 0.07
+Z0                   0.001
+COMPATIBLE           V4201
+NUMBERS              DUMMIES
+
+TRANS_OMP_NUM_THREADS 8
+
+OutputFiles          1
+
+file0.name           out1.nc
+file0.filetype       standard
+file0.tinc           1 hour
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Tracers
+NTRACERS             3
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0
+TRACER0.valid_range  0.00e+00 4.00e+01
+TRACER0.advect       0
+TRACER0.diffuse      0
+TRACER0.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.fill_value   25.0  
+TRACER1.valid_range  0.00e+00 4.00e+01
+TRACER1.advect       0
+TRACER1.diffuse      0
+TRACER1.diagn        0
+
+TRACER2.name         passive
+TRACER2.long_name    Passive tracer
+TRACER2.units        
+TRACER2.fill_value   35.0  
+TRACER2.valid_range  0.00e+00 1e3
+TRACER2.advect       1
+TRACER2.diffuse      1
+TRACER2.diagn        0
+
+# Open boundaries
+NBOUNDARIES 0

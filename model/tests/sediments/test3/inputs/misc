@@ -1,0 +1,1 @@
+awk 'BEGIN{a=0;}{if(a>0 && a< 6) {a=a+1; print(-99.0);} else{a=0; print($0)} if($1 == 9999 && a==0) a=1;}' botX.txt > x

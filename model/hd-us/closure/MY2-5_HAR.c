@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: MY2-5_HAR.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: MY2-5_HAR.c 5898 2018-08-23 02:07:21Z her127 $
  *
  */
 
@@ -237,7 +237,7 @@ void closure_MY2_5_HAR(geometry_t *window,  /* Processing window */
 
   /*-----------------------------------------------------------------*/
   /* Get the east and north cell centered wind stress                */
-  vel_cen(window, windat, wincon, windat->wind1, wu, wv, NULL, NULL, 1);
+  vel_cen(window, windat, wincon, windat->wind1, NULL, wu, wv, NULL, NULL, 1);
 
   /*-----------------------------------------------------------------*/
   /* Initialise */

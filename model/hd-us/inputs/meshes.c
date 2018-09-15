@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: meshes.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -2979,8 +2979,13 @@ int get_mesh_obc(parameters_t *params,
     if (op  != NULL) {
       fprintf(op, "\nBOUNDARY%d.UPOINTS     %d\n", m, mesh->npts[m]);
       for (cc = 1; cc <= mesh->npts[m]; cc++) {
+	/*
 	fprintf(op, "%d (%d %d)\n", mesh->loc[m][cc], mesh->obc[m][cc][0],
 		mesh->obc[m][cc][1]);
+	*/
+	fprintf(op, "%d (%lf,%lf)-(%lf,%lf)\n", mesh->loc[m][cc], 
+		mesh->xloc[mesh->obc[m][cc][0]], mesh->yloc[mesh->obc[m][cc][0]],
+		mesh->xloc[mesh->obc[m][cc][1]], mesh->yloc[mesh->obc[m][cc][1]]);
       }
     }
   }
@@ -3264,6 +3269,7 @@ int read_mesh_us(parameters_t *params)
   int ns2, npe;
   int verbose = 0;
   int rbf = 0;
+  int *mask;
 
   /* Read the mesh dimensions                                        */
   op = params->prmfd;
@@ -3324,7 +3330,9 @@ int read_mesh_us(parameters_t *params)
   }
   prm_skip_to_end_of_key(op, "Indices");
   if (verbose) printf("\nIndices\n");
-  for (cc = 1; cc <= mesh->ns2; cc++) {
+  cc = 1;
+  if (ns2) mask = i_alloc_1d(ns2 + 1);
+  for (c = 1; c <= ns2; c++) {
     if (params->us_type & US_IJ) {
       fscanf(op, "%d %d %d : %d %d",&i, &mesh->npe[cc], &mesh->eloc[0][cc][0],
 	     &mesh->iloc[cc], &mesh->jloc[cc]);
@@ -3337,6 +3345,13 @@ int read_mesh_us(parameters_t *params)
     for (j = 1; j <= mesh->npe[cc]; j++) {
       fscanf(op, "%d %d %d\n",&i, &mesh->eloc[0][cc][j], &mesh->eloc[1][cc][j]);
       if (verbose) printf(" %d %d %d\n", j, mesh->eloc[0][cc][j], mesh->eloc[1][cc][j]);
+    }
+    if (mesh->npe[cc] == 0) {
+      mask[c] = 0;
+      mesh->ns2--;
+    } else {
+      mask[c] = cc;
+      cc++;
     }
   }
 
@@ -3361,16 +3376,17 @@ int read_mesh_us(parameters_t *params)
     if (i) {
       mesh->loc = i_alloc_2d(i+1, mesh->nobc);
       mesh->obc =  i_alloc_3d(2, i+1, mesh->nobc);
-      printf("alloc in read_mesh_us %x\n", mesh->loc);
       for (n = 0; n < mesh->nobc; n++) {
 	sprintf(buf, "BOUNDARY%1d.UPOINTS", n);
 	prm_skip_to_end_of_key(op, buf);
 	prm_flush_line(op);
 	for (cc = 1; cc <= mesh->npts[n]; cc++) {
-	  if (fscanf(op, "%d (%d %d)", &mesh->loc[n][cc], &mesh->obc[n][cc][0], &mesh->obc[n][cc][1]) != 3)
+	  if (fscanf(op, "%d (%d %d)", &c, &mesh->obc[n][cc][0], &mesh->obc[n][cc][1]) != 3)
 	    hd_warn("read_mesh_us: Can't read edge coordinates in boundary points list. Format '1 (2 3)'\n");
 	  /* Flush the remainder of the line */
 	  prm_flush_line(op);
+	  if (!mask[c]) hd_warn("read_mesh_us: OBC%d cell %d(%d) is an empty cell.\n", n, cc, c);
+	  mesh->loc[n][cc] = mask[c];
 	}
       }
     }
@@ -3386,21 +3402,27 @@ int read_mesh_us(parameters_t *params)
   if (verbose) printf("\nBATHY\n");
   if (params->bathy != NULL) d_free_1d(params->bathy);
   params->bathy = d_alloc_1d(mesh->ns2+1);
-  for (cc = 1; cc <= mesh->ns2; cc++) {
-    fscanf(op, "%lf", &params->bathy[cc]);
-    if (verbose) printf("%f\n", params->bathy[cc]);
+  for (c = 1; c <= ns2; c++) {
+    double d1;
+    fscanf(op, "%lf", &d1);
+    if ((cc = mask[c])) {
+      params->bathy[cc] = d1;
+      if (verbose) printf("%f\n", params->bathy[cc]);
+    }
   }
 
   /* Reconstruct the parameter coordinate arrays                     */
   if (params->x == NULL && params->y == NULL) {
     params->x = d_alloc_2d(mesh->mnpe+1, mesh->ns2+1);
     params->y = d_alloc_2d(mesh->mnpe+1, mesh->ns2+1);
-    for (cc = 1; cc <= mesh->ns2; cc++) {
-      params->x[cc][0] = mesh->xloc[mesh->eloc[0][cc][0]];
-      params->y[cc][0] = mesh->yloc[mesh->eloc[0][cc][0]];
-      for (j = 1; j <= mesh->npe[cc]; j++) {
-	params->x[cc][j] = mesh->xloc[mesh->eloc[0][cc][j]];
-	params->y[cc][j] = mesh->yloc[mesh->eloc[0][cc][j]];
+    for (c = 1; c <= ns2; c++) {
+      if ((cc = mask[c])) {
+	params->x[cc][0] = mesh->xloc[mesh->eloc[0][cc][0]];
+	params->y[cc][0] = mesh->yloc[mesh->eloc[0][cc][0]];
+	for (j = 1; j <= mesh->npe[cc]; j++) {
+	  params->x[cc][j] = mesh->xloc[mesh->eloc[0][cc][j]];
+	  params->y[cc][j] = mesh->yloc[mesh->eloc[0][cc][j]];
+	}
       }
     }
   }
@@ -3415,6 +3437,7 @@ int read_mesh_us(parameters_t *params)
 
   write_mesh_us(params, params->bathy, 0, 4);
 
+  if (mask) i_free_1d(mask);
   return(1);
 }
 
@@ -3481,7 +3504,9 @@ void create_hex_radius(double crad,   /* Radius in metres     */
     /* Points */
     jpoints->_data[n]._ppos[0] = cang * cos(theta) + x00;
     jpoints->_data[n]._ppos[1] = cang * sin(theta) + y00;
+    jpoints->_data[n]._itag = 0;
     /* Connecting edges */
+    jedges->_data[n]._itag = 0;
     jedges->_data[n]._node[0] = n;
     if (n<npts-1)
       jedges->_data[n]._node[1] = n+1;
@@ -3522,7 +3547,7 @@ void create_hex_radius(double crad,   /* Radius in metres     */
 
   // Call Jigsaw
   J_jig._verbosity = 0;
-  jret = jigsaw_make_mesh(&J_jig, &J_geom, &J_hfun, J_mesh);
+  jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, &J_hfun, J_mesh);
   if (jret) hd_quit("Error calling JIGSAW\n");
 
   /* Cleanup */
@@ -3537,8 +3562,9 @@ void create_hex_radius(double crad,   /* Radius in metres     */
 #define I_NC    1
 #define I_BTY   2
 #define I_USR   4
-#define I_MESH  8
-#define I_GRID  16
+#define I_MSH   8
+#define I_MESH  16
+#define I_GRID  32
 
 /*-------------------------------------------------------------------*/
 /* Reads a bathymetry file and creates a hfun file                   */
@@ -3559,6 +3585,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   int verbose = 0;
   int filef = 1;
   int gridf = 0;
+  int orf = 0;
   int sn, smooth = 0;
   int nce1, nce2;
   int fid;
@@ -3566,6 +3593,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   int dims;
   double stime;
   double bmin, bmax, hmin, hmax, s;
+  double *exlon, *exlat, *exrad, *exbth;
   double deg2m = 60.0 * 1852.0;
   double expf = 0.0;
   delaunay *d;
@@ -3614,6 +3642,8 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       imeth = (I_NC|I_MESH);
   } else if (endswith(fname,".bty")) {
     imeth = (I_BTY|I_MESH);
+  } else if (endswith(fname,".msh")) {
+    imeth = I_MSH;
   } else {
     imeth = (I_USR|I_MESH);
   }
@@ -3696,7 +3726,8 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     s = (cm->belat - cm->bslat) / (double)(nce2 - 1);
     for (j = 0; j < nce2; j++)
       hfy->_data[j] = s * (double)j + cm->bslat;
-  } else {
+    jigsaw_alloc_reals(hfvals, nhfun);
+  } else if (imeth & I_MESH) {
     /* Get a triangulation based on the mesh perimeter               */
     /*xy_to_d(d, cm->np, cm->x, cm->y);*/
     if (imeth & I_BTY)
@@ -3706,8 +3737,72 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 
     create_bounded_mesh(cm->np, cm->x, cm->y, hmin, hmax, J_hfun);
     nhfun = J_hfun->_vert2._size;
+    jigsaw_alloc_reals(hfvals, nhfun);
+  } else {
+    FILE *hp;
+    if ((hp = fopen(fname, "r")) == NULL)
+      hd_quit("Can't open hfun file %s\n", fname);
+    fgets(buf, MAXSTRLEN, hp);  /* Header comment */
+    fgets(buf, MAXSTRLEN, hp);  /* MESHID */
+    if (sscanf(buf, "MSHID=%d;EUCLIDEAN-GRID", &i) == 1) {
+      fgets(buf, MAXSTRLEN, hp);  /* NDIMS  */
+      if (sscanf(buf, "NDIMS=%d", &i) != 1)
+	hd_quit("Can't read NDIMS in file %s\n", fname);
+
+      if (!(prm_skip_to_end_of_tok(hp, "COORD=1", ";", buf)))
+	hd_quit("Can't read COORD1 in file %s\n", fname);
+      nce1 = atoi(buf);
+      jigsaw_alloc_reals(hfx, nce1);
+      for (i = 0; i < nce1; i++) {
+	fscanf(hp, "%lf", &hfx->_data[i]);
+      }
+
+      if (!(prm_skip_to_end_of_tok(hp, "COORD=2", ";", buf)))
+	hd_quit("Can't read COORD2 in file %s\n", fname);
+      nce2 = atoi(buf);
+      jigsaw_alloc_reals(hfy, nce2);
+      for (i = 0; i < nce2; i++) {
+	fscanf(hp, "%lf", &hfy->_data[i]);
+      }
+
+      if (!(prm_skip_to_end_of_tok(hp, "VALUE", "=", buf)))
+	hd_quit("Can't read VALUE in file %s\n", fname);
+      nhfun = atoi(buf);
+      jigsaw_alloc_reals(hfvals, nhfun);
+      for (i = 0; i < nhfun; i++) {
+	fscanf(hp, "%lf", &hfvals->_data[i]);
+      }
+      J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
+    } else if (sscanf(buf, "MSHID=%d;EUCLIDEAN-MESH", &i) == 1) {
+      jigsaw_VERT2_array_t *jpoints = &J_hfun->_vert2;
+      fgets(buf, MAXSTRLEN, hp);  /* NDIMS  */
+      if (sscanf(buf, "NDIMS=%d", &i) != 1)
+	hd_quit("Can't read NDIMS in file %s\n", fname);
+      fgets(buf, MAXSTRLEN, hp);  /* POINT  */
+      if (sscanf(buf, "POINT=%d", &nhfun) != 1)
+	hd_quit("Can't read POINT in file %s\n", fname);
+      jigsaw_alloc_vert2(jpoints, nhfun);
+      for (i = 0; i < nhfun; i++) {
+	fscanf(hp, "%lf;%lf;0\n",&jpoints->_data[n]._ppos[0],
+	       jpoints->_data[n]._ppos[1]);
+      }
+      J_hfun->_flags = JIGSAW_EUCLIDEAN_MESH;
+    }
   }
-  jigsaw_alloc_reals(hfvals, nhfun);
+
+  /*-----------------------------------------------------------------*/
+  /* Read bathymetry over-ride values                                */
+  if (prm_read_int(fp, "HFUN_OVERRIDE", &nord)) {
+    exlon = d_alloc_1d(nord);
+    exlat = d_alloc_1d(nord);
+    exrad = d_alloc_1d(nord);
+    exbth = d_alloc_1d(nord);
+    for (n = 0; n < nord; n++) {
+      if (fscanf(fp, "%lf %lf %lf %lf", &exlon[n], &exlat[n], &exrad[n], &exbth[n]) != 4)
+	hd_quit("hfun_from_bathy: Format for HFUN_OVERRIDE is 'lon lat radius value'.\n");
+    }
+    orf = 1;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Make a gridded bathymetry                                       */
@@ -3833,65 +3928,92 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     int constf = 0;
     double d1, d2, d3;
 
-    prm_skip_to_end_of_key(fp, "HFUN_BATHY_FILE");
-    nbath = atoi(fname);    
-    if (nbath == 0 || fscanf(fp, "%lf %lf %lf", &d1, &d2, &d3) != 3) {
-      constf = 1;
-      d1 = atof(fname) / deg2m;
-      for (n = 0; n < nhfun; n++) {
-	hfvals->_data[n] = d1;
-      }
-      J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
-    } else {
+    if (!(imeth & I_MSH)) {
       prm_skip_to_end_of_key(fp, "HFUN_BATHY_FILE");
-      x = d_alloc_1d(nbath);
-      y = d_alloc_1d(nbath);
-      b = d_alloc_1d(nbath);
-      for (i = 0; i < nbath; i++) {
-	if ((fscanf(fp, "%lf %lf %lf", x[i], y[i], b[i])) != 3)
-	  hd_quit("hfun_from_bathy: Incorrect resolution specification.\n");
-      }
+      nbath = atoi(fname);    
+      if (nbath == 0 || fscanf(fp, "%lf %lf %lf", &d1, &d2, &d3) != 3) {
+	constf = 1;
+	d1 = atof(fname) / deg2m;
+	for (n = 0; n < nhfun; n++) {
+	  hfvals->_data[n] = d1;
+	}
+	J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
+	if (orf) {
+	  for (n = 0; n < nord; n++) exbth[n] = fabs(exbth[n]) / deg2m;
+	}
+      } else {
+	prm_skip_to_end_of_key(fp, "HFUN_BATHY_FILE");
+	x = d_alloc_1d(nbath);
+	y = d_alloc_1d(nbath);
+	b = d_alloc_1d(nbath);
+	for (i = 0; i < nbath; i++) {
+	  if ((fscanf(fp, "%lf %lf %lf", &x[i], &y[i], &b[i])) != 3)
+	    hd_quit("hfun_from_bathy: Incorrect resolution specification.\n");
+	}
+	
+	/* Interpolate from a triangulation                              */
+	gs = grid_interp_init(x, y, b, nbath, i_rule);
+	printf("a %d\n",nhfun);
 
-      /* Interpolate from a triangulation                              */
-      gs = grid_interp_init(x, y, b, nbath, i_rule);
-
-      for (n = 0; n < nhfun; n++) {
-	xloc = J_hfun->_vert2._data[n]._ppos[0];
-	yloc = J_hfun->_vert2._data[n]._ppos[1];
-	hfvals->_data[n] = grid_interp_on_point(gs, xloc, yloc);
-	if (verbose) printf("%d %f : %f %f\n",n, hfvals->_data[n], xloc, yloc);
+	n = 0;
+	for (i = 0; i < nce1; i++) {
+	  for (j = 0; j < nce2; j++) {
+	    xloc = hfx->_data[i];
+	    yloc = hfy->_data[j];
+	    hfvals->_data[n] = grid_interp_on_point(gs, xloc, yloc);
+	    if (verbose) printf("%d %f : %f %f\n",n, hfvals->_data[n], xloc, yloc);
+	    n++;
+	  }
+	}
+	/*
+	for (n = 0; n < nhfun; n++) {
+	  xloc = J_hfun->_vert2._data[n]._ppos[0];
+	  yloc = J_hfun->_vert2._data[n]._ppos[1];
+	  hfvals->_data[n] = grid_interp_on_point(gs, xloc, yloc);
+	  if (verbose) printf("%d %f : %f %f\n",n, hfvals->_data[n], xloc, yloc);
+	}
+	*/
+	J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
+	grid_specs_destroy(gs);
+	d_free_1d(x);
+	d_free_1d(y);
       }
-      J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
-      grid_specs_destroy(gs);
-      d_free_1d(x);
-      d_free_1d(y);
     }
   }
 
   /*-----------------------------------------------------------------*/
   /* Over-ride bathymetry values if required                         */
-  if (prm_read_int(fp, "HFUN_OVERRIDE", &nord)) {
-    double *exlon, *exlat, *exrad, *exbth;
-    exlon = d_alloc_1d(nord);
-    exlat = d_alloc_1d(nord);
-    exrad = d_alloc_1d(nord);
-    exbth = d_alloc_1d(nord);
-    for (n = 0; n < nord; n++) {
-      if (fscanf(fp, "%lf %lf %lf %lf", &exlon[n], &exlat[n], &exrad[n], &exbth[n]) != 4)
-	hd_quit("hfun_from_bathy: Format for HFUN_OVERRIDE is 'lon lat radius value'.\n");
-    }
+  if (orf) {
+
     if (imeth & I_GRID) {
+      double *val = (imeth & I_USR) ? hfvals->_data : b;
+      double smin[nord];
+      int imin[nord], jmin[nord], nmin[nord];
       n = 0;
+      for (m = 0; m < nord; m++) smin[m] = HUGE;
       for (i = 0; i < nce1; i++) {
 	for (j = 0; j < nce2; j++) {
 	  for (m = 0; m < nord; m++) {
 	    xloc = exlon[m] - hfx->_data[i];
 	    yloc = exlat[m] - hfy->_data[j];
 	    s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
-	    if (s < exrad[m]) b[n] = (b[n] - exbth[m]) * s / exrad[m] + exbth[m];
+	    if (s < exrad[m]) {
+	      val[n] = (val[n] - exbth[m]) * s / exrad[m] + exbth[m];
+	      if (s < smin[m]) {
+		smin[m] = s;
+		imin[m] = i;
+		jmin[m] = j;
+		nmin[m] = n;
+	      }
+	    }
 	  }
 	  n++;
 	}
+      }
+      for (m = 0; m < nord; m++) {
+	val[nmin[m]] = exbth[m];
+	hd_warn("HFUN_OVERRIDE%d minimum dist @ %f %f\n", m,
+		hfx->_data[imin[m]],hfy->_data[jmin[m]]);
       }
     } else {
       for (n = 0; n < nhfun; n++) {
@@ -3903,11 +4025,11 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	}
       }
     }
-    d_free_1d(exlon);
-    d_free_1d(exlat);
-    d_free_1d(exrad);
-    d_free_1d(exbth);
   }
+  if (exlon) d_free_1d(exlon);
+  if (exlat) d_free_1d(exlat);
+  if (exrad) d_free_1d(exrad);
+  if (exbth) d_free_1d(exbth);
 
   /*-----------------------------------------------------------------*/
   /* Convert to the hfun function                                    */
@@ -4078,7 +4200,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	n = 0;
 	for (i = 0; i < nce1; i++) {
 	  for (j = 0; j < nce2; j++) {
-	    if (imeth & I_USR)
+	    if (imeth & (I_USR|I_MSH))
 	      fprintf(ef, "%f %f %f\n",hfx->_data[i], hfy->_data[j],
 		      hfvals->_data[n]);
 	    else
@@ -4419,7 +4541,6 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
       /* Smooth                                                      */
       r = d_alloc_1d(nhfun);
       for (sn = 0; sn < smooth; sn++) {
-	double d1;
 	/* Loop over all vertices                                      */
 	/*memcpy(r, hfvals->_data, nhfun * sizeof(double));*/
 	for (i = 0; i < nce1; i++) {
@@ -4435,19 +4556,13 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
 		jj = max(0, min(nce2-1, jj));
 		m = ij2n[jj][ii];
 		r[n] += hfvals->_data[m];
-		/*
-		r[n] = 1.0;
-		d1 = hfvals->_data[m];
-		r[n] = r[n] + d1;
-		*/
 		s += 1.0;
 	      }
 	    }
 	    if (s) r[n] /= s;
-	    if(s==0)printf("zero\n");
 	  }
 	}
-	/*memcpy(hfvals->_data, r, nhfun * sizeof(double));*/
+	memcpy(hfvals->_data, r, nhfun * sizeof(double));
       }
 
       d_free_1d(r);
@@ -4598,13 +4713,14 @@ void create_bounded_mesh(int npts,     /* Number of perimeter points */
     /* Coordinates                                                   */
     jpoints->_data[n]._ppos[0] = x[n];
     jpoints->_data[n]._ppos[1] = y[n];
-
+    jpoints->_data[n]._itag = 0;
     /* Connecting edges                                              */
     jedges->_data[n]._node[0] = n;
     if (n<np-1)
       jedges->_data[n]._node[1] = n+1;
     else
       jedges->_data[n]._node[1] = 0; // close polygon
+    jedges->_data[n]._itag = 0;    
   }
   /*
   for (n = 0; n < np; n++) {
@@ -4626,7 +4742,7 @@ void create_bounded_mesh(int npts,     /* Number of perimeter points */
   */
   /* Call Jigsaw                                                     */
   J_jig._verbosity = 0;
-  jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, J_mesh);
+  jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, NULL, J_mesh);
   if (jret) hd_quit("create_bounded_mesh: Error calling JIGSAW\n");
 
   /* Write to file                                                   */
@@ -4750,25 +4866,27 @@ void create_jigsaw_mesh(coamsh_t *cm,
     /* Coordinates                                                   */
     jpoints->_data[n]._ppos[0] = msh->coords[0][n];
     jpoints->_data[n]._ppos[1] = msh->coords[1][n];
+    jpoints->_data[n]._itag = 0;
   }
   for (n = 0; n < msh->edge2; n++) {
     /* Connecting edges                                              */
     jedges->_data[n]._node[0] = msh->edges[0][n];
     jedges->_data[n]._node[1] = msh->edges[1][n];
+    jedges->_data[n]._itag = 0;
   }
 
   /* Set up some flags/parameters                                    */
   J_jig._hfun_scal = JIGSAW_HFUN_ABSOLUTE;
   J_jig._hfun_hmin = cm->hfun_min / deg2m;
   J_jig._hfun_hmax = cm->hfun_max / deg2m;
-  J_jig._verbosity = 1;
+  J_jig._verbosity = 0;
   /*J_jig._mesh_eps1 = 10.0;*/
   /*
   J_jig._hfun_hmin = 0.01;
   J_jig._hfun_hmax = 0.02;
   */
   /* Call Jigsaw                                                     */
-  jret = jigsaw_make_mesh(&J_jig, &J_geom, J_hfun, J_mesh);
+  jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, J_hfun, J_mesh);
   if (jret) hd_quit("create_jigsaw_mesh: Error calling JIGSAW\n");
 
   /* Write to file                                                   */
@@ -6327,6 +6445,8 @@ void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
       fprintf(op, "and some output diagnostics.\n\n");
       sprintf(buf, "%s_out.txt", cm->pname);
       fprintf(op, "FILE %s contains the output perimeter for coastmesh.\n\n", buf);
+      sprintf(buf, "%s.site", cm->pname);
+      fprintf(op, "FILE %s contains labelled segments in a '.site' file.\n\n", buf);
     }
     if (strlen(cm->ofile)) {
       fprintf(op, "FILE %s contains the input geom_file .msh file for JIGSAW.\n", cm->ofile);

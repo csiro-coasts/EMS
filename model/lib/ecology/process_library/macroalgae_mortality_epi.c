@@ -4,8 +4,9 @@
  *  
  *  File: model/lib/ecology/process_library/macroalgae_mortality_epi.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Macroalgae mortality (can be used for spectral / non-spectral model.
+ *  
+ *  Linear mortality rate.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_mortality_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: macroalgae_mortality_epi.c 5946 2018-09-14 00:21:27Z bai155 $
  *
  */
 
@@ -95,8 +96,12 @@ void macroalgae_mortality_epi_init(eprocess* p)
      * Key off the light spectral process
      */
     ws->unitch = 1;
-    if (process_present(e, PT_WC, "light_spectral_wc"))
+    if (process_present(e, PT_WC, "light_spectral_wc")){
       ws->unitch = 1000;
+      eco_write_setup(e,"Macroalgae mortality: spectral model so units of macroalgae grams \n");
+    }else{
+      eco_write_setup(e,"Macroalgae mortality: non-spectral model so units of macroalgae mg \n");
+    }
 }
 
 void macroalgae_mortality_epi_destroy(eprocess* p)

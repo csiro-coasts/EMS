@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: salmon_waste.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: salmon_waste.c 5894 2018-08-21 01:51:27Z wil00y $
  *
  */
 
@@ -164,9 +164,9 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     cv[ws->FCR_i] = Tfactor * ws->FCR_t0;
     /*    cv[ws->fish_resp_i] = Tfactor * ws->fish_resp_t0;*/
 
-    // Bail out if deeper than 20m
+    // Bail out if deeper than 24m
     double z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
-    if (z_centre < -20.0)
+    if (z_centre < -24.0)
       return;
 
     double Fish_size = y[ws->Fish_size_i];
@@ -180,8 +180,8 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     if ((Fish_size <= 0) || (Fish_num <=0))
       return;
 
-    /* QC cap fish size at 8000g*/ 
-    double Fish_size_qc = min(Fish_size, 8000.);
+    /* QC cap fish size at 10,000g*/ 
+    double Fish_size_qc = min(Fish_size, 10000.);
 
     /*    double DetPL_N = y[ws->DetPL_N_i];
     double DetR_C = y[ws->DetR_C_i];
@@ -190,8 +190,8 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     int wcbotk; 
     wcbotk = einterface_getwcbotk(c->col->model, c->b);
     double z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
-    double pen_volume = einterface_cellarea(c->col->e->model, c->b) * -(max(-20,z_bot));
-    /*  double pen_volume = einterface_cellarea(c->col->model, c->b) * -(max(-20,z_bot));*/
+    double pen_volume = einterface_cellarea(c->col->e->model, c->b) * -(max(-24,z_bot));
+    /*  double pen_volume = einterface_cellarea(c->col->model, c->b) * -(max(-24,z_bot));*/
  // Bail out if dry cell
     if (pen_volume <= 0)
       return;
@@ -215,7 +215,7 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     double feed = (AS_growth - Fish_size_qc) * Fish_num * cv[ws->FCR_i] / 1000.0;
 
     /* Salmon waste kg/week for whole pen */
-    /* ?? need to divide by volume of pen max(botz,-20); how do point source loads in mg/s work?? */
+    /* ?? need to divide by volume of pen max(botz,-24); how do point source loads in mg/s work?? */
 
     double SW_POC = feed * ws->C_in_feed * ws->feed_FPOC;
     double SW_PON = feed * ws->N_in_feed * ws->feed_FPON;

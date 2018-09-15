@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: tracers.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -869,6 +869,9 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	  for (j = 1; j <= window->npe[c2]; j++) {
 	    e = window->c2e[j][c];
 	    dtracer[c] += (window->eSc[j][c2] * Fx[e] * dtu);
+	    /*
+	    if(tr==windat->temp&&window->wn==1&&c==9318)printf("%d %d %d %d %d %f %f\n",window->s2k[c],window->wsa[c2],window->wsa[c],j,e,window->u1x[window->m2de[e]],window->u1y[window->m2de[e]]);
+	    */
 	  }
         }
 
@@ -1504,7 +1507,7 @@ void advect(geometry_t *window,               /* Window geometry     */
 	e = window->w3_e1[ee];
 	c = window->e2c[e][0];
 	cm1 = window->e2c[e][1];
-	if (wincon->trasc & HIORDER) {
+	if (wincon->trasc & HIORDER && !(window->eask[e] & (W_NOBC|W_TOBC))) {
 	  trm = wincon->trm[e];
 	  trp = wincon->trp[e];
 	} else {
@@ -1893,7 +1896,7 @@ void quickest(geometry_t *window,             /* Window geometry     */
     j = window->e2e[e][1];
     cp = window->c2c[j][c1];
 
-    if (wincon->trasc & HIORDER) {
+    if (wincon->trasc & HIORDER && !(window->eask[e] & (W_NOBC|W_TOBC))) {
       trp = wincon->trp[e];
       trm = wincon->trm[e];
     } else {
@@ -2077,7 +2080,7 @@ void van_leer(geometry_t *window,             /* Window geometry     */
     j = window->e2e[e][1];
     cp = window->c2c[j][c1];
 
-    if (wincon->trasc & HIORDER) {
+    if (wincon->trasc & HIORDER && !(window->eask[e] & (W_NOBC|W_TOBC))) {
       trp = wincon->trp[e];
       trm = wincon->trm[e];
     } else {
@@ -2463,6 +2466,7 @@ void tr_bounds(geometry_t *window,        /* Window geometry         */
       }
     }
   }
+  if (wincon->mode2d) return;
 
   /* In thin layers the difference in diffusive or advective fluxes  */
   /* between opposite faces can be large (eg. if dzface(i) is thin   */
@@ -2495,32 +2499,33 @@ void tr_bounds(geometry_t *window,        /* Window geometry         */
 #if defined(HAVE_OMP)
 #pragma omp parallel for private(cc,c,nn,n)
 #endif
+
   for (cc = 1; cc <= wincon->vc1; cc++) {
     c = wincon->s1[cc];
-
+    
     for (nn = 0; nn < wincon->ntbdy; nn++) {
       n = wincon->tbdy[nn];
       /* If a minimum is set to zero and the tracer undershoots      */
       /* below this then set to zero to keep positive definite.      */
       if (min[n] <= eps && windat->tr_wc[n][c] < min[n])
-        windat->tr_wc[n][c] = min[n];
-
+	windat->tr_wc[n][c] = min[n];
+      
       /* Print a warning for any other min / max violations          */
       if (windat->tr_wc[n][c] < min[n] || windat->tr_wc[n][c] > max[n]) {
-        hd_warn
-          ("Tracer %s outside range %3.1e to %3.1e : %e @ (%d %d %d) at %f\n",
-           wincon->trname[n], min[n], max[n], windat->tr_wc[n][c],
-           window->s2i[c], window->s2j[c], window->s2k[c], windat->t / 86400.0);
+	hd_warn
+	  ("Tracer %s outside range %3.1e to %3.1e : %e @ (%d %d %d) at %f\n",
+	   wincon->trname[n], min[n], max[n], windat->tr_wc[n][c],
+	   window->s2i[c], window->s2j[c], window->s2k[c], windat->t / 86400.0);
       }
 #if defined(HAVE_ECOLOGY_MODULE)
       /*
-      if (windat->tr_wc[n][c] > 0.0 && windat->tr_wc[n][c] < TINY) {
-        hd_warn
-          ("Tracer %s too small : %e @ (%d %d %d) at %f\n", 
-           wincon->trname[n], windat->tr_wc[n][c],
-           window->s2i[c], window->s2j[c], window->s2k[c], windat->t / 86400.0);
-          
-      }
+	if (windat->tr_wc[n][c] > 0.0 && windat->tr_wc[n][c] < TINY) {
+	hd_warn
+	("Tracer %s too small : %e @ (%d %d %d) at %f\n", 
+	wincon->trname[n], windat->tr_wc[n][c],
+	window->s2i[c], window->s2j[c], window->s2k[c], windat->t / 86400.0);
+        
+	}
       */
 #endif
     }
@@ -3386,13 +3391,6 @@ double get_quadratic_value(geometry_t *window, /* Processing window  */
   /* Get the weights for the edge                                    */
   for (n = 0; n < npem; n++) {
     c = wincon->Bcell[e][n];
-    /*
-    if(tr==windat->temp&&window->wn==4&&e==1551)printf("a %f %d %d %d %d %f : %f %f %d %f\n",windat->days,n,e,j,c,tr[c],window->cellx[window->m2d[c]],window->celly[window->m2d[c]],geom->fm[window->wsa[c]].wn,master->temp[window->wsa[c]]);
-
-    if(tr==windat->temp&&fabs(tr[c]-20.0)>1e-5){printf("aa %f %d %d %d %d %d %f : %f %f\n",windat->days,window->wn,n,e,j,window->s2k[c],tr[c],window->cellx[window->m2d[c]],window->celly[window->m2d[c]]);
-      exit(0);
-    }
-    */
     tmx = max(tmx, tr[c]);
     tmn = min(tmn, tr[c]);
     for (jj = 0; jj < nuc; jj++) {
@@ -4340,6 +4338,7 @@ void bdry_tracer(geometry_t *window,        /* Window geometry       */
       set_OBC_tr(tn, window, windat, wincon, open[n]);
     }
   }
+
 }
 
 /* END bdry_tracer()                                                 */
@@ -4814,12 +4813,12 @@ void set_OBC_tr(int tn,             /* Tracer number                 */
   /*-----------------------------------------------------------------*/
   /* Set an upstream advection condition on tracer boundaries        */
   if (bcond & UPSTRM) {
-    double sc = 1.0;
+    double sc;
     double f, v;
     int ei;
     vel = windat->u1;
     hat = window->h2au1;
-    if (!open->ocodec) sc = -1.0;
+
     if (wincon->trasc == LAGRANGE) {
       /* Characteristic method for use with LAGRANGE                 */
 
@@ -4853,6 +4852,7 @@ void set_OBC_tr(int tn,             /* Tracer number                 */
 	c = open->obc_e2[ee];
 	cc = open->e2c_e1[ee];
 	c1 = open->oi1_t[cc];
+	sc = open->dir[ee];
 	v = get_upvel(vel, sc, e, ei, open->upmeth);
 	c2 = window->m2d[c];
 	f = open->nepc[cc];
@@ -4909,18 +4909,18 @@ void upstrm(geometry_t *window,             /* Window geometry       */
 {
   int c, cc, c1, c2;
   int e, ei, ee, es;
-  double sc = 1.0;
+  double sc;
   double f, v;
   double *vel = NULL, *hat = NULL;
 
   vel = windat->u1;
   hat = window->h1au1;
-  if (!open->ocodec) sc = -1.0;
 
   if (wincon->trasc == LAGRANGE) {
     /* Characteristic method for use with LAGRANGE                   */
     memset(open->dum, 0, (open->no3_t + 1) * sizeof(double));
     for (ee = 1; ee <= open->no3_e1; ee++) {
+      int j = open->outi[ee];
       e = open->obc_e1[ee];
       es = window->m2de[e];
       c = open->obc_e2[ee];
@@ -4929,10 +4929,11 @@ void upstrm(geometry_t *window,             /* Window geometry       */
 			   window->h2au1[es], 1.0);
     }
     for (cc = 1; cc <= open->no3_t; cc++) {
+
       c = open->obc_t[cc];
       c2 = window->m2d[c];
       f = open->dum[cc] * open->nepc[cc];
-      newval[c] = - sc * v > 0.0 ?
+      newval[c] = (f > 0.0) ?
 	tr[c] - f * (tr[c] - newval[c]) : tr[c];
     }
   } else {    
@@ -4946,6 +4947,7 @@ void upstrm(geometry_t *window,             /* Window geometry       */
 	  c1 = open->obc_e2[ee];
 	  v = vel[e];
 	  c2 = window->m2d[c1];
+	  sc = -(double)open->dir[ee];
 	  newval[c] +=  - windat->dt *
 	    (0.5 * (sc * v + fabs(v)) * (newval[c] - tr[open->nmape[ee][c]]) / hat[c2]
 	       + (sc * v - fabs(v)) * (tr[open->omape[ee][c]] - newval[c]) / open->rlen);
@@ -4957,6 +4959,7 @@ void upstrm(geometry_t *window,             /* Window geometry       */
 	  c1 = open->obc_e2[ee];
 	  v = vel[e];
 	  c2 = window->m2d[c1];
+	  sc = -(double)open->dir[ee];
 	  newval[c] +=  - windat->dt / hat[c2]
 	    * (0.5 * (sc * v + fabs(v)) * (newval[c] - tr[open->nmape[ee][c]])
 	       + 0.5 * (sc * v - fabs(v)) * (tr[open->omape[ee][c]] - newval[c]));
@@ -4989,6 +4992,7 @@ void upstrm(geometry_t *window,             /* Window geometry       */
 	c = open->obc_e2[ee];
 	cc = open->e2c_e1[ee];
 	c1 = open->oi1_t[cc];
+	sc = -(double)open->dir[ee];
 	v = get_upvel(vel, sc, e, ei, mode);
 	c2 = window->m2d[c];
 	f = open->nepc[cc];
@@ -5101,7 +5105,7 @@ void reset_tr_OBCflux(geometry_t *window,  /* Processing window      */
 
   for (n = 0; n < window->nobc; n++) {
     open_bdrys_t *open = window->open[n];
-    double sgn = (!open->ocodec) ? 1.0 : -1.0;
+    double sgn;
     double *flux;
     double tf = 0.0, f = 0.0;
     int nvec, *vec;
@@ -5140,12 +5144,14 @@ void reset_tr_OBCflux(geometry_t *window,  /* Processing window      */
       nvec = open->no3_e1;
       for (ee = 1; ee <= nvec; ee++) {
 	e = vec[ee];
+	sgn = open->dir[ee];
 	tf += flux[e];
 	if (sgn * flux[e] > 0.0) f += flux[e];
       }
       f = (f) ? fabs(tf / f) : 0.0;
       for (ee = 1; ee <= open->no3_e1; ee++) {
 	e = open->obc_e1[ee];
+	sgn = open->dir[ee];
 	tf = (sgn * flux[c] > 0.0) ? f : 0.0;
 	cc = open->e2c_e1[ee];
 	/* Get the mass flux scaled for inflow only                */
@@ -5156,6 +5162,7 @@ void reset_tr_OBCflux(geometry_t *window,  /* Processing window      */
     for (ee = 1; ee <= open->no3_e1; ee++) {
       e = open->obc_e1[ee];
       c = open->obc_e2[ee];
+      sgn = open->dir[ee];
       dtracer[c] += (sgn * Fx[e] - open->dumtr[nn][ee]) * dt;
     }
     /* Reset the flux for TRCONF if sub-stepping                     */
@@ -6263,7 +6270,7 @@ void init_flushing(master_t *master,        /* Master data structure */
       fprintf(tsflush.fp, "## COLUMN1.name  Time\n");
       fprintf(tsflush.fp, "## COLUMN1.long_name  Time\n");
       fprintf(tsflush.fp,
-              "## COLUMN1.units  days since 1990-01-01 00:00:00 +10\n");
+              "## COLUMN1.units  %s\n", master->output_tunit);
       fprintf(tsflush.fp, "## COLUMN1.missing_value -999\n");
       fprintf(tsflush.fp, "##\n");
       fprintf(tsflush.fp, "## COLUMN2.name  total_mass\n");

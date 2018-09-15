@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: readdump.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -90,9 +90,13 @@ void master_setghosts(geometry_t *geom, /* Sparse global geometry    */
       e = open->obc_e1[ee];
       ci = open->oi1_e1[ee];
       /*geom->h1au1[e] = geom->h1au1[ci];*/
-      geom->h2au1[e] = geom->h2au1[ci];
+      /*geom->h2au1[e] = geom->h2au1[ci];*/
+      /* OBC lengths currently hold the distance from the centre to  */
+      /* the edge. Assume that the ghost centre is the same distance */
+      /* from the edge as this wet centre; i.r. mu8ltiply by 2.      */
+      geom->h2au1[e] *= 2.0;
       /*geom->thetau1[e] = geom->thetau1[ci];*/
-      geom->h1acell[e] = geom->h1acell[ci];
+      /*geom->h1acell[e] = geom->h1acell[ci];*/
     }
 
     /* Boundary length                                               */
@@ -655,6 +659,28 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
 
   master->t = params->t;  /* Required to initialize dumpdata->t     */
   dumpdata_init(dumpdata, geom, master);
+
+  /* For structured meshes, read in the whole gridx, gridy arrays,  */
+  /* including cells over land. This is read from the structured    */
+  /* netCDF file s_idumpname, and is required to set the mapping    */
+  /* function xytoij.                                               */
+  if (params->us_type & US_IJ) {
+    int sfid;
+    char name[MAXSTRLEN];
+
+    sprintf(name, "s_%s", params->idumpname);
+    if ((ncerr = nc_open(name, NC_NOWRITE, &sfid)) != NC_NOERR) {
+      printf("Can't find structured input file %s\n", name);
+      hd_quit((char *)nc_strerror(ncerr));
+    }
+    count[0] = geom->nce2 + 1;
+    count[1] = geom->nce1 + 1;
+    nc_get_vara_double(sfid, ncw_var_id(sfid, "x_grid"), start, count,
+		       dumpdata->gridx[0]);
+    nc_get_vara_double(sfid, ncw_var_id(sfid, "y_grid"), start, count,
+		       dumpdata->gridy[0]);
+    dump_close(sfid);
+  }
 
   i_free_2d(k2c);
   i_free_2d(k2e);

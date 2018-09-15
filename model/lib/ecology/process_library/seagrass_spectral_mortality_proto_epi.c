@@ -2,18 +2,31 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/lib/ecology/process_library/seagrass_spectral_mortality_epi.c
+ *  File: model/lib/ecology/process_library/seagrass_spectral_mortality_proto_epi.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Seagrass mortality including linear mortality, quadratic mortality 
+ *               and shear stress mortality, affecting both above and below ground biomass.
  *  
+ *  Options: seagrass_spectral_mortality_proto_epi(Z|H|D|P)
+ *
+ *  Z - Zostera (SG)
+ *  H - Halophila (SGH)
+ *  D - Deep Halophila (SGD)
+ *  P - Posidonia (SGP)
+ * 
+ *  Model described in: Baird, M. E., M. P. Adams, R. C. Babcock, K. Oubelkheir, M. Mongin, 
+ *                      K. A. Wild-Allen, J. Skerratt, B. J. Robson, K. Petrou, P. J. Ralph, 
+ *                      K. R. O'Brien, A. B. Carter, J. C. Jarvis, M. A. Rasheed (2016) 
+ *                      A biophysical representation of seagrass growth for application in a 
+ *                      complex shallow-water biogeochemical model Ecol. Mod. 325: 13-27. 
+ *    
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_mortality_proto_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: seagrass_spectral_mortality_proto_epi.c 5942 2018-09-13 04:28:00Z bai155 $
  *
  */
 
@@ -65,7 +78,6 @@ typedef struct {
   int mL_i;
   int mL_ROOT_i;
 
-  // NEW STUFF FOR SHEAR STRESS-DEPENDENT MORTALITY
   int ustrcw_skin_i;
   int SG_shear_mort_i;
 
@@ -107,19 +119,33 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
     ws->SGleafden = get_parameter_value(e, "SGleafden");
     ws->mL_i = find_index_or_add(e->cv_cell, "SG_mL", e);
     ws->mL_ROOT_i = find_index_or_add(e->cv_cell, "SGROOT_mL", e);
+    
     ws->seed = try_parameter_value(e, "SGseedfrac");
-    if (isnan(ws->seed))
+    if (isnan(ws->seed)){
       ws->seed = 0.0;
+      eco_write_setup(e,"Code default: SGseedfrac = %e \n",ws->seed);
+    }
+
     ws->SGfrac = get_parameter_value(e, "SGfrac");
     
     ws->SG_tau_critical = try_parameter_value(e, "SG_tau_critical");
-    if (isnan(ws->SG_tau_critical))
+    if (isnan(ws->SG_tau_critical)){
       ws->SG_tau_critical = 1.0;
-    
+       eco_write_setup(e,"Code default:  SG_tau_critical = %e \n",ws->SG_tau_critical);
+    }
+
     ws->SG_tau_efold = try_parameter_value(e, "SG_tau_efold");
-    if (isnan(ws->SG_tau_efold))
+    if (isnan(ws->SG_tau_efold)){
       ws->SG_tau_efold = 0.5 * 24.0 * 3600.0;
-    
+      eco_write_setup(e,"Code default: SG_tau_efold = %e \n",ws->SG_tau_efold);
+    }
+
+    ws->SG_mQ = try_parameter_value(e, "SG_mQ");
+    if (isnan(ws->SG_mQ)){
+      ws->SG_mQ = 0.0;
+      eco_write_setup(e,"Code default:  SG_mQ  = %e \n", ws->SG_mQ);
+    }
+
     ws->SG_N_i = e->find_index(epis, "SG_N", e) + OFFSET_EPI;
     ws->SGROOT_N_i = e->find_index(epis, "SGROOT_N", e) + OFFSET_EPI;
     ws->SG_shear_mort_i = e->try_index(epis, "SG_shear_mort", e);
@@ -136,19 +162,31 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
     ws->SGleafden = get_parameter_value(e, "SGHleafden");
     ws->mL_i = find_index_or_add(e->cv_cell, "SGH_mL", e);
     ws->mL_ROOT_i = find_index_or_add(e->cv_cell, "SGHROOT_mL", e);
+    
     ws->seed = try_parameter_value(e, "SGHseedfrac");
-    if (isnan(ws->seed))
+    if (isnan(ws->seed)){
       ws->seed = 0.0;
+      eco_write_setup(e,"Code default: SGHseedfrac = %e \n",ws->seed);
+    }
     ws->SGfrac = get_parameter_value(e, "SGHfrac");
     
     ws->SG_tau_critical = try_parameter_value(e, "SGH_tau_critical");
-    if (isnan(ws->SG_tau_critical))
+    if (isnan(ws->SG_tau_critical)){
       ws->SG_tau_critical = 1.0;
-    
+      eco_write_setup(e,"Code default:  SGH_tau_critical = %e \n",ws->SG_tau_critical);
+    }
+
     ws->SG_tau_efold = try_parameter_value(e, "SGH_tau_efold");
-    if (isnan(ws->SG_tau_efold))
+    if (isnan(ws->SG_tau_efold)){
       ws->SG_tau_efold = 0.5 * 24.0 * 3600.0;
-    
+      eco_write_setup(e,"Code default: SGH_tau_efold = %e \n",ws->SG_tau_efold);
+    }
+    ws->SG_mQ = try_parameter_value(e, "SGH_mQ");
+    if (isnan(ws->SG_mQ)){
+      ws->SG_mQ = 0.0;
+      eco_write_setup(e,"Code default:  SGH_mQ  = %e \n", ws->SG_mQ);
+    }
+
     ws->SG_N_i = e->find_index(epis, "SGH_N", e) + OFFSET_EPI;
     ws->SGROOT_N_i = e->find_index(epis, "SGHROOT_N", e) + OFFSET_EPI;
     ws->SG_shear_mort_i = e->try_index(epis, "SGH_shear_mort", e);
@@ -177,6 +215,10 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
     ws->SG_tau_efold = try_parameter_value(e, "SGP_tau_efold");
     if (isnan(ws->SG_tau_efold))
       ws->SG_tau_efold = 0.5*24.0*3600.0;
+
+    ws->SG_mQ = try_parameter_value(e, "SGP_mQ");
+    if (isnan(ws->SG_mQ))
+      ws->SG_mQ = 0.0;
     
     ws->SG_N_i = e->find_index(epis, "SGP_N", e) + OFFSET_EPI;
     ws->SGROOT_N_i = e->find_index(epis, "SGPROOT_N", e) + OFFSET_EPI;
@@ -194,22 +236,40 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
     ws->SGleafden = get_parameter_value(e, "SGDleafden");
     ws->mL_i = find_index_or_add(e->cv_cell, "SGD_mL", e);
     ws->mL_ROOT_i = find_index_or_add(e->cv_cell, "SGDROOT_mL", e);
+    
     ws->seed = try_parameter_value(e, "SGDseedfrac");
-    if (isnan(ws->seed))
+    if (isnan(ws->seed)){
       ws->seed = 0.0;
+      eco_write_setup(e,"Code default: SGDseedfrac = %e \n",ws->seed);
+    }
+
     ws->SGfrac = get_parameter_value(e, "SGDfrac");
     
     ws->SG_tau_critical = try_parameter_value(e, "SGD_tau_critical");
-    if (isnan(ws->SG_tau_critical))
+    if (isnan(ws->SG_tau_critical)){
       ws->SG_tau_critical = 1.0;
+      eco_write_setup(e,"Code default:  SGD_tau_critical = %e \n",ws->SG_tau_critical);
+    }
     
     ws->SG_tau_efold = try_parameter_value(e, "SGD_tau_efold");
-    if (isnan(ws->SG_tau_efold))
+    if (isnan(ws->SG_tau_efold)){
       ws->SG_tau_efold = 0.5*24.0*3600.0;
+      eco_write_setup(e,"Code default: SGD_tau_efold = %e \n",ws->SG_tau_efold);
+    }
 
-    if (process_present(e,PT_WC,"recom_extras"))
+    ws->SG_mQ = try_parameter_value(e, "SGD_mQ");
+    if (isnan(ws->SG_mQ)){
       ws->SG_mQ = (0.1/86400.0)/0.02;
-    
+      eco_write_setup(e,"Code default:  SGH_mQ  = %e \n", ws->SG_mQ);
+    }
+
+    /* overwrite default if recom for UQ group */
+
+    if (process_present(e,PT_WC,"recom_extras")){
+      ws->SG_mQ = (0.1/86400.0)/0.02;
+      eco_write_setup(e,"Written over because in RECOM for UQ:  SGH_mQ  = %e \n", ws->SG_mQ);
+    }
+
     ws->SG_N_i = e->find_index(epis, "SGD_N", e) + OFFSET_EPI;
     ws->SGROOT_N_i = e->find_index(epis, "SGDROOT_N", e) + OFFSET_EPI;
     ws->SG_shear_mort_i = e->try_index(epis, "SGD_shear_mort", e);
@@ -270,9 +330,7 @@ void seagrass_spectral_mortality_proto_epi_calc(eprocess* p, void* pp)
 
     // ADDITIONAL QUADRATIC TERM FOR DEEP SEAGRASS //
 
-    if (ws->species == 'D'){
-      mortality = mortality + ws->SG_mQ * SG_N * SG_N;   // quadratic term 
-    }
+    mortality = mortality + ws->SG_mQ * SG_N * SG_N;   // quadratic term 
  
     // CODE BELOW CHANGED TO ACCOUNT FOR SHEAR STRESS-DEPENDENT MORTALITY
     y1[ws->SGROOT_N_i] -= (mort_root + shear_stress_mortality_B);

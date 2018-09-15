@@ -4,8 +4,15 @@
  *  
  *  File: model/lib/ecology/process_library/zooplankton_mortality_wc.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Zooplankton mortality based on a quadratic mortality rate coefficient.
+ *
+ *  Options: zooplankton_spectral_mortality_wc(small|large)
+ *
+ *  Small - State variables ZooS_*, parameters ZS*
+ *  Large - State variables ZooL_*, parameters ZL*
+ *
+ *  WARNING: Mass balance check requires that if this processes is active, then so must be  
+ *           phytoplankton_spectral_grow_wc
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +20,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_mortality_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: zooplankton_mortality_wc.c 5934 2018-09-12 03:34:13Z bai155 $
  *
  */
 

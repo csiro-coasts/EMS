@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timeseries.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: timeseries.c 5898 2018-08-23 02:07:21Z her127 $
  *
  */
 
@@ -662,7 +662,7 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
 	  i--;
 	}
     }
-    
+
     /*
      * units field is optional
      */
@@ -681,10 +681,11 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
     tslist[n].fp = NULL;
     tslist[n].master = master;
     tslist[n].tsout = schedule->start_time;
-    
+
     /* SIGMA : Multiply botz by total depth - ?? FR */
     if (loc_ts->t == NULL) {
-      if ((c = hd_grid_xytoij(master, tslist[n].x, tslist[n].y, &i, &j))) {
+
+      if ((c = hd_grid_xytoij_r(master, tslist[n].x, tslist[n].y, &i, &j))) {
 	cs = geom->m2d[c];
 
 	if (cs == 0) {
@@ -740,7 +741,7 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
     read_ts_data_init(tsfd, n, master, &tslist[n]);    
 
   } // foreach n=nts
-  
+
   if(tsfd != prmfd)
     fclose(tsfd);
 

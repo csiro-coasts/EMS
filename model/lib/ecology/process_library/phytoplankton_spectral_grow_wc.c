@@ -5,6 +5,20 @@
  *  File: model/lib/ecology/process_library/phytoplankton_spectral_grow_wc.c
  *  
  *  Description: Phytoplankton growth model.
+ *
+ *  Options: phytoplankton_spectral_grow_wc(small|large)
+ *
+ *  Small - State variables PhyS_*, parameters PS*
+ *  Large - State variables PhyL_*, parameters PL*
+ *
+ *  Growth processes include: nutrient uptake into reserves, growth from reserves into structural material, 
+ *  pigment synthesis, photosynthesis / respiration.
+ *
+ *  Model description: See zooxanthallae equations in:
+ * 
+ *  Baird, M. E., M. Mongin, F. Rizwi, L. K. Bay, N. E. Cantin, M. Soja-Wozniak and J. Skerratt (2018) 
+ *  A mechanistic model of coral bleaching due to temperature-mediated light-driven reactive oxygen 
+ *  build-up in zooxanthellae. Ecol. Model 386: 20-37.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -12,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_spectral_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: phytoplankton_spectral_grow_wc.c 5931 2018-09-11 22:36:36Z bai155 $
  *
  */
 
@@ -191,39 +205,40 @@ void phytoplankton_spectral_grow_wc_postinit(eprocess* p)
       ws->KI_s_i = find_index_or_add(e->cv_cell, "KI_s", e);
       ws->yCfac_s_i = find_index_or_add(e->cv_cell, "yCfac_s", e);
     }
-/* test for equal sinking rates of structural material and reserves */
 
  /*
   * Not valid during a pre_build (RECOM)
   */
- if (!e->pre_build) {
+    if (!e->pre_build) {
 
-  double v1,v2,v3,v4,v5;
-
-  if (ws->large){
-
-    v1 = einterface_gettracersvel(e->model,"PhyL_N");
-    v2 = einterface_gettracersvel(e->model,"PhyL_NR");
-    v3 = einterface_gettracersvel(e->model,"PhyL_PR");
-    v4 = einterface_gettracersvel(e->model,"PhyL_Chl");
-    v5 = einterface_gettracersvel(e->model,"PhyL_I");
-    
-    if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
-      e->quitfn("Sinking rates of PhyL :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
+      /* test for equal sinking rates of structural material and reserves */
+      
+      double v1,v2,v3,v4,v5;
+      
+      if (ws->large){
+	
+	v1 = einterface_gettracersvel(e->model,"PhyL_N");
+	v2 = einterface_gettracersvel(e->model,"PhyL_NR");
+	v3 = einterface_gettracersvel(e->model,"PhyL_PR");
+	v4 = einterface_gettracersvel(e->model,"PhyL_Chl");
+	v5 = einterface_gettracersvel(e->model,"PhyL_I");
+	
+	if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
+	  e->quitfn("Sinking rates of PhyL :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
+	}
+      } else {
+	
+	v1 = einterface_gettracersvel(e->model,"PhyS_N");
+	v2 = einterface_gettracersvel(e->model,"PhyS_NR");
+	v3 = einterface_gettracersvel(e->model,"PhyS_PR");
+	v4 = einterface_gettracersvel(e->model,"PhyS_Chl");
+	v5 = einterface_gettracersvel(e->model,"PhyS_I");
+	
+	if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
+	  e->quitfn("Sinking rates of PhyS :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
+	}
+      }
     }
-  } else {
-
-    v1 = einterface_gettracersvel(e->model,"PhyS_N");
-    v2 = einterface_gettracersvel(e->model,"PhyS_NR");
-    v3 = einterface_gettracersvel(e->model,"PhyS_PR");
-    v4 = einterface_gettracersvel(e->model,"PhyS_Chl");
-    v5 = einterface_gettracersvel(e->model,"PhyS_I");
-    
-    if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
-      e->quitfn("Sinking rates of PhyS :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
-    }
-  }
- }
 }
 
 void phytoplankton_spectral_grow_wc_destroy(eprocess* p)
@@ -250,7 +265,6 @@ void phytoplankton_spectral_grow_wc_precalc(eprocess* p, void* pp)
   if (ws->do_mb) {
     y[ws->TN_i] += Phy_N + Phy_NR;
     y[ws->TP_i] += Phy_N * red_W_P + Phy_PR;
-    // y[ws->TC_i] += Phy_N * red_W_C ;
     y[ws->TC_i] += Phy_N * red_W_C + Phy_I*106.0/1060.0*12.01;
     y[ws->BOD_i] += (Phy_N * red_W_C + Phy_I*106.0/1060.0*12.01)*C_O_W;
   }
@@ -293,8 +307,8 @@ void phytoplankton_spectral_grow_wc_calc(eprocess* p, void* pp)
 
   if (Phy_N > 1e-9){  /* 1e-9 is to avoid unstable small divisions */
 
-    // double cellnum = Phy_N / (ws->m * red_A_N * 1000.0 * MW_Nitr); /* cell m-3 */
     double cellnum = Phy_N / PN_max ; /* cell m-3 */
+
   /* calculate N and I quotas, and cellular chl concentration from 
      total concentration and cell number */
 
@@ -358,9 +372,7 @@ void phytoplankton_spectral_grow_wc_calc(eprocess* p, void* pp)
     
     double tmmp = max(Chlsynfactor * (1.0 - Iquota),0.0);
     double dChldt_syn = ws->Chlmax * umax * min(tmmp, 1.33) * Nquota * Pquota;
-
-    // double dChldt_syn = ws->Chlmax * umax * Chlsynfactor * (1.0 - Iquota) * Nquota * Pquota;
-    
+   
     if (PN_max*5.6786 < ws->C2Chlmin * (Phy_Chl / cellnum)){  /* don't synthesise if can't fit in any more. */
       dChldt_syn = 0.0;
     }
@@ -371,15 +383,11 @@ void phytoplankton_spectral_grow_wc_calc(eprocess* p, void* pp)
     y1[ws->Phy_NR_i] += Nuptake - growth;
     y1[ws->Phy_PR_i] += Puptake - growth * red_W_P;
     y1[ws->Phy_N_i] += growth;
-    //    y1[ws->NH4_i] -= Nuptake * NH4 / DIN;
-    //    y1[ws->NO3_i] -= Nuptake * NO3 / DIN;
     y1[ws->NO3_i] -= NO3uptake ;
     y1[ws->NH4_i] -= NH4uptake ;
     y1[ws->DIP_i] -= Puptake;
-    // y1[ws->DIC_i] -= growth * red_W_C;
-    // y1[ws->Oxygen_i] += growth * red_W_O;
     y1[ws->DIC_i] += (Iresp - Iuptake) * 106.0/1060.0*12.01;
-    y1[ws->Oxygen_i] -= (Iresp - Iuptake) * 138.0/1060.0*32.00;
+    y1[ws->Oxygen_i] += - (Iresp - Iuptake) * 106.0/1060.0*32.00 + NO3uptake * 48.0/14.01; 
     
     /* update water column chlorophyll concentration, units mg Chl m-3 s-1 */
 
@@ -409,7 +417,6 @@ void phytoplankton_spectral_grow_wc_postcalc(eprocess* p, void* pp)
 
   y[ws->TN_i] += Phy_N + Phy_NR;
   y[ws->TP_i] += Phy_N * red_W_P + Phy_PR;
-  // y[ws->TC_i] += Phy_N * red_W_C ;
   y[ws->TC_i] += Phy_N * red_W_C + Phy_I*106.0/1060.0*12.01;
   y[ws->BOD_i] += (Phy_N * red_W_C + Phy_I*106.0/1060.0*12.01)*C_O_W;
 }

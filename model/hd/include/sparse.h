@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 5845 2018-06-29 04:08:51Z riz008 $
+ *  $Id: sparse.h 5901 2018-08-28 02:10:22Z riz008 $
  *
  */
 
@@ -941,6 +941,8 @@ struct geometry {
   /* Transport */
   transport_t *trans;
 
+  int is_geog;                  /* Grid specified in geographical projection */
+  
   /* Multiple time-stepping arrays for tracers */
   int naux_t;
   int *aux_t;

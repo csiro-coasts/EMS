@@ -5,15 +5,33 @@
  *  File: model/lib/ecology/process_library/light_spectral_wc.c
  *  
  *  Description:
- *  Process implementation
  *  
+ *  Water column spectrally-resolved optical model. Model calculates:
+ *  
+ *  - scalar irradiance and absorption by each model autotroph in precalc (output time - ECOLOGY_DT).
+ *  - simulated fluoresecence and turbidity in postcalc (output time)
+ *  - the component of light returned to the surface from each layer for calculating simulated 
+ *    satelitte products in postcalc (output time).
+ *
+ *  WARNING: variables output in precalc are calculated at output time - ECOLOGY_DT, but are stored in
+ *           output files at output time.
+ *
+ *  Options: light_spectral_wc(G|H|C,G|H)
+ *  
+ *  First argument:  G - GBR waters, B2p0 configuration.
+ *                   H - GBR waters, B3p0 configuration.
+ *                   C - Chilean waters.
+ * 
+ *  Second argument: G - Gaussian approx. of chl-a and non chl-a specific absorption.
+ *                   H - HPLC-determined of pigment-specific absorption.
+ *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_spectral_wc.c 5930 2018-09-11 01:17:11Z bai155 $
  *
  */
 
@@ -199,7 +217,7 @@ void light_spectral_wc_init(eprocess* p)
     prm = p->prms->se[0]->s;
     ws->domain = prm[0];
   }else{
-    ws->domain = 'G';   // default is GBR waters.
+    ws->domain = 'G';   // default is GBR waters, version 2p0.
   }
 
   ws->Mud_carbonate_i = -1;
@@ -210,30 +228,21 @@ void light_spectral_wc_init(eprocess* p)
 
   switch (ws->domain){
   case 'G':
-    eco_write_setup(e,"\n Using BGC2p0 GBR optical properties \n");
+    eco_write_setup(e,"\nUsing BGC2p0 GBR optical properties \n");
     break;
   case 'H' :
     ws->Mud_carbonate_i = e->find_index(e->tracers, "Mud-carbonate", e);
     ws->Mud_mineral_i = e->find_index(e->tracers, "Mud-mineral", e);
     ws->FineSed_i = e->find_index(e->tracers, "FineSed", e);
     ws->Dust_i = e->find_index(e->tracers, "Dust", e);
-    eco_write_setup(e,"\n Using BGC3p0 mineral-based optical properties \n");
+    eco_write_setup(e,"\nUsing BGC3p0 mineral-based optical properties \n");
     break;
   case 'C' :
-    eco_write_setup(e,"\n Using Chilean optical properties \n");
+    eco_write_setup(e,"\nUsing Chilean optical properties \n");
     break;
   default: 
     e->quitfn("ecology: error: \"%s\": \"%s(%s)\": unexpected domain for light model.", e->processfname, p->name, prm);
   }
-
-  /*
-    if (ws->domain == 'G'){
-       eco_write_setup(e,"\n Using GBR optical properties \n");
-    }
-    if (ws->domain == 'C'){
-       eco_write_setup(e,"\n Using Chilean optical properties \n");
-    }
-  */
 
   if (p->prms->n==2){
     prm = p->prms->se[1]->s;
@@ -291,8 +300,17 @@ void light_spectral_wc_init(eprocess* p)
   /*
    * tracers
    */
+
+  eco_write_setup(e,"Optical code considering: ");
+
   ws->PhyL_N_i   = e->try_index(tracers, "PhyL_N", e);
+  if (ws->PhyL_N_i > -1)
+    eco_write_setup(e,"PhyL ");
+
   ws->PhyS_N_i   = e->try_index(tracers, "PhyS_N", e);
+  if (ws->PhyS_N_i > -1)
+    eco_write_setup(e,"PhyS ");
+
   ws->PhyL_I_i   = e->try_index(tracers, "PhyL_I", e);
   ws->PhyS_I_i   = e->try_index(tracers, "PhyS_I", e);
   ws->PhyS_Chl_i = e->try_index(tracers, "PhyS_Chl", e);
@@ -305,14 +323,25 @@ void light_spectral_wc_init(eprocess* p)
   ws->DetR_C_i = e->try_index(tracers, "DetR_C", e);
 
   ws->MPB_N_i   = e->try_index(tracers, "MPB_N", e);
+  if (ws->MPB_N_i > -1)
+    eco_write_setup(e,"MPB ");
+
   ws->MPB_Chl_i = e->try_index(tracers, "MPB_Chl", e);
   ws->MPB_I_i   = e->try_index(tracers, "MPB_I", e);
 
   ws->PhyD_N_i   = e->try_index(tracers, "PhyD_N", e);
+  if (ws->PhyD_N_i > -1)
+    eco_write_setup(e,"PhyD ");
+
   ws->PhyD_Chl_i = e->try_index(tracers, "PhyD_Chl", e);
   ws->PhyD_I_i   = e->try_index(tracers, "PhyD_I", e);
 
   ws->Tricho_N_i = e->try_index(tracers, "Tricho_N", e);
+  if (ws->Tricho_N_i > -1)
+    eco_write_setup(e,"Tricho ");
+
+  eco_write_setup(e,"\n");
+
   ws->Tricho_Chl_i = e->try_index(tracers, "Tricho_Chl", e);
   ws->Tricho_I_i = e->try_index(tracers, "Tricho_I", e);
 
@@ -391,11 +420,10 @@ void light_spectral_wc_init(eprocess* p)
     eco_write_setup(e,"Code default of FLtoChl = %e \n",ws->FLtoChl);
   }
 
-
   /*
    * Output variables
    */
-  ws->zenith_i = e->find_index(tracers, "Zenith", e);
+  ws->zenith_i = e->try_index(tracers, "Zenith", e);
 
 }
 void ecology_find_rsr_waves(ecology *e);
@@ -464,7 +492,6 @@ void light_spectral_wc_postinit(eprocess* p)
   ws->KI_l_i = try_index(e->cv_cell, "KI_l", e);
   ws->KI_MPB_i = try_index(e->cv_cell, "KI_MPB", e);
   ws->KI_PhyD_i = try_index(e->cv_cell, "KI_PhyD", e);
- 
   ws->KI_Tricho_i = try_index(e->cv_cell, "KI_Tricho", e);
   
   ws->KI_MA_wc_i = try_index(e->cv_cell, "KI_MA_wc", e);
@@ -498,7 +525,7 @@ void light_spectral_wc_postinit(eprocess* p)
   
   if (ws->pig == 'H'){  // HPLC determined absorption coefficients
 
-    eco_write_setup(e,"\n HPLC determined absorption coefficients in water column \n");
+    eco_write_setup(e,"\nHPLC determined absorption coefficients in water column \n");
 
     for (w=0; w<num_waves; w++){
       ws->yC_s[w] = bio->yC_picoplankton[w];
@@ -517,7 +544,7 @@ void light_spectral_wc_postinit(eprocess* p)
     }  
   }else{   // Guassian curve determined absorption coefficients 
     
-    eco_write_setup(e,"\n Guassian curve determined absorption coefficients in water column \n");
+    eco_write_setup(e,"\nGuassian curve determined absorption coefficients in water column \n");
     
     double *yC_chl;
     double *yC_xanth;
@@ -735,7 +762,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   if (ws->FineSed_i > -1)
     FineSed = y[ws->FineSed_i];
 
-  /* Need to convert units of detritus to kg m-3: Detritus added to EFI just in this routine */
+  /* Need to convert units of detritus to kg m-3. */
 
   NAP_noEFI = (DetBL_N * atk_W_C + DetPL_N * red_W_C + DetR_C)*1e-6; 
   NAP = EFI + NAP_noEFI;
@@ -863,7 +890,6 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
         
     // free intermediate var
     d_free_1d(absorbance);
-    // d_free_1d(absorbance_xanth);
   }
 
   if (ws->KI_MPB_i>-1){
@@ -1025,35 +1051,25 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
 
     at_s[w] = bio->kw_s[w] ;  /*  clear water */     
 
-    /*  Effect of DOC and NAP on absorption */
-
-    // at_s[w] += bio->ay_A[w] * pow(DOC, bio->ay_B[w]);
-
-    /* or alternatively use CDOM vs salinity relationship from Schroeder (2012) 
-       Mar. Poll. Bull 65:210-223 with CDOM spectral slope from 
-       Blondeau-Patissier 2009 JGR: 114: C05003.                 */
-
-    /* added 34.0 to avoid extrapolation that may result in negative absorption at above 37, and 
-       to avoid deep salt minimums acting like estuarine waters */
-
     if (ws->domain == 'G' || ws->domain == 'H'){
+      
+      /* or alternatively use CDOM vs salinity relationship from Schroeder (2012) 
+	 Mar. Poll. Bull 65:210-223 with CDOM spectral slope from 
+	 Blondeau-Patissier 2009 JGR: 114: C05003.                 */
+
+      /* added if < 34.145 to avoid extrapolation that may result in negative absorption at above 37, and 
+         to avoid deep salt minimums acting like estuarine waters */
 
       if (y[ws->salt_i] < 34.145){
 	at_s[w] += (1.2336 + (-0.0332 * y[ws->salt_i])) * exp(-ws->S_CDOM*(wave[w]-443.0));
       }
-      at_s[w] += 0.01 * exp(-ws->S_CDOM*(wave[w]-443.0));
+      at_s[w] += 0.01 * exp(-ws->S_CDOM*(wave[w]-443.0)); // low CDOM absorption in marine waters.
     }
 
     if (ws->domain == 'C'){
-      at_s[w] += 0.1 * exp(-ws->S_CDOM*(wave[w]-443.0));
+      // From cruises in Oct 2017, Mar 2018.
+      at_s[w] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM*(wave[w]-443.0));
     }
-
-
-    /* OLD CDOM relationship
-    if (y[ws->salt_i] < 34.0){
-      at_s[w] += (1.2336 + (-0.0332 * min(34.0,y[ws->salt_i]))) * exp(-ws->S_CDOM*(wave[w]-443.0)); 
-    }
-    at_s[w] += acdom443 * exp(-ws->S_CDOM*(wave[w]-443.0)); */
 
     switch (ws->domain){     /* Still need to think through NAP */
     case 'G' :
@@ -1061,13 +1077,11 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       at_s[w] += bio->ad_CarbSand_A[w] * pow(CarbSand, bio->ad_CarbSand_B[w]);
       break;
     case 'H' :
-      //at_s[w] += bio->aC_KAO1[w] * (Mud_mineral+FineSed+NAP_noEFI) * 1000.0;
-      at_s[w] += bio->ad_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
-      at_s[w] += bio->aC_CAL1[w] * Mud_carbonate * 1000.0 ;
+      at_s[w] += bio->ad_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI); // Gladstone Harbour mud
+      at_s[w] += bio->aC_CAL1[w] * Mud_carbonate * 1000.0 ; // Calcite
       break;
     case 'C' :
-      // at_s[w] += bio->ad_CarbSand_A[w] * pow(NAP, bio->ad_CarbSand_B[w]);
-      at_s[w] += bio->aC_QUA1[w] * (NAP + CarbSand) * 1.0e3;
+      at_s[w] += bio->aC_QUA1[w] * NAP * 1.0e3;
       break;
     }
     
@@ -1111,13 +1125,10 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
      break;
     case 'H' :
       bb_s[w] += bio->bC_CAL1[w] * Mud_carbonate * 1.0e3;
-      // bb_s[w] += bio->bC_KAO1[w] * (Mud_mineral+FineSed+NAP_noEFI) * 1.0e3;
       bb_s[w] += bio->bbp_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
       break;
     case 'C' :
-      // bb_s[w] += bio->bbp_A[w] * pow(NAP, bio->bbp_B[w]); /* NAP scattering */
-      // bb_s[w] += bio->bbp_CarbSand_A[w] * pow(NAP, bio->bbp_CarbSand_B[w]); /* NAP scattering */
-      bb_s[w] += bio->bC_QUA1[w] * (NAP + CarbSand) * 1.0e3;
+      bb_s[w] += bio->bC_QUA1[w] * NAP * 1.0e3;
      break;
     }
     /*  
@@ -1244,6 +1255,8 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 
       /* Calculate simulated fluorescence based on spherical, packaged cells absorbing at 470 nm. */
 
+      /* Passive fluorescence (for nFLH) includes photochemical quenching, but active does not (FL) */ 
+
       double y470 = 0.03;
       double FL = 0.0;
       
@@ -1269,9 +1282,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	  aA_470 =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp_470) * exp(-temp_470)) / (temp_470 * temp_470));
 	}
 
-	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota);
+	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota) ;
 
-	nFLH += c->cv[ws->KI_s_i] * (1.0 - 0.5 * Iquota) * cellnum;
+	nFLH += c->cv[ws->KI_s_i] * (1.0 - 0.5 * Iquota) * Iquota * cellnum;
       }
 
       if (ws->KI_l_i>-1){
@@ -1297,9 +1310,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	  aA_470 =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp_470) * exp(-temp_470)) / (temp_470 * temp_470));
 	}
 
-	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota);
+	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota) ;
 
-	nFLH += c->cv[ws->KI_l_i] * (1.0 - 0.5 * Iquota) * cellnum;
+	nFLH += c->cv[ws->KI_l_i] * (1.0 - 0.5 * Iquota) * Iquota * cellnum;
 
       }
 
@@ -1325,9 +1338,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	  aA_470 =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp_470) * exp(-temp_470)) / (temp_470 * temp_470));
 	}
 
-	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota);
+	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota) ;
 
-	nFLH += c->cv[ws->KI_MPB_i] * (1.0 - 0.5 * Iquota) * cellnum;
+	nFLH += c->cv[ws->KI_MPB_i] * (1.0 - 0.5 * Iquota) * Iquota * cellnum;
 
       }
 
@@ -1353,9 +1366,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	  aA_470 =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp_470) * exp(-temp_470)) / (temp_470 * temp_470));
 	}
 
-	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota);
+	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota) ;
 
-	nFLH += c->cv[ws->KI_Tricho_i] * (1.0 - 0.5 * Iquota) * cellnum;
+	nFLH += c->cv[ws->KI_Tricho_i] * (1.0 - 0.5 * Iquota) * Iquota * cellnum;
 
       }
 
@@ -1381,9 +1394,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	  aA_470 =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp_470) * exp(-temp_470)) / (temp_470 * temp_470));
 	}
 
-	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota);
+	FL = FL + aA_470 / (vol * y470 * cellChl) * Phy_Chl * (1.0 - 0.5 * Iquota) ;
 
-	nFLH += c->cv[ws->KI_PhyD_i] * (1.0 - 0.5 * Iquota) * cellnum;
+	nFLH += c->cv[ws->KI_PhyD_i] * (1.0 - 0.5 * Iquota) * Iquota * cellnum;
 
       }
 
@@ -1411,11 +1424,13 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
     
     double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
     
-    y[ws->zenith_i] = zenith;
+    if (ws->zenith_i > -1) // this is the 3D zenith output for backward compatability.
+      y[ws->zenith_i] = zenith;
+
     zenith = (fabs(zenith)<1.0e-15)? 1.0e-15:zenith;
     zenith = ((zenith-M_PI/2.0)-fabs(zenith-M_PI/2.0))/2.0+M_PI/2.0;
     
-    if (zenith > (M_PI/2.0 - 0.1)){
+    if (zenith > (M_PI/2.0 - 0.01)){
       for (w2=0; w2<e->num_rsr_waves; w2++) {
 	col->cv[ws->w_bot_i][w2] = 0.0;
       }
@@ -1638,17 +1653,12 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	at_r[w2] += 0.01 * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0));
       }
       if (ws->domain == 'C'){
-	at_r[w2] += 0.1 * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0));
+	// From cruises in Oct 2017, Mar 2018.
+	at_r[w2] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM * (e->rsr_waves[w2]-443.0));
       }
 
       bb_r[w2] = ws->bbw_ratio * bio->bw_s2[w2];  // clear water.
 
-      /* OLD CDOM formulation
-	 
-	 if (y[ws->salt_i] < 34.00){
-	 at_r[w2] += (1.2336 + (-0.0332 * min(34.0,y[ws->salt_i]))) * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0)); 
-	 }
-	 at_r[w2] += acdom443 * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0)); */
       switch (ws->domain){     /* Still need to think through NAP */
       case 'G' : 
 	at_r[w2] += bio->ad_A2[w2] * pow(NAP, bio->ad_B2[w2]);
@@ -1668,10 +1678,8 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bbp_A2[w2] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
 	break;
       case 'C' :
-	// at_r[w2] += bio->ad_CarbSand_A2[w2] * pow(NAP, bio->ad_CarbSand_B2[w2]);
-
-	at_r[w2] += bio->aC_QUA1_rsr[w2] * (NAP + CarbSand) * 1.0e3;
-	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_MON1_rsr[w2] * (CarbSand + NAP) * 1.0e3;
+	at_r[w2] += bio->aC_QUA1_rsr[w2] * NAP * 1.0e3;
+	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_MON1_rsr[w2] * NAP * 1.0e3;
 	//bb_r[w2] += ws->bbnap_ratio * bio->bbp_A2[w2] * pow(NAP, bio->bbp_B2[w2]); /* NAP backscattering */
 	//bb_r[w2] += ws->bbnap_ratio * bio->bbp_CarbSand_A2[w2] * pow(CarbSand, bio->bbp_CarbSand_B2[w2]); /* NAP backscattering */
        break;
@@ -1714,19 +1722,22 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 
       double nFLHadd = 0.0;
 
-      if (w2 == ws->w678 && u_surf[w2] == 0.0){ // wavelength of nFLH, wPAR_top is 690.
+      if (w2 == ws->w678){ // wavelength of nFLH, wPAR_top is 690.
+
+	/* remember light in is over 20 nm, which is about right */
 	
 	double light678 = lighttop_s[ws->w670] * (12.0/20.0) + lighttop_s[ws->wPAR_top] * (8.0/20.0);
 	
-	if (light678 > 1.0e-4)  // avoid divide by zero.
+	if (light678 > 1.0e-3){  // avoid divide by zero.
 	  nFLHadd = nFLH * ( 1.0 / (4.0 * 3.1459)) / (light678 * 8.359335857479461e-09 * 678.0);  // mol photon m-3 /mol m-2
+	}
       }      
 
       // w_bot is what is remaining //
 
       top = w_bot[w2];
       w_bot[w2] = top * exp(-2.0 * Kd_r * dz);
-      u_surf[w2] += nFLHadd + (bb_r[w2] / (at_r[w2] + bb_r[w2])) * (top - w_bot[w2]);
+      u_surf[w2] += (nFLHadd + (bb_r[w2] / (at_r[w2] + bb_r[w2]))) * (top - w_bot[w2]);
     }
 
     /* do Secchi depth calculation */
@@ -1745,14 +1756,11 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	E_secchi_cv[0] = E_secchi * exp(-at_r[ws->w488] * adlen * dz);
 	if (E_secchi_cv[0] < exp(-1.0)){ // this is the step the disk dissappears from view
 	  z_secchi_cv[0] = z_secchi + log(exp(-1.0)/E_secchi) / (- at_r[ws->w488] * adlen);
-	  // printf("z_secchi %e, dz %e, half_dz %e \n",z_secchi,dz,log(exp(-1.0)/E_secchi) / (- at_r[ws->w488] * adlen));
-	}else{                           // otherwise skill in view.
+	}else{                           // otherwise still in view.
 	  z_secchi_cv[0] = z_secchi + dz;
 	}
       } 
     }
-    
-    //printf("ws->w488 %d, E_secchi %e, z_secchi %e, dz %e, adlen %e \n",ws->w488,E_secchi_cv[0],z_secchi_cv[0],dz,adlen);
 
     if (ws->Turbidity_i > -1 && ws->w590 > -1){ /* backscatter - clear water backscatter */
       y[ws->Turbidity_i] = 47.02 * (bb_r[ws->w590] - ws->bbw_ratio * bio->bw_s2[ws->w590]) + 0.13;

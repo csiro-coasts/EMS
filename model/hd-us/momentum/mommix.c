@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommix.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: mommix.c 5924 2018-09-07 06:12:26Z riz008 $
  *
  */
 
@@ -106,16 +106,13 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
   int c, cv, cs, cvs, cc;     /* Cell coordinate / counter           */
   int e, ee, es;              /* Edge coordinates                    */
   int vv, v, vs;              /* Vertex coordinate : c2v[1]          */
-  int n;                      /* Counter                             */
+  int n, j;                   /* Counter                             */
   int zm1;                    /* 3D cell coordinate at k-1           */
-  int e1, e2, e3, e4;         /* Edges surrounding cell c            */
-  int e1s, e2s, e3s, e4s;     /* Surface edges surrounding c         */
+  int e1, e2;                 /* Edges surrounding cell c            */
   double *t11;                /* Horizontal stress tensor, (x,x)     */
   double *t12;                /* Horizontal stress tensor, (x,y)     */
   double *t22;                /* Horizontal stress tensor, (y,y)     */
-  double c1;                  /* Constant for x diffusion            */
-  double c2;                  /* Constant for y diffusion            */
-  double h1, h2, h3, h4;      /* Vertex mean of h2au1 and h1au1      */
+  double c1;                  /* Constant for e1 diffusion           */
 
   if (wincon->smagorinsky == 0.0) return;
 
@@ -131,12 +128,12 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
   memset(t12, 0, window->sze * sizeof(double));
   memset(t22, 0, window->sze * sizeof(double));
 
-  vel_grad(window, windat, wincon, windat->u1b, t11, 
+  vel_grad(window, windat, wincon, windat->u1b, windat->u2b, t11, 
 	   wincon->w5, GRAD_3D|GRAD_NOR);
-  vel_grad(window, windat, wincon, windat->u1b, wincon->w6, 
+  vel_grad(window, windat, wincon, windat->u1b, windat->u2b, wincon->w6, 
 	   t22, GRAD_3D|GRAD_TAN);
 
-  for (ee = 1; ee <= window->b3_e1; ee++) {
+  for (ee = 1; ee <= window->a3_e1; ee++) {
     e = window->w3_e1[ee];
     e1 = window->m2d[window->e2c[e][0]];
     e2 = window->m2d[window->e2c[e][1]];
@@ -145,7 +142,6 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
     t11[e] *= c1;
     t22[e] *= c1;
     t12[e] = c1 * (wincon->w5[e] + wincon->w6[e]);
-
   }
 
   /*-----------------------------------------------------------------*/
@@ -196,14 +192,6 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
 	t12[v] += wincon->w5[e] *c1;
     }
   }
-
-  if (wincon->smagcode & (U1_SP|U1_SA)) {
-    for (ee = 1; ee <= window->n3_e1; ee++) {
-      e = window->w3_e1[ee];
-      wincon->u1vh[e] = 0.5 * (windat->sdc[window->e2c[e][0]] + 
-			       windat->sdc[window->e2c[e][1]]);
-    }
-  }
 }
 
 /* END hvisc_setup_pre()                                             */
@@ -226,21 +214,44 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
 {
   int c, cc, ee, e;           /* Sparse coordinate / counter         */
   int cs;                     /* Surface sparse coordinates          */
+  int n, j;                   /* Counters                            */
   int sf = 0;                 /* Sponge flag                         */
 
   /*-----------------------------------------------------------------*/
   /* Set the Smagorinsky diffusivity if required                     */
   if (wincon->smagorinsky != 0.0) {
 
+    /* Smooth Smagorinsky if required; area weighted                 */
+    if (wincon->smag_smooth) {
+      int cn;
+      double area, sdcs;
+      for (n = 0; n < wincon->smag_smooth; n++) {
+	for (cc = 1; cc <= window->a3_t; cc++) {
+	  c = window->w3_t[cc];
+	  cs = window->m2d[c];
+	  area = window->cellarea[cs];
+	  sdcs = windat->sdc[c] * window->cellarea[cs];
+	  for (j = 1; j <= window->npe[cs]; j++) {
+	    cn = window->c2c[j][c];
+	    cs = window->m2d[cn];
+	    area += window->cellarea[cs];
+	    sdcs += windat->sdc[cn] * window->cellarea[cs];
+	  }
+	  wincon->w6[c] = sdcs / area;
+	}
+	memcpy(windat->sdc, wincon->w6, window->szc * sizeof(double));
+      }
+    }
+
     /* Adjust the Smagorinsky coefficient for active alert actions   */
     /* and horizontal sponge zones.                                  */
 
-    /* If smagcode & U1_A|U2_A|U1_AK|U2_AK then the relevant mixing  */
-    /* array is allocated and filled with (grid weighted) constant   */
+    /* If smagcode & U1_A|U1_AK then the relevant mixing  array is   */
+    /* allocated and filled with (grid weighted) constant            */
     /* coefficients in hd_init.c, and this code is not invoked.      */
 
-    /* If smagcode & U1_SP|U2_SP|U1_SPK|U2_SPK then the relevant     */
-    /* mixing array points to sdc, set in windows.c.                 */
+    /* If smagcode & U1_SP|U1_SPK then the relevant mixing array     */
+    /* points to sdc, set in windows.c.                              */
 
     /* Set the flag for re-defining sponge zones                     */
     if (wincon->smagcode & (U1_SA|U2_SA)) sf = 1;
@@ -252,7 +263,7 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
     Set_lateral_BC_density_w(windat->sdc, window->nbpt, window->bpt,
                              window->bin);
 
-    /* Reset viscosity for U1_A/U2_A prior to shear alerts           */
+    /* Reset viscosity for U1_A prior to shear alerts                */
     if (wincon->u1vh[0] == 1) {
       set_hdiff(window, wincon->u1vh, wincon->u1vh0);
       sf = 1;
@@ -267,17 +278,15 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
     }
 
     /* Copy Smagorinsky diffusion to horizontal viscosity. This is   */
-    /* subject to LEVEL1 alerts and separate sponge zones in the e1  */
-    /* and e2 directions.                                            */
-    /* Uncomment this code if separate sponges apply in the e1 and   */
-    /* e2 directions.                                                */
-    if (wincon->smagcode & U1_SA) {
+    /* subject to LEVEL1 alerts and separate sponge zones.           */
+    if (wincon->smagcode & (U1_SP|U1_SA)) {
       for (ee = 1; ee <= window->n3_e1; ee++) {
 	e = window->w3_e1[ee];
 	wincon->u1vh[e] = 0.5 * (windat->sdc[window->e2c[e][0]] +
 				 windat->sdc[window->e2c[e][1]]);
       }
-      scale_hdiff(window, wincon->u1vh, wincon->sue1, 1);
+      if (wincon->smagcode & U1_SA)
+	scale_hdiff(window, wincon->u1vh, wincon->sue1, 1);
     }
     /* Reset diffusion throughout the water column for active alerts */
     /* Alerts at 3d locations.                                       */
@@ -330,22 +339,43 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
     }
     */
 
-    /* Set the sponge zone                                           */
-    if (sf) {
-      reset_sponge_zone(window);
-      set_sponge(window, wincon->u1vh, windat->dt, wincon->w1);
+    /* Limit the horizontal mixing if required                       */
+    if (wincon->smag_smooth) {
+      for (cc = 1; cc <= window->b3_t; cc++) {
+	c = window->w3_t[cc];
+	wincon->u1kh[c] = min(-wincon->u1kh0, wincon->u1kh[c]);
+      }
+      for (ee = 1; ee <= window->n3_e1; ee++) {
+	e = window->w3_e1[ee];
+	wincon->u1vh[e] = min(-wincon->u1vh0, wincon->u1vh[e]);
+      }
     }
 
+    /* Set the sponge zone                                           */
+    if (sf) {
+      /*
+      reset_sponge_zone(window);
+      set_sponge(window, wincon->u1vh, windat->dt, wincon->w1);
+      */
+      set_sponge_c(window, wincon->u1kh, windat->dt);
+      set_sponge_e(window, wincon->u1vh, windat->dt);
+    }
+    /*
+    for (cc=1;cc<=window->npe[527];cc++)
+      printf("%d %d %d\n",cc,window->c2e[cc][527],window->c2c[cc][100]);
+    */
     /* Ensure the upper limit of the smagorinsky diffusion is the    */
     /* constant viscosity, and smooth.                               */
+    /*
     if (wincon->smag_smooth && wincon->smagorinsky > 0.0) {
       if (wincon->u1vh0 < 0.0)
 	smooth_w(window, wincon->u1vh, wincon->w6, window->w3_e1,
-		 window->n3_e1, wincon->smag_smooth, -wincon->u1vh0);
+		 window->n3_e1, wincon->smag_smooth, -wincon->u1vh0, 1);
       if (wincon->u1kh0 < 0.0)
 	smooth_w(window, wincon->u1kh, wincon->w6, window->w3_t,
-		 window->n3_t, wincon->smag_smooth, -wincon->u1kh0);
+		 window->n3_t, wincon->smag_smooth, -wincon->u1kh0, 0);
     }
+    */
   }
 }
 
@@ -644,7 +674,7 @@ void hvisc_setup_2d(geometry_t *window,  /* Window geometry          */
 /* Sets the viscosity from the Smagorinsky mixing calculated in the  */
 /* 3d mode. The 2d viscosity is the vertical integral of the 3d      */
 /* viscosity and remains invariant over the 2d step. e1 viscosity is */
-/* stored in wincon->w2 and e2 in viscosity wincon->w3.              */
+/* stored in wincon->w2.                                             */
 /*-------------------------------------------------------------------*/
 void set_viscosity_2d(geometry_t *window) /* Window geometry         */
 {
@@ -661,12 +691,12 @@ void set_viscosity_2d(geometry_t *window) /* Window geometry         */
   if (wincon->smagcode & (U1_SP|U1_SA)) {
     AH = wincon->w2;
     memset(AH, 0, window->szeS * sizeof(double));
-    depth = 0.0;
     /* Vertically integrate the Smagorinsky diffusivity              */
     for (ee = 1; ee <= window->n2_e1; ee++) {
       e = window->w2_e1[ee];
       es = window->m2de[e];
       zm1 = window->zm1e[e];
+      depth = 0.0;
       while (e != zm1) {
 	AH[es] += wincon->u1vh[e] * windat->dzu1[e];
 	depth += windat->dzu1[e];
@@ -705,6 +735,7 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
   int cc, c, cs;
   int vv, v, vs;
   double d2, iarea;
+  double *AH = wincon->w2;    /* Set in set_viscosity_2d()           */
 
   /*-----------------------------------------------------------------*/
   /* Get the sub-timestep                                            */
@@ -713,40 +744,39 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
 
   /*-----------------------------------------------------------------*/
   /* Divergence is given by Eq. 21, Ringler et al, 2010.             */
-  /*if (!(wincon->momsc & RINGLER)) {*/
-    memset(windat->div, 0, window->szcS * sizeof(double));
-    for(cc = 1; cc <= window->a2_t; cc++) {
-      c = window->w2_t[cc];
-      cs = window->m2d[c];
-      d1 = 1.0 / window->cellarea[cs];
-      for (ee = 1; ee <= window->npe[cs]; ee++) {
-	e = window->c2e[ee][c];
-	es = window->m2de[e];
-	d2 = window->h1au1[es] * windat->u1avb[e] * d1;
-	windat->div[c] += window->eSc[ee][cs] * d2;
+  memset(windat->div, 0, window->szcS * sizeof(double));
+  for(cc = 1; cc <= window->a2_t; cc++) {
+    c = window->w2_t[cc];
+    cs = window->m2d[c];
+    d1 = 1.0 / window->cellarea[cs];
+    for (ee = 1; ee <= window->npe[cs]; ee++) {
+      e = window->c2e[ee][c];
+      es = window->m2de[e];
+      d2 = window->h1au1[es] * windat->u1avb[e] * d1;
+      windat->div[c] += window->eSc[ee][cs] * d2;
+    }
+  }
+  memset(windat->rvor, 0, window->szvS * sizeof(double));
+  for (vv = 1; vv <= window->a2_e2; vv++) {
+    v = window->w2_e2[vv];
+    vs = window->m2dv[v];
+    iarea = 1.0 / window->dualarea[vs];
+    for (ee = 1; ee <= window->nve[vs]; ee++) {
+      e = window->v2e[v][ee];
+      if (e) {
+	d2 = window->h2au1[e] * windat->u1avb[e];
+	windat->rvor[v] += window->eSv[ee][v] * iarea * d2;
       }
     }
-    memset(windat->rvor, 0, window->szvS * sizeof(double));
-    for (vv = 1; vv <= window->a2_e2; vv++) {
-      v = window->w2_e2[vv];
-      vs = window->m2dv[v];
-      iarea = 1.0 / window->dualarea[vs];
-      for (ee = 1; ee <= window->nve[vs]; ee++) {
-	e = window->v2e[v][ee];
-	if (e) {
-	  d2 = window->h2au1[e] * windat->u1avb[e];
-	  windat->rvor[v] += window->eSv[ee][v] * iarea * d2;
-	}
-      }
-    }
-    /*-----------------------------------------------------------------*/
-    /* Set relative vorticity along solid boudaries equal to zero.     */
-    for (vv = window->a2_e2 + 1; vv <= window->n2_e2; vv++) {
-      v = window->w2_e2[vv];
-      windat->rvor[v] = 0.0;
-    }
+  }
 
-
+  /*-----------------------------------------------------------------*/
+  /* Set relative vorticity along solid boudaries equal to zero.     */
+  for (vv = window->a2_e2 + 1; vv <= window->n2_e2; vv++) {
+    v = window->w2_e2[vv];
+    windat->rvor[v] = 0.0;
+  }
+  
   /*-----------------------------------------------------------------*/
   /* Compute the horizontal mixing tendency                          */
   for (ee = 1; ee <= window->v2_e1; ee++) {
@@ -758,7 +788,7 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
     v2 = window->e2v[e][1];
     d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] +
       (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es] ;
-    windat->nu1av[e] += windat->dt2d * wincon->u1vh[e] * d1;
+    windat->nu1av[e] += windat->dt2d * AH[e] * d1;
   }
 }
 

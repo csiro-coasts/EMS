@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdrycond.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: bdrycond.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -128,7 +128,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
 	e1 = window->m2de[open->oi1_e1[ee]];
 	open->dum1[e2] = window->h2au1[e1];
       } else {
-	e1 = (open->ocodec) ? oi1[ee] : e;
+	e1 = (open->dir[ee] == -1) ? oi1[ee] : e;
 	open->dum1[e2] = window->h2au1[m2d[e1]];
       }
     }
@@ -377,13 +377,11 @@ void set_OBC(geometry_t *window,   /* Processing window              */
     double *dz, *md, *cf, *hat, *depth;
     double d1, d2, d3, d4, fa, fm, fb, d, sgn;
     double *sum = wincon->d1;
-    sgn = 1.0;
 
     dz = windat->dzu1;
     md = wincon->mdx;
     cf = wincon->u1c6;
     depth = windat->depth_e1;
-    if (open->ocodec) sgn = -1.0;
 
     /* Integrate the flow over the face (barotropic component) */
     d1 = 0.0;
@@ -401,7 +399,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
     for (ee = sb; ee <= eb; ee++) {
       e = obc[ee];
       e2 = window->m2de[e];
-      j = open->ocodec;
+      j = open->ini[ee];
       c = window->e2c[e][j];
       c2 = window->m2d[c];
       if (window->gridz[c1] > windat->eta[c2]) continue;
@@ -431,7 +429,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       if (window->gridz[c] > windat->eta[e2]) continue;
       if (open->options & (OP_YANKOVSKY|OP_MULTF)) {
 	/* Multiplicative scaling */
-	fval[e] = (d2 * sgn > 0.0) ? fval[e] * fm : fval[e] + fa;
+	fval[e] = (d2 * (double)open->dir[ee] > 0.0) ? fval[e] * fm : fval[e] + fa;
 	/*fval[e] = (d1) ? fb * vel[e] + newval[e] : newval[e];*/
       } else {
 	/* Additive scaling */
@@ -692,7 +690,6 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       }
     }
   }
-
 
   /*-----------------------------------------------------------------*/
   /* Save the phase speed if required. Note: phase speed is bounded  */

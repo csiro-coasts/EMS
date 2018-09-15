@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: readparam.c 5913 2018-09-05 02:35:27Z her127 $
  *
  */
 
@@ -123,7 +123,7 @@ void set_default_param(parameters_t *params)
   params->momsc = RINGLER|WTOP_O2|WIMPLICIT;
   params->trasc = VANLEER;
   params->ultimate = 0;
-  params->osl = 0;
+  params->osl = L_LSQUAD;
   params->smagorinsky = 0.0;
   params->sue1 = 0.0;
   params->kue1 = 0.0;
@@ -820,11 +820,8 @@ parameters_t *params_read(FILE *fp)
 
   /* Particle tracking                                               */
   if(prm_read_char(fp, "PT_InputFile", params->ptinname)) {
-    not_implemented("particle tracking");
-    /*
     params->do_pt = 1;
     params->ntr++;
-    */
   }
 
   /* Transport mode files                                            */
@@ -2374,11 +2371,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 
   /* Particle tracking      */
   if (prm_read_char(fp, "PT_InputFile", params->ptinname)) {
-    not_implemented("particle tracking");
-    /*
     params->do_pt = 1;
     params->atr++;
-    */
   }
 
   /* Diagnistic numbers (optional)                                   */
@@ -3025,7 +3019,7 @@ parameters_t *auto_params(FILE * fp, int autof)
     open->relax_time = 0;
     open->relax_timei = 0;
     open->sponge_zone = 0;
-    open->sponge_zone_h = 0;
+    open->sponge_zone_h = 0.0;
     open->sponge_f = 0;
     open->inverse_barometer = 0;
     open->tidemem_depth = 0.0;
@@ -3346,7 +3340,7 @@ void autoset(parameters_t *params, master_t *master, geometry_t *geom)
 
   /*-----------------------------------------------------------------*/
   /* Horizontal grid geometry                                        */
-  dumpdata_init_geom(geom, dumpdata);
+  dumpdata_init_geom(params, geom, dumpdata);
 
   /*-----------------------------------------------------------------*/
   /* Load the tracers. Note hd_ts_read() is used to read the tracers */
@@ -5365,7 +5359,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
       }
     }
     if (open->sponge_zone_h)
-      fprintf(op, "BOUNDARY%1.1d.NSPONGE_HORZ  %d\n", n,
+      fprintf(op, "BOUNDARY%1.1d.NSPONGE_HORZ  %5.1f\n", n,
               open->sponge_zone_h);
     if (open->sponge_f)
       fprintf(op, "BOUNDARY%1.1d.SPONGE_FACT  %-6.1f\n", n,

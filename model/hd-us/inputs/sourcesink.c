@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sourcesink.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: sourcesink.c 5898 2018-08-23 02:07:21Z her127 $
  *
  */
 
@@ -128,11 +128,13 @@ void sourcesink_init(parameters_t *params,  /* Input parameters      */
       m += wincon[n]->npss;
       for (s = 0; s < wincon[n]->npss; s++) {
 	pss_t *p = &wincon[n]->pss[s];
-	hd_warn("Sourcesink%d (%s) located in window%d : (%d %d)\n",
-		s, wincon[n]->pss[s].name, n,
-		window[n]->s2i[wincon[n]->pss[s].e1[0]],
-		window[n]->s2j[wincon[n]->pss[s].e1[0]]);
-	if (p->vc > 1) t = 0;
+	if (p->vc) {
+	  hd_warn("Sourcesink%d (%s) located in window%d : (%d %d)\n",
+		  s, wincon[n]->pss[s].name, n,
+		  window[n]->s2i[wincon[n]->pss[s].e1[0]],
+		  window[n]->s2j[wincon[n]->pss[s].e1[0]]);
+	  if (p->vc > 1) t = 0;
+	}
       }
       windat[n]->wflux = d_alloc_1d(wincon[n]->npss);
       windat[n]->tflux = d_alloc_2d(wincon[n]->npss, windat[n]->ntr);

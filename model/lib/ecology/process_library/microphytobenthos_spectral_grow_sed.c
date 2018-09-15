@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_spectral_grow_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: microphytobenthos_spectral_grow_sed.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -328,7 +328,8 @@ void microphytobenthos_spectral_grow_sed_calc(eprocess* p, void* pp)
     y1[ws->NH4_i] -= NH4uptake / porosity;
     y1[ws->DIP_i] -= Puptake / porosity;
     y1[ws->DIC_i] += (Iresp - Iuptake) * 106.0/1060.0*12.01 / porosity;
-    y1[ws->Oxygen_i] -= (Iresp - Iuptake) * 138.0/1060.0*32.00 / porosity;
+
+    y1[ws->Oxygen_i] -= ((Iresp - Iuptake) * 106.0/1060.0*32.00 - NO3uptake * 48.0/14.01) / porosity;
 
     /* update water column chlorophyll concentration, units mg Chl m-3 s-1 */
 

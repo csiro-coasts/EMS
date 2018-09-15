@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: recom_extras.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: recom_extras.c 5907 2018-08-29 03:29:00Z bai155 $
  *
  */
 
@@ -214,6 +214,7 @@ void recom_extras_postinit(eprocess* p)
   if (process_present(e,PT_EPI,"light_spectral_uq_epi")){
     ws->EpiPAR_i = e->find_index(epis, "EpiPAR", e) + OFFSET_EPI;
     ws->EpiPAR_sg_i = e->find_index(epis, "EpiPAR_sg", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Zenith2D", e) + OFFSET_EPI;
   }
 
   if (process_present(e,PT_WC,"light_spectral_wc") && process_present(e,PT_EPI,"light_spectral_uq_epi")){

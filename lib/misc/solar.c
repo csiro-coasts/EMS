@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: solar.c 5831 2018-06-26 23:48:06Z riz008 $
+ *  $Id: solar.c 5900 2018-08-28 02:09:26Z riz008 $
  */
 
 /*
@@ -26,12 +26,15 @@
 /*-------------------------------------------------------------------*/
 /* Routine to calculate the year and Julian day given time units     */
 /* Moved from heatflux.c                                             */
+/*                                                                   */
+/* Depricated: Used only for backwards compatibility and for cases   */
+/*             without geographic projection                         */
 /*-------------------------------------------------------------------*/
-void dtime(char *output_tunit, char *model_tunit,
-	   double time, int *year, double *day)
+static void dtime_ounits(char *output_tunit, char *model_tunit,
+			 double time, int *year, double *day)
 {
   int yr = 1990;
-  double sf = (time > 0.0) ? 1 : -1;
+  double sf = (time > 0.0) ? 1 : -1; /* should be >=, see dtime_adjlon */
   double d1 = 0.0, dc = 0.0;
   char timeunit[MAXSTRLEN];
   char ounit[MAXSTRLEN];
@@ -55,10 +58,10 @@ void dtime(char *output_tunit, char *model_tunit,
   strcpy(ounit, "days since 1990-01-01 00:00:00 ");
   if (strlen(tzone) < 5) 
        strcat(ounit, tzone);
-
+  
   /* Change the time units. */
   tm_change_time_units(model_tunit, ounit, &ntime, 1);
-  while (dc < sf * ntime) {
+  while (dc < sf * ntime) { /* should be <=, see dtime_adjlon */
     if (yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0))
       d1 = (sf * 366);
     else
@@ -72,8 +75,68 @@ void dtime(char *output_tunit, char *model_tunit,
   *year = yr;
 }
 
-/* END dtime()                                                       */
+/* END dtime_ounits()                                                */
 /*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/* Routine to calculate the year and Julian day given time units     */
+/* and with longitude adjustment                                     */
+/*-------------------------------------------------------------------*/
+static void dtime_adjlon(char *output_tunit, char *model_tunit,
+			 double time, int *year, double *day, double lon)
+{
+  int yr = 1990;
+  char ounit[MAXSTRLEN];
+  double sf = (time >= 0.0) ? 1 : -1;
+  double d1 = 0.0, dc = 0.0;
+  double ntime = time;
+
+ /* 
+  * Change the time units to reference date UTC 
+  */
+  strcpy(ounit, "days since 1990-01-01 00:00:00 +0");
+  tm_change_time_units(model_tunit, ounit, &ntime, 1);
+
+  /* Algorithm below won't work for time before reference year */
+  if (ntime < 1)
+    quit("dtime: model time before year 1990 in longitude adjustment");
+  
+  /* Apply longitude correction */
+  if (lon > 180)
+    lon -= 360;
+  ntime += lon/(24*15);
+  
+  /* Caluclate day and year based on time */
+  sf = (ntime > 0.0) ? 1 : -1;
+  while (dc <= sf * ntime) {
+    if (yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0))
+      d1 = (sf * 366);
+    else
+      d1 = (sf * 365);
+    dc += d1;
+    yr += sf;
+  }
+  dc -= d1;
+  yr -= sf;
+  *day = ntime - dc + 1.0;
+  *year = yr;
+}
+
+/* END dtime_adjlon()                                                */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/* Routine to calculate the year and Julian day given time units     */
+/*  - gateway function                                               */
+/*-------------------------------------------------------------------*/
+void dtime(char *output_tunit, char *model_tunit,
+	   double time, int *year, double *day, double *lon)
+{
+  if (lon == NULL)
+    dtime_ounits(output_tunit, model_tunit, time, year, day);
+  else
+    dtime_adjlon(output_tunit, model_tunit, time, year, day, *lon);
+}
 
 /**
  * Calculates the solar elevation
@@ -82,10 +145,11 @@ void dtime(char *output_tunit, char *model_tunit,
  * @param time time point
  * @param lat latitude
  * @param out_dec Optionally fills out declination, if not null
+ * @param lon longitude of cell for dtime
  * @return solar elevation
  */
 double calc_solar_elevation(char *ounit, char *tunit, double time, double lat,
-			    double *out_dec)
+			    double *out_dec, double *lon)
 {
   int nday;                     /* Day of the year */
   double hrs;                   /* Hour of the day */
@@ -96,8 +160,12 @@ double calc_solar_elevation(char *ounit, char *tunit, double time, double lat,
   double jday;                  /* Julian day */
   int day;                      /* Day of the month */
   int yr;                       /* Year */
+
+  if (lon == NULL)
+    dtime(ounit, tunit, time, &yr, &jday, NULL);
+  else
+    dtime(NULL, tunit, time, &yr, &jday, lon);
   
-  dtime(ounit, tunit, time, &yr, &jday);
   nday = (int)jday;
   hrs  = 24.0 * (jday - (double)nday);
 

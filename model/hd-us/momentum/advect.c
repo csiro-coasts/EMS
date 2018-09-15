@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: advect.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -109,8 +109,9 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
     dtm = (windat->dtb + dtu) / (2.0 * (double)e);
     dtu = 2.0 * dtm;
     hd_warn
-      ("Sub-time stepping in u1 (%c=%6.3f) at %8.3f days (cs=%3d es=%3d %3d): dt=%5.2f\n",
-       tp, mvel, windat->t / 86400.0, ii, jj, kk, dtm);
+      ("Sub-time stepping in u1 (%c=%6.3f, h1=%f) at %8.3f days (cs=%3d es=%3d %3d): dt=%5.2f [%f %f]\n",
+       tp, mvel, window->h2au1[es], windat->t / 86400.0, ii, jj, kk, dtm,
+       window->u1x[es], window->u1y[es]);
     if (dtm == 0.0 || (int)(dtu / dtm) > itermax) {
       hd_quit_and_dump
 	("advect_u1_3d: maximum number of sub-steps (%d) exceeded.\n",
@@ -468,6 +469,7 @@ int advect_u1_3d(geometry_t *window,  /* Processing window           */
     e = ceil((windat->dtb + dtu) / (2 * dtm));
     dtm = (windat->dtb + dtu) / (2.0 * (double)e);
     dtu = 2.0 * dtm;
+
     hd_warn
       ("Sub-time stepping in u1 (%c=%6.3f) at %8.3f days (%3d %3d %3d): dt=%5.2f\n",
        tp, vs, windat->t / 86400.0, ii, jj, kk, dtm);

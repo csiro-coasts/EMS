@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 5875 2018-07-06 07:46:39Z riz008 $
+ *  $Id: run_setup.c 5913 2018-09-05 02:35:27Z her127 $
  *
  */
 
@@ -646,8 +646,11 @@ void write_run_setup(hd_data_t *hd_data)
   fprintf(fp, "Minimum horizontal distance between centres = %8.2f m\n", master->minres);
   fprintf(fp, "Maximum horizontal distance between centres = %8.2f m\n", master->maxres);
   fprintf(fp, "Mean cell area = %5.4e m^2\n", master->amean);
-  if (params->smag_smooth)
+  if (params->smag_smooth) {
     fprintf(fp, "Smagorinsky clipping and smoothing (%d passes)\n", params->smag_smooth);
+    fprintf(fp, "Viscosity limited to %5.2f\n", -master->u1vh0);
+    fprintf(fp, "Diffusivity limited to %5.2f\n", -master->u1kh0);
+  }
   fprintf(fp, "\n");
 
   /*-----------------------------------------------------------------*/

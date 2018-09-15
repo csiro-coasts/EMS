@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: constants.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: constants.h 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -42,7 +42,7 @@
 #define red_A_C 106.0           /* [mol(C) mol(P)-1] */
 #define red_A_N 16.0            /* [mol(N) mol(P)-1] */
 #define red_A_P 1.0             /* [mol(P) mol(P)-1] */
-#define red_A_O 138.0           /* [mol(O2) mol(P)-1] */
+#define red_A_O 106.0           /* [mol(O2) mol(P)-1] */
 
 /* Atkinson ratios (Atkinson and Smith, 1983) for benthic autotrophs 
  */
@@ -50,7 +50,7 @@
 #define atk_A_C 550.0           /* [mol(C) mol(P)-1] */
 #define atk_A_N 30.0            /* [mol(N) mol(P)-1] */
 #define atk_A_P 1.0             /* [mol(P) mol(P)-1] */
-#define atk_A_O 716.0           /* [mol(O2) mol(P)-1] */
+#define atk_A_O 550.0           /* [mol(O2) mol(P)-1] */
 
 /* Define weight ratios relative to N (because N is a commonly used currency)
  * First need Molecular Weight (MW) of elements - (Atkins, 1994)
@@ -97,7 +97,7 @@ extern double mgP2molP;         /* mol(P) mg(P)-1 */
 #define THICKNESS_SED_MIN 0.0001
 
 /* KWA #define MASSBALANCE_EPS 1.0e-10 */
-#define MASSBALANCE_EPS 1.0e-6
+#define MASSBALANCE_EPS 1.0e-9
 #define TRACERVALUE_EPS  1.0e-12
 
 

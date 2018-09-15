@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_step.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: hd_step.c 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -149,6 +149,16 @@ void hd_step(hd_data_t *hd_data, double tstop)
     mode3d_step(geom, master, window, windat, wincon, master->nwindows);
     TIMING_DUMP(1," mode3d_step");
     if (master->crf == RS_RESTART) return;
+#ifdef HAVE_MPI
+    /* Compare Vz solution between single and multiwindows */
+    if (mpi_check_multi_windows_Vz(geom, master, window, windat))
+      hd_quit("Single and multli-windows Vz mismatch\n");
+    
+    /* Compare velocity solution between single and multiwindows */
+    if (mpi_check_multi_windows_velocity(geom, master, window, windat,
+					 VEL3D))
+      hd_quit("Single and multli-windows u1 mismatch\n");
+#endif
 
     /*---------------------------------------------------------------*/
     /* Solve the 2D mode in each window                              */
@@ -159,7 +169,12 @@ void hd_step(hd_data_t *hd_data, double tstop)
     mode2d_step(geom, master, window, windat, wincon, master->nwindows);
     TIMING_DUMP(1," mode2d_step");
     if (master->crf == RS_RESTART) return;
-
+#ifdef HAVE_MPI
+    /* Compare velocity solution between single and multiwindows */
+    if (mpi_check_multi_windows_velocity(geom, master, window, windat,
+					 VEL2D))
+      hd_quit("Single and multli-windows u1av mismatch\n");
+#endif
     /*---------------------------------------------------------------*/
     /* Do the post 3D mode calculations                              */
     mode3d_post(geom, master, window, windat, wincon, master->nwindows);
@@ -185,7 +200,7 @@ void hd_step(hd_data_t *hd_data, double tstop)
 
     /*---------------------------------------------------------------*/
     /* Do particle tracking if required                              */
-    pt_update(master);
+    pt_update(master, window, windat, wincon);
 
     master->nstep++;
     master->nstep2d += iratio;
@@ -483,7 +498,7 @@ void hd_step_trans(hd_data_t *hd_data, double tstop)
 
     /*---------------------------------------------------------------*/
     /* Do particle tracking if required                              */
-    pt_update(master);
+    pt_update(master, window, windat, wincon);
 
     master->nstep++;
     master->nstep2d += iratio;

@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_ugrid.c 5875 2018-07-06 07:46:39Z riz008 $
+ *  $Id: df_ugrid.c 5914 2018-09-05 03:27:17Z riz008 $
  *
  */
 
@@ -27,7 +27,7 @@
 #include "hd.h"
 #include "tracer.h"
 
-#define Filli 999999
+#define Filli 999999999
 #define Filld 9.9692099683868690E36;
 
 
@@ -42,7 +42,9 @@ void pack_ugrid_i2a(int size, int np, int **var, int **pack, int oset);
 void pack_ugrid_ri2(int size, int np, int **var, int **pack, int oset);
 void pack_ugrid_ri2a(int size, int np, int **var, int **pack, int oset);
 
-#define UGRID_ALL_VARS "u1av uav vav wind1 wtop eta patm u1 u v w dens dens_0 Kz Vz Cd u1vh topz "
+void check_window_map_us(geometry_t **window, char *name);
+
+#define UGRID_ALL_VARS "u1av uav vav wind1 wtop eta patm u1 u v w dens dens_0 Kz Vz Cd u1kh topz "
 
 double percentiles1[] = {0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
 			0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85,
@@ -480,11 +482,11 @@ void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
     write_text_att(cdfid, vid, "coordinates", "t, Mesh2_face_x, Mesh2_face_y");
   }
 
-  if ((vid = ncw_var_id(cdfid, "u1vh")) >= 0) {
+  if ((vid = ncw_var_id(cdfid, "u1kh")) >= 0) {
     write_text_att(cdfid, vid, "units", "metre2 second-1");
     write_text_att(cdfid, vid, "long_name",
-                   "horizontal viscosity at edge");
-    write_text_att(cdfid, vid, "coordinates", "t, Mesh2_edge_x, Mesh2_edge_y, Mesh2_layers");
+                   "horizontal viscosity at centre");
+    write_text_att(cdfid, vid, "coordinates", "t, Mesh2_face_x, Mesh2_face_y, Mesh2_layers");
   }
 
   if ((vid = ncw_var_id(cdfid, "ustrcw")) >= 0) {
@@ -954,11 +956,11 @@ void write_dump_attributes_ugrid3(dump_data_t *dumpdata, int cdfid,
     write_text_att(cdfid, vid, "coordinates", "t, Mesh3_face_x, Mesh3_face_y");
   }
 
-  if ((vid = ncw_var_id(cdfid, "u1vh")) >= 0) {
+  if ((vid = ncw_var_id(cdfid, "u1kh")) >= 0) {
     write_text_att(cdfid, vid, "units", "metre2 second-1");
     write_text_att(cdfid, vid, "long_name",
-                   "horizontal viscosity at edge");
-    write_text_att(cdfid, vid, "coordinates", "t, Mesh3_edge_x, Mesh3_edge_y, Mesh3_layers");
+                   "horizontal viscosity at centre");
+    write_text_att(cdfid, vid, "coordinates", "t, Mesh3_face_x, Mesh3_face_y, Mesh3_layers");
   }
 
   if ((vid = ncw_var_id(cdfid, "ustrcw")) >= 0) {
@@ -1134,7 +1136,7 @@ void *df_ugrid_create(dump_data_t *dumpdata, dump_file_t *df)
     nc_def_var(cdfid, "Mesh2_iindex", NC_INT, 1, dims, &vid);
     nc_def_var(cdfid, "Mesh2_jindex", NC_INT, 1, dims, &vid);
   }
-
+  
   /* time dependent variables */
   dims[0] = recdimid;
   nc_def_var(cdfid, "t", NC_DOUBLE, 1, dims, &vid);
@@ -1900,14 +1902,14 @@ int df_ugrid_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
     var->xylocation = CL_SP2|CL_FACE;
   }
 
-  else if (strcmp(name, "u1vh") == 0) {
-    var->v = (void *)&master->u1vh;
-    var->xylocation = CL_SP3|CL_EDGE;
+  else if (strcmp(name, "u1kh") == 0) {
+    var->v = (void *)&master->u1kh;
+    var->xylocation = CL_SP3|CL_FACE;
     var->ndims = 2;
     var->zlocation = CL_CENTRE;
-    var->hmap = geom->w3_e1;
-    var->vmap = geom->e2k;
-    var->m2d = geom->m2de;
+    var->hmap = geom->w3_t;
+    var->vmap = geom->s2k;
+    var->m2d = geom->m2d;
   }
 
   else
@@ -2313,7 +2315,8 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   ncw_def_dim(name, cdfid, "szvS",   geom->szvS, &szvSid);
   ncw_def_dim(name, cdfid, "k_grid",   geom->nz + 1, &kgridid);
   ncw_def_dim(name, cdfid, "nwp1",     nwins+1,      &nwinsid);
-  /* Variables of lenght 1 */
+
+  /* Variables of length 1 */
   ncw_def_dim(name, cdfid, "one", 1, &oid);
   ncw_def_dim(name, cdfid, "two", 2, &tid);
   
@@ -2357,11 +2360,6 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   
   ncw_def_var(name, cdfid, "snon_w",  NC_INT, 1, dims, &vid);
   ncw_def_var(name, cdfid, "snonS_w", NC_INT, 1, dims, &vid);
-  
-  // xxx 
-  ncw_def_var(name, cdfid, "sb_t_w", NC_INT, 1, dims, &vid);
-  ncw_def_var(name, cdfid, "sb_e1_w", NC_INT, 1, dims, &vid);
-  ncw_def_var(name, cdfid, "sb_e2_w", NC_INT, 1, dims, &vid);
   
   ncw_def_var(name, cdfid, "szc_w", NC_INT, 1, dims, &vid);
   ncw_def_var(name, cdfid, "szcS_w", NC_INT, 1, dims, &vid);
@@ -2426,6 +2424,12 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   ncw_def_var(name, cdfid, "ns2mS_w", NC_INT, 1, dims, &vid);
   ncw_def_var(name, cdfid, "nm2sS_w", NC_INT, 1, dims, &vid);
   
+  ncw_def_var(name, cdfid, "ns2me1_w", NC_INT, 1, dims, &vid);
+  ncw_def_var(name, cdfid, "nm2se1_w", NC_INT, 1, dims, &vid);
+
+  ncw_def_var(name, cdfid, "ns2me1S_w", NC_INT, 1, dims, &vid);
+  ncw_def_var(name, cdfid, "nm2se1S_w", NC_INT, 1, dims, &vid);
+  
   /*
    * 2D - One 1D array per window
    *      Figure out a max size/window for each variable
@@ -2436,38 +2440,77 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
 
   /* CENTRES                                                         */ 
   /* window->npe[szcS]                                               */
-  /* window->c2c[npem][szc]                                          */
-  /* window->c2e[npem][szc]                                          */
-  /* window->c2v[npem][szc]                                          */
-  /* window->vIc[npem][szcS]                                         */
-  /* window->eSc[npem][szcS]                                         */
+  /* window->bot_t[szcS]                                             */
+  /* window->sur_t[szcS]                                             */
+  /* window->nsur_t[szcS]                                            */
+  /* window->w2_t[szcS]                                              */
   /* window->zm1[szc]                                                */
   /* window->zp1[szc]                                                */
   /* window->m2d[szc]                                                */
   /* window->wsa[szc]                                                */
   /* window->wgst[szc]                                               */
-  /* window->bot_t[szcS]                                             */
-  /* window->sur_t[szcS]                                             */
-  /* window->nsur_t[szcS]                                            */
+  /* window->w3_t[szc]                                               */
+  /* window->c2c[npem][szc]                                          */
+  /* window->c2e[npem][szc]                                          */
+  /* window->c2v[npem][szc]                                          */
+  /* window->vIc[npem][szcS]                                         */
+  /* window->eSc[npem][szcS]                                         */
   /* window->bpt[nbpt]                                               */
   /* window->bin[nbpt]                                               */
   /* window->bin2[nbpt]                                              */
-  /* window->w2_t[szcS]                                              */
-  /* window->w3_t[szc]                                               */
 
-  /* szc can be very big for large domains, so figure out a max     */
+  /* Max 3D centres */
   ct = window[1]->szc;
   for (n=2; n<=nwins; n++)
     ct = (window[n]->szc > ct ? window[n]->szc : ct);
   ncw_def_dim(name, cdfid, "szc_max", ct, &szcw);
-  dims[1] = szcw;
 
+  /* Max 2D centres */
+  ct = window[1]->szcS;
+  for (n=2; n<=nwins; n++)
+    ct = (window[n]->szcS > ct ? window[n]->szcS : ct);
+  ncw_def_dim(name, cdfid, "szcS_max", ct, &szcSw);
+
+  /* Max npe */
   ct = window[1]->npem + 1;
   for (n=2; n<=nwins; n++)
     ct = (window[n]->npem+1 > ct ? window[n]->npem+1 : ct);
   ncw_def_dim(name, cdfid, "npe_max", ct, &npem);
-  dims[2] = npem;
 
+  /*
+   * Surface sparse arrays
+   */
+  dims[1] = szcSw;
+  ncw_def_var2(name, cdfid, "npe",  NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Centres surrounding a cell");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+
+  /* Max a2_t */
+  ct = window[1]->a2_t+1;
+  for (n=2; n<=nwins; n++)
+    ct = (window[n]->a2_t+1 > ct ? window[n]->a2_t+1 : ct);
+  ncw_def_dim(name, cdfid, "a2_t_max", ct, &dims[1]);
+  // dims = a2_t
+  ncw_def_var2(name, cdfid, "bot_t",  NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Bottom centre coordinate");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+
+  ncw_def_var2(name, cdfid, "sur_t",  NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Surface centre coordinate");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+  
+  ncw_def_var2(name, cdfid, "nsur_t", NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Updated surface centre coordinate");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+
+  /*
+   * 3D sparse arrays
+   */
+  dims[1] = szcw;
   ncw_def_var2(name, cdfid, "wsa",  NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Local - global centre map");
   write_text_att(cdfid, vid, "units", "");
@@ -2475,21 +2518,6 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
 
   ncw_def_var2(name, cdfid, "m2d", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "3D to 2D centre map");
-  write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
-
-  ncw_def_var2(name, cdfid, "c2c", NC_INT, 3, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Cell to cell map");
-  write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
-
-  ncw_def_var2(name, cdfid, "c2e", NC_INT, 3, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Cell to edge map");
-  write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
-
-  ncw_def_var2(name, cdfid, "c2v", NC_INT, 3, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Cell to vertex map");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
@@ -2508,36 +2536,26 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
-  ct = window[1]->a2_t;
-  for (n=2; n<=nwins; n++)
-    ct = (window[n]->a2_t > ct ? window[n]->a2_t : ct);
-  ncw_def_dim(name, cdfid, "a2_t_max", ct, &dims[1]);
-  ncw_def_var2(name, cdfid, "bot_t",  NC_INT, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Bottom centre coordinate");
+  /* Maps */
+  dims[1] = npem;
+  dims[2] = szcw;
+  ncw_def_var2(name, cdfid, "c2c", NC_INT, 3, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Cell to cell map");
   write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
-  ncw_def_var2(name, cdfid, "sur_t",  NC_INT, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Surface centre coordinate");
+  ncw_def_var2(name, cdfid, "c2e", NC_INT, 3, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Cell to edge map");
   write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
-  
-  ncw_def_var2(name, cdfid, "nsur_t", NC_INT, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Updated surface centre coordinate");
-  write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
-  ct = window[1]->szcS;
-  for (n=2; n<=nwins; n++)
-    ct = (window[n]->szcS > ct ? window[n]->szcS : ct);
-  ncw_def_dim(name, cdfid, "szcS_max", ct, &szcSw);
-  dims[1] = szcSw;
-  ncw_def_var2(name, cdfid, "npe",  NC_INT, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Centres surrounding a cell");
+  ncw_def_var2(name, cdfid, "c2v", NC_INT, 3, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Cell to vertex map");
   write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
+  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
-  dims[2] = npem;
+  dims[1] = npem;
+  dims[2] = szcSw;
   ncw_def_var2(name, cdfid, "vIc", NC_INT, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Vertex index");
   write_text_att(cdfid, vid, "units", "");
@@ -2548,10 +2566,12 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C2D");
 
-  ct = window[1]->nbpt;
+  /* Max nbt */
+  ct = window[1]->nbpt+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->nbpt > ct ? window[n]->nbpt : ct);
+    ct = (window[n]->nbpt+1 > ct ? window[n]->nbpt+1 : ct);
   ncw_def_dim(name, cdfid, "nbpt_max", ct, &dims[1]);
+
   ncw_def_var2(name, cdfid, "bpt",  NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Ghost cell map");
   write_text_att(cdfid, vid, "units", "");
@@ -2567,6 +2587,11 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
+  ncw_def_var2(name, cdfid, "dbpt", NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Direction of the ghost cell");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "C3D");
+  
   /* EDGES                                                           */ 
   /* window->nee[sze]                                                */
   /* window->wse[sze]                                                */
@@ -2614,6 +2639,11 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
 
+  ncw_def_var2(name, cdfid, "e2ijk", NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Edge to (i,j,k) map for structured grids");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "E3D");
+
   ncw_def_var2(name, cdfid, "ep", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Edge to edge map (positive)");
   write_text_att(cdfid, vid, "units", "");
@@ -2634,8 +2664,8 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
 
-  dims[1] = tid;
-  dims[2] = szew;
+  dims[1] = szew;
+  dims[2] = tid;
   ncw_def_var2(name, cdfid, "e2c", NC_INT, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Edge to centre map");
   write_text_att(cdfid, vid, "units", "");
@@ -2651,18 +2681,18 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
 
-  dims[1] = szew;
-  ct = window[1]->neem;
+  ct = window[1]->neem+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->neem > ct ? window[n]->neem : ct);
-  ncw_def_dim(name, cdfid, "neem_max", ct, &dims[2]);
+    ct = (window[n]->neem+1 > ct ? window[n]->neem+1 : ct);
+  ncw_def_dim(name, cdfid, "neem_max", ct, &dims[1]);
 
+  dims[2] = szew;
   ncw_def_var2(name, cdfid, "eSe", NC_INT, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Tangential velocity edges");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
 
-  ncw_def_var2(name, cdfid, "wAe", NC_INT, 3, dims, &vid, 1);
+  ncw_def_var2(name, cdfid, "wAe", NC_DOUBLE, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Tangential velocity weights");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
@@ -2672,7 +2702,6 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
     ct = (window[n]->szeS > ct ? window[n]->szeS : ct);
   ncw_def_dim(name, cdfid, "szeS_max", ct, &szeSw);
   dims[1] = szeSw;
-  dims[2] = npem;
   ncw_def_var2(name, cdfid, "bot_e1",  NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Bottom edge coordinate");
   write_text_att(cdfid, vid, "units", "");
@@ -2682,9 +2711,9 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E2D");
 
-  ct = window[1]->nbpte1;
+  ct = window[1]->nbpte1+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->nbpte1 > ct ? window[n]->nbpte1 : ct);
+    ct = (window[n]->nbpte1+1 > ct ? window[n]->nbpte1+1 : ct);
   ncw_def_dim(name, cdfid, "nbpte1_max",  ct,  &dims[1]);
   ncw_def_var2(name, cdfid, "bpte1", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "3D ghost edge map");
@@ -2696,9 +2725,9 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
 
-  ct = window[1]->nbpte1S;
+  ct = window[1]->nbpte1S+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->nbpte1S > ct ? window[n]->nbpte1S : ct);
+    ct = (window[n]->nbpte1S+1 > ct ? window[n]->nbpte1S+1 : ct);
   ncw_def_dim(name, cdfid, "nbpte1S_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "bpte1S", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "2D ghost edge map");
@@ -2722,8 +2751,6 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   /* window->dualarea[szvS]                                          */
   /* window->dualareap[szvS][nvcm]                                   */
   /* window->m2dv[szv]                                               */
-  /* window->bot_e2[szvS]                                            */
-  /* window->sur_e2[szvS]                                            */
   /* window->w2_e2[szvS]                                             */
   /* window->w3_e2[szv]                                              */
   ct = window[1]->szv;
@@ -2752,12 +2779,17 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "V3D");
 
+  ncw_def_var2(name, cdfid, "v2ijk", NC_INT, 2, dims, &vid, 1);
+  write_text_att(cdfid, vid, "long_name", "Vertex to (i,j,k) map for structured grids");
+  write_text_att(cdfid, vid, "units", "");
+  write_text_att(cdfid, vid, "cartesian_axis", "V3D");
+
   ct = window[1]->nvem + 1;
   for (n=2; n<=nwins; n++)
     ct = (window[n]->nvem+1 > ct ? window[n]->nvem+1 : ct);
   ncw_def_dim(name, cdfid, "nve_max", ct, &nvem);
-  dims[1] = nvem;
-  dims[2] = szvw;
+  dims[1] = szvw;
+  dims[2] = nvem;
   ncw_def_var2(name, cdfid, "v2e", NC_INT, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Vertex to edge map");
   write_text_att(cdfid, vid, "units", "");
@@ -2767,14 +2799,15 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   for (n=2; n<=nwins; n++)
     ct = (window[n]->nvcm+1 > ct ? window[n]->nvcm+1 : ct);
   ncw_def_dim(name, cdfid, "nvc_max", ct, &nvcm);
-  dims[1] = nvcm;
+  dims[1] = szvw;
+  dims[2] = nvcm;
   ncw_def_var2(name, cdfid, "v2c", NC_INT, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Vertex to centre map");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "V3D");
 
-  dims[1] = szvw;
-  dims[2] = nvem;
+  dims[1] = nvem;
+  dims[2] = szvw;
   ncw_def_var2(name, cdfid, "eSv", NC_INT, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Vertex sign");
   write_text_att(cdfid, vid, "units", "");
@@ -2796,77 +2829,66 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "V2D");
 
-  ncw_def_var2(name, cdfid, "bot_e2",  NC_INT, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Bottom vertex coordinate");
-  write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "V2D");
-
-  ncw_def_var2(name, cdfid, "sur_e2",  NC_INT, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Surface vertex coordinate");
-  write_text_att(cdfid, vid, "units", "");
-  write_text_att(cdfid, vid, "cartesian_axis", "V2D");
-
-  ncw_def_var2(name, cdfid, "dualarea",  NC_INT, 2, dims, &vid, 1);
+  ncw_def_var2(name, cdfid, "dualarea",  NC_DOUBLE, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Area of the dual");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "V2D");
-  dims[2] =  nvcm;
 
-  dims[1] = nvcm;
-  dims[2] = szvSw;
-  ncw_def_var2(name, cdfid, "dualareap",  NC_INT, 3, dims, &vid, 1);
+  dims[1] = szvSw;
+  dims[2] = nvcm;
+  ncw_def_var2(name, cdfid, "dualareap",  NC_DOUBLE, 3, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Partial area of the dual");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "V2D");
   
-  ct = window[1]->n2_t;
+  ct = window[1]->n2_t+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->n2_t > ct ? window[n]->n2_t : ct);
+    ct = (window[n]->n2_t+1 > ct ? window[n]->n2_t+1 : ct);
   ncw_def_dim(name, cdfid, "n2_t_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "w2_t", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "2D work array for centres");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C2D");
   
-  ct = window[1]->n2_e1;
+  ct = window[1]->n2_e1+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->n2_e1 > ct ? window[n]->n2_e1 : ct);
+    ct = (window[n]->n2_e1+1 > ct ? window[n]->n2_e1+1 : ct);
   ncw_def_dim(name, cdfid, "n2_e1_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "w2_e1", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "2D work array for edges");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E2D");
 
-  ct = window[1]->n2_e2;
+  ct = window[1]->n2_e2+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->n2_e2 > ct ? window[n]->n2_e2 : ct);
+    ct = (window[n]->n2_e2+1 > ct ? window[n]->n2_e2+1 : ct);
   ncw_def_dim(name, cdfid, "n2_e2_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "w2_e2", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "2D work array for vertices");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "V2D");
   
-  ct = window[1]->n3_t;
+  ct = window[1]->n3_t+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->n3_t > ct ? window[n]->n3_t : ct);
+    ct = (window[n]->n3_t+1 > ct ? window[n]->n3_t+1 : ct);
   ncw_def_dim(name, cdfid, "n3_t_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "w3_t", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "3D work array for centres");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
 
-  ct = window[1]->n3_e1;
+  ct = window[1]->n3_e1+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->n3_e1 > ct ? window[n]->n3_e1 : ct);
+    ct = (window[n]->n3_e1+1 > ct ? window[n]->n3_e1+1 : ct);
   ncw_def_dim(name, cdfid, "n3_e1_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "w3_e1", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "3D work array for edges");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
 
-  ct = window[1]->n3_e2;
+  ct = window[1]->n3_e2+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->n3_e2 > ct ? window[n]->n3_e2 : ct);
+    ct = (window[n]->n3_e2+1 > ct ? window[n]->n3_e2+1 : ct);
   ncw_def_dim(name, cdfid, "n3_e2_max", geom->n3_e2, &dims[1]);
   ncw_def_var2(name, cdfid, "w3_e2", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "3D work array for vertices");
@@ -2886,35 +2908,37 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "long_name", "Unstructured to Cartesian k map");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
-  
-  ct = window[1]->nm2s;
+
+  ct = window[1]->nm2s+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->nm2s > ct ? window[n]->nm2s : ct);
+    ct = (window[n]->nm2s+1 > ct ? window[n]->nm2s+1 : ct);
   ncw_def_dim(name, cdfid, "nm2s_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "m2s",   NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Master to slave map");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
-  ct = window[1]->nm2se1;
+
+  ct = window[1]->nm2se1+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->nm2se1 > ct ? window[n]->nm2se1 : ct);
+    ct = (window[n]->nm2se1+1 > ct ? window[n]->nm2se1+1 : ct);
   ncw_def_dim(name, cdfid, "nm2se1_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "m2se1",   NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Master to slave map for edges");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "E3D");
   
-  ct = window[1]->ns2m;
+  ct = window[1]->ns2m+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->ns2m > ct ? window[n]->ns2m : ct);
+    ct = (window[n]->ns2m+1 > ct ? window[n]->ns2m+1 : ct);
   ncw_def_dim(name, cdfid, "ns2m_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "s2m",   NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Slave to master map");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C3D");
-  ct = window[1]->ns2me1;
+
+  ct = window[1]->ns2me1+1;
   for (n=2; n<=nwins; n++)
-    ct = (window[n]->ns2me1 > ct ? window[n]->ns2me1 : ct);
+    ct = (window[n]->ns2me1+1 > ct ? window[n]->ns2me1+1 : ct);
   ncw_def_dim(name, cdfid, "ns2me1_max", ct, &dims[1]);
   ncw_def_var2(name, cdfid, "s2me1", NC_INT, 2, dims, &vid, 1);
   write_text_att(cdfid, vid, "long_name", "Slave to master map for edges");
@@ -2926,7 +2950,6 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "long_name", "Bottom depth");
   write_text_att(cdfid, vid, "units", "m");
   write_text_att(cdfid, vid, "cartesian_axis", "C2D");
-
   // } nwindows
 
   /* Global attributes */
@@ -2993,6 +3016,8 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "n3_e2_w"), start, count, &window[n]->n3_e2);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nm2s_w"), start, count, &window[n]->nm2s);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "ns2m_w"), start, count, &window[n]->ns2m);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nm2se1_w"), start, count, &window[n]->nm2se1);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "ns2me1_w"), start, count, &window[n]->ns2me1);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nbptS_w"), start, count, &window[n]->nbptS);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nbe1_w"), start, count, &window[n]->nbe1);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nbe1S_w"), start, count, &window[n]->nbe1S);
@@ -3020,143 +3045,143 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "a3_e2_w"), start, count, &window[n]->a3_e2);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "ns2mS_w"), start, count, &window[n]->ns2mS);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nm2sS_w"), start, count, &window[n]->nm2sS);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nm2se1S_w"), start, count, &window[n]->nm2se1S);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "ns2me1S_w"), start, count, &window[n]->ns2me1S);
 
     /* 2D arrays */
-    count[0] = 1;
-    start[1] = 0;
-    count[1] = window[n]->a2_t;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bot_t"), start, count, &window[n]->bot_t[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "sur_t"), start, count, &window[n]->sur_t[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nsur_t"), start, count, &window[n]->nsur_t[1]);
+    count[0] = 1; /* one window at a time */
+    count[1] = window[n]->a2_t + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bot_t"), start, count, window[n]->bot_t);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "sur_t"), start, count, window[n]->sur_t);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nsur_t"), start, count, window[n]->nsur_t);
 
     count[1] = window[n]->szeS;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bot_e1"), start, count, &window[n]->bot_e1[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "sur_e1"), start, count, &window[n]->sur_e1[1]);
-
-    count[1] = window[n]->szvS;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bot_e2"), start, count, &window[n]->bot_e2[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "sur_e2"), start, count, &window[n]->sur_e2[1]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bot_e1"), start, count, window[n]->bot_e1);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "sur_e1"), start, count, window[n]->sur_e1);
 
     count[1] = window[n]->szc;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2d"), start, count, &window[n]->m2d[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wsa"), start, count, &window[n]->wsa[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zp1"), start, count, &window[n]->zp1[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zm1"), start, count, &window[n]->zm1[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wgst"), start, count, &window[n]->wgst[1]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2d"), start, count, window[n]->m2d);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wsa"), start, count, window[n]->wsa);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zp1"), start, count, window[n]->zp1);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zm1"), start, count, window[n]->zm1);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wgst"), start, count, window[n]->wgst);
 
     count[1] = window[n]->szcS;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "npe"), start, count, &window[n]->npe[1]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "npe"), start, count, window[n]->npe);
 
-    count[2] = window[n]->npem+1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "c2c"), start, count, &window[n]->c2c[1][1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "c2e"), start, count, &window[n]->c2e[1][1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "c2v"), start, count, &window[n]->c2v[1][1]);
+    count[1] = window[n]->npem+1;
+    count[2] = window[n]->szc;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "c2c"), start, count, window[n]->c2c[0]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "c2e"), start, count, window[n]->c2e[0]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "c2v"), start, count, window[n]->c2v[0]);
 
     count[1] = window[n]->sze;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2de"), start, count, &window[n]->m2de[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wse"), start, count, &window[n]->wse[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zp1e"), start, count, &window[n]->zp1e[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zm1e"), start, count, &window[n]->zm1e[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "ep"), start, count, &window[n]->ep[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "em"), start, count, &window[n]->em[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2k"), start, count, &window[n]->e2k[1]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2de"), start, count, window[n]->m2de);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wse"), start, count, window[n]->wse);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zp1e"), start, count, window[n]->zp1e);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zm1e"), start, count, window[n]->zm1e);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "ep"), start, count, window[n]->ep);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "em"), start, count, window[n]->em);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2k"), start, count, window[n]->e2k);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2ijk"), start, count, window[n]->e2ijk);
 
-    count[1] = 2;
+    count[1] = window[n]->sze;
+    count[2] = 2;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2c"), start, count, window[n]->e2c[0]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2e"), start, count, window[n]->e2e[0]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2v"), start, count, window[n]->e2v[0]);
+
+    count[1] = window[n]->neem+1;
     count[2] = window[n]->sze;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2c"), start, count, &window[n]->e2c[1][1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2e"), start, count, &window[n]->e2e[1][1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "e2v"), start, count, &window[n]->e2v[1][1]);
-
-    count[2] = window[n]->neem;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "eSe"), start, count, &window[n]->eSe[1][1]);
-    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "wAe"), start, count, &window[n]->wAe[1][1]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "eSe"), start, count, window[n]->eSe[0]);
+    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "wAe"), start, count, window[n]->wAe[0]);
 
     count[1] = window[n]->szeS;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nee"), start, count, &window[n]->nee[1]);
-
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nee"), start, count, window[n]->nee);
 
     count[1] = window[n]->szv;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2dv"), start, count, &window[n]->m2dv[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wsv"), start, count, &window[n]->wsv[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zp1v"), start, count, &window[n]->zp1v[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zm1v"), start, count, &window[n]->zm1v[1]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2dv"), start, count, window[n]->m2dv);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "wsv"), start, count, window[n]->wsv);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zp1v"), start, count, window[n]->zp1v);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "zm1v"), start, count, window[n]->zm1v);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "v2ijk"), start, count, window[n]->v2ijk);
 
-    count[1] = window[n]->nvcm+1;
-    count[2] = window[n]->szv;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "v2c"), start, count, &window[n]->v2c[1][1]);
+    count[1] = window[n]->szv;
+    count[2] = window[n]->nvcm+1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "v2c"), start, count, window[n]->v2c[0]);
+
+    count[1] = window[n]->szv;
+    count[2] = window[n]->nvem + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "v2e"), start, count, window[n]->v2e[0]);
+
+    count[1] = window[n]->npem + 1;
+    count[2] = window[n]->szcS;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "vIc"), start, count, window[n]->vIc[0]);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "eSc"), start, count, window[n]->eSc[0]);
+
+    count[1] = window[n]->szvS;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nve"), start, count, window[n]->nve);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nvc"), start, count, window[n]->nvc);
 
     count[1] = window[n]->nvem+1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "v2e"), start, count, &window[n]->v2e[1][1]);
-
-    count[1] = window[n]->szcS;
-    count[2] = window[n]->npem+1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "vIc"), start, count, &window[n]->vIc[1][1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "eSc"), start, count, &window[n]->eSc[1][1]);
+    count[2] = window[n]->szv;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "eSv"), start, count, window[n]->eSv[0]);
 
     count[1] = window[n]->szvS;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nve"), start, count, &window[n]->nve[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "nvc"), start, count, &window[n]->nvc[1]);
-    count[1] = window[n]->szv;
-    count[2] = window[n]->nvem+1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "eSv"), start, count, &window[n]->eSv[1][1]);
+    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "dualarea"), start, count, window[n]->dualarea);
+
     count[1] = window[n]->szvS;
-    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "dualarea"), start, count, &window[n]->dualarea[1]);
-    count[1] = window[n]->nvcm+1;
-    count[2] = window[n]->szvS;
-    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "dualareap"), start, count, &window[n]->dualareap[1][1]);
+    count[2] = window[n]->nvcm+1;
+    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "dualareap"), start, count,
+			window[n]->dualareap[0]);
+    
+    count[1] = window[n]->nbpt + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bpt"), start, count, window[n]->bpt);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bin"), start, count, window[n]->bin);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bin2"), start, count, window[n]->bin2);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "dbpt"), start, count, window[n]->dbpt);
 
-    count[1] = window[n]->nbpt;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bpt"), start, count, &window[n]->bpt[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bin"), start, count, &window[n]->bin[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bin2"), start, count, &window[n]->bin2[1]);
+    count[1] = window[n]->nbpte1 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bpte1"), start, count, window[n]->bpte1);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bine1"), start, count, window[n]->bine1);
 
-    count[1] = window[n]->nbpte1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bpte1"), start, count, &window[n]->bpte1[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bine1"), start, count, &window[n]->bine1[1]);
+    count[1] = window[n]->nbpte1S + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bpte1S"), start, count, window[n]->bpte1S);
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bine1S"), start, count, window[n]->bine1S);
 
-    count[1] = window[n]->nbpte1S;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bpte1S"), start, count, &window[n]->bpte1S[1]);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "bine1S"), start, count, &window[n]->bine1S[1]);
-
-    count[1] = window[n]->n2_t;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w2_t"), start, count, &window[n]->w2_t[1]);
-    count[1] = window[n]->n3_t;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w3_t"), start, count, &window[n]->w3_t[1]);
-    count[1] = window[n]->n2_e1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w2_e1"), start, count, &window[n]->w2_e1[1]);
-    count[1] = window[n]->n3_e1;
-    sprintf(key, "w3_e1_%d", n);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w3_e1"), start, count, &window[n]->w3_e1[1]);
-
-    count[1] = window[n]->n2_e2;
-    sprintf(key, "w2_e2_%d", n);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w2_e2"), start, count, &window[n]->w2_e2[1]);
-    count[1] = window[n]->n3_e2;
-    sprintf(key, "w3_e2_%d", n);
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w3_e2"), start, count, &window[n]->w3_e2[1]);
+    count[1] = window[n]->n2_t + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w2_t"), start, count, window[n]->w2_t);
+    count[1] = window[n]->n3_t + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w3_t"), start, count, window[n]->w3_t);
+    count[1] = window[n]->n2_e1 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w2_e1"), start, count, window[n]->w2_e1);
+    count[1] = window[n]->n3_e1 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w3_e1"), start, count, window[n]->w3_e1);
+    count[1] = window[n]->n2_e2 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w2_e2"), start, count, window[n]->w2_e2);
+    count[1] = window[n]->n3_e2 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "w3_e2"), start, count, window[n]->w3_e2);
 
     count[1] = window[n]->szc;
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2i"), start, count, window[n]->s2i);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2j"), start, count, window[n]->s2j);
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2k"), start, count, window[n]->s2k);
 
-    count[1] = window[n]->nm2s;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2s"), start, count, &window[n]->m2s[1]);
-    count[1] = window[n]->nm2se1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2se1"), start, count, &window[n]->m2se1[1]);
+    count[1] = window[n]->nm2s + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2s"), start, count, window[n]->m2s);
+    count[1] = window[n]->nm2se1 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "m2se1"), start, count, window[n]->m2se1);
 
-    count[1] = window[n]->ns2m;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2m"), start, count, &window[n]->s2m[1]);
-    count[1] = window[n]->ns2me1;
-    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2me1"), start, count, &window[n]->s2me1[1]);
-
+    count[1] = window[n]->ns2m + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2m"), start, count, window[n]->s2m);
+    count[1] = window[n]->ns2me1 + 1;
+    ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "s2me1"), start, count, window[n]->s2me1);
     count[1] = window[n]->szcS;
-    sprintf(key, "botz_%d", n);
     ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "botz"), start, count, window[n]->botz);
   }
 
   ncw_close(name, cdfid);
-  /* check_window_map(window, name); */
+  /* check_window_map_us(window, name); */
 }
 
 /* END dump_windows_us()                                             */
@@ -3303,8 +3328,12 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
     
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "nm2s_w"), start, count, &window[n]->nm2s);
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "ns2m_w"), start, count, &window[n]->ns2m);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nm2se1_w"), start, count, &window[n]->nm2se1);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "ns2me1_w"), start, count, &window[n]->ns2me1);
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "nm2sS_w"), start, count, &window[n]->nm2sS);
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "ns2mS_w"), start, count, &window[n]->ns2mS);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nm2se1S_w"), start, count, &window[n]->nm2se1S);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "ns2me1S_w"), start, count, &window[n]->ns2me1S);
 
     /* CENTRES                                                       */
     /* window->npe[szcS]                                             */
@@ -3327,7 +3356,6 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
     /* window->w2_t[szcS]                                            */
     /* window->w3_t[szc]                                             */
     alloc_geom_us(window[n], CENTRE_A);
-    window[n]->wsa = i_alloc_1d(window[n]->szc);
     window[n]->w2_t = i_alloc_1d(window[n]->szcS);
     window[n]->w3_t = i_alloc_1d(window[n]->szc);
     window[n]->sur_t = i_alloc_1d(window[n]->a2_t + 1);
@@ -3349,52 +3377,53 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
     window[n]->m2s = i_alloc_1d(window[n]->nm2s + 1);
     window[n]->s2m = i_alloc_1d(window[n]->ns2m + 1);
 
-    start[1] = 0;
-    count[1] = window[n]->a2_t;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bot_t"), start, count, &window[n]->bot_t[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "sur_t"), start, count, &window[n]->sur_t[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nsur_t"), start, count, &window[n]->nsur_t[1]);
+    count[1] = window[n]->a2_t + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bot_t"), start, count, window[n]->bot_t);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "sur_t"), start, count, window[n]->sur_t);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nsur_t"), start, count, window[n]->nsur_t);
 
     count[1] = window[n]->szc;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2d"), start, count, &window[n]->m2d[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wsa"), start, count, &window[n]->wsa[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zp1"), start, count, &window[n]->zp1[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zm1"), start, count, &window[n]->zm1[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wgst"), start, count, &window[n]->wgst[1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2d"), start, count, window[n]->m2d);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wsa"), start, count, window[n]->wsa);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zp1"), start, count, window[n]->zp1);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zm1"), start, count, window[n]->zm1);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wgst"), start, count, window[n]->wgst);
 
     count[1] = window[n]->szcS;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "npe"), start, count, &window[n]->npe[1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "npe"), start, count, window[n]->npe);
 
-    count[2] = window[n]->npem+1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "c2c"), start, count, &window[n]->c2c[1][1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "c2e"), start, count, &window[n]->c2e[1][1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "c2v"), start, count, &window[n]->c2v[1][1]);
+    count[1] = window[n]->npem + 1;
+    count[2] = window[n]->szc;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "c2c"), start, count, window[n]->c2c[0]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "c2e"), start, count, window[n]->c2e[0]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "c2v"), start, count, window[n]->c2v[0]);
 
-    count[1] = window[n]->nbpt;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bpt"), start, count, &window[n]->bpt[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bin"), start, count, &window[n]->bin[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bin2"), start, count, &window[n]->bin2[1]);
+    count[1] = window[n]->nbpt + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bpt"), start, count, window[n]->bpt);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bin"), start, count, window[n]->bin);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bin2"), start, count, window[n]->bin2);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "dbpt"), start, count, window[n]->dbpt);
 
-    count[1] = window[n]->n2_t;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w2_t"), start, count, &window[n]->w2_t[1]);
-    count[1] = window[n]->n3_t;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w3_t"), start, count, &window[n]->w3_t[1]);
+    count[1] = window[n]->n2_t + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w2_t"), start, count, window[n]->w2_t);
+    count[1] = window[n]->n3_t + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w3_t"), start, count, window[n]->w3_t);
  
     count[1] = window[n]->szc;
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2i"), start, count, window[n]->s2i);
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2j"), start, count, window[n]->s2j);
     ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2k"), start, count, window[n]->s2k);
 
-    count[1] = window[n]->szcS;
-    count[2] = window[n]->npem+1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "vIc"), start, count, &window[n]->vIc[1][1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "eSc"), start, count, &window[n]->eSc[1][1]);
+    count[1] = window[n]->npem + 1;
+    count[2] = window[n]->szcS;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "vIc"), start, count, window[n]->vIc[0]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "eSc"), start, count, window[n]->eSc[0]);
 
-    count[1] = window[n]->nm2s;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2s"), start, count, &window[n]->m2s[1]);
+    count[1] = window[n]->nm2s + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2s"), start, count, window[n]->m2s);
 
-    count[1] = window[n]->ns2m;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2m"), start, count, &window[n]->s2m[1]);
+    count[1] = window[n]->ns2m + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2m"), start, count, window[n]->s2m);
 
     /* EDGES                                                         */ 
     /* window->nee[sze]                                              */
@@ -3427,60 +3456,64 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
     window[n]->zm1e = i_alloc_1d(window[n]->sze);
     window[n]->zp1e = i_alloc_1d(window[n]->sze);
     window[n]->e2k = i_alloc_1d(window[n]->sze);
+    window[n]->e2ijk = i_alloc_1d(window[n]->sze);
     window[n]->m2de = i_alloc_1d(window[n]->sze);
     window[n]->sur_e1 = i_alloc_1d(window[n]->szeS);
     window[n]->bot_e1 = i_alloc_1d(window[n]->szeS);
-    window[n]->e2ijk = i_alloc_1d(window[n]->sze);
     window[n]->bpte1 = i_alloc_1d(window[n]->nbpte1 + 1);
     window[n]->bine1 = i_alloc_1d(window[n]->nbpte1 + 1);
     window[n]->bpte1S = i_alloc_1d(window[n]->nbpte1S + 1);
     window[n]->bine1S = i_alloc_1d(window[n]->nbpte1S + 1);
     window[n]->w2_e1 = i_alloc_1d(window[n]->szeS);
     window[n]->w3_e1 = i_alloc_1d(window[n]->sze);
+    window[n]->m2se1 = i_alloc_1d(window[n]->nm2se1 + 1);
+    window[n]->s2me1 = i_alloc_1d(window[n]->ns2me1 + 1);
 
     count[1] = window[n]->szeS;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bot_e1"), start, count, &window[n]->bot_e1[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "sur_e1"), start, count, &window[n]->sur_e1[1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bot_e1"), start, count, window[n]->bot_e1);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "sur_e1"), start, count, window[n]->sur_e1);
    
     count[1] = window[n]->sze;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2de"), start, count, &window[n]->m2de[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wse"), start, count, &window[n]->wse[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zp1e"), start, count, &window[n]->zp1e[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zm1e"), start, count, &window[n]->zm1e[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "ep"), start, count, &window[n]->ep[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "em"), start, count, &window[n]->em[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2k"), start, count, &window[n]->e2k[1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2de"), start, count, window[n]->m2de);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wse"), start, count, window[n]->wse);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zp1e"), start, count, window[n]->zp1e);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zm1e"), start, count, window[n]->zm1e);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "ep"), start, count, window[n]->ep);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "em"), start, count, window[n]->em);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2k"), start, count, window[n]->e2k);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2ijk"), start, count, window[n]->e2ijk);
 
-    count[1] = 2;
+    count[1] = window[n]->sze;
+    count[2] = 2;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2c"), start, count, window[n]->e2c[0]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2e"), start, count, window[n]->e2e[0]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2v"), start, count, window[n]->e2v[0]);
+
+    count[1] = window[n]->neem + 1;
     count[2] = window[n]->sze;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2c"), start, count, &window[n]->e2c[1][1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2e"), start, count, &window[n]->e2e[1][1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "e2v"), start, count, &window[n]->e2v[1][1]);
-
-    count[2] = window[n]->neem;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "eSe"), start, count, &window[n]->eSe[1][1]);
-    ncw_get_vara_double(name, fid, ncw_var_id(fid, "wAe"), start, count, &window[n]->wAe[1][1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "eSe"), start, count, window[n]->eSe[0]);
+    ncw_get_vara_double(name, fid, ncw_var_id(fid, "wAe"), start, count, window[n]->wAe[0]);
 
     count[1] = window[n]->szeS;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nee"), start, count, &window[n]->nee[1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nee"), start, count, window[n]->nee);
 
-    count[1] = window[n]->nbpte1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bpte1"), start, count, &window[n]->bpte1[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bine1"), start, count, &window[n]->bine1[1]);
+    count[1] = window[n]->nbpte1 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bpte1"), start, count, window[n]->bpte1);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bine1"), start, count, window[n]->bine1);
 
-    count[1] = window[n]->nbpte1S;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bpte1S"), start, count, &window[n]->bpte1S[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bine1S"), start, count, &window[n]->bine1S[1]);
+    count[1] = window[n]->nbpte1S + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bpte1S"), start, count, window[n]->bpte1S);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bine1S"), start, count, window[n]->bine1S);
 
-    count[1] = window[n]->n2_e1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w2_e1"), start, count, &window[n]->w2_e1[1]);
-    count[1] = window[n]->n3_e1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w3_e1"), start, count, &window[n]->w3_e1[1]);
+    count[1] = window[n]->n2_e1 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w2_e1"), start, count, window[n]->w2_e1);
+    count[1] = window[n]->n3_e1 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w3_e1"), start, count, window[n]->w3_e1);
 
-    count[1] = window[n]->nm2se1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2se1"), start, count, &window[n]->m2se1[1]);
-    count[1] = window[n]->ns2me1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2me1"), start, count, &window[n]->s2me1[1]);
+    count[1] = window[n]->nm2se1 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2se1"), start, count, window[n]->m2se1);
+    count[1] = window[n]->ns2me1 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "s2me1"), start, count, window[n]->s2me1);
 
     /* VERTICES                                                       */ 
     /* window->nve[szvS]                                              */
@@ -3501,50 +3534,47 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
     alloc_geom_us(window[n], VERTEX_A);
     window[n]->w2_e2 = i_alloc_1d(window[n]->szvS);
     window[n]->w3_e2 = i_alloc_1d(window[n]->szv);
-    window[n]->sur_e2 = i_alloc_1d(window[n]->szvS);
-    window[n]->bot_e2 = i_alloc_1d(window[n]->szvS);
     window[n]->m2dv = i_alloc_1d(window[n]->szv);
     window[n]->zm1v = i_alloc_1d(window[n]->szv);
     window[n]->zp1v = i_alloc_1d(window[n]->szv);
     window[n]->v2ijk = i_alloc_1d(window[n]->szv);
-    window[n]->c2v = i_alloc_2d(window[n]->szc, window[n]->npem+1);
     window[n]->v2c = i_alloc_2d(window[n]->nvcm+1, window[n]->szv);
     window[n]->v2e = i_alloc_2d(window[n]->nvem+1, window[n]->szv);
-    window[n]->e2v = i_alloc_2d(2, window[n]->sze);
     window[n]->eSv = i_alloc_2d(window[n]->szv, window[n]->nvem + 1);
 
-    count[1] = window[n]->szvS;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "bot_e2"), start, count, &window[n]->bot_e2[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "sur_e2"), start, count, &window[n]->sur_e2[1]);
+    count[1] = window[n]->szv;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2dv"), start, count, window[n]->m2dv);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wsv"), start, count, window[n]->wsv);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zp1v"), start, count, window[n]->zp1v);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zm1v"), start, count, window[n]->zm1v);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "v2ijk"), start, count, window[n]->v2ijk);
 
     count[1] = window[n]->szv;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "m2dv"), start, count, &window[n]->m2dv[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "wsv"), start, count, &window[n]->wsv[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zp1v"), start, count, &window[n]->zp1v[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "zm1v"), start, count, &window[n]->zm1v[1]);
+    count[2] = window[n]->nvcm + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "v2c"), start, count, window[n]->v2c[0]);
+    count[2] = window[n]->nvem + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "v2e"), start, count, window[n]->v2e[0]);
 
-    count[1] = window[n]->nvcm+1;
+    count[1] = window[n]->szvS;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nve"), start, count, window[n]->nve);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nvc"), start, count, window[n]->nvc);
+
+    count[1] = window[n]->nvem + 1;
     count[2] = window[n]->szv;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "v2c"), start, count, &window[n]->v2c[1][1]);
-    count[1] = window[n]->nvem+1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "v2e"), start, count, &window[n]->v2e[1][1]);
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "eSv"), start, count, window[n]->eSv[0]);
 
     count[1] = window[n]->szvS;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nve"), start, count, &window[n]->nve[1]);
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "nvc"), start, count, &window[n]->nvc[1]);
-    count[1] = window[n]->szv;
-    count[2] = window[n]->nvem+1;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "eSv"), start, count, &window[n]->eSv[1][1]);
-    count[1] = window[n]->szvS;
-    ncw_get_vara_double(name, fid, ncw_var_id(fid, "dualarea"), start, count, &window[n]->dualarea[1]);
-    count[1] = window[n]->nvcm+1;
-    count[2] = window[n]->szvS;
-    ncw_get_vara_double(name, fid, ncw_var_id(fid, "dualareap"), start, count, &window[n]->dualareap[1][1]);
+    ncw_get_vara_double(name, fid, ncw_var_id(fid, "dualarea"), start, count, window[n]->dualarea);
 
-    count[1] = window[n]->n2_e2;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w2_e2"), start, count, &window[n]->w2_e2[1]);
-    count[1] = window[n]->n3_e2;
-    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w3_e2"), start, count, &window[n]->w3_e2[1]);
+    count[1] = window[n]->szvS;
+    count[2] = window[n]->nvcm + 1;
+    ncw_get_vara_double(name, fid, ncw_var_id(fid, "dualareap"), start, count,
+			    window[n]->dualareap[0]);
+
+    count[1] = window[n]->n2_e2 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w2_e2"), start, count, window[n]->w2_e2);
+    count[1] = window[n]->n3_e2 + 1;
+    ncw_get_vara_int(name, fid, ncw_var_id(fid, "w3_e2"), start, count, window[n]->w3_e2);
 
     botz = d_alloc_1d(window[n]->szcS);
     count[1] = window[n]->szcS;
@@ -3554,14 +3584,14 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
       c = window[n]->w2_t[cc];
       cg = window[n]->wsa[c];
       if (botz[c] != geom->botz[cg]) {
-	  hd_warn("Window%d (%d %d)=%5.2f : Global (%d %d)=%5.2f\n", n,
-		  window[n]->s2i[c], window[n]->s2j[c],  botz[c], 
-		  geom->s2i[cg], geom->s2j[cg], geom->botz[cg]);
+	hd_warn("Window%d (%d %d)=%5.2f : Global (%d %d)=%5.2f\n", n,
+		window[n]->s2i[c], window[n]->s2j[c],  botz[c], 
+		geom->s2i[cg], geom->s2j[cg], geom->botz[cg]);
 	hd_quit("Incompatible bottom depths in window map file %s with parameter file.\n", name);
       }
     }
     d_free_1d(botz);
-
+    
     /*-----------------------------------------------------------------*/
     /* Make the global to local map for this window. This differs from */
     /* the global to local map in geom in that it is defined only over */
@@ -3580,6 +3610,11 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
       else
 	window[n]->fm[c].ac = 2;
     }
+
+    // Define max sizes
+    window[n]->szm = max(max(window[n]->szc, window[n]->sze), window[n]->szv);
+    window[n]->szmS = max(max(window[n]->szcS, window[n]->szeS), window[n]->szvS);
+
     emstag(LINFO,"read_windows_wb","Window %d map OK\n", n);
   }
   ncw_close(name, fid);
@@ -3587,3 +3622,59 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
 
 /* END read_windows_us()                                             */
 /*-------------------------------------------------------------------*/
+
+/*************************/
+/* Check window map      */
+/* NOT fully implemented */
+/*************************/
+void check_window_map_us(geometry_t **window, char *name)
+{
+  geometry_t **win;
+  int e, ee, n, nn, j, c, c2, cc;
+
+  win = (geometry_t **)p_alloc_1d(window[1]->nwindows);
+  read_windows_us(geom, win, name);
+
+  for (n = 1; n <= geom->nwindows; n++) {
+    printf("Checking window %d\n", n);
+    if (window[n]->b2_e1 != win[n]->b2_e1)
+      printf("b2_e1 %d:%d\n", window[n]->b2_e1, win[n]->b2_e1);
+    for (ee = 1; ee <= window[n]->b2_e1; ee++) {
+      if (window[n]->w2_e1[ee] != win[n]->w2_e1[ee])
+	printf("w2_e1 %d %d:%d\n", ee, window[n]->w2_e1[ee], win[n]->w2_e1[ee]);
+    }
+    if (window[n]->b2_t != win[n]->b2_t)
+      printf("b2_t %d:%d\n", window[n]->b2_t, win[n]->b2_t);
+    for (cc = 1; cc <= window[n]->b2_t; cc++) {
+      if (window[n]->w2_t[cc] != win[n]->w2_t[cc])
+	printf("w2_t %d %d:%d\n", cc, window[n]->w2_t[cc], win[n]->w2_t[cc]);
+      c = window[n]->w2_t[cc];
+      if (window[n]->npe[c] != win[n]->npe[c]) printf ("npe error\n");
+      for (nn = 1; nn <= window[n]->npe[c]; nn++) {
+	if (window[n]->c2c[nn][c] != win[n]->c2c[nn][c]) printf("c2c error\n");
+	if (window[n]->c2e[nn][c] != win[n]->c2e[nn][c]) printf("c2e error\n");
+	if (window[n]->c2v[nn][c] != win[n]->c2v[nn][c]) printf("c2v error\n");
+	if (window[n]->eSc[nn][c] != win[n]->eSc[nn][c]) printf("eSc error\n");
+	if (window[n]->vIc[nn][c] != win[n]->vIc[nn][c]) printf("vIc error\n");
+      }
+    }
+    for (e = 1; e < window[n]->sze; e++) {
+      if (window[n]->e2c[e][0] != win[n]->e2c[e][0]) printf("e2c[0] error\n");
+      if (window[n]->e2c[e][1] != win[n]->e2c[e][1]) printf("e2c[1] error\n");
+      if (window[n]->e2e[e][0] != win[n]->e2e[e][0]) printf("e2e[0] error\n");
+      if (window[n]->e2e[e][1] != win[n]->e2e[e][1]) printf("e2e[1] error\n");
+      if (window[n]->e2v[e][0] != win[n]->e2v[e][0]) printf("e2v[0] error\n");
+      if (window[n]->e2v[e][1] != win[n]->e2v[e][1]) printf("e2v[1] error\n");
+    }
+
+    /* 3D */
+    if (window[n]->b3_t != win[n]->b3_t)
+      printf("b3_t %d:%d\n", window[n]->b3_t, win[n]->b3_t);
+    for (cc = 1; cc <= window[n]->b3_t; cc++) {
+      if (window[n]->w3_t[cc] != win[n]->w3_t[cc])
+	printf("w3_t %d %d:%d\n", cc, window[n]->w3_t[cc], win[n]->w3_t[cc]);
+    } 
+  }
+  /* unlink(name); */
+  hd_quit("done check_window\n");
+}

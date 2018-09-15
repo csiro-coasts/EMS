@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ems.h 5871 2018-07-06 07:09:44Z riz008 $
+ *  $Id: ems.h 5889 2018-08-03 06:08:48Z riz008 $
  */
 
 #ifndef	_EMS_H
@@ -72,6 +72,11 @@ int strncasecmp(const char *s1, const char *s2, int n);
 #include "underwater.h"
 
 #include "svn_rev.h"
+
+/* gcc-7.x does not define this */
+#ifndef HUGE
+#define HUGE HUGE_VAL
+#endif
 
 #ifdef DMALLOC
 #include <dmalloc.h>

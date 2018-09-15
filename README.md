@@ -41,14 +41,11 @@ See [this page](conf/README.md) for full explaination of the build procedure
 
 There are many tests available for each module. See [model/tests](model/tests) for a complete list.
 
-## Contributing
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
-
 ## Authors
 
 EMS is wrtten and maintained by the [Coastal Environmental Modelling team](https://research.csiro.au/cem/people/)
 
-See also the list of [contributors](https://github.com/csiro-coasts/EMS-pre-release/contributors) who participated in this project.
+See also the list of [contributors](https://github.com/csiro-coasts/EMS-pre-release/CONTRIBUTORS.md) who participated in this project.
 
 ## License
 
@@ -57,3 +54,8 @@ This project is licensed under the CSIRO open-source License - see the [LICENSE.
 ## Website
 
 Further information about the CSIRO CEM Team may be found by [visiting our website](https://research.csiro.au/cem).
+
+## Contributing
+Please contact us on ems@csiro.au for details
+
+

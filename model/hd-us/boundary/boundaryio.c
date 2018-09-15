@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: boundaryio.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -100,7 +100,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   sprintf(keyword, "BOUNDARY%1d.NSPONGE_VERT", n);
   prm_read_int(fp, keyword, &open->sponge_zone);
   sprintf(keyword, "BOUNDARY%1d.NSPONGE_HORZ", n);
-  prm_read_int(fp, keyword, &open->sponge_zone_h);
+  prm_read_double(fp, keyword, &open->sponge_zone_h);
   sprintf(keyword, "BOUNDARY%1d.SPONGE_FACT", n);
   prm_read_double(fp, keyword, &open->sponge_f);
   sprintf(keyword, "BOUNDARY%1d.SMOOTH_PHASE", n);
@@ -691,7 +691,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->relax_time = 0;
   open->relax_timei = 0;
   open->sponge_zone = 0;
-  open->sponge_zone_h = 0;
+  open->sponge_zone_h = 0.0;
   open->sponge_f = 0.0;
   open->relax_zone_nor = 0;
   open->rnor_b = 0.0;
@@ -1878,11 +1878,11 @@ void locate_boundary_function(open_bdrys_t *open, const char *tag,
 /*-------------------------------------------------------------------*/
 /* Frees boundary data on the master                                 */
 /*-------------------------------------------------------------------*/
-bdry_custom_free(geometry_t *geom,       /* Global geometry          */
-		 master_t *master,       /* Master data              */		 
-		 geometry_t **window,    /* Window geometry          */
-		 open_bdrys_t *open      /* Open boundary structure  */
-		 )
+void bdry_custom_free(geometry_t *geom,    /* Global geometry        */
+		      master_t *master,    /* Master data            */		 
+		      geometry_t **window, /* Window geometry        */
+		      open_bdrys_t *open  /* Open boundary structure */
+		      )
 {
   int n, bn, t;
 
@@ -2561,17 +2561,41 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
 		      )
 		      
 {
+  FILE *op, *sp;
   mesh_t *mesh = params->mesh;
   int m, c, cc, cco;
   double xb1, yb1, xb2, yb2;
   double eps = 1e-6;    /* Precision for OBC comparisons             */
   int verbose = 0;
+  int filef = 1;
+  int obcf = 1;
 
   if (open->intype & O_COR) {
     /* OBC specification from START & END coordinates is computed in */
     /* get_mesh_obc() (called within build_sparse_grid_us().         */
     return;
   }
+
+  if (filef) {
+    if (n == 0) {
+      if ((op = fopen("boundary.txt", "w")) == NULL)
+	filef = 0;
+    } else {
+      if ((op = fopen("boundary.txt", "a")) == NULL)
+	filef = 0;
+    }
+  }
+  if (obcf) {
+    if (n == 0) {
+      if ((sp = fopen("obc_spec.txt", "w")) == NULL)
+	obcf = 0;
+    } else {
+      if ((sp = fopen("obc_spec.txt", "a")) == NULL)
+	obcf = 0;
+    }
+    fprintf(sp, "\nBOUNDARY%d.UPOINTS     %d\n", n, mesh->npts[n]);
+  }
+
   if (open->intype & (O_UPI|O_UPC)) {
     if (open->posx == NULL || open->posy == NULL) return;
     for (cc = 0; cc < open->npts; cc++) {
@@ -2591,13 +2615,23 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
 	mesh->obc[n][cc+1][0] = (int)xb1;
 	mesh->obc[n][cc+1][1] = (int)yb1;
 	mesh->loc[n][0] = NOTVALID;
-	if (verbose) printf("OBC%d %d : cc=%d (%d %d)\n",n, cc+1, cco, 
+	if (verbose) printf("OBC%d UPI %d : cc=%d (%d %d)\n",n, cc+1, cco, 
 			    mesh->obc[n][cc+1][0], mesh->obc[n][cc+1][1]);
+	if (filef) {
+	  fprintf(op, "%f %f\n", mesh->xloc[(int)xb1], mesh->yloc[(int)xb1]);
+	  fprintf(op, "%f %f\n", mesh->xloc[(int)yb1], mesh->yloc[(int)yb1]);
+	  fprintf(op, "NaN NaN\n");
+	}
+	if (obcf) {
+	  fprintf(sp, "%d (%lf,%lf)-(%lf,%lf)\n", mesh->loc[n][cc+1], 
+		  mesh->xloc[(int)xb1], mesh->yloc[(int)xb1],
+		  mesh->xloc[(int)yb1], mesh->yloc[(int)yb1]);
+	}
       }
       if (open->intype & O_UPC) {
 	double x1, y1, x2, y2;
 	int j, jj;
-	for (j = 1; j <= params->npe2[c]; j++) {
+	for (j = 1; j <= mesh->npe[c]; j++) {
 	  double x1, y1, x2, y2;
 	  x1 = params->x[c][j];
 	  y1 = params->y[c][j];
@@ -2612,6 +2646,11 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
 	    mesh->obc[n][cc+1][0] = j;
 	    mesh->obc[n][cc+1][1] = jj;
 	    if (verbose) printf("OBC%d %d : cc=%d (%d %d)\n",n, cc+1, cco, j, jj); 
+	    if (filef) {
+	      fprintf(op, "%f %f\n", xb1, yb1);
+	      fprintf(op, "%f %f\n", xb2, yb2);
+	      fprintf(op, "NaN NaN\n");
+	    }
 	  }
 	}
       }
@@ -2642,6 +2681,8 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
       }
     }
   }
+  if (filef) fclose(op);
+  if (obcf) fclose(sp);
 }
 
 /* END convert_obc_list()                                            */

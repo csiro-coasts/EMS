@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sigma.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: sigma.c 5913 2018-09-05 02:35:27Z her127 $
  *
  */
 
@@ -363,7 +363,7 @@ void smoothtopo(master_t *master, /* Model data structure */
 double cvol1(master_t *master,  /* Model data structure */
              double *a,         /* Array to smooth */
              int c,             /* Cell centre location */
-	     int edge           /* Edge to sommoth */
+	     int edge           /* Edge to smooth */
   )
 {
   double *kk;

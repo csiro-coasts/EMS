@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 5875 2018-07-06 07:46:39Z riz008 $
+ *  $Id: proto.h 5951 2018-09-15 01:16:03Z riz008 $
  *
  */
 
@@ -24,8 +24,8 @@
 /*------------------------------------------------------------------*/
 /* Version information                                              */
 /*------------------------------------------------------------------*/
-#define COMPAS_MAJOR_VERSION 0
-#define COMPAS_MINOR_VERSION 9
+#define COMPAS_MAJOR_VERSION 1
+#define COMPAS_MINOR_VERSION 0
 #define COMPAS_PATCH_VERSION 0
 
 /*------------------------------------------------------------------*/
@@ -168,17 +168,17 @@ void local_map_build_z(geometry_t * geom, int c, int cc, int wn, int *map, int *
 void local_map_build_o(int c, int cc, int wn, int *map, int *nmap,
                      int *rmap, int *wsa, int *ac, int nsaux, int zoomf);
 void get_local_wsc(geometry_t *geom, int *vec, int nvec, int nvec2D, geometry_t **window,
-                   int nwindows, int compatible, int mode);
+                   int nwindows);
 void get_local_wse(geometry_t *geom, int *vec, int nvec, int nvec2D, geometry_t **window,
-                   int nwindows, int compatible, int mode);
+                   int nwindows, double smag);
 void get_local_wsv(geometry_t *geom, int *vec, int nvec, int nvec2D, geometry_t **window,
-                   int nwindows, int compatible, int mode);
+                   int nwindows);
 void get_window_cells(geometry_t *geom, int wn, int *wsa, int *wsize,
 		      int *ws2, int wsizeS);
 void get_window_cells_h(geometry_t *geom, int wn, int *wsa, int *wsize,
                         int *ws2, int wsizeS);
 void get_gl_maps(geometry_t *geom, int nwindows, int **ws2, int *wsizeS);
-
+void set_mask(geometry_t *window);
 void window_cells_zoom(geometry_t *geom, parameters_t *params,
 			int nwindows, int *zmfe1, int *zmfe2, int **ws2, 
 			int *wsizeS);
@@ -312,6 +312,8 @@ void bdry_custom_w(geometry_t *geom, geometry_t **window);
 void bdry_init_m(master_t *master);
 void bdry_init_w(geometry_t *window, open_bdrys_t *open,
                  open_bdrys_t *gopen);
+void bdry_custom_free(geometry_t *geom, master_t *master, geometry_t **window,
+		      open_bdrys_t *open);
 void bdry3d_m(geometry_t *geom, master_t *master);
 void bdry2d_m(geometry_t *geom, master_t *master);
 void copy_OBC_conds(open_bdrys_t *open, open_bdrys_t *io, int n,
@@ -371,7 +373,10 @@ int sforce_relax(int bcond);
 int cyclic_m1(geometry_t *geom, int codex, int codey, int *map, int c);
 int cyclic_m2(geometry_t *geom, int codex, int codey, int *map, int c);
 void set_sponge(geometry_t *window, double *u1vh, double dt, double *mask);
+void set_sponge_c(geometry_t *window, double *AH, double dt);
+void set_sponge_e(geometry_t *window, double *AH, double dt);
 void reset_sponge_zone(geometry_t *window);
+void set_sponge_cells(geometry_t *window);
 void csr_tide_init(master_t *master, geometry_t **window);
 void csr_tide_grid_init(master_t *master, geometry_t **window);
 double csr_tide_eval(tidal_consts_t *tc, int cc, double jd);
@@ -464,6 +469,11 @@ void check_transfers(geometry_t *geom, geometry_t **window,
 		     window_t **windat, win_priv_t **wincon, 
 		     int nw, int mode);
 void check_s2m();
+int mpi_check_multi_windows_velocity(geometry_t *geom,master_t *master, geometry_t **window,
+				     window_t **windat, int flag);
+int mpi_check_multi_windows_Vz(geometry_t *geom,master_t *master, geometry_t **window,
+			       window_t **windat);
+
 
  /*------------------------------------------------------------------*/
 /* Transport routines                                               */
@@ -967,9 +977,13 @@ void van_leer_do(double *F, double *tr, double *vel, double *cn,
 		 int e, int cp1, int cp2, int cm1, int cm2);
 void van_leer_tr(double *F, double *tr, double *vel, double *cn, 
 		 int e, double tp1, double tp2, double tm1, double tm2);
+int intersect(geometry_t *window, int c, int j, double xn, double yn,
+	      double xs, double ys, double *xi, double *yi);
 void ffsl_init(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void ffsl_do(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	     double *tr, double *Fx, double *Fz, double dtu);
+double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, double z, 
+		       int c, int co, int vid);
 void clip_ffsl(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	       double *tr);
 void order2_upwind(geometry_t *window, window_t *windat, win_priv_t *wincon,
@@ -1226,9 +1240,9 @@ void rotate_vel(geometry_t *window, double *u, double *v);
 void rerotate_vel(geometry_t *window, double *u, double *v);
 void merge_thin_layers(int c, int zm1, double *vel, double *dz);
 void vel_cen(geometry_t *window, window_t *windat, win_priv_t *wincon, double *u1,
-	     double *u, double *v, double *mag, double *dir, int mode);
+	     double *u2, double *u, double *v, double *mag, double *dir, int mode);
 void vel_grad(geometry_t *window, window_t *windat, win_priv_t *wincon,
-	      double *u1, double *ung, double *utg, int mode);
+	      double *u1, double *u2, double *ung, double *utg, int mode);
 void tra_grad(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	      double *tr, double *ung, double *utg, int mode);
 double vel_c2e(geometry_t *geom, double *u, double *v, int e);
@@ -1271,7 +1285,7 @@ dump_data_t *dumpdata_build(parameters_t *params, geometry_t *geom,
                             double *layers, double **bathy);
 void dumpdata_init(dump_data_t *dumpdata, geometry_t *geom,
                    master_t *master);
-void dumpdata_init_geom(geometry_t *geom, dump_data_t *dumpdata);
+void dumpdata_init_geom(parameters_t *params, geometry_t *geom, dump_data_t *dumpdata);
 void dumpdata_fill(geometry_t *geom, master_t *master,
                    dump_data_t *dumpdata);
 void dumpdata_cleanup(dump_data_t *dumpdata, int mode);
@@ -1393,6 +1407,7 @@ void hd_trans_multifile_eval(master_t *master,
 int hd_xyztoijk(void *data, double x, double y, double z, int *index,
                 int *n, int *k);
 int hd_grid_xytoij(master_t *master, double x, double y, int *i, int *j);
+int hd_grid_xytoij_r(master_t *master, double x, double y, int *i, int *j);
 int hd_grid_xyztoc(geometry_t *window, double x, double y, double z, int ci);
 int hd_grid_xyztoc_w(geometry_t *window, double x, double y, double z);
 int hd_grid_xyztoc_m(master_t *master, double x, double y, double z);
@@ -1438,6 +1453,9 @@ double next_season(double time, char *unit, int *smon);
 double prev_season(double time, char *unit, int *season, int *smon);
 double next_month(double time, char *unit, int *smon);
 double prev_month(double time, char *unit, int *smon);
+double next_day(double time, char *unit, int *sday);
+double prev_day(double time, char *unit, int *sday);
+int yrday(int year, int mon, int day);
 void df_std_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_simple_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_parray_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
@@ -1492,7 +1510,8 @@ double ptrack_event(sched_event_t *event, double t);
 int ptrack_init(sched_event_t *event);
 void ptrack_cleanup(sched_event_t *event, double t);
 void pt_params_init(master_t *master, FILE * fp);
-void pt_update(master_t *master);
+void pt_update(master_t *master, geometry_t **window, window_t **windat, win_priv_t **wincon);
+void pt_setup(master_t *master, geometry_t **window, window_t **windat, win_priv_t **wincon);
 void ptrack_end(void);
 
 /*------------------------------------------------------------------*/
@@ -1672,7 +1691,7 @@ double shuman(geometry_t *window, double *a, int c);
 void shuman_3d(geometry_t *window, double *var, double v);
 double cvol1(master_t *master, double *a, int c, int edge);
 void smooth_w(geometry_t *window, double *A, double *B,
-	      int *ctp, int nctp, int n, double lim);
+	      int *ctp, int nctp, int n, double lim, int edgef);
 void shuman_smooth(geometry_t *window, double *a, int cl);
 void shapiro(geometry_t *window, double *a, double *buf, int *vec, 
 	     int nvec, int order, int mode, int dir);

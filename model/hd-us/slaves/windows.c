@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: windows.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -56,7 +56,7 @@ void nan_check(geometry_t **window, window_t **windat,
 	       win_priv_t **wincon, int nwindows);
 int oedge(int npe, int n);
 
-void get_local_obc_a(int *vec, int nvec, int nvec2D, geometry_t **window, int nwindows); 		     
+void get_local_obc_a(geometry_t *geom, int *vec, int nvec, int nvec2D, geometry_t **window, int nwindows); 		     
 void set_reef_frac(master_t *master, geometry_t **window, window_t **windat, 
 		     win_priv_t **wincon);
 void aux_maps(geometry_t *geom, geometry_t *window, int cc);
@@ -349,18 +349,16 @@ void window_build(geometry_t *geom,     /* Global geometry           */
   if (!readwin) {
     /*---------------------------------------------------------------*/
     /* Set up the local processing vectors arrays for window wn      */
-    get_local_wsc(geom, geom->w3_t, geom->v3_t, geom->v2_t, window, nwindows, 
-		  params->compatible, 0);
+    get_local_wsc(geom, geom->w3_t, geom->v3_t, geom->v2_t, window, nwindows);
     get_local_wse(geom, geom->w3_e1, geom->v3_e1, geom->v2_e1, window, nwindows,
-		  params->compatible, 1);
-    get_local_wsv(geom, geom->w3_e2, geom->v3_e2, geom->v2_e2, window, nwindows,
-		  params->compatible, 2);
+		  params->smagorinsky);
+    get_local_wsv(geom, geom->w3_e2, geom->v3_e2, geom->v2_e2, window, nwindows);
 
     if (DEBUG("init_w"))
       dlog("init_w", "  Local work arrays created OK\n\n");
   } else {
     if (!(params->compatible & V1957))
-      get_local_obc_a(geom->w3_t, geom->v3_t, geom->v2_t, window, nwindows);
+      get_local_obc_a(geom, geom->w3_t, geom->v3_t, geom->v2_t, window, nwindows);
   }
 
   /*-----------------------------------------------------------------*/
@@ -556,10 +554,13 @@ void window_build(geometry_t *geom,     /* Global geometry           */
     /* Build any local vectors required                              */
     if (window[n]->thetau1 == NULL)
       window[n]->thetau1 = d_alloc_1d(window[n]->szeS);
+    if (window[n]->thetau2 == NULL)
+      window[n]->thetau2 = d_alloc_1d(window[n]->szeS);
     for (ee = 1; ee <= window[n]->n2_e1; ee++) {
       e = window[n]->w2_e1[ee];
       es = window[n]->wse[e];
       window[n]->thetau1[e] = geom->thetau1[es];
+      window[n]->thetau2[e] = geom->thetau2[es];
     }
 
     if(geom->sm_e1)
@@ -569,6 +570,7 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 
     get_inner_exmap(geom, window[n]);
     get_process_exclude(params, geom, window[n]);
+    set_mask(window[n]);
   }
 
   if (DEBUG("init_w"))
@@ -688,46 +690,65 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
   int wi, wn = 1;
   int ns = geom->szcS;
   int *mask, *wm;
-  int checkf = 0;
+  int checkf = 1;
   int verbose = 0;
+  int v2_t = geom->v2_t;
 
   /* Initialise                                                      */
+  wm = i_alloc_1d(geom->szcS);
+  memset(wm, 0, geom->szcS * sizeof(int));
+
+  /* Set the open boundary mask                                      */
   mask = i_alloc_1d(geom->szcS);
+  memset(mask, 0, geom->szcS * sizeof(int));
   for (cc = geom->v2_t + 1; cc <= geom->b2_t; cc++) {
     c = geom->w2_t[cc];
     mask[c] = 1;
   }
-  wm = i_alloc_1d(geom->szcS);
+  /* Sponge zones are allocated to a single window                   */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    if (open->sponge_zone_h) {
+      v2_t -= (open->nspc - open->no2_t);
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	mask[c] = 1;
+      }
+    }
+  }
 
   /* Get the number of cells in this window                          */
-  c = (int)ceil(geom->v2_t / nwindows);
+  c = (int)ceil(v2_t / nwindows);
   for (n = 1; n < nwindows; n++)
     wsizeS[n] = c;
-  wsizeS[nwindows] = geom->v2_t - (nwindows - 1) * c;
+  wsizeS[nwindows] = v2_t - (nwindows - 1) * c;
 
   /* If window sizes were specified, use these                       */
   if (geom->win_size) {
     cc = 0;
     for (n = 1; n < nwindows; n++) {
-      wsizeS[n] = (int)ceil(geom->v2_t * geom->win_size[n]);
-      geom->win_size[n] = (double)wsizeS[n] / (double)geom->v2_t;
+      wsizeS[n] = (int)ceil(v2_t * geom->win_size[n]);
+      geom->win_size[n] = (double)wsizeS[n] / (double)v2_t;
       cc += wsizeS[n];
     }
-    wsizeS[nwindows] = geom->v2_t - cc;
+    wsizeS[nwindows] = v2_t - cc;
     geom->win_size[nwindows] =
-      (double)wsizeS[nwindows] / (double)geom->v2_t;
+      (double)wsizeS[nwindows] / (double)v2_t;
   }
 
   /* Set the mask fanning out from the interior coordinate           */
+  ci = 1;
+  for (ci = 1; ci < geom->szcS; ci++) {
+    if (!mask[ci]) break;
+  }
   filla = i_alloc_1d(ns);
   memset(filla, 0, ns * sizeof(int));
   found = 1;
-  ci = 1;
   ni = wi = 1;
   wm[ci] = wn;
   ws2[wn][wi++] = ci;
   ni++;
-  filla[ci] = 1;
+  filla[ci] = mask[ci] = 1;
   while (found) {
     found = 0;
     for (n = 1; n <= wn; n++) {
@@ -743,6 +764,7 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
 	    if (verbose) printf("wn=%d wi=%d c=%d[%d %d]\n",wn,wi,cn,geom->s2i[cn],geom->s2j[cn]);
 	    wm[cn] = wn;
 	    ws2[wn][wi++] = cn;
+	    /*mask[cn] = 1;*/
 	    ni++;
 	    if (wi > wsizeS[wn] && wn < nwindows) {
 	      wi = 1;
@@ -758,26 +780,69 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
 	      ni, geom->szcS);
   }
 
+  /* Assign any 'holes' to the last window                           */
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    if (!filla[c] && !mask[c]) {
+      ws2[wn][wi++] = c;
+      wm[c] = wn;
+    }
+  }
+
+  /* Assign sponge zones to a single window                          */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    if (open->sponge_zone_h) {
+      found = 0;
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	for (j = 1; j <= geom->npe[c]; j++) {  
+	  cn = geom->c2c[j][c];
+	  if ((wn = wm[cn])) {
+	    if(wn > 0) {
+	      found = 1;
+	      break;
+	    }
+	  }
+	}
+	if (found) break;
+      }
+      if (!found) hd_quit("window_cells_grouped: Can't find window for sponge zone OBC %s\n", open->name);
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	wsizeS[wn]++;
+	ws2[wn][wsizeS[wn]] = c;
+	wm[c] = wn;
+	if (geom->win_size)
+	  geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+      }
+    }
+  }
+
   /* Assign the obc cells to the window corresponding to their       */
   /* interior wet neighbours.                                        */
   for (n = 0; n < geom->nobc; n++) {
     open_bdrys_t *open = geom->open[n];
-    for (cc = 1; cc <= open->no2_t; cc++) {
-      c = open->obc_t[cc];
-      ci = open->oi1_t[cc];
-      wn = wm[ci];
-      wsizeS[wn]++;
-      ws2[wn][wsizeS[wn]] = c;
-      if (verbose) printf("OBC wn=%d wi=%d c=%d[%d %d]\n",wn,wsizeS[wn],c,geom->s2i[c],geom->s2j[c]);
-      wm[c] = wn;
-      if (geom->win_size)
-	geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+    if (!open->sponge_zone_h) {
+      for (cc = 1; cc <= open->no2_t; cc++) {
+	c = open->obc_t[cc];
+	ci = open->oi1_t[cc];
+	wn = wm[ci];
+	wsizeS[wn]++;
+	ws2[wn][wsizeS[wn]] = c;
+	if (verbose) printf("OBC wn=%d wi=%d c=%d[%d %d]\n",wn,wsizeS[wn],c,geom->s2i[c],geom->s2j[c]);
+	wm[c] = wn;
+	if (geom->win_size)
+	  geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+      }
     }
   }
 
   /* Check all cells are accounted for                               */
   if (checkf) {
     int wc[nwindows + 1];
+    int mw[nwindows + 1];
+    int nb;
     for (n = 1; n <= nwindows; n++) wc[n] = 0;
     for (cc = 1; cc <= geom->b2_t; cc++) {
       c = geom->w2_t[cc];
@@ -791,7 +856,30 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
 	  }
 	if (found) break;
       }
-      if (!found) hd_quit("window_cells_grouped: Can't find window partition for cell %d[%d %d]\n", c, geom->s2i[c], geom->s2j[c]);
+      if (!found) {
+      /* Add any cells not found to neighboring windows
+	for (n = 1; n <= nwindows; n++) mw[n] = 0;
+	for (j = 1; j <= geom->npe[c]; j++) {
+	  cn = geom->c2c[j][c];
+	  if ((wn = wm[cn])) mw[wn] += 1;
+	}
+	wn = 1;
+	wi = mw[wn];
+	for (n = 1; n <= nwindows; n++) {
+	  if (mw[n] > wi) {
+	    wi = mw[n];
+	    wn = n;
+	  }
+	}
+	wsizeS[wn]++;
+	ws2[wn][wsizeS[wn]] = c;
+	wm[c] = wn;
+	if (geom->win_size)
+	  geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+	hd_warn("window_cells_grouped: Cell %d[%d %d] not found: allocated to window%d (%f %f)\n", c, geom->s2i[c], geom->s2j[c], wn, geom->cellx[c], geom->celly[c]);
+	*/
+	hd_warn("window_cells_grouped: Can't find window partition for cell %d[%d %d] %f %f\n", c, geom->s2i[c], geom->s2j[c], geom->cellx[c], geom->celly[c]);
+      }
     }
     for (n = 1; n <= nwindows; n++) {
       if (wc[n] != wsizeS[n])
@@ -2207,7 +2295,6 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
     cgm = map[j][c];
     cgms = geom->m2d[cgm];
     e = geom->c2e[j][c];
-
     if (!mask[e]) {
 
       /* Get the local map of the local sparse coordinate            */
@@ -2292,6 +2379,7 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
     /* Get the global map of the global sparse coordinate            */
     e = geom->c2e[j][c];        /* Global edge                       */
     es = geom->m2de[e];         /* Surface global edge               */
+
     for (n = 1; n <= geom->nee[es]; n++) {
       eoe = geom->eSe[n][e];
       if (!eoe || mask[eoe]) continue;      
@@ -2535,10 +2623,8 @@ void get_local_wsc(geometry_t *geom,    /* Global geometry           */
                    int nvec,            /* Size of vec               */
                    int nvec2D,          /* Last 2D cell loc in vec   */
                    geometry_t **window, /* Window data structure     */
-                   int nwindows,        /* Number of windows         */
-		   int compatible,      /* Compatibility flag        */
-                   int mode /* mode=0 : cell center cells to process */
-  )
+                   int nwindows         /* Number of windows         */
+		   )
 {
   int *wntmp;                   /* Temporary buffer */
   int *wntmp2D;                 /* Temporary buffer */
@@ -2554,6 +2640,7 @@ void get_local_wsc(geometry_t *geom,    /* Global geometry           */
   int *ec, *ec2D;               /* Extra auxiliary cells for mode=1 & 2 */
   int nf;
   int v, vs, i, j, eoe;
+  int mode = 0;
   int checkf = 0;
   int verbose = 0;
   int **g2w;
@@ -2962,10 +3049,8 @@ void get_local_wse(geometry_t *geom,
                    int nvec2D,          /* Last 2D cell loc in vec   */
                    geometry_t **window, /* Window data structure     */
                    int nwindows,        /* Number of windows         */
-		   int compatible,      /* Compatibility flag        */
-                   int mode /* mode=0 : cell center cells to process */
-  )                         /* mode=1 : e1 face cells to process     */
-                            /* mode=2 : e2 face cells to process     */
+		   double smag          /* Smagorinsky flag          */
+		   )
 {
   int *wntmp;                   /* Temporary buffer                  */
   int *wntmp2D;                 /* Temporary buffer                  */
@@ -2984,6 +3069,7 @@ void get_local_wse(geometry_t *geom,
   int i, ii, j, jj;             /* Counters                          */
   int checkf = 0;
   int verbose = 0;
+  int dof = 0;
 
   /*-----------------------------------------------------------------*/
   /* Initialise the counters                                         */
@@ -3081,10 +3167,10 @@ void get_local_wse(geometry_t *geom,
 
   /* Next ghost and auxiliary edges to compute vorticity             */
   for (ee = 1; ee <= nvec; ee++) {
+    int gc;
     e = vec[ee];                /* Global edge to process            */
     wn = wm[e];                 /* Window associated with edge e     */
     sc = geom->g2we[wn][e];     /* Local edge in window wn           */
-
     for (i = 0; i <= 1; i++) {  /* Loop over centres adjacent to e   */
       c = geom->e2c[e][i];      /* Cell centre in e2c[i] direction   */
       cs = geom->m2d[c];        /* Surface cell                      */
@@ -3144,11 +3230,13 @@ void get_local_wse(geometry_t *geom,
       mask[wn][sc] = 1;
     }
   }
+
   /* Tangential ghost edges.                                         */
   /* These are currently not used, but are included to make the size */
   /* of the vector the same as the master.                           */
   for (ee = geom->nbpte1 + 1; ee <= geom->nbe1; ee++) {
     e = geom->bpte1[ee];
+
     /*sc = geom->fm[e].ec;*/
     sc = geom->g2we[wn][e];
     c = geom->bine1[ee];
@@ -3159,6 +3247,46 @@ void get_local_wse(geometry_t *geom,
 	window[wn]->x2_e1++;
       }
       mask[n][sc] = 1;
+    }
+  }
+
+  /* Get edges used in Smagorinsky for multiple windows missed       */
+  /* above and put in auxiliary vectors.                             */
+  if (smag != 0.0) {
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];       /* Global cell centre                */
+      cs = geom->m2d[c];        /* Surface cell                      */
+      wn = geom->fm[c].wn;      /* Window associated with cell c     */ 
+      lc = geom->fm[c].sc;      /* Local coordinate                  */
+      for (j = 1; j <= geom->npe[cs]; j++) {
+	int cn, cns, scn;
+	cn = geom->c2c[j][c];   /* Neighbour of c                    */
+	cns = geom->m2d[cn];    /* Surface neighbour                 */
+	if (!geom->wgst[cn] && wn != geom->fm[cn].wn) {
+	  scn = window[wn]->c2c[j][lc]; /* Local neighbour           */
+
+	  for (ee = 1; ee <= geom->npe[cns]; ee++) {
+	    e = geom->c2e[ee][cn];         /* Global edge to cn      */
+	    if (!e) continue;
+	    le = window[wn]->c2e[ee][scn]; /* Local edge to scn      */
+	    if (mask[wn][le] == 0) {
+	      if (geom->wgst[cn] || msk[e] & E_G) {
+		window[wn]->n3_e1++;
+		if (c == cs) {
+		  window[wn]->n2_e1++;
+		}
+	      } else {
+		window[wn]->a3_e1++;
+		if (c == cs) {
+		  window[wn]->a2_e1++;
+		}
+	      }
+	      mask[wn][le] = 1;
+	    }
+	  }
+
+	}
+      }
     }
   }
 
@@ -3190,9 +3318,10 @@ void get_local_wse(geometry_t *geom,
     gc[n] = window[n]->a3_e1 + 1;
     gc2D[n] = window[n]->a2_e1 + 1;
   }
-  for (n = 1; n <= nwindows; n++)
+  for (n = 1; n <= nwindows; n++) {
     for (e = 1; e < geom->sze; e++)
       mask[n][e] = 0;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Fill the edges to process vectors.                              */
@@ -3317,6 +3446,71 @@ void get_local_wse(geometry_t *geom,
     }
   }
 
+  /* Tangential ghost edges.                                         */
+  /* These are currently not used, but are included to make the size */
+  /* of the vector the same as the master.                           */
+
+  for (ee = geom->nbpte1 + 1; ee <= geom->nbe1; ee++) {
+    e = geom->bpte1[ee];
+
+    /*sc = geom->fm[e].ec;*/
+    sc = geom->g2we[wn][e];
+    c = geom->bine1[ee];
+    n = geom->fm[c].wn;            /* Window associated with edge e1 */
+    if (mask[n][sc] == 0) {
+      mask[n][sc] = 1;
+    }
+  }
+
+  /*
+  if (nwindows == 1) printf("aa %d\n", window[1]->c2e[1][1245]);
+  if (nwindows == 5) printf("aa %d\n", window[4]->c2e[1][350]);
+  */
+  /* Get edges used in Smagorinsky missed above                      */
+  if (smag != 0.0) {
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];       /* Global cell centre                */
+      cs = geom->m2d[c];        /* Surface cell                      */
+      wn = geom->fm[c].wn;      /* Window associated with cell c     */ 
+      lc = geom->fm[c].sc;      /* Local coordinate                  */
+      for (j = 1; j <= geom->npe[cs]; j++) {
+	int cn, cns, scn;
+	cn = geom->c2c[j][c];   /* Neighbour of c                    */
+	cns = geom->m2d[cn];    /* Surface neighbour                 */
+	if (!geom->wgst[cn] && wn != geom->fm[cn].wn) {
+	  scn = window[wn]->c2c[j][lc]; /* Local neighbour           */
+
+	  for (ee = 1; ee <= geom->npe[cns]; ee++) {
+	    e = geom->c2e[ee][cn];         /* Global edge to cn      */
+	    if (!e) continue;
+	    le = window[wn]->c2e[ee][scn]; /* Local edge to scn      */
+	    if (mask[wn][le] == 0) {
+	      if (geom->wgst[cn] || msk[e] & E_G) {
+		window[wn]->w3_e1[gc[wn]] = le;
+		gc[wn]++;
+		if (c == cs) {
+		  window[wn]->w2_e1[gc2D[wn]] = le;
+		  if (verbose) printf("Smag ghost wn=%d ee=%d e=%d(%d)\n",wn, gc2D[wn], le, e);
+		  gc2D[wn]++;
+		  window[wn]->n2_e1++;
+		}
+	      } else {
+		window[wn]->w3_e1[ec[wn]] = le;
+		ec[wn]++;
+		if (c == cs) {
+		  window[wn]->w2_e1[ec2D[wn]] = le;
+		  if (verbose) printf("Smag aux wn=%d ee=%d e=%d(%d)\n",wn, ec2D[wn], le, e);
+		  ec2D[wn]++;
+		}
+	      }
+	      mask[wn][le] = 1;
+	    }
+	  }
+	}
+      }
+    }
+  }
+
   for (ee = 1; ee <= geom->n3_e1; ee++) {
     e = geom->w3_e1[ee];
     geom->fm[e].we = wm[e];
@@ -3411,11 +3605,8 @@ void get_local_wsv(geometry_t *geom,
                    int nvec,            /* Size of vec               */
                    int nvec2D,          /* Last 2D cell loc in vec   */
                    geometry_t **window, /* Window data structure     */
-                   int nwindows,        /* Number of windows         */
-		   int compatible,      /* Compatibility flag        */
-                   int mode /* mode=0 : cell center cells to process */
-  )                         /* mode=1 : e1 face cells to process     */
-                            /* mode=2 : e2 face cells to process     */
+                   int nwindows         /* Number of windows         */
+		   )
 {
   int c, cs, cc, n, wn, j;      /* Counters                          */
   int vv, sv, v, vs;            /* Vertices                          */
@@ -3653,7 +3844,8 @@ void wsa_cells(geometry_t *window,  /* Window data structure         */
 /* Allocate the open boundary ghost cells at R_EDGE and F_EDGE if    */
 /* the maps have already been read in from file.                     */
 /*-------------------------------------------------------------------*/
-void get_local_obc_a(int *vec,            /* Global work array       */
+void get_local_obc_a(geometry_t *geom,    /* Global geometry         */
+		     int *vec,            /* Global work array       */
 		     int nvec,            /* Size of vec             */
 		     int nvec2D,          /* Last 2D cell loc in vec */
 		     geometry_t **window, /* Window data structure   */
@@ -4070,7 +4262,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
           window[nn]->open[n]->t_tmap =
             i_alloc_1d(window[nn]->open[n]->ttsz);
 	  window[nn]->open[n]->t_imap = 
-	    i_alloc_2d(m + 1, window[nn]->open[n]->no3_e1 + 1);
+	    i_alloc_2d(m + 1, window[nn]->open[n]->ttsz);
           ff[nn][n] |= 8;
         }
       }
@@ -4109,6 +4301,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       window[nn]->open[n]->ini = i_alloc_1d(window[nn]->open[n]->no3_e1 + 1);
       window[nn]->open[n]->outi = i_alloc_1d(window[nn]->open[n]->no3_e1 + 1);
       window[nn]->open[n]->ceni = i_alloc_1d(window[nn]->open[n]->no3_e1 + 1);
+      window[nn]->open[n]->dir = i_alloc_1d(window[nn]->open[n]->no3_e1 + 1);
       window[nn]->open[n]->nmape = (int **)p_alloc_1d(window[nn]->open[n]->no3_e1+1);
       window[nn]->open[n]->omape = (int **)p_alloc_1d(window[nn]->open[n]->no3_e1+1);
       window[nn]->open[n]->to3_e1 = window[nn]->open[n]->no3_e1 + 1;
@@ -4125,7 +4318,6 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       nn = geom->fm[c].wn;
       c1 = geom->owc[n][nn];
       window[nn]->open[c1]->mwn = n;
-
       if (ff[nn][c1] & 1 && cc <= open[n]->no2_t)
         window[nn]->open[c1]->tmap[window[nn]->open[c1]->no3_t] = cc;
       if (ff[nn][c1] & 8 && window[nn]->open[c1]->ntt) {
@@ -4198,6 +4390,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       window[nn]->open[c1]->outi[window[nn]->open[c1]->no3_e1] = open[n]->outi[ee];
       /* Edge orientation                                            */
       window[nn]->open[c1]->ceni[window[nn]->open[c1]->no3_e1] = open[n]->ceni[ee];
+      window[nn]->open[c1]->dir[window[nn]->open[c1]->no3_e1] = open[n]->dir[ee];
       /* Edge map into the interior                                  */
       j = open[n]->ini[ee];
       window[nn]->open[c1]->nmape[window[nn]->open[c1]->no3_e1] = window[nn]->c2c[j];
@@ -4219,10 +4412,10 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       /*ei = jo(ed, geom->npe[geom->m2d[c]]);*/
       ei = jow(geom, c, ed);
       cl = window[nn]->c2c[ei][cl];
-      el = window[nn]->c2e[ed][cl];
+      el = window[nn]->c2e[ei][cl];
       window[nn]->open[c1]->oi1_e1[window[nn]->open[c1]->no3_e1] = el;
       cl = window[nn]->c2c[ei][cl];
-      el = window[nn]->c2e[ed][cl];
+      el = window[nn]->c2e[ei][cl];
       window[nn]->open[c1]->oi2_e1[window[nn]->open[c1]->no3_e1] = el;
       /* Tracer transfer map                                         */
       if (ff[nn][c1] & 8 && window[nn]->open[c1]->ntt) {
@@ -4355,7 +4548,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       }
     }
   }
-  
+
   /*-----------------------------------------------------------------*/
   /* Print OBC information                                           */
   if (DEBUG("init_w")) {
@@ -4388,6 +4581,264 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
 }
 
 /* END OBC_build()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Get the cells and weights within the sponge zones                 */
+/*-------------------------------------------------------------------*/
+void set_sponge_cells(geometry_t *window)
+{
+  int nn, n, cc, c;
+  int ee, e, eb, ep;
+  int i1, i2, cn, cb, j;
+  double d1, d2, dist, dmin;
+  int nscm, *scm;
+  int *mask;
+  double deg2m = 60.0 * 1852.0;
+  int has_proj = (strlen(projection) > 0);
+  int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
+  int verbose = 0;
+
+  mask = i_alloc_1d(window->szm);
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    if (open->sponge_zone_h) {
+
+      /*-------------------------------------------------------------*/
+      /* Count the cell centres in the zone                          */
+      open->nspc = 0;
+      memset(mask, 0, window->szm * sizeof(int));
+      for (cc = 1; cc <= window->b2_t; cc++) {
+	c = window->w2_t[cc];
+	for (i1 = 1; i1 <= open->no2_t; i1++) {
+	  i2 = open->obc_t[i1];
+	  d1 = window->cellx[c] - window->cellx[i2];
+	  d2 = window->celly[c] - window->celly[i2];
+	  dist = sqrt(d1 * d1 + d2 * d2);
+	  if (is_geog) dist *= deg2m;
+	  if (!mask[c] && dist <= (double)open->sponge_zone_h) {
+	    open->nspc++;
+	    mask[c] = 1;
+	  }
+	}
+      }
+      
+      /*-------------------------------------------------------------*/
+      /* Get the cells in the zone                                   */
+      open->spc = i_alloc_1d(open->nspc + 1);
+      open->swc = d_alloc_1d(open->nspc + 1);
+      open->snc = i_alloc_1d(open->nspc + 1);
+      open->smc = i_alloc_1d(open->nspc + 1);
+      open->nspc = 1;
+      memset(mask, 0, window->szm * sizeof(int));
+      for (cc = 1; cc <= window->b2_t; cc++) {
+	c = window->w2_t[cc];
+	for (i1 = 1; i1 <= open->no2_e1; i1++) {
+	  i2 = open->obc_t[i1];
+	  d1 = window->cellx[c] - window->cellx[i2];
+	  d2 = window->celly[c] - window->celly[i2];
+	  dist = sqrt(d1 * d1 + d2 * d2);
+	  if (is_geog) dist *= deg2m;
+	  if (!mask[c] && dist <= (double)open->sponge_zone_h) {
+	    open->spc[open->nspc++] = c;
+	    mask[c] = 1;
+	  }
+	}
+      }
+      open->nspc--;
+
+      /*-------------------------------------------------------------*/
+      /* Set up the mask                                             */
+      memset(mask, 0, window->szm * sizeof(int));
+      for (cc = window->v2_t+1; cc <= window->n2_t; cc++) {
+	c = window->w2_t[cc];
+	mask[c] = 1;
+      }
+      for (cc = window->b2_t+1; cc <= window->a2_t; cc++) {
+	c = window->w2_t[cc];
+	mask[c] = 0;
+      }
+      for (ee = 1; ee <= open->no2_e1; ee++) {
+	c = open->obc_e2[ee];
+	cn = open->ogc_t[ee];
+	mask[c] = mask[cn] = 1;
+      }
+
+      /*-------------------------------------------------------------*/
+      /* Get the closest boundary cell to sponge cells               */
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	dmin = HUGE;
+	for (i1 = 1; i1 <= open->no2_t; i1++) {
+	  i2 = open->obc_t[i1];
+	  d1 = window->cellx[c] - window->cellx[i2];
+	  d2 = window->celly[c] - window->celly[i2];
+	  dist = sqrt(d1 * d1 + d2 * d2);
+	  if (is_geog) dist *= deg2m;
+	  if (dist <= dmin) {
+	    dmin = dist;
+	    open->swc[cc] = dist;
+	    open->snc[cc] = i2;
+	  }
+	}
+	mask[c] = 1;
+      }
+
+      /*-------------------------------------------------------------*/
+      /* Find the cells on the outer limit of the zone               */
+      nscm = 0;
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	for (j = 1; j <= window->npe[c]; j++) {
+	  cn = window->c2c[j][c];
+	  if (!mask[cn]) {
+	    nscm++;
+	    break;
+	  }
+	}
+      }
+      scm = i_alloc_1d(nscm + 1);
+      nscm = 1;
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	for (j = 1; j <= window->npe[c]; j++) {
+	  cn = window->c2c[j][c];
+	  if (!mask[cn]) {
+	    scm[nscm++] = c;
+	    break;
+	  }
+	}
+      }
+      nscm--;
+
+      /*-------------------------------------------------------------*/
+      /* Get the closest cell on the outer perimeter, its distance   */
+      /* to the closest cell on the boundary, and the ratio of       */
+      /* distances (weight). The value in the sponge zone is then:   */
+      /* v = swc * (v(perimeter) - v(boundary))  + v(boundary)       */
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	dmin = HUGE;
+	for (i1 = 1; i1 <= nscm; i1++) {
+	  i2 = scm[i1];
+	  d1 = window->cellx[c] - window->cellx[i2];
+	  d2 = window->celly[c] - window->celly[i2];
+	  dist = sqrt(d1 * d1 + d2 * d2);
+	  if (is_geog) dist *= deg2m;
+	  if (dist <= dmin) {
+	    dmin = dist;
+	    open->smc[cc] = i2;
+
+	    cn = open->snc[cc];
+	    d1 = window->cellx[cn] - window->cellx[c];
+	    d2 = window->celly[cn] - window->celly[c];
+	    dist = sqrt(d1 * d1 + d2 * d2);
+	    if (is_geog) dist *= deg2m;
+	    open->swc[cc] = dist;
+
+	    d1 = window->cellx[cn] - window->cellx[i2];
+	    d2 = window->celly[cn] - window->celly[i2];
+	    dist = sqrt(d1 * d1 + d2 * d2);
+	    if (is_geog) dist *= deg2m;
+	    open->swc[cc] /= dist;
+	  }
+	}
+      }
+      if (verbose) {
+	for (cc = 1; cc <= open->nspc; cc++) {
+	  c = open->spc[cc];
+	  printf("wn=%d c=(%d %d) mn=(%d %d) mx=(%d %d) %f\n",window->wn,window->s2i[c],window->s2j[c],
+		 window->s2i[open->snc[cc]],window->s2j[open->snc[cc]],
+		 window->s2i[open->smc[cc]],window->s2j[open->smc[cc]],open->swc[cc]);
+	}
+      }
+
+      /*-------------------------------------------------------------*/
+      /* Count the edges in the zone                                 */
+      memset(mask, 0, window->szm * sizeof(int));
+      open->nspe1 = 0;
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	for (j = 1; j <= window->npe[c]; j++) {
+	  e = window->c2e[j][c];
+	  if (!mask[e]) {
+	    open->nspe1++;
+	    mask[e] = 1;
+	  }
+	}
+      }
+      open->spe1 = i_alloc_1d(open->nspe1 + 1);
+      open->swe1 = d_alloc_1d(open->nspe1 + 1);
+      open->sne1 = i_alloc_1d(open->nspe1 + 1);
+      open->sme1 = i_alloc_1d(open->nspe1 + 1);
+      memset(mask, 0, window->szm * sizeof(int));
+      open->nspe1 = 1;
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	for (j = 1; j <= window->npe[c]; j++) {
+	  e = window->c2e[j][c];
+	  if (!mask[e]) {
+	    cn = open->snc[cc];
+
+	    /* Get the edge corresponding to the closest cell on the */
+	    /* boundary (i.e. the closest edge on the boundary).     */
+	    for (ee = 1; ee <= open->no2_e1; ee++) {
+	      eb = open->obc_e1[ee];
+	      cb = open->obc_e2[ee];
+	      if (cb == cn) {
+		open->sne1[open->nspe1] = eb;
+		break;
+	      }
+	    }
+
+	    /* Distance to the closest boundary edge                 */
+	    d1 = window->u1x[e] - window->u1x[eb];
+	    d2 = window->u1y[e] - window->u1y[eb];
+	    dist = sqrt(d1 * d1 + d2 * d2);
+	    if (is_geog) dist *= deg2m;
+	    open->swe1[open->nspe1] = dist;
+
+	    /* Get the edge corresponding to the closest cell on the */
+	    /* outer perimeter (i.e. the closest edge on the outer   */
+	    /* perimeter).                                           */
+	    dmin = HUGE;
+	    for (i1 = 1; i1 <= nscm; i1++) {
+	      i2 = scm[i1];
+	      for (ee = 1; ee <= window->npe[i2]; ee++) {
+		ep = window->c2e[ee][i2];
+		d1 = window->u1x[e] - window->u1x[ep];
+		d2 = window->u1y[e] - window->u1y[ep];
+		dist = sqrt(d1 * d1 + d2 * d2);
+		if (is_geog) dist *= deg2m;
+		if (dist < dmin) {
+		  dmin = dist;
+		  open->sme1[open->nspe1] = ep;
+		}
+	      }
+	    }
+	    ep = open->sme1[open->nspe1];
+	    d1 = window->u1x[ep] - window->u1x[eb];
+	    d2 = window->u1y[ep] - window->u1y[eb];
+	    dist = sqrt(d1 * d1 + d2 * d2);
+	    if (is_geog) dist *= deg2m;
+	    open->swe1[open->nspe1] /= dist;
+	    /*
+	      if(window->e2e[e][0]==1&&window->s2j[c]==10)
+	      printf("%d %d %d %d %f\n",window->s2i[c],e,ep,open->sne1[open->nspe1],open->swe1[open->nspe1]);
+	    */
+	    open->spe1[open->nspe1++] = e;
+	    mask[e] = 1;
+	  }
+	}
+      }
+      i_free_1d(scm);
+    }
+  }
+  i_free_1d(mask);
+}
+
+/* END set_sponge_cells()                                            */
 /*-------------------------------------------------------------------*/
 
 
@@ -4985,6 +5436,90 @@ void reorder_gl_map(geometry_t *geom, /* Global geometry             */
 
 
 /*-------------------------------------------------------------------*/
+/* Set a mask for cell identification                                */
+/*-------------------------------------------------------------------*/
+void set_mask(geometry_t *window)
+{
+  int cc, c, ee, e, ci, n;
+
+  window->cask = i_alloc_1d(window->szc);
+  memset(window->cask, 0, window->szc * sizeof(int));
+  for (cc = 1; cc <= window->v3_t; cc++) {
+    c = window->w3_t[cc];
+    window->cask[c] = W_WET;
+  }
+  for (cc = 1; cc <= window->v2_t; cc++) {
+    c = window->w2_t[cc];
+    window->cask[c] |= W_SURF;
+    c = window->bot_t[cc];
+    window->cask[c] |= W_BOT;
+    c = window->zm1[c];
+    window->cask[c] |= W_SED;
+  }
+  for (cc = window->v3_t+1; cc <= window->a3_t; cc++) {
+    c = window->w3_t[cc];
+    window->cask[c] |= W_AUX;
+  }
+  for (cc = 1; cc <= window->nbpt; cc++) {
+    c = window->bpt[cc];
+    window->cask[c] = W_GST;
+    c = window->bin[cc];
+    window->cask[c] |= W_INT;
+  }
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    for (cc = 1; cc <= open->no3_t; cc++) {
+      c = open->obc_t[cc];
+      window->cask[c] = W_NOBC;
+    }
+    for (ee = 1; ee <= open->no3_e1; ee++) {
+      c = open->ogc_t[ee];
+      window->cask[c] = W_GOBC;
+    }
+  }
+
+  window->eask = i_alloc_1d(window->sze);
+  memset(window->eask, 0, window->sze * sizeof(int));
+  for (ee = 1; ee <= window->v3_e1; ee++) {
+    e = window->w3_e1[ee];
+    window->eask[e] = W_WET;
+  }
+  for (ee = 1; ee <= window->v2_e1; ee++) {
+    e = window->w2_e1[ee];
+    window->eask[e] |= W_SURF;
+    e = window->bot_e1[ee];
+    window->eask[e] |= W_BOT;
+    e = window->zm1e[e];
+    window->eask[e] |= W_SED;
+  }
+  for (ee = window->v3_e1+1; ee <= window->a3_e1; ee++) {
+    e = window->w3_e1[ee];
+    window->eask[e] |= W_AUX;
+  }
+  for (ee = 1; ee <= window->nbpte1; ee++) {
+    e = window->bpte1[ee];
+    window->eask[e] = W_GST;
+    e = window->bine1[ee];
+    window->eask[e] |= W_INT;
+  }
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    for (ee = 1; ee <= open->no3_e1; ee++) {
+      e = open->obc_e1[ee];
+      window->eask[e] = W_NOBC;
+    }
+    for (ee = open->no3_e1 + 1; ee <= open->to3_e1; ee++) {
+      e = open->obc_e1[ee];
+      window->eask[e] = W_TOBC;
+    }
+  }
+}
+
+/* END set_mask()                                                    */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to initialise the window data structure                   */
 /*-------------------------------------------------------------------*/
 window_t **win_data_build(master_t *master,   /* Master data         */
@@ -5329,6 +5864,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->dzu1 = d_alloc_1d(winsize);
     windat->u1flux3d = d_alloc_1d(winsize);
     windat->u1b = d_alloc_1d(winsize);
+    windat->u2b = d_alloc_1d(winsize);
     windat->nrvore = d_alloc_1d(winsize);
     windat->npvore = d_alloc_1d(winsize);
     /* Vertices                                                      */
@@ -5663,6 +6199,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->dens = master->dens;
     windat->dens_0 = master->dens_0;
     windat->u1b = master->u1b;
+    windat->u2b = master->u2b;
     windat->waterss = master->waterss;
     if (master->velrlx & RELAX) 
       windat->vel_rlx = master->vel_rlx;
@@ -5886,6 +6423,7 @@ void win_data_clear(window_t *windat  /* Window data structure       */
   d_free_1d(windat->dens);
   d_free_1d(windat->dens_0);
   d_free_1d(windat->u1b);
+  d_free_1d(windat->u2b);
   d_free_1d(windat->waterss);
 
   /* 2D arrays                                                       */
@@ -6052,13 +6590,15 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
 	windat->tr_adv || windat->tr_hdif || windat->tr_vdif ||
 	windat->tr_ncon)
       wincon[n]->tendency = d_alloc_1d(szm);
-    if(master->trasc & (LAGRANGE|FFSL) || master->momsc & LAGRANGE) {
+    if(master->trasc & (LAGRANGE|FFSL) || 
+       master->momsc & LAGRANGE ||
+       master->do_pt) {
       wincon[n]->m2d = i_alloc_1d(winsize);
       wincon[n]->dzz = d_alloc_1d(szm);
       wincon[n]->cellz = d_alloc_1d(szm);
       wincon[n]->s5 = i_alloc_1d(szm);
     }
-    if(master->trasc & FFSL) {
+    if(master->trasc & FFSL || master->do_pt) {
       wincon[n]->tr_mod = d_alloc_1d(szm);
       wincon[n]->tr_mod_x = d_alloc_1d(szm);
       wincon[n]->tr_mod_y = d_alloc_1d(szm);
@@ -6369,6 +6909,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->pssinput = master->pssinput;
     wincon[n]->conserve = master->conserve;
     wincon[n]->do_closure = master->do_closure;
+    wincon[n]->do_pt = master->do_pt;
     wincon[n]->tmode = master->tmode;
     wincon[n]->trout = master->trout;
     wincon[n]->gint_errfcn = master->gint_errfcn;
@@ -6717,7 +7258,9 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     }
 
     /* Get the maps for semi-Lagrange advection                      */
-    if(master->trasc & (LAGRANGE|FFSL) || master->momsc & LAGRANGE) {
+    if(master->trasc & (LAGRANGE|FFSL) || 
+       master->momsc & LAGRANGE ||
+       master->do_pt) {
       wincon[n]->trasf = TR_FIRST;
       wincon[n]->osl = master->osl;
 
@@ -7097,7 +7640,15 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
   /*-----------------------------------------------------------------*/
   /* Set the reef fractions                                          */
   set_reef_frac(master, window, windat, wincon);
-  
+
+  /*-----------------------------------------------------------------*/
+  /* Set sponge zones                                                */
+  for (n = 1; n <= nwindows; n++) {
+    set_sponge_cells(window[n]);
+    set_sponge_c(window[n], wincon[n]->u1kh, windat[n]->dt);
+    set_sponge_e(window[n], wincon[n]->u1vh, windat[n]->dt);
+  }
+
   /*-----------------------------------------------------------------*/
   /* Vertival velociyu and velocity initialisation                   */
   if (!(master->vinit & NONE)) {
@@ -7135,6 +7686,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     for (ee = 1; ee <= window[n]->b3_e1; ee++) {
       e = window[n]->w3_e1[ee];
       windat[n]->u1b[e] = windat[n]->u1[e];
+      windat[n]->u2b[e] = windat[n]->u2[e];
     }
     for (ee = 1; ee <= window[n]->b2_e1; ee++) {
       e = window[n]->w2_e1[ee];
@@ -7191,7 +7743,9 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     }
 
     /* Semi-Lagrange initialisation                                  */
-    if(wincon[n]->trasc & (LAGRANGE|FFSL) || wincon[n]->momsc & LAGRANGE) {
+    if(wincon[n]->trasc & (LAGRANGE|FFSL) || 
+       wincon[n]->momsc & LAGRANGE ||
+       wincon[n]->do_pt) {
       tran_grid_init(window[n], windat[n], wincon[n]);
     }
 
@@ -7273,6 +7827,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
   init_totals(master, window, wincon);
   init_trans(master, window, wincon);
   nan_check(window, windat, wincon, nwindows);
+  pt_setup(master, window, windat, wincon);
 }
 
 /* END pre_run_setup()                                               */
@@ -7486,6 +8041,9 @@ void geom_free_us(master_t *master,  /* Master data structure        */
     d_free_1d(geom->thetau1);
     d_free_1d(geom->sinthu1);
     d_free_1d(geom->costhu1);
+    d_free_1d(geom->thetau2);
+    d_free_1d(geom->sinthu2);
+    d_free_1d(geom->costhu2);
     d_free_1d(geom->cellarea);
     d_free_1d(geom->botz);
     d_free_1d(geom->botzgrid);
@@ -7578,6 +8136,10 @@ void window_init(geometry_t *geom,    /* Global geometry             */
 
     window[n]->topgrid = geom->topgrid;
     window[n]->totarea = geom->totarea;
+
+    /* Set geog flag */
+    window[n]->is_geog = geom->is_geog;
+    
     for (cc = 1; cc <= window[n]->enon; cc++) {
       c = window[n]->wsa[cc];
       k = geom->s2k[c];
@@ -7636,6 +8198,8 @@ void window_init(geometry_t *geom,    /* Global geometry             */
       window[n]->dHde1[ee] = geom->dHde1[e];
       window[n]->costhu1[ee] = geom->costhu1[e];
       window[n]->sinthu1[ee] = geom->sinthu1[e];
+      window[n]->costhu2[ee] = geom->costhu2[e];
+      window[n]->sinthu2[ee] = geom->sinthu2[e];
     }
 
     /* Vertex centered arrays 2D arrays                              */
@@ -7689,8 +8253,11 @@ void window_init(geometry_t *geom,    /* Global geometry             */
         window[n]->h2au1[ee] = geom->h2au1[cb];
 	window[n]->costhu1[ee] = geom->costhu1[cb];
 	window[n]->sinthu1[ee] = geom->sinthu1[cb];
+	window[n]->costhu2[ee] = geom->costhu2[cb];
+	window[n]->sinthu2[ee] = geom->sinthu2[cb];
       }
     }
+
     for (vv = 1; vv < window[n]->szvS; vv++) {
       cb = sv[n][vv];
       if (cb) {
@@ -7702,7 +8269,7 @@ void window_init(geometry_t *geom,    /* Global geometry             */
 
     for (i = 0; i < window[n]->nobc; i++) {
       open_bdrys_t *open = window[n]->open[i];
-
+      /*
       for(cc = 1; cc <= open->no2_t; cc++) {
 	c = open->obc_t[cc];
 	cb = open->oi1_t[cc];
@@ -7716,7 +8283,10 @@ void window_init(geometry_t *geom,    /* Global geometry             */
 	window[n]->h2au1[e] = window[n]->h2au1[eb];
 	window[n]->costhu1[e] = geom->costhu1[window[n]->wse[eb]];
 	window[n]->sinthu1[e] = geom->sinthu1[window[n]->wse[eb]];
+	window[n]->costhu2[e] = geom->costhu2[window[n]->wse[eb]];
+	window[n]->sinthu2[e] = geom->sinthu2[window[n]->wse[eb]];
       }
+      */
       /* Metric terms for OBC ghost cells                            */
       for (ee = 1; ee <= open->no2_e1; ee++) {
 	c = open->obc_e2[ee];
@@ -7856,6 +8426,10 @@ void win_geom_clear(geometry_t **window,  /* Window geometry         */
       d_free_1d(window[n]->sinthu1);
     if (window[n]->costhu1)
       d_free_1d(window[n]->costhu1);
+    if (window[n]->sinthu2)
+      d_free_1d(window[n]->sinthu2);
+    if (window[n]->costhu2)
+      d_free_1d(window[n]->costhu2);
     if (window[n]->aux_t)
       i_free_1d(window[n]->aux_t);
     if (window[n]->taux_t)
@@ -7874,6 +8448,10 @@ void win_geom_clear(geometry_t **window,  /* Window geometry         */
       i_free_1d(window[n]->cwave);
     if (window[n]->ctrst)
       i_free_1d(window[n]->ctrst);
+    if (window[n]->cask)
+      i_free_1d(window[n]->cask);
+    if (window[n]->eask)
+      i_free_1d(window[n]->eask);
 
     /* Open boundary cell vectors */
     for (nn = 0; nn < window[n]->nobc; nn++) {

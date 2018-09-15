@@ -2,7 +2,7 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/lib/ecology/process_library/seagrass_grow_epi.h
+ *  File: model/lib/ecology/process_library/seagrass_spectral_grow_epi.h
  *  
  *  Description:
  *  Process header
@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_epi.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: seagrass_spectral_grow_epi.h 5905 2018-08-29 01:14:21Z bai155 $
  *
  */
 

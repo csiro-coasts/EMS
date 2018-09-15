@@ -2,12 +2,11 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/lib/ecology/process_library/oxygen_exchange_wc.c
+ *  File: model/lib/ecology/process_library/oxygen_exchange_sed.c
  *  
  *  Description:
- *  This procedure is supposed to replace gasExchange()
- *  from gas.c, old BM, by Stephen Walker. Here is the
- *  description of the old procedure:
+ *
+ *  OBSOLETE process: use gas_exchange_wc.c
  *  
  *  Gas exchange at the water surface.
  *  
@@ -42,7 +41,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: oxygen_exchange_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: oxygen_exchange_sed.c 5944 2018-09-13 05:35:16Z bai155 $
  *
  */
 

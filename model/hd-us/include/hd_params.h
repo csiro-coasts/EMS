@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: hd_params.h 5913 2018-09-05 02:35:27Z her127 $
  *
  */
 
@@ -852,6 +852,18 @@
 /* Output longitude range */
 #define O360           2
 #define O180           4
+
+/* Cell / edge codes */
+#define W_WET     0x001
+#define W_SURF    0x002
+#define W_BOT     0x004
+#define W_SED     0x008
+#define W_GST     0x010
+#define W_INT     0x020
+#define W_NOBC    0x040
+#define W_TOBC    0x080
+#define W_GOBC    0x100
+#define W_AUX     0x200
 
 /* Lagrange cell codes */
 #define L_WET          1

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: trichodesmium_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: trichodesmium_grow_wc.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -389,7 +389,7 @@ void trichodesmium_grow_wc_calc(eprocess* p, void* pp)
     //    y1[ws->DIC_i] -= (growth - resp) * red_W_C;
     //    y1[ws->Oxygen_i] += (growth - resp) * red_W_O;
     y1[ws->DIC_i] += (Ifix + Iresp - Iuptake) * 106.0/1060.0*12.01;
-    y1[ws->Oxygen_i] -= (Ifix + Iresp - Iuptake) * 138.0/1060.0*32.00;
+    y1[ws->Oxygen_i] += - (Ifix + Iresp - Iuptake) * 106.0/1060.0*32.00 + NO3uptake * 48.0/14.01;
 
     /* update water column chlorophyll concentration, units mg Chl m-3 s-1 */
 

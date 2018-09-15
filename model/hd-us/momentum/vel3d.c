@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: vel3d.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -35,7 +35,7 @@ void merge_thin_layers(int c, int zm1, double *vel, double *dz);
 void reset_thin_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void reset_thin_wtop(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		     int *ctp, int vcs, double *wtop);
-void set_dry_bdry(geometry_t *window, int nb, int *obc, double *vel);
+void set_dry_bdry(geometry_t *window, int nb, int *obc, int *ceni, double *vel);
 void set_w_dry(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void set_wvel(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 	      double *wvel, int mode);
@@ -64,6 +64,10 @@ void mode3d_step_window_p1(master_t *master,   /* Master data        */
   /* velocity  is  only updated  after the 2D  mode and  hence all   */
   /* windows are filled with velocities at the current time-step.    */
   win_data_fill_3d(master, window, windat, master->nwindows);
+
+  /* Get the cell centred east and north velocities                  */
+  vel_cen(window, windat, wincon, windat->u1, windat->u2, 
+	  windat->u, windat->v, NULL, NULL, 0);
 
   /*-----------------------------------------------------------------*/
   /* Calculate a heat and salt flux if required                      */
@@ -253,7 +257,10 @@ void mode3d_post_window_p2(master_t *master,   /* Master data        */
   vel_w_update(window, windat, wincon);
 
   /* Calculate the velocity components edges                         */
-  vel_components_3d(window, windat, wincon);
+  /*vel_components_3d(window, windat, wincon);*/
+
+  /* Get the tangential velocity to the edge                         */
+  vel_tan_3d(window, windat, wincon);
 
   /* Calculate the vertical velocity alert diagnostics               */
   alerts_w(window, WVEL);
@@ -627,6 +634,7 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
   /*-----------------------------------------------------------------*/
   /* Calculate u1 boundary values                                    */
   bdry_u1_3d(window, windat, wincon);
+
   debug_c(window, D_U, D_POST);
 }
 
@@ -1588,7 +1596,7 @@ void coriolis_u1(geometry_t *window,  /* Window geometry             */
       tend[e] += windat->dt * sdc;
     }
     if (wincon->tendf)
-      vel_cen(window, windat, wincon, tend, windat->u1_sto, windat->u2_sto, NULL, NULL, 0);
+      vel_cen(window, windat, wincon, tend, NULL, windat->u1_sto, windat->u2_sto, NULL, NULL, 0);
   }
 }
 
@@ -1942,7 +1950,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
           es = window->m2de[e];
           btp[e] = midx[es] * windat->dt * wincon->u1c6[es] * dd[es];
         }
-	vel_cen(window, windat, wincon, btp, windat->u1_btp, windat->u2_btp, NULL, NULL, 0);
+	vel_cen(window, windat, wincon, btp, NULL, windat->u1_btp, windat->u2_btp, NULL, NULL, 0);
       }
     }
 
@@ -1977,7 +1985,6 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       /* Integrate surface and average density for 2D mode           */
       wincon->topdensu1[es] += hidens[e] * hupper[e];
       wincon->densavu1[es] += dav[e] * hlower[e];
-
       wincon->u1inter[es] +=
         wincon->u1c6[es] * u1inter[es] * hlower[e] / dav[e];
 
@@ -2006,7 +2013,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       if (wincon->means & TENDENCY) {
 	int c, cc;
 	double t = windat->dtf;
-	vel_cen(window, windat, wincon, btp, wincon->w6, wincon->w7, NULL, NULL, 0);
+	vel_cen(window, windat, wincon, btp, NULL, wincon->w6, wincon->w7, NULL, NULL, 0);
 	for (cc = 1; cc <= window->b2_t; cc++) {
 	  c = window->w3_t[cc];
 	  cs = window->m2d[c];
@@ -2016,7 +2023,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
 			       wincon->w7[c] * t) / (windat->meanc[cs] + t);
 	}
       } else
-	vel_cen(window, windat, wincon, btp, windat->u1_btp, windat->u2_btp, NULL, NULL, 0);
+	vel_cen(window, windat, wincon, btp, NULL, windat->u1_btp, windat->u2_btp, NULL, NULL, 0);
     }
 
     /*---------------------------------------------------------------*/
@@ -2162,8 +2169,8 @@ void vel_components_3d(geometry_t *window,  /* Window geometry       */
   vel_tan_3d(window, windat, wincon);
 
   /* Get the cell centred east and north velocities                  */
-  vel_cen(window, windat, wincon, windat->u1, windat->u, windat->v,
-	  NULL, NULL, 0);
+  vel_cen(window, windat, wincon, windat->u1, windat->u2, 
+	  windat->u, windat->v, NULL, NULL, 0);
 }
 
 /* END vel_components_3d()                                           */
@@ -2204,7 +2211,8 @@ void vel_tan_3d(geometry_t *window,    /* Window geometry            */
 void vel_cen(geometry_t *window,  /* Window geometry                 */
 	     window_t *windat,    /* Window data                     */
 	     win_priv_t *wincon,  /* Window constants                */
-	     double *u1,          /* Edge velocity to centre         */
+	     double *u1,          /* Nor edge velocity to centre     */
+	     double *u2,          /* Tan edge velocity to centre     */
 	     double *u,           /* Cell centered u velocity        */
 	     double *v,           /* Cell centered v velocity        */
 	     double *mag,         /* Cell centred velocity magnitude */
@@ -2214,17 +2222,49 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
 {
   int e, ee, es;
   int c, cs, cc;
-  int *vec, nvec;
-  double nu, nv;
-
+  int *vec, nvec, sz;
+  double nu, nv, *ut;
+  geometry_t *geom=master->geom;
+  /* Set pointers                                                    */
   if (mode) {
     vec = window->w2_t;
-    nvec = window->b2_t;
+    nvec = window->a2_t;
+    sz = window->szcS;
   } else {
     vec = window->w3_t;
-    nvec = window->b3_t;
+    nvec = window->a3_t;
+    sz = window->szc;
   }
 
+  memset(u, 0, sz * sizeof(double));
+  memset(v, 0, sz * sizeof(double));
+
+  /* Compute the tangential component if not supplied                */
+  if (u2 == NULL) {
+    int *vee, nvee, n, eoe;
+    ut = wincon->w2;
+    if (mode) {
+      vee = window->w2_e1;
+      nvee = window->a2_e1;
+    } else {
+      vee = window->w3_e1;
+      nvee = window->a3_e1;
+    }
+    for (ee = 1; ee <= nvee; ee++) {
+      e = vee[ee];
+      es = window->m2de[e];
+      ut[e] = 0.0;
+      for (n = 1; n <= window->nee[es]; n++) {
+	eoe = window->eSe[n][e];
+	if (!eoe) continue;
+	ut[e] += window->wAe[n][e] * u1[eoe];
+      }
+    }
+  } else {
+    ut = u2;
+  }
+
+  /* Average u and v around all edges of the cell                    */
   for (cc = 1; cc <= nvec; cc++) {
     c = vec[cc];
     cs = window->m2d[c];
@@ -2237,10 +2277,10 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
       es = window->m2de[e];
 
       /* Get the cell centered east and north velocity               */
-      u[c] += u1[e] * window->costhu1[es];
-      nu += ceil(fabs(window->costhu1[es]));
-      v[c] += u1[e] * window->sinthu1[es];
-      nv += ceil(fabs(window->sinthu1[es]));
+      u[c] += (u1[e] * window->costhu1[es] + ut[e] * window->costhu2[es]);
+      nu += 1.0;
+      v[c] += (u1[e] * window->sinthu1[es] + ut[e] * window->sinthu2[es]);
+      nv += 1.0;
     }
     u[c] = (nu) ? u[c] / nu : 0.0;
     v[c] = (nv) ? v[c] / nv : 0.0;
@@ -2262,7 +2302,8 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
 void vel_grad(geometry_t *window,  /* Window geometry                */
 	      window_t *windat,    /* Window data                    */
 	      win_priv_t *wincon,  /* Window constants               */
-	      double *u1,          /* Edge velocity to centre        */
+	      double *u1,          /* Nor edge velocity to centre    */
+	      double *u2,          /* Tan edge velocity to centre    */
 	      double *ung,         /* Normal velocity gradient       */
 	      double *utg,         /* Tangential velocity gradient   */
 	      int mode             /* 2D or 3D, nor or tan           */
@@ -2272,7 +2313,7 @@ void vel_grad(geometry_t *window,  /* Window geometry                */
   int i, si, ii;
   int ne;
   int *vec, nvec, *m2d;
-  double nu, nv;
+  double nu, nv, *ut;
   double *uv = wincon->w2;
   double *vv = wincon->w3;
 
@@ -2306,6 +2347,31 @@ void vel_grad(geometry_t *window,  /* Window geometry                */
     memset(vv, 0, window->szv * sizeof(double));
   }
 
+  /* Compute the tangential component if not supplied                */
+  if (u2 == NULL) {
+    int *vee, nvee, n, eoe;
+    ut = wincon->w2;
+    if (mode) {
+      vee = window->w2_e1;
+      nvee = window->a2_e1;
+    } else {
+      vee = window->w3_e1;
+      nvee = window->a3_e1;
+    }
+    for (ee = 1; ee <= nvee; ee++) {
+      e = vee[ee];
+      es = window->m2de[e];
+      ut[e] = 0.0;
+      for (n = 1; n <= window->nee[es]; n++) {
+	eoe = window->eSe[n][e];
+	if (!eoe) continue;
+	ut[e] += window->wAe[n][e] * u1[eoe];
+      }
+    }
+  } else {
+    ut = u2;
+  }
+
   /* Get the east and north components at centres or vertices        */
   for (ii = 1; ii <= nvec; ii++) {
     i = vec[ii];
@@ -2317,13 +2383,13 @@ void vel_grad(geometry_t *window,  /* Window geometry                */
     for (ee = 1; ee <= ne; ee++) {
       e = (mode & GRAD_NOR) ? window->c2e[ee][i] : window->v2e[i][ee];
       es = window->m2de[e];
-
       /* Get the cell centered east and north velocity               */
       if (e) {
-	uv[i] += u1[e] * window->costhu1[es];
-	nu += ceil(fabs(window->costhu1[es]));
-	vv[i] += u1[e] * window->sinthu1[es];
-	nv += ceil(fabs(window->sinthu1[es]));
+	/* Get the cell centered east and north velocity             */
+	uv[i] += (u1[e] * window->costhu1[es] + ut[e] * window->costhu2[es]);
+	nu += 1.0;
+	vv[i] += (u1[e] * window->sinthu1[es] + ut[e] * window->sinthu2[es]);
+	nv += 1.0;
       }
     }
     uv[i] = (nu) ? uv[i] / nu : 0.0;
@@ -2335,7 +2401,7 @@ void vel_grad(geometry_t *window,  /* Window geometry                */
   /* differences.                                                    */
   if (mode & GRAD_NOR) {
     int c1, c2;
-    for (ee = 1; ee <= window->b3_e1; ee++) {
+    for (ee = 1; ee <= window->a3_e1; ee++) {
       e = window->w3_e1[ee];
       es = window->m2de[e];
       c1 = window->e2c[e][0];
@@ -2343,18 +2409,17 @@ void vel_grad(geometry_t *window,  /* Window geometry                */
       ung[e] = ((uv[c1] * window->costhu1[es] + vv[c1] * window->sinthu1[es]) -
 		(uv[c2] * window->costhu1[es] + vv[c2] * window->sinthu1[es])) /
 	window->h2au1[es];
+
       utg[e] = ((vv[c1] * window->costhu1[es] - uv[c1] * window->sinthu1[es]) - 
 		(vv[c2] * window->costhu1[es] - uv[c2] * window->sinthu1[es])) /
 	window->h2au1[es];
-
-
     }
   }
 
   /* Get the tangential velocity gradient dun/dt, dut/dt             */
   if (mode & GRAD_TAN) {
     int v1, v2;
-    for (ee = 1; ee <= window->b3_e1; ee++) {
+    for (ee = 1; ee <= window->a3_e1; ee++) {
       e = window->w3_e1[ee];
       es = window->m2de[e];
       v1 = window->e2v[e][0];
@@ -2484,7 +2549,7 @@ void bdry_u1_3d(geometry_t *window, /* Window geometry               */
 
     /* Set open boundary velocities above the free surface equal to  */
     /* zero.                                                         */
-    set_dry_bdry(window, open[n]->no3_e1, open[n]->obc_e1, windat->nu1);
+    set_dry_bdry(window, open[n]->no3_e1, open[n]->obc_e1, open[n]->ceni, windat->nu1);
   }
 
   /*-----------------------------------------------------------------*/
@@ -2599,6 +2664,7 @@ void leapfrog_update_3d(geometry_t *window, /* Window geometry       */
   /*-----------------------------------------------------------------*/
   /* Set the velocities for the new time level                       */
   memcpy(windat->u1b, windat->u1, window->sze * sizeof(double));
+  memcpy(windat->u2b, windat->u2, window->sze * sizeof(double));
   memcpy(windat->u1, windat->nu1, window->sze * sizeof(double));
 }
 
@@ -2781,9 +2847,9 @@ void merge_thin_layers(int c, int zm1,  /* Sparse coordinates        */
 /* open boundaries.                                                  */
 /*-------------------------------------------------------------------*/
 void set_dry_bdry(geometry_t *window,             /* Window geometry */
-	     int nb, int *obc, double *vel)
+		  int nb, int *obc, int *ceni, double *vel)
 {
-  int e, ee, c1, c1s;
+  int e, ee, j, c1, c1s;
   window_t *windat = window->windat;
   win_priv_t *wincon = window->wincon;
 
@@ -2792,7 +2858,8 @@ void set_dry_bdry(geometry_t *window,             /* Window geometry */
 
   for (ee = 1; ee <= nb; ee++) {
     e = obc[ee];
-    c1 = window->e2c[e][0];
+    j = ceni[ee];
+    c1 = window->e2c[e][j];
     c1s = window->m2d[c1];
     vel[e] = (windat->eta[c1s] > window->gridz[c1] * wincon->Ds[c1s]) ? 
       vel[e] : 0.0;

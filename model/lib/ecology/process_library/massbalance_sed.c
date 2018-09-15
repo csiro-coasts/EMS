@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: massbalance_sed.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -45,6 +45,7 @@ typedef struct {
   int COD_i;
   int Oxygen_i;
   int Den_fl_i;
+  int NO3_i;
   
   /*
    * common cell variables
@@ -74,6 +75,7 @@ void massbalance_sed_init(eprocess* p)
     ws->COD_i = e->try_index(tracers, "COD", e);
     ws->Oxygen_i = e->find_index(tracers, "Oxygen", e);
     ws->Den_fl_i = e->find_index(tracers, "Den_fl", e);
+    ws->NO3_i = e->find_index(tracers, "NO3", e);
 
     /*
      * common cell variables
@@ -91,6 +93,8 @@ void massbalance_sed_init(eprocess* p)
      */
 
     stringtable_add_ifabscent(e->cv_model, "massbalance_sed", -1);
+
+    eco_write_setup(e,"\n Mass balance in sediment to %e mg N / m3 \n",MASSBALANCE_EPS);
 }
 
 void massbalance_sed_destroy(eprocess* p)
@@ -112,12 +116,15 @@ void massbalance_sed_precalc(eprocess* p, void* pp)
     if (c->parent != NULL)
         return;
 
+    double porosity = c->porosity;
+
     cv[ws->TN_old_i] = y[ws->TN_i];
     cv[ws->TP_old_i] = y[ws->TP_i];
     cv[ws->TC_old_i] = y[ws->TC_i];
 
     if (ws->COD_i > -1){
-      cv[ws->TO_old_i] = (y[ws->Oxygen_i] - y[ws->COD_i]) * c->porosity - y[ws->BOD_i];
+      cv[ws->TO_old_i] = (y[ws->Oxygen_i] - y[ws->COD_i] + y[ws->NO3_i] / 14.01 * 48.0 ) * porosity - y[ws->BOD_i];
+
       y[ws->BOD_i] = 0.0;
     }
 
@@ -166,6 +173,10 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
     if (ws->COD_i > -1){
 
       TO = (y[ws->Oxygen_i] - y[ws->COD_i]) * porosity - y[ws->BOD_i];
+
+      // add dissolved nitrate into oxygen mass balance.
+
+      TO = TO + y[ws->NO3_i] / 14.01 * 48.0 * porosity ;
 
       /* because TO can be close to zero */
 

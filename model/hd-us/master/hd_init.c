@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: hd_init.c 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -264,7 +264,14 @@ hd_data_t *hd_init(FILE * prmfd)
   /* Initialise the timeseries events */
   timeseries_init(prmfd, master, geom, window, dumpdata);
 
+  /* Write out the win_mp file */
   write_window_map(window, params);
+
+#ifdef HAVE_MPI
+  if (mpi_check_multi_windows_sparse_arrays(geom))
+    hd_quit("Single and multli-windows sparse arrays mismatch\n");
+#endif
+  
 
   hd_data = (hd_data_t *)malloc(sizeof(hd_data_t));
   hd_data->master = master;
@@ -710,12 +717,22 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       master->means_next = master->t + next_year(master->t, master->timeunit);
     } else if (contains_token(params->means_dt, "SEASONAL")) {
       master->means_dt = SEASONAL;
+      master->meancs = d_alloc_1d(12);
+      memset(master->meancs, 0, 12 * sizeof(double));
       master->means_next = master->t + next_season(master->t, 
 						   master->timeunit, &c);
     } else if (contains_token(params->means_dt, "MONTHLY")) {
       master->means_dt = MONTHLY;
+      master->meancs = d_alloc_1d(12);
+      memset(master->meancs, 0, 12 * sizeof(double));
       master->means_next = master->t + next_month(master->t, 
 						  master->timeunit, &c);
+    } else if (contains_token(params->means_dt, "DAILY")) {
+      master->means_dt = DAILY;
+      master->meancs = d_alloc_1d(366);
+      memset(master->meancs, 0, 366 * sizeof(double));
+      master->means_next = master->t + next_day(master->t, 
+						master->timeunit, &c);
     } else
       master->means_dt = 0.0;
     if (strlen(params->means_os)) {
@@ -1294,8 +1311,12 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     master->u1c6[e] = -1.0 / geom->h2au1[e];
     geom->sinthu1[e] = sin(geom->thetau1[e]);
     geom->costhu1[e] = cos(geom->thetau1[e]);
+    geom->sinthu2[e] = sin(geom->thetau2[e]);
+    geom->costhu2[e] = cos(geom->thetau2[e]);
     if (fabs(geom->sinthu1[e]) < eps) geom->sinthu1[e] = 0.0;
     if (fabs(geom->costhu1[e]) < eps) geom->costhu1[e] = 0.0;
+    if (fabs(geom->sinthu2[e]) < eps) geom->sinthu2[e] = 0.0;
+    if (fabs(geom->costhu2[e]) < eps) geom->costhu2[e] = 0.0;
     if (ee > geom->v2_e1 && ee <= geom->b2_e1)
       geom->botzu1[e] = min(geom->botz[c1], geom->botz[c2]);
     else
@@ -1415,9 +1436,11 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
 
   /* Set the sponge zones if required                                */
+  /*
   w1 = d_alloc_1d(geom->sze);
   set_sponge(geom, master->u1vh, params->grid_dt, w1);
   d_free_1d(w1);
+  */
 
   /* Smooth horizontal mixing                                        */
   ns = get_smoothing(params->smooth_v, "U1VH");
@@ -1570,6 +1593,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   master->nrvorc = d_alloc_1d(geom->sgsiz);
 
   master->u1b = d_alloc_1d(geom->sze);
+  master->u2b = d_alloc_1d(geom->sze);
   master->u1avb = d_alloc_1d(geom->szeS);
   master->etab = d_alloc_1d(geom->szcS);
 
@@ -1742,9 +1766,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   }
   if (!(params->means & NONE)) {
     master->meanc = d_alloc_1d(geom->szcS);
-    master->meancs = d_alloc_1d(12);
     memset(master->meanc, 0, geom->szcS * sizeof(double));
-    memset(master->meancs, 0, 12 * sizeof(double));
     if (params->means & TIDAL) {
       master->odeta = d_alloc_1d(geom->szcS);
       memset(master->odeta, 0, geom->szcS * sizeof(double));

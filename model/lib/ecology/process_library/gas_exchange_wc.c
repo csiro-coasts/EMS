@@ -5,12 +5,15 @@
  *  File: model/lib/ecology/process_library/gas_exchange_wc.c
  *  
  *  Description:
+ *
  *  Wind speed dependent gas exchange calculation
  *
- *  MB 7/09/2013 - added a requirement that the flux goes into the
- *                 first layer thicker than 20 cm,  
- *                 which is achieved using a new column variable layer_flag.
- *                 - for consistency, both oxygen and co2 fluxes are now cubic.
+ *  Options: gas_exchange_wc(o|c,o|c|d) 
+ *
+ *  o - Oxygen
+ *  c - Carbon dioxide
+ *  d - dummy to fill 2nd argument.
+ *
  *
  *  For CO2, sea-air fluxes determined in precalc, applied in calc to
  *      avoid recalculating carbon chemistry every ecological sub-step.
@@ -35,45 +38,9 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: gas_exchange_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: gas_exchange_wc.c 5929 2018-09-10 06:22:56Z bai155 $
  *
  */
-/*******************************************************************************
-
-
-    Author(s):
-    
-    Mark Baird 04/02/2013
-
-    Wind speed dependent gas exchange calculation
-
-    MB 7/09/2013 - added a requirement that the flux goes into the first layer thicker than 20 cm, 
-                   which is achieved using a new column variable layer_flag.
-                 - for consistency, both oxygen and co2 fluxes are now cubic.
-
-    For CO2, sea-air fluxes determined in precalc, applied in calc to avoid recalculating carbon chemistry 
-             every ecological sub-step.
-
-    For O2, sea-air flux calculated every ecological sub-step.
-
-    Physical factors affecting sea-air flux (T, wind speed) used to calculated transfer coefficient in precalc.
-
-    Units  Conc      Fluxes
-
-    DIC    mg m-3    mg m-2 s-1
-
-    O2     mg m-3    mg m-2 s-1
-
-    Calculated as a sea - air flux - negative is into the water. This is the climate 
-                    community convention.
-
-    Copyright:
-    Copyright(C) 2004, CSIRO Australia, All rights reserved.
-    See COPYRIGHT file for copying, use and redistribution conditions.
-
-    EMS is derived from MECO, sjwlib and other libraries.
-
-*******************************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -93,10 +60,10 @@ double sat_O2_percent(double DO, double salt, double temp);
 typedef struct {
 
   int gas,gas1;
-
+  
   int do_mb;
   int TC_i;
-
+  
   int salt_i; 
   int temp_i;	   /* temperature in degree c*/
 
@@ -216,8 +183,6 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
       y[ws->O2_flux_i] = 0.0;
     return;
   }
-  // if (c->k_wc != einterface_getwctopk(model, c->b))
-  //  return;
 
   double temp= y[ws->temp_i];
 
@@ -265,12 +230,6 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
     tmp1 = ( 0.0283 / (3600.0*100.0)) * U * U * U * sqrt((660.0/Sc)); /*dco2star in mol m-3 so *1e3 to get 
                                                                                      dco2star in mmol m-3*/
 
-    /* add a term so that the flux asymptotes to the value at which it would saturate, but retains 
-       the same rate when the flux not near saturation */
-
-    // double frac = (1.0 - exp( - abs(ws->CO2_flux * e->dt / c->dz_wc)))/(abs(ws->CO2_flux) * e->dt / c->dz_wc);
-    // ws->CO2_flux = ws->CO2_flux * frac;
-
     y[ws->CO2_flux_i]= - tmp1 * y[ws->dco2star_i]* 1.0e3 * 12.01;    
   }
   
@@ -314,11 +273,6 @@ void gas_exchange_wc_calc(eprocess* p, void* pp)
 
   if (ws->O2_flux_i > -1)
     y1[ws->O2_flux_i] +=  c->cv[ws->O2_coeff_i] * (y[ws->oxygen_i] - c->cv[ws->oxy_conc_sat_i]);
-
-  //if (c->b == 2000){
-  // printf("In calc: ws->oxygensat %e, ws->O2_coeff %e, oxygen %e flux SV %e flux %e \n",c->cv[ws->oxy_conc_sat_i],c->cv[ws->O2_coeff_i],y[ws->oxygen_i],y1[ws->O2_flux_i],c->cv[ws->O2_coeff_i] * (y[ws->oxygen_i] - c->cv[ws->oxy_conc_sat_i]));
-  //}
-
 }
 
 void gas_exchange_wc_postcalc(eprocess* p, void* pp)
@@ -335,10 +289,6 @@ void gas_exchange_wc_postcalc(eprocess* p, void* pp)
   if (ws->oxy_sat_i > -1){
     y[ws->oxy_sat_i] = sat_O2_percent(y[ws->oxygen_i],y[ws->salt_i],y[ws->temp_i]);
   }
-
-  //  if (c->b == 2000){
-  //  printf("In postcalc: oxy_sat %e \n",y[ws->oxy_sat_i]);
-  //}
   
   if (cv_layer_flag[0] == 1.0){
     cv_layer_flag[0] = 2.0;  // calc now done, so change flag 

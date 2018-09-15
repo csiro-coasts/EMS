@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: ecology.c 5907 2018-08-29 03:29:00Z bai155 $
  *
  */
 
@@ -229,6 +229,7 @@ const char *ECONAME2D[][2] = {
   {"R_655","Remote-sensing reflectance @ 655 nm"},
   {"nFLH","normalised Fluorescence Line Height"},
   {"Secchi","Secchi depth"},
+  {"Zenith2D","Solar zenith"},
   {"SWR_bot_abs","SWR bottom abs. (PAR)"},
 };
 const int NUM_ECO_VARS_2D = ((int)(sizeof(ECONAME2D)/(2*sizeof(char*))));
@@ -862,8 +863,11 @@ double einterface_calc_zenith(void *model, double t, int b)
   lat = asin(window->wincon->coriolis[c2] / (2.0 * ang));
 
   /* Call the library function to calculate the solar elevation */
-  elev = calc_solar_elevation(ounit, tunit, t, lat, NULL);
-
+  if (window->is_geog)
+    elev = calc_solar_elevation(NULL, tunit, t, lat, NULL, &window->cellx[c2]);
+  else
+    elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
+  
   /* zenith */
   return ( (PI/2.0) - elev);
 }

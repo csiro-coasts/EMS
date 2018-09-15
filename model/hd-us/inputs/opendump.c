@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: opendump.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: opendump.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -51,7 +51,7 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
   int sednz = params->sednz;
   int nface, nedge, nvertex, nmax;
 
-  /* clear the string arrays in case data in file isn't zero terminated */
+  /* Clear the string arrays in case data in file isn't zero terminated */
   for (i = 0; i < MAXSTRLEN; i++) {
     vers[i] = 0;
     chead[i] = 0;
@@ -59,13 +59,13 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
     buf[i] = 0;
   }
 
-  /* open the dump file for reading */
+  /* Open the dump file for reading                                  */
   if ((ncerr = nc_open(name, NC_NOWRITE, &fid)) != NC_NOERR) {
     printf("Can't find input file %s\n", name);
     hd_quit((char *)nc_strerror(ncerr));
   }
 
-  /* get dimensions */
+  /* Get dimensions                                                  */
   nc_inq_dimlen(fid, ncw_dim_id(fid, "Mesh2_layerfaces"), &kgridsize);
   nc_inq_dimlen(fid, ncw_dim_id(fid, "Mesh2_layers"), &kcentresize);
   nc_inq_dimlen(fid, ncw_dim_id(fid, "nMesh2_node"), &nMesh2_node);
@@ -217,6 +217,7 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
 void create_mesh(parameters_t *params, int fid)
 {
   int c, cc, v, n, nn;
+  int sfid;
   size_t start[4];
   size_t count[4];
   size_t nMesh2_face;
@@ -330,7 +331,7 @@ void create_mesh(parameters_t *params, int fid)
       if (face_dim)
 	c2v[n][cc] = ic2v[n][cc] + params->oset;
       else
-	c2v[n][cc] = ic2v[cc][n] += params->oset;
+	c2v[n][cc] = ic2v[cc][n] + params->oset;
     }
   for (cc = istart; cc < nMesh2_face; cc++) {
     c = index[cc];
@@ -486,7 +487,7 @@ void convert_structured_obc(parameters_t *params)
 	  if (i - 1 == params->ic[cc] && j == params->jc[cc]) {
 	    open->locu[nn] = cc;
             /* R_EDGE                                                */
-	    if (open->type & U1BDRY && (i == nce1 || (i < nce1 && bathy[j][i+1] < params->layers[0]))) {
+	    if (open->type & U1BDRY && (i == nce1 || (i < nce1 && bathy[j][i] < params->layers[0]))) {
 	      open->posx[nn][0] = params->x[cc][3];
 	      open->posy[nn][0] = params->y[cc][3];
 	      open->posx[nn][1] = params->x[cc][4];
@@ -496,7 +497,7 @@ void convert_structured_obc(parameters_t *params)
 	  if (i == params->ic[cc] && j - 1 == params->jc[cc]) {
 	    open->locu[nn] = cc;
             /* F_EDGE                                                */
-	    if (open->type & U2BDRY && (j == nce2 || (j < nce2 && bathy[j+1][i] < params->layers[0]))) {
+	    if (open->type & U2BDRY && (j == nce2 || (j < nce2 && bathy[j][i] < params->layers[0]))) {
 	      open->posx[nn][0] = params->x[cc][2];
 	      open->posy[nn][0] = params->y[cc][2];
 	      open->posx[nn][1] = params->x[cc][3];

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: massbalance_wc.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -47,6 +47,8 @@ typedef struct {
   int CO2_flux_i;
   int O2_flux_i;
 
+  int NO3_i;
+
     /*
      * common cell variables
      */
@@ -76,6 +78,7 @@ void massbalance_wc_init(eprocess* p)
     ws->COD_i = e->try_index(tracers, "COD", e);
     ws->Oxygen_i = e->find_index(tracers, "Oxygen", e);
 
+    ws->NO3_i = e->find_index(tracers, "NO3", e);
     ws->Nfix_i = e->try_index(tracers, "Nfix", e);
 
     ws->CO2_flux_i = e->try_index(tracers, "CO2_flux", e);
@@ -95,6 +98,9 @@ void massbalance_wc_init(eprocess* p)
      * set a flag indicating doing mass balance calculations
      */
     stringtable_add_ifabscent(e->cv_model, "massbalance_wc", -1);
+
+    eco_write_setup(e,"\nMass balance in water column to %e mg N / m3 \n",MASSBALANCE_EPS);
+
 }
 
 void massbalance_wc_destroy(eprocess* p)
@@ -121,7 +127,7 @@ void massbalance_wc_precalc(eprocess* p, void* pp)
     cv[ws->TC_old_i] = y[ws->TC_i];
 
     if (ws->COD_i > -1){
-      cv[ws->TO_old_i] = y[ws->Oxygen_i] - y[ws->BOD_i] - y[ws->COD_i];
+      cv[ws->TO_old_i] = y[ws->Oxygen_i] - y[ws->BOD_i] - y[ws->COD_i] + y[ws->NO3_i] / 14.01 * 48.0;
       y[ws->BOD_i] = 0.0;
     }
 
@@ -175,13 +181,17 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
 
           TO = y[ws->Oxygen_i] - y[ws->COD_i]  - y[ws->BOD_i];
 
+	  // add nitrate into oxygen mass balance.
+
+	  TO = TO + y[ws->NO3_i] / 14.01 * 48.0;
+
 	  /* because TO can be close to zero */
 
 	  eps = fabs(TO - cv[ws->TO_old_i] + O2_flux / c->dz_wc) / max(fabs(TO + cv[ws->TO_old_i]),8000.0);
-	  
+
 	  if (eps > MASSBALANCE_EPS)
 	    e->quitfn("ecology: error: Oxygen - BOD - COD (%e,%e) imbalance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
-      }
+    }
 }
 
 

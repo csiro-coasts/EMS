@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: messages.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: messages.c 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -63,6 +63,10 @@ void hd_quit(const char *s, ...)
   writelog(LFATAL,"",s,args);
   va_end(args);
 
+#ifdef HAVE_MPI
+  MPI_Finalize();
+#endif
+  
   /* exit with non-zero status so the shell can detect that something has
      gone wrong */
   exit(1);

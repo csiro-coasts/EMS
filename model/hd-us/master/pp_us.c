@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: pp_us.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -104,7 +104,6 @@ U1BDRY and one along-shore U2BDRY.
 #define V_G  4
 #define V_A  V_W|V_B|V_G
 
-
 void make_flags_us(parameters_t *params, unsigned long **flag, double *bathy,
 		   double *layers, int ns2, int nz);
 int is_obc(int c, int nobc, int *npts, int **loc);
@@ -133,6 +132,8 @@ void build_delaunay_cell(geometry_t *geom, parameters_t *params, point *tegl);
 int get_limit_obc(parameters_t *params, int ns2, int **neic);
 int e2eo(geometry_t *sgrid, int e, int j);
 int get_bind(geometry_t *sgrid, int c, int *mask);
+
+int usejo = 0; /* Method of finding opposite edge of a polygon */
 
 /*-------------------------------------------------------------------*/
 /* Sparse mapping from Cartesian space to sparse space. The sparse   */
@@ -739,6 +740,9 @@ void build_sparse_grid_us(parameters_t *params,
 	  /* Cell c is adjacent to a ghost cell. This includes the   */
 	  /* first OBC cell (of the laus OBC ghost cells).           */
 	  sgrid->c2c[j][c] = gc;
+	  /* Note: npe and neic are not defined for ghost cells. We  */
+	  /* are required to choose a direction for the ghost that   */
+	  /* maps to the interior; the convention we choose is jo(). */
 	  sgrid->c2c[jo(j, npe)][gc] = c;
 	  sgrid->m2d[gc] = (cns) ? cns: c2;
 	  sgrid->m2d[c] = cs;
@@ -751,8 +755,9 @@ void build_sparse_grid_us(parameters_t *params,
 	  /*if (!(is_obc(cc, m->nobc, m->npts, m->loc))) {*/
 	  sgrid->bpt[c1] = gc;
 	  sgrid->bin[c1] = c;
+	  /* The same convention used for c2c for ghost cells must   */
+	  /* be used for dbin.                                       */
 	  sgrid->dbin[c1] = jo(j, npe);
-	  /*sgrid->dbin[c1] = jocc(neic, npe, cc, j);*/
 	  sgrid->dbpt[c1] = j;
 	  c1++;
 	  /*
@@ -768,6 +773,7 @@ void build_sparse_grid_us(parameters_t *params,
 	    for (n = 1; n < laus; n++) {
 	      cn = sgrid->c2c[j][c];
 	      sgrid->c2c[j][cn] = gc;
+	      /* Ghost direction to interior uses jo() convention    */
 	      sgrid->c2c[jo(j, npe)][gc] = cn;
 	      sgrid->m2d[gc] = (cns) ? cns : c2;
 	      sgrid->wgst[gc] = c;
@@ -985,7 +991,7 @@ void build_sparse_grid_us(parameters_t *params,
 	    double x = m->xloc[m->eloc[0][cc][j]];
 	    double y = m->yloc[m->eloc[0][cc][j]];
 	    int found = 0;
-	    /* Land edges (ghost ccells)                                           */
+	    /* Land edges (ghost cells)                              */
 	    if (k == nz - 1)
 	      sgrid->n2_e1++;
 	    sgrid->n3_e1++;
@@ -1128,9 +1134,11 @@ void build_sparse_grid_us(parameters_t *params,
 	  sgrid->e2c[e][0] = c;
 	  sgrid->e2c[e][1] = gc;
 	  sgrid->c2e[j][c] = e;
-	  sgrid->c2e[oedge(npe, j)][gc] = e;
 	  sgrid->e2e[e][0] = j;
-	  sgrid->e2e[e][1] = oedge(npe, jj);
+	  /* Use the jo() convention as was used to define the       */
+	  /* direction of the interior cell for c2c.                 */
+	  sgrid->c2e[jo(j, npe)][gc] = e;
+	  sgrid->e2e[e][1] = jo(j, npe);
 	  /* Edges between OBC cells and land (normal OBC cells)     */
 	  if ((ei = is_obce(cc, j, m)) >= 0) {
 	    /*if (is_obc(cc, m->nobc, m->npts, m->loc)) {*/
@@ -1261,7 +1269,10 @@ void build_sparse_grid_us(parameters_t *params,
     for (j = 1; j <= sgrid->npe[cs]; j++) {
       if (sgrid->c2e[j][c] == e) {
 	/*sgrid->bine1[ee] = e2e(sgrid, e, jo(j, sgrid->npe[cs]));*/
-	sgrid->bine1[ee] = sgrid->c2e[jo(j, sgrid->npe[cs])][c];
+	if (usejo)
+	  sgrid->bine1[ee] = sgrid->c2e[jo(j, sgrid->npe[cs])][c];
+	else
+	  sgrid->bine1[ee] = sgrid->c2e[jocw(sgrid, c, j)][c];
       }
     }
   }
@@ -1433,6 +1444,7 @@ void build_sparse_grid_us(parameters_t *params,
   sgrid->h1acell = d_alloc_1d(sgrid->szeS);
   sgrid->hacell = d_alloc_2d(sgrid->n2_t + 1, sgrid->npem + 1);
   sgrid->thetau1 = d_alloc_1d(sgrid->szeS);
+  sgrid->thetau2 = d_alloc_1d(sgrid->szeS);
   /* Edge lengths                                                    */
   for (ee = 1; ee <= sgrid->n2_e1; ee++) {
     e = sgrid->w2_e1[ee];
@@ -1480,7 +1492,10 @@ void build_sparse_grid_us(parameters_t *params,
     c = sgrid->w2_t[cc];
     npe = sgrid->npe[c];
     for (n = 1; n <= npe; n++) {
-      j = jo(n, npe);
+      if (usejo)
+	j = jo(n, npe);
+      else
+	j = jocw(sgrid, c, n);
       e = sgrid->c2e[n][c];
       e1 = sgrid->c2e[j][c];
       sgrid->hacell[n][c] = 0.5 * sgrid->h2au1[e];
@@ -1491,6 +1506,7 @@ void build_sparse_grid_us(parameters_t *params,
       */
     }
   }
+
   /* Cell area                                                       */
   for (cc = 1; cc <= sgrid->b2_t; cc++) {
     c = sgrid->w2_t[cc];
@@ -1559,6 +1575,16 @@ void build_sparse_grid_us(parameters_t *params,
 	  sgrid->thetau1[e] = sgn * pid;
 	if (fabs(sgrid->thetau1[e] - pi3) < eps)
 	  sgrid->thetau1[e] = sgn * pi3;
+
+	sgrid->thetau2[e] = sgrid->thetau1[e] + PI / 2.0;
+	if (sgrid->thetau2[e] >= 2.0 * pid) sgrid->thetau2[e] -= 2.0 * pid;
+	sgn = (sgrid->thetau2[e] >= 0.0) ? 1.0 : -1.0;
+	if (fabs(sgrid->thetau2[e] - pi2) < eps)
+	  sgrid->thetau2[e] = sgn * pi2;
+	if (fabs(sgrid->thetau2[e] - pid) < eps)
+	  sgrid->thetau2[e] = sgn * pid;
+	if (fabs(sgrid->thetau2[e] - pi3) < eps)
+	  sgrid->thetau2[e] = sgn * pi3;
       }
     }
   }
@@ -1920,7 +1946,7 @@ void build_sparse_grid_us(parameters_t *params,
       if (sgrid->eSc[n][cs] == -1) jn = 1;
       for (j = 0; j <= 1; j++) {
         v = sgrid->e2v[e][jn];
-	if (!sgrid->wgst[c] && v == 0)
+	if (!sgrid->wgst[c] && v <= 0)
 	  if (params->us_type & US_IJ)
 	    hd_quit("c2v: Zero vertex: cell %d (cs=%d, cc=%d [%d %d %d]), edge %d(%d:%d) direction %d\n", c, sgrid->m2d[c], sgrid->c2cc[sgrid->m2d[c]], 
 		    m->iloc[sgrid->c2cc[sgrid->m2d[c]]],
@@ -2416,6 +2442,7 @@ void build_sparse_grid_us(parameters_t *params,
 	sgrid->s2j[c] = NOTVALID;
 	sgrid->s2k[c] = NOTVALID;
 	*/
+	sgrid->map[sgrid->s2k[c]][sgrid->s2j[c]][sgrid->s2i[c]] = c;
       }
     }
 
@@ -2552,10 +2579,12 @@ void build_sparse_grid_us(parameters_t *params,
   }
 
   /* Count the edge locations                                        */
-  /* ocodec = 0 for L_EDGE|B_EDGE                                    */
-  /* ocodec = 1 for R_EDGE|F_EDGE                                    */
+  /* ocodec = 1 if e2c[0] is a (boundary) ghost cell (e2c[1] is wet) */
+  /* ocodec = 0 if e2c[1] is a (boundary) ghost cell (e2c[0] is wet) */
   /* ocodex = index pointing into the domain                         */
   /* ocodey = index pointing out of the domain                       */
+  /* Note: these are different for each edge; see ceni[], ini[] and  */
+  /* outi[] below.                                                   */
   imape = i_alloc_1d(sgrid->szeS);
   memset(imape, 0, sgrid->szeS * sizeof(int));
   for (cc = sgrid->v2_e1 + 1; cc <= sgrid->b2_e1; cc++) {
@@ -2565,7 +2594,7 @@ void build_sparse_grid_us(parameters_t *params,
     open = sgrid->open[n];
     c1 = sgrid->e2c[e][0];
     c2 = sgrid->e2c[e][1];
-    if (sgrid->wgst[c1]) {
+    if (sgrid->wgst[c1]) {      
       open->ocodex = sgrid->e2e[e][0];
       open->ocodey = sgrid->e2e[e][1];
       open->ocodec = 1;
@@ -2601,7 +2630,7 @@ void build_sparse_grid_us(parameters_t *params,
   }
 
   /*-----------------------------------------------------------------*/
-  /* Allocate menory for the boundary vectors                        */
+  /* Allocate memory for the boundary vectors                        */
   /* Open boundary vectors                                           */
   for (n = 0; n < sgrid->nobc; n++) {
     open_bdrys_t *open = sgrid->open[n];
@@ -2613,6 +2642,7 @@ void build_sparse_grid_us(parameters_t *params,
     open->bot_t = i_alloc_1d(open->no2_t + 1);
     open->nepc = d_alloc_1d(open->no3_t + 1);
     open->ceni = i_alloc_1d(open->no3_e1 + 1);
+    open->dir = i_alloc_1d(open->no3_e1 + 1);
     open->ini = i_alloc_1d(open->no3_e1 + 1);
     open->outi = i_alloc_1d(open->no3_e1 + 1);
     open->inc = i_alloc_1d(open->no3_t + 1);
@@ -2682,8 +2712,10 @@ void build_sparse_grid_us(parameters_t *params,
     n = obc_num(sgrid->c2cc[c], m->nobc, m->npts, m->loc);
     */
     j = imapc[cs] = get_bind(sgrid, c, maskb);
-    omapc[cs] = oedge(sgrid->npe[c], j);
-
+    if (usejo)
+      omapc[cs] = oedge(sgrid->npe[c], j);
+    else
+      omapc[cs] = jocw(sgrid, c, j);
     /* Find the direction that maps to the interior for this centre  */
     /*
     jj = 0; i = 0;
@@ -2816,8 +2848,10 @@ void build_sparse_grid_us(parameters_t *params,
 
   /*-----------------------------------------------------------------*/
   /* Get the edge orientation maps                                   */
-  /* ceni[ee] = 0 for L_EDGE|B_EDGE                                  */
-  /* ceni[ee] = 1 for R_EDGE|F_EDGE                                  */
+  /* ceni[ee]=1 if e2c[0] is a (boundary) ghost cell (e2c[1] is wet) */
+  /* ceni[ee]=0 if e2c[1] is a (boundary) ghost cell (e2c[0] is wet) */
+  /* dir[ee] = 1 if the velocity vector is directed into the cell    */
+  /* dir[ee] = -1 if the velocity vector is directed out of the cell */
   /* ini[ee] = index pointing into the domain                        */
   /* outi[ee] = index pointing out of the domain                     */
   /* inc[cc] = average index pointing into the domain                */
@@ -2838,12 +2872,23 @@ void build_sparse_grid_us(parameters_t *params,
 	open->ini[ee] = sgrid->e2e[e][0];
 	open->outi[ee] = sgrid->e2e[e][1];
 	open->ceni[ee] = 1;
+	c = c2;
       }
       if (sgrid->wgst[c2]) {
 	open->ini[ee] = sgrid->e2e[e][1];
 	open->outi[ee] = sgrid->e2e[e][0];
 	open->ceni[ee] = 0;
+	c = c1;
       }
+      cs = sgrid->m2d[c];
+      for (j = 1; j <= sgrid->npe[cs]; j++)
+	if (e == sgrid->c2e[j][c])
+	  break;
+      if (sgrid->eSc[j][cs] == 1)
+	open->dir[ee] = -1;
+      else
+	open->dir[ee] = 1;
+
       for(cc = 1; cc <= open->no3_t; cc++) {
 	if(open->obc_t[cc] == open->obc_e2[ee]) {
 	  open->nepc[cc] += 1.0;
@@ -2862,17 +2907,19 @@ void build_sparse_grid_us(parameters_t *params,
       c = open->obc_t[cc];
       cs = sgrid->m2d[c];
 
-      open->inc[cc] = get_bind(sgrid, c, maskb);
+      open->inc[cc] = get_bind(sgrid, cs, maskb);
       open->olap[cc] = 0;
       for (j = 1; j <= sgrid->npe[cs]; j++) {
 	open->bec[j][cc] = 0;
 	open->bcc[j][cc] = 0;
 	cn = sgrid->c2c[j][c];
+
 	if (sgrid->wgst[cn]) {
 	  e = sgrid->c2e[j][c];
 	  if (maske[e] >= 0) {
 	    open->bec[j][cc] = e;
 	    open->bcc[j][cc] = cn;
+
 	  }
 	} else if (maskb[sgrid->m2d[cn]]) {
 	  open->bcc[j][cc] = -cn;
@@ -3120,6 +3167,9 @@ void build_sparse_grid_us(parameters_t *params,
   sgrid->szm = max(max(sgrid->szc, sgrid->sze), sgrid->szv);
   sgrid->szmS = max(max(sgrid->szcS, sgrid->szeS), sgrid->szvS);
 
+  /* Set the sponge zones                                            */
+  set_sponge_cells(sgrid);
+
   /*-----------------------------------------------------------------*/
   /* Allocate memory for the geometry vectors                        */
   alloc_geom_us(sgrid, (MAP_A | GRID_A | MASTER_A));
@@ -3154,6 +3204,7 @@ void build_sparse_grid_us(parameters_t *params,
       sgrid->cdeep = sgrid->bot_t[cc];
     }
   }
+
   /* Count the number of dry cells beneath the surface */
   sgrid->bdry = 0;
   for (cc = 1; cc <= ns2; cc++) {
@@ -3247,6 +3298,11 @@ void build_sparse_grid_us(parameters_t *params,
     }
   }
   */
+
+  /* Set geographical flag */
+  geom->is_geog = (strlen(params->projection) > 0) &&
+    (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
+  
   /*-----------------------------------------------------------------*/
   /* Free memory                                                     */
   l_free_2d((long **)flg);
@@ -3689,6 +3745,7 @@ int find_edges_tan(geometry_t *sgrid,
 	sgrid->bine1[sgrid->nbe1++] = c1;
 	sgrid->w3_e1[*b4] = *e;
 
+	if (*ee >= sgrid->szeS) hd_quit("Preprocessor error : check bathymetry specification.\n");
 	vle[*ee][k] = *e;
 	*b4 += 1;
 	*e += 1;
@@ -3845,7 +3902,10 @@ int e2e(geometry_t *sgrid, int e, int j)
     c = sgrid->e2c[e][1];
     cs = sgrid->m2d[c];
     npe = sgrid->npe[cs];
-    n = jo(n, npe);
+    if (usejo)
+      n = jo(n, npe);
+    else
+      n = jocw(sgrid, c, n);
   }
   cn = sgrid->c2c[j][c];
   cs = sgrid->m2d[cn];
@@ -4055,6 +4115,19 @@ int jocw(geometry_t *geom, int c, int j)
     jj = geom->e2e[e][1];
   return(jj);    
 }
+
+/*-------------------------------------------------------------------*/
+/* Returns the opposite edge to n                                    */
+/*-------------------------------------------------------------------*/
+int oedge(int npe, int n)
+{
+  int ret = (n > npe / 2) ? n - npe / 2 : n + npe / 2;
+  return( ret);
+}
+
+/* END oedge()                                                       */
+/*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Routine to find a neighbour of edge j                             */
@@ -4418,19 +4491,6 @@ int cyc_m2(geometry_t *sgrid, /* Window geometry                   */
 
 
 /*-------------------------------------------------------------------*/
-/* Returns the opposite edge to n                                    */
-/*-------------------------------------------------------------------*/
-int oedge(int npe, int n)
-{
-  int ret = (n > npe / 2) ? n - npe / 2 : n + npe / 2;
-  return( ret);
-}
-
-/* END oedge()                                                       */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
 /* Routine to allocate memory from the geometry data structure       */
 /* arrays.                                                           */
 /*-------------------------------------------------------------------*/
@@ -4462,6 +4522,8 @@ void alloc_geom_us(geometry_t *geom, /* Model geometry structure */
     geom->costhcell = d_alloc_1d(geom->szcS);
     geom->sinthu1 = d_alloc_1d(geom->szeS);
     geom->costhu1 = d_alloc_1d(geom->szeS);
+    geom->sinthu2 = d_alloc_1d(geom->szeS);
+    geom->costhu2 = d_alloc_1d(geom->szeS);
   }
   if (mask & WINDOW_A) {
     geom->wsa = i_alloc_1d(geom->szc);
@@ -4492,12 +4554,15 @@ void alloc_geom_us(geometry_t *geom, /* Model geometry structure */
     geom->wse = i_alloc_1d(geom->sze);
     geom->sinthu1 = d_alloc_1d(geom->szeS);
     geom->costhu1 = d_alloc_1d(geom->szeS);
+    geom->sinthu2 = d_alloc_1d(geom->szeS);
+    geom->costhu2 = d_alloc_1d(geom->szeS);
     geom->dHde1 = d_alloc_1d(geom->szeS);
     geom->botzu1 = d_alloc_1d(geom->szeS);
     geom->h2au1 = d_alloc_1d(geom->szeS);
     geom->h1au1 = d_alloc_1d(geom->szeS);
     geom->h1acell = d_alloc_1d(geom->szeS);
     geom->thetau1 = d_alloc_1d(geom->szeS);
+    geom->thetau2 = d_alloc_1d(geom->szeS);
     geom->u1x = d_alloc_1d(geom->szeS);
     geom->u1y = d_alloc_1d(geom->szeS);
     geom->nee = i_alloc_1d(geom->szeS);
@@ -4608,6 +4673,8 @@ void point_geom_us(geometry_t *window, /* Window geometry structure */
   window->costhcell = geom->costhcell;
   window->sinthu1 = geom->sinthu1;
   window->costhu1 = geom->costhu1;
+  window->sinthu2 = geom->sinthu2;
+  window->costhu2 = geom->costhu2;
   window->sask = geom->sask;
 }
 
@@ -4676,7 +4743,7 @@ void create_delaunay_cell(geometry_t *geom, parameters_t *params)
   int filef = 1;
   int ee, e, c1, c2;
   int ntriangles;
-  int inc_gst = 1;    /* Include ghost cell coordinates              */
+  int inc_gst = 0;    /* Include ghost cell coordinates              */
 
   np = geom->b2_t + geom->n2_e2;
   if (inc_gst) np += (geom->nbpt + (geom->x2_e1 - geom->n2_e1));
@@ -5280,7 +5347,11 @@ int get_bind(geometry_t *sgrid, int c, int *mask)
     cn = sgrid->c2c[j][c];
     cns = sgrid->m2d[cn];
     if (!sgrid->wgst[cn]) {
-      jj = oedge(npe, j);
+      if (usejo)
+	jj = oedge(npe, j);
+      else
+	jj = jocw(sgrid, c, j);
+      jj = min(jj, npe);
       co = sgrid->c2c[jj][c];
       if (!mask[cns] && sgrid->wgst[co]) ret = j;
       /* If an interior map can't be found, then find the direction  */
@@ -5289,10 +5360,27 @@ int get_bind(geometry_t *sgrid, int c, int *mask)
     } else {
       /* If an interior map still can't be found, use the opposite   */
       /* direction to any ghost cells.                               */
-      retg = oedge(npe, j);
+      if (usejo)
+	retg = oedge(npe, j);
+      else
+	retg = jocw(sgrid, c, j);
     }
   }
   if (!ret) ret = retn;
+  /* If the interior direction is still a ghost cell, use the        */
+  /* average of non OBC, non ghost directions.                       */
+  if (mask[sgrid->c2c[ret][c]]) {
+    retn = co = 0;
+    for (j = 1; j <= npe; j++) {
+      cn = sgrid->c2c[j][c];
+      cns = sgrid->m2d[cn];
+      if (!sgrid->wgst[cn] && !mask[cns]) {
+	retn += j;
+	co++;
+      }
+    }
+    ret = (co) ? retn / co : 0;
+  }
   if (!ret && DEBUG("init_m")) {
     dlog("init_m", "\nget_bind: Can't find interior boundary direction for cell %d\n", c);
   }

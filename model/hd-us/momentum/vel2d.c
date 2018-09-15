@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: vel2d.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -52,6 +52,11 @@ void mode2d_step_window_p1(master_t *master,
 			   geometry_t *window,
 			   window_t *windat, win_priv_t *wincon)
 {
+
+  /*-----------------------------------------------------------------*/
+  /* Get the cell centred east and north velocities                  */
+  vel_cen(window, windat, wincon, windat->u1av, windat->u2av, 
+	  windat->uav, windat->vav, NULL, NULL, 1);
 
   /*-----------------------------------------------------------------*/
   /* Update the 2D velocity                                          */
@@ -119,7 +124,10 @@ void mode2d_step_window_p2(master_t *master,
   leapfrog_update_2d(window, windat, wincon);
 
   /* Calculate the velocity components faces                         */
-  vel_components_2d(window, windat, wincon);
+  /*vel_components_2d(window, windat, wincon);*/
+
+  /* Get the tangential velocity to the edge                         */
+  vel_tan_2d(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
   /* Refill the master with elevation and velocity data from the     */
@@ -733,8 +741,8 @@ void vel_components_2d(geometry_t *window,  /* Window geometry       */
   vel_tan_2d(window, windat, wincon);
 
   /* Get the cell centred east and north velocities                  */
-  vel_cen(window, windat, wincon, windat->u1av, windat->uav, windat->vav,
-	  NULL, NULL, 1);
+  vel_cen(window, windat, wincon, windat->u1av, windat->u2av, 
+	  windat->uav, windat->vav, NULL, NULL, 1);
 }
 
 /* END vel_components_2d()                                           */
@@ -1236,7 +1244,7 @@ void asselin(geometry_t *window,  /* Window geometry                 */
   int *mask = wincon->i7;
   double yr = 86400.0 * 365.0;
   int checkf = 0;
-  double mf=0.0, mfe[window->npem+1];
+  double mf=0.0, mfe[window->npem+1], af[window->npem+1];
 
   for (j = 1; j <= window->npem; j++) mfe[j] = 0.0;
 
@@ -1321,8 +1329,12 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	    adjust_flux = 0.0;
 	    for (j = 1; j <= window->npe[c]; j++) {
 	      if ((e = open->bec[j][cc])) {
+		/*
 		adjust_flux += sqrt(window->cellarea[c]) /
 		  sqrt(wincon->g * windat->depth_e1[e] * wincon->Ds[c]);
+		*/
+		adjust_flux += (window->h2au1[e] /
+				sqrt(wincon->g * windat->depth_e1[e] * wincon->Ds[c]));
 	      }
 	    }
 	    adjust_flux *= open->nepc[cc];
@@ -1370,8 +1382,8 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	  /* eta_rlx[].                                              */
 	  eta = 0.0;
 	  if (open->bcond_ele & (CUSTOM|FILEIN))
-	    eta += (wincon->compatible & V1670) ? windat->eta_rlx->val1[c] :
-	      open->transfer_eta[cc];
+	    eta += ((wincon->compatible & V1670) ? windat->eta_rlx->val1[c] :
+		    open->transfer_eta[cc]);
 
 	  /* Scaling                                                 */
 	  if (scale->type == (TRSC_SUM | TRSC_NUM)) {

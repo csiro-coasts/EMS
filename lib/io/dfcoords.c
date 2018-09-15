@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfcoords.c 5833 2018-06-27 00:21:35Z riz008 $
+ *  $Id: dfcoords.c 5900 2018-08-28 02:09:26Z riz008 $
  */
 
 #include <stdlib.h>
@@ -1300,21 +1300,12 @@ int cm_1d_ctoi(datafile_t *df, df_coord_mapping_t *cm,
                double indices[])
 {
   df_variable_t *v = &df->variables[cm->coordids[0]];
-  char *coord_type=get_text_attribute(df, cm->coordids[0], "coordinate_type");
   double *data = NULL;
-  int is_lat = -1;
+  int asc = 1;
   int imid;
   int ilow = 0;
-  int ihigh = -1;
+  int ihigh = -1, itemp;
   double value = (v->z_is_depth) ? -coords[0] : coords[0];
-  double fvalue, data_high, data_low;
-
-  /* MH: Check for latitude coordinate from type if coord_type attribute */
-  /* does not exist. */
-  if (coord_type != NULL)
-    is_lat = (strcmp(coord_type, "latitude") == 0) ? 1 : 0;
-  else
-    is_lat = (v->type == VT_LATITUDE) ? 1 : 0;
 
   if (v->dim_as_record) {
     ihigh = df->nrecords - 1;
@@ -1324,24 +1315,24 @@ int cm_1d_ctoi(datafile_t *df, df_coord_mapping_t *cm,
     data = VAR_1D(v)[0];
   }
 
-  /* first check whether r is within the table range */
-  /* MH : use fabs() to account for negative data (e.g. latitude) */
-  if (data[ilow] < 0.0 && data[ihigh] > 0.0) is_lat = 0;
-  fvalue = (is_lat) ? fabs(value) : value;
-  data_low = (is_lat) ? fabs(data[ilow]) : data[ilow];
-  data_high = (is_lat) ? fabs(data[ihigh]) : data[ihigh];
-
-  if (fvalue < data_low) {
+  /* Reverse order if descending */
+  if ( (data[ihigh] - data[ilow]) < 0 ) {
+    itemp = ihigh;
+    ihigh = ilow;
+    ilow  = itemp;
+  }
+  
+  if (value < data[ilow]) {
     indices[0] = ilow;
     return 1;
   }
-  else if (fvalue > data_high) {
+  else if (value > data[ihigh]) {
     indices[0] = ihigh;
     return 1;
   }
 
   /* perform binary chop to determine values either side of r */
-  while ((ihigh - ilow) > 1) {
+  while (abs(ihigh - ilow) > 1) {
     imid = (ilow + ihigh) / 2;
     if (value >= data[imid])
       ilow = imid;
@@ -1352,8 +1343,11 @@ int cm_1d_ctoi(datafile_t *df, df_coord_mapping_t *cm,
   if (ihigh == ilow)
     indices[0] = ilow;
   else
-    indices[0] = ilow + (value - data[ilow]) / (data[ihigh] - data[ilow]);
-
+    if (ihigh > ilow)
+      indices[0] = ilow + (value - data[ilow]) / (data[ihigh] - data[ilow]);
+    else
+      indices[0] = ihigh + (value - data[ihigh]) / (data[ilow] - data[ihigh]);
+  
   return 1;
 }
 

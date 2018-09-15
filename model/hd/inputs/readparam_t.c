@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: readparam_t.c 5901 2018-08-28 02:10:22Z riz008 $
  *
  */
 
@@ -125,6 +125,9 @@ FILE *fp;
   prm_read_double(fp, keyword, &params->runno);
   sprintf(keyword, "REVISION");
   prm_read_char(fp, keyword, params->rev);
+  /* This is needed to make dtime work with longitude */
+  sprintf(keyword, "PROJECTION");
+  prm_read_char(fp, keyword, params->projection);
 
   /* Optional parameters */
   /* Bottom roughness */

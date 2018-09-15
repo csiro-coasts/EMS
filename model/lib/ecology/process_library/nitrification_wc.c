@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: nitrification_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: nitrification_wc.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -122,12 +122,12 @@ void nitrification_wc_calc(eprocess* p, void* pp)
    * KWA added : 2 moles of DO lost for every mole of N == 4.57 g (NIT_N_0)
    *             DO per g of N nitrified and not denitrified 
    */
-  y1[ws->Oxygen_i] -= Nitrification * NIT_N_0 ;
+  y1[ws->Oxygen_i] -= Nitrification * 48.0/14.01 ;
 
   /* Need to account for oxygen */
 
-  if (ws->COD_i > -1)
-    y1[ws->COD_i] -= Nitrification * NIT_N_0 ;
+  // if (ws->COD_i > -1)
+  //   y1[ws->COD_i] -= Nitrification * NIT_N_0 ;
   
   if (ws->NH4_pr_i> -1)
     y1[ws->NH4_pr_i] -= Nitrification * SEC_PER_DAY;
@@ -135,7 +135,7 @@ void nitrification_wc_calc(eprocess* p, void* pp)
   /* porosity and layer thickness were erroneously in next line until March 2014 */
   
   if (ws->Oxy_pr_i> -1)
-    y1[ws->Oxy_pr_i] -= Nitrification * NIT_N_0 * SEC_PER_DAY;  
+    y1[ws->Oxy_pr_i] -= Nitrification * 48.0/14.01 * SEC_PER_DAY;  
 }
 
 void nitrification_wc_postcalc(eprocess* p, void* pp)

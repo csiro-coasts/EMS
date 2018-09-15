@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: index.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: index.c 5898 2018-08-23 02:07:21Z her127 $
  *
  */
 
@@ -498,6 +498,27 @@ int hd_grid_xytoij(master_t *master, double x, double y, int *i, int *j)
     p.x = x;
     p.y = y;
     c = delaunay_xytoi_lag(d, &p, d->first_id);
+    if (c != -1)
+      ret = *i = geom->tri2c[c];
+  }
+  return(ret);
+}
+
+/* Same as the above, but returns -1 if location can't be found */
+int hd_grid_xytoij_r(master_t *master, double x, double y, int *i, int *j) 
+{
+  geometry_t *geom = master->geom;
+  int c, ret = 0;
+  point p;
+
+  if (geom->us_type & US_QUAD && geom->us_type & US_IJ) {
+    if (grid_xytoij(master->xyij_tree, x, y, i, j))
+      ret = geom->map[geom->nz - 1][*j][*i];
+  } else if (geom->us_type & (US_TRI|US_HEX|US_MIX)) {
+    delaunay *d = geom->d;
+    p.x = x;
+    p.y = y;
+    c = delaunay_xytoi(d, &p, d->first_id);
     if (c != -1)
       ret = *i = geom->tri2c[c];
   }

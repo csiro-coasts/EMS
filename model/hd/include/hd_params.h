@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: hd_params.h 5901 2018-08-28 02:10:22Z riz008 $
  *
  */
 
@@ -608,6 +608,7 @@
 #define V1957   0x000080
 #define V4201   0x000100
 #define V5342   0x000200
+#define V5895   0x000400
 
 /* Seasons */
 #define DAILY    -1

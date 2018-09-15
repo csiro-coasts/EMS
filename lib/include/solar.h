@@ -12,12 +12,12 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: solar.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: solar.h 5900 2018-08-28 02:09:26Z riz008 $
  */
 
 #if !defined(_SOLAR_H)
 #define _SOLAR_H
-void dtime(char *ounit, char *iunit, double time, int *year, double *day);
+void dtime(char *ounit, char *iunit, double time, int *year, double *day, double *lon);
 double calc_solar_elevation(char *ounit, char *tunit, double time, double lat,
-			    double *out_dec);
+			    double *out_dec, double *lon);
 #endif

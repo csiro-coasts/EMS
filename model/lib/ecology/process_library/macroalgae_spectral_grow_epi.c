@@ -4,16 +4,18 @@
  *  
  *  File: model/lib/ecology/process_library/macroalgae_spectral_grow_epi.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Macroalgae growth.
  *  
+ *  Mass transfer limited nutrient uptake of nitrogen (NH4 preferentially), phosphorus.
+ *  Respiration considered in mortality.  
+ *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_spectral_grow_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: macroalgae_spectral_grow_epi.c 5946 2018-09-14 00:21:27Z bai155 $
  *
  */
 
@@ -169,9 +171,6 @@ void macroalgae_spectral_grow_epi_precalc(eprocess* p, void* pp)
     double MA_N = y[ws->MA_N_i] * 1000.0 ;
 
     cv[ws->umax_i] = ws->umax_t0 * Tfactor;
-
-    // printf("In MA: ws->umax_i %d, ws->umax_t0 %e, cv[ws->umax_i] %e, Tfactor %e \n",ws->umax_i,ws->umax_t0,cv[ws->umax_i],Tfactor);
-
     
     if (ws->do_mb) {
         y[ws->EpiTN_i] += MA_N;
@@ -213,8 +212,6 @@ void macroalgae_spectral_grow_epi_calc(eprocess* p, void* pp)
 
     /* Density-specific shear stress from friction velocity. Density-specific 
        avoids multiplying by density before then dividing by it below */
-
-    // printf("ustrcw_skin %e \n",y[ws->ustrcw_skin_i]);
     
     double tau = y[ws->ustrcw_skin_i]*y[ws->ustrcw_skin_i];
     
@@ -224,12 +221,6 @@ void macroalgae_spectral_grow_epi_calc(eprocess* p, void* pp)
     double umax = cv[ws->umax_i];  /* s-1 */
     
     double kI = c->cv[ws->KI_MA_i] * ( atk_A_N / atk_A_I );  /* mol eqN m-2 s-1 */
-    
-    /* put in respiration like in seagrass */
-
-//    double resp = (30.0/5500.0)*14.0*(4.0*0.7/86400.0)*ws->MAleafden;
-
- //   kI = max(0.0,kI-resp);
 
     /* available surface area */
     
@@ -244,13 +235,7 @@ void macroalgae_spectral_grow_epi_calc(eprocess* p, void* pp)
     
     growthrate = min(umax,growthrate);
     
-    // printf("umax %e, kI %e, kN %e, kP %e, ", umax,kI/(MA_N * mgN2molN * 1000.0),kN_mass/(MA_N * mgN2molN * 1000.0),kP_mass/(MA_N * mgN2molN * 1000.0));
-
-    // printf("MA_N %e, growthrate %e \n",MA_N,growthrate);
-
     double growth = MA_N * growthrate;
-
-    // printf("growth %e \n",growth*86400.0);
 
     /* preferential ammonia uptake - watch units between growth and uptake */
 
@@ -258,13 +243,9 @@ void macroalgae_spectral_grow_epi_calc(eprocess* p, void* pp)
     double NH4uptake = min(k_NH4_mass,growth*1000.0);
     double NO3uptake = growth*1000.0 - NH4uptake;
 
-    double Oxy_pr = 1000.0 * growth * atk_W_O / dz_wc;
-    
-    // printf("%d, %d, %d, %d, %d, %d, %d, %d, %d \n",ws->MA_N_i,ws->MA_N_gr_i,ws->MA_N_pr_i,ws->NH4_wc_i,ws->NO3_wc_i,ws->DIP_wc_i,ws->DIC_wc_i,ws->Oxygen_wc_i,ws->Oxy_pr_wc_i);
+    double Oxy_pr = (1000.0 * growth * atk_W_O + NO3uptake * 48.0/14.01) / dz_wc;
     
     y1[ws->MA_N_i] += growth;
-    // y1[ws->NH4_wc_i] -= growth * 1000.0 * NH4_wc / DIN_wc / dz_wc;
-    // y1[ws->NO3_wc_i] -= growth * 1000.0 * NO3_wc / DIN_wc / dz_wc;
     y1[ws->NH4_wc_i] -= NH4uptake / dz_wc;
     y1[ws->NO3_wc_i] -= NO3uptake / dz_wc;
     y1[ws->DIP_wc_i] -= growth * 1000.0 * atk_W_P / dz_wc;

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: riverflow.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: riverflow.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -85,6 +85,7 @@ void bf_u1_flow_init_w(geometry_t *window,  /* Window geometry structure */
   data->options = open->options;
   data->ncells = (double)open->no2_e1; 
   data->hc = data_in->hc;
+
   /* The array data->v_river is assigned to one of the work arrays */
   /* in wincon (data->v_river = wincon->w1). This cannot be done */
   /* here since the wincon structure is not initialised yet. This */
@@ -145,7 +146,7 @@ double bf_u1_flow_w(geometry_t *window, window_t *windat,
       windat->riverflow[open->obc_e2[ee]] = data->flow / (double)open->no2_e1;
     if (windat->riverdepth) windat->riverdepth[open->obc_e2[ee]] = data->hc;
   }
-  return (data->v_river[c] / (double)open->no2_e1);
+  return (data->v_river[c] * open->dir[ee] / (double)open->no2_e1);
 }
 
 /* END bf_u1_flow_w()                                                */
@@ -228,8 +229,10 @@ static void u1_flow_do(geometry_t *window,  /* Window geometry       */
 
   flow = data->flow;
   /* Right edge river input => flow is negative into the domain */
+  /* Now set in bf_u1_flow_w via open->dir
   if (data->ocode)
     flow *= (-1.0);
+  */
   /* Scale so transport equals specified river flow */
   c = cs;
   while (c != window->zm1[c] && trsp) {

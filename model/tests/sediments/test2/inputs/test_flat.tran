@@ -1,0 +1,313 @@
+# Test 1 of model shoc: 5 by 5 by 9 swimming pool with no forcing
+CODEHEADER           SHOC default version
+PARAMETERHEADER	     Test 1 - no forcing
+DESCRIPTION          SHOC test 1
+NAME                 SHOC test 1 grid
+TIMEUNIT             seconds since 1990-01-01 00:00:00 +10
+OUTPUT_TIMEUNIT      seconds since 1990-01-01 00:00:00 +10
+LENUNIT              metre
+START_TIME           0.0 seconds
+STOP_TIME            864000  # 10 days
+#STOP_TIME            1728000 # 20 days
+#STOP_TIME             2592000 # 30 days
+
+INPUT_FILE           inputs/in_test.nc
+
+TRANS_DATA            trans.mnc(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)(u1vm=u1vmean)(u2vm=u2vmean)
+TRANS_MODE            SP_FFSL
+FILL_METHOD           NONE
+TRA_SCHEME            FFSL
+STABILITY             SUB-STEP-NOSURF
+MERGE_THIN            YES
+CONSERVATION          ETA W
+TRANS_OMP_NUM_THREADS 1
+
+DT                   30 mins
+CFL                  PASSIVE
+HMIN                 0.0140
+Z0                   0.0001
+
+# Output files
+OutputFiles            1
+
+file0.name           tran_outputs/out_tran.nc
+file0.filetype       standard
+file0.tinc           3600.0 seconds
+file0.bytespervalue  4
+file0.vars           ALL
+
+file1.name           tran_outputs/out_std_surf.nc
+file1.filetype       standard
+file1.tinc           21600.0 seconds
+file1.bytespervalue  4
+file1.vars           ALL
+
+#TRACERS
+NTRACERS             11
+
+### DISSOLVED
+
+TRACER0.name            salt
+TRACER0.long_name       Salinity
+TRACER0.units           PSU
+TRACER0.fill_value      35.0
+TRACER0.valid_range     0.0    40.0
+TRACER0.fill_value_sed  35.0
+TRACER0.valid_range_sed 0.0    40.0
+TRACER0.advect          0
+TRACER0.diffuse         0
+TRACER0.diagn           0
+TRACER0.partic          0
+TRACER0.dissol          1
+TRACER0.type             WC3D  SED  SEDIMENT  PROGNOSTIC
+
+TRACER1.name            temp
+TRACER1.long_name       Temperature
+TRACER1.units           degrees C
+TRACER1.fill_value      20.0
+TRACER1.valid_range     0.0    40.0
+TRACER1.fill_value_sed  20.0
+TRACER1.valid_range_sed 0.0    40.0
+TRACER1.advect          0
+TRACER1.diffuse         0
+TRACER1.diagn           0
+TRACER1.partic          0
+TRACER1.dissol          1
+TRACER1.type             WC3D  SED  SEDIMENT  PROGNOSTIC
+
+TRACER2.name            passive
+TRACER2.long_name       Passive tracer
+TRACER2.units           kg m-3
+TRACER2.fill_value      0.0
+TRACER2.valid_range     0.00e+00 1.00e+35
+TRACER2.fill_value_sed  100.0
+TRACER2.valid_range_sed 0.00e+00 1.00e+35
+TRACER2.advect          1
+TRACER2.diffuse         1
+TRACER2.diagn           0
+TRACER2.partic          0
+TRACER2.dissol          1
+TRACER2.type             WC3D  SED  SEDIMENT  PROGNOSTIC
+
+### PARTICULATE
+
+TRACER3.name            Gravel
+TRACER3.long_name       Gravel
+TRACER3.units           kg m-3
+TRACER3.fill_value      0.00e+00
+TRACER3.valid_range     0.00e+00 2650
+TRACER3.fill_value_sed  2.00e+02
+TRACER3.valid_range_sed 0.00e+00 2650
+TRACER3.advect          0
+TRACER3.diffuse         0
+TRACER3.diagn           0
+TRACER3.partic          1
+TRACER3.dissol          0
+TRACER3.type             WC3D  SED  SEDIMENT  PROGNOSTIC
+TRACER3.psize           2.50e-02
+TRACER3.b_dens          2.65e+03
+TRACER3.i_conc          1.0e+03
+TRACER3.svel            -1.0
+TRACER3.cohesive        0
+TRACER3.calcvol         1
+TRACER3.floc            0
+TRACER3.resuspend       0
+TRACER3.deposit         1
+
+TRACER4.name            Sand
+TRACER4.long_name       Sand
+TRACER4.units           kg m-3
+TRACER4.fill_value      0.00e+00
+TRACER4.valid_range     0.00e+00 2650
+TRACER4.fill_value_sed  5.00e+02
+TRACER4.valid_range_sed 0.00e+00 2650
+TRACER4.advect          1
+TRACER4.diffuse         1
+TRACER4.diagn           0
+TRACER4.partic          1
+TRACER4.dissol          0
+TRACER4.type             WC3D  SED  SEDIMENT  PROGNOSTIC
+TRACER4.psize           2.50e-04
+TRACER4.b_dens          2.65e+03
+TRACER4.i_conc          1.0e+03
+TRACER4.svel            -0.002000
+TRACER4.cohesive        0
+TRACER4.calcvol         1
+TRACER4.floc            0
+TRACER4.resuspend       1
+TRACER4.deposit         1
+
+TRACER5.name            Mud
+TRACER5.long_name       Mud
+TRACER5.units           kg m-3
+TRACER5.fill_value      0.00e+00
+TRACER5.valid_range     0.00e+00 2650
+TRACER5.fill_value_sed  5.00e+02
+TRACER5.valid_range_sed 0.00e+00 2650
+TRACER5.advect          1
+TRACER5.diffuse         1
+TRACER5.diagn           0
+TRACER5.partic          1
+TRACER5.dissol          0
+TRACER5.type             WC3D  SED  SEDIMENT  PROGNOSTIC
+TRACER5.psize           2.50e-05
+TRACER5.b_dens          2.65e+03
+TRACER5.i_conc          1.0e+03
+TRACER5.svel            -0.000200
+TRACER5.cohesive        1
+TRACER5.calcvol         1
+TRACER5.floc            1
+TRACER5.resuspend       1
+TRACER5.deposit         1
+
+### DIAGNOSTIC
+
+TRACER6.name            porosity
+TRACER6.long_name       Sediment porosity
+TRACER6.type             WC3D  SED  SEDIMENT DIAGNOSTIC
+TRACER6.units           nondim
+TRACER6.fill_value_wc   0.99
+TRACER6.fill_value_sed  0.5
+TRACER6.valid_range_wc  0 1
+TRACER6.valid_range_sed 0 1
+TRACER6.diagn           1
+
+TRACER7.name            tss
+TRACER7.long_name       tss
+TRACER7.units           kg m-3
+TRACER7.fill_value      0.00e+00
+TRACER7.valid_range     -1.00e+35 1.00e+35
+TRACER7.fill_value_sed  0.00e+00
+TRACER7.valid_range_sed -1.00e+35 1.00e+35
+TRACER7.advect          0
+TRACER7.diffuse         0
+TRACER7.diagn           1
+TRACER7.type             WC3D  SED  SEDIMENT DIAGNOSTIC
+
+TRACER8.name            depth_sedi
+TRACER8.long_name       depth_sedi
+TRACER8.units           m
+TRACER8.fill_value      0.00e+00
+TRACER8.valid_range     -1.00e+35 1.00e+35
+TRACER8.type             WC2D DIAGNOSTIC
+
+TRACER9.name            erdepflux_total_ac
+TRACER9.long_name       erdepflux_total_ac
+TRACER9.units           kg m-2
+TRACER9.fill_value      0.00e+00
+TRACER9.valid_range     -1.00e+35 1.00e+35
+TRACER9.diagn            0
+TRACER9.type             WC2D DIAGNOSTIC
+
+TRACER10.name            ustrcw_skin
+TRACER10.long_name       ustrcw_skin
+TRACER10.units           m s-1
+TRACER10.fill_value      0.00e+00
+TRACER10.valid_range     -1.00e+35 1.00e+35
+TRACER10.type             WC2D DIAGNOSTIC
+
+# Activate Waves
+WAVE_VARS inputs/wavedata-ub.txt
+WAVE_VARS_INPUT_DT 1 hour
+
+############################################################################
+# Sediments
+
+# Sediment layer thicknesses
+NSEDLAYERS      10
+0.01
+0.01
+0.01
+0.01
+0.01
+0.01
+0.01
+0.01
+0.01
+0.01
+
+VERBOSE_SED     2
+MAX_THICK_SED   10.00
+
+# Activate process
+# Default: 0
+DO_SEDIMENTS    YES
+
+# CRITICAL STRESSES
+# Critical shear stress of cohesive bed erosion N m-2
+# Modes: CSS0, CSS1, CSS2, CSS3, CSS4
+# Default: css_er = 0.2
+#CSS_ER_MODE     CSS0
+
+# Critical shear stress of cohesive sediment deposition N m-2
+# Default: CSS_DEP = +inf
+#CSS_DEP                1.00e+13
+
+# FLOCCULATION
+# Modes: FLOC0, FLOC1, FLOC2, FLOC3
+# Default: FLOC0 - no flocculation
+FLOC_MODE       FLOC0
+
+# CONSOLIDATION
+CONSOLIDATE     1
+FINPOR_SED      0.30
+CONSOLRATE      10.00
+
+# RIPPLES
+# Bed forms
+# Default: 0
+CALC_RIPPLES    0
+PHYSRIPH        0.0100
+PHYSRIPL        0.5000
+BIORIPH         0.0000
+BIORIPL         0.0300
+# Skin roughness
+Z0_SKIN         3.000e-05
+
+# Maximum depth for biological activity
+MAXBIODEPTH     0.20
+# Functional form for bioirrigarion and bioturbation activity
+# as a function of depth. Currently can be one of:
+#     constant
+#     linear
+#     parabolic
+#     gaussian
+# Only the first letter of this parameter is significant
+BIOSEDPROFILE   parabolic
+
+# Biological activity (standard animals per square metre?)
+BIODENS        30.00
+
+# Diffusion coefficient for bio-irrigation of sediments.
+# This value is scaled by the amount of biological
+# activity present, and also decreases with depth
+# in the sediment according to some
+# fixed profile. The value here is the value which
+# would apply at zero depth in the sediment.
+# Units are m2 s-1 per animal per m2.
+BI_DISSOL_KZ    1.00e-09
+BI_DISSOL_KZ_I  1.00e-13
+
+# Diffusion coefficient for bio-turbation of sediments.
+# This value is scaled by the amount of biological
+# activity present, and also decreases with depth
+# in the sediment according to some
+# fixed profile. The value here is the value which
+# would apply at zero depth in the sediment.
+# Units are m2 s-1 per animal per m2.
+BT_PARTIC_KZ    1.00e-10
+BT_PARTIC_KZ_I  1.00e-13
+
+############################################################################
+
+# Forcing
+# Time series
+TSPOINTS             0
+TS0.name             loc_z.ts
+TS0.location         500  500  0
+TS0.dt               3600 seconds
+TS0.reference        msl
+
+# Open boundaries
+NBOUNDARIES           0
+

@@ -4,8 +4,9 @@
  *  
  *  File: model/lib/ecology/process_library/seagrass_root_mortality_epi.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: seagrass root mortality.
+ *
+ *  OBSOLETE: Root and leaf mortality now considered together in seagrass_spectral_mortality_proto_epi.c. 
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_root_mortality_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: seagrass_root_mortality_epi.c 5949 2018-09-14 01:46:51Z bai155 $
  *
  */
 

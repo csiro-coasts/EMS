@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_proto_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: seagrass_spectral_grow_proto_epi.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -578,7 +578,7 @@ void seagrass_spectral_grow_proto_epi_calc(eprocess* p, void* pp)
 
     double NO3uptake = growth - NH4uptake;
 
-    double Oxy_pr = growth * unitch * atk_W_O / dz_wc;
+    double Oxy_pr = (growth * unitch * atk_W_O + NO3uptake * unitch * 48.0/14.01)/ dz_wc;
     
     y1[ws->SG_N_i] += growth;
 

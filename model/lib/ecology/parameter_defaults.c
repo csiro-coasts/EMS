@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_defaults.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: parameter_defaults.c 5882 2018-08-01 00:15:01Z riz008 $
  *
  */
 
@@ -3024,7 +3024,7 @@ static void assign_string_values(parameter_info *params, int nprm)
     if (!(isnan(prm->value[0]))) {
       for (i=0; i<prm->num_values; i++) {
 	char buf2[MAXSTRLEN];
-	sprintf(buf2, "%f ", prm->value[i]);
+	sprintf(buf2, "%e ", prm->value[i]);
 	sprintf(str, "%s", buf2);
 	str += strlen(buf2);
       }

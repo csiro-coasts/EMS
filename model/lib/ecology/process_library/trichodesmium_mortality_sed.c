@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: trichodesmium_mortality_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: trichodesmium_mortality_sed.c 5935 2018-09-12 04:59:19Z bai155 $
  *
  */
 
@@ -81,9 +81,10 @@ void trichodesmium_mortality_sed_init(eprocess* p)
    */
 
   ws->mL_t0 = try_parameter_value(e, "Tricho_mL_sed");
-  if (isnan(ws->mL_t0))
+  if (isnan(ws->mL_t0)){
     ws->mL_t0 = get_parameter_value(e, "Tricho_mL");
-  
+    eco_write_setup(e,"Could not find Tricho_mL_sed, so used Tricho_mL = %e \n",ws->mL_t0);
+  }
   ws->KO_aer = get_parameter_value(e, "KO_aer");
   
   /*

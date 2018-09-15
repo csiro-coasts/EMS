@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zoom.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: zoom.c 5913 2018-09-05 02:35:27Z her127 $
  *
  */
 
@@ -22,6 +22,7 @@
 #include "tracer.h"
 
 void smooth(master_t *master, double *A, int *ctp, int nctp);
+double cvolt(geometry_t *window, double *a, int c, int edge);
 
 /*-------------------------------------------------------------------*/
 /* Routine to sum e1 fluxes over a grid so as to be applicable to a  */
@@ -118,21 +119,58 @@ void smooth_w(geometry_t *window,  /* Window data structure          */
 	      int *ctp,            /* Cells to process array         */
 	      int nctp,            /* Size of ctp                    */
 	      int n,               /* Smoothing passes               */
-	      double lim           /* Upper limit                    */
+	      double lim,          /* Upper limit                    */
+	      int edgef            /* 0=centres, 1=edges             */
 	      )
 {
-  int c, cc, nn;
+  int c, ci, cc, nn;
+  int en = 0;
 
   for (nn = 0; nn < n; nn++) {
 
-    memcpy(B, A, window->sgsiz * sizeof(double));
+    memcpy(B, A, window->szm * sizeof(double));
     for (cc = 1; cc <= nctp; cc++) {
-      c = ctp[cc];
-      B[c] = min(lim, cvol1(master, A, c, 0));
+      c = ci = ctp[cc];
+      if (edgef) {
+	en = window->e2e[c][0];
+	ci = window->e2c[c][0];
+      }
+      B[c] = min(lim, cvolt(window, A, ci, en));
     }
-    memcpy(A, B, window->sgsiz * sizeof(double));
+    memcpy(A, B, window->szm * sizeof(double));
   }
 }
 
 /* END smooth_w()                                                    */
+/*-------------------------------------------------------------------*/
+
+double cvolt(geometry_t *window,  /* Model data structure */
+             double *a,         /* Array to smooth */
+             int c,             /* Cell centre location */
+	     int edge           /* Edge to smooth */
+  )
+{
+  double *kk;
+  double fi, nf;
+  int cc;
+  int *st, sz = 3;
+  int type = ST_SQ3;
+
+  if( edge > 0) type |= ST_EDGE;
+
+  st = stencil(window, c, &sz, type, edge);
+
+  fi = nf = 0.0;
+  for (cc = 0; cc < sz; cc++) {
+    if (a[st[cc]] != 0.0) {
+      fi += a[st[cc]];
+      nf += 1.0;
+    }
+  }
+  if (nf > 0.0) fi /= nf;
+  i_free_1d(st);
+  return (fi);
+}
+
+/* END cvol1()                                                       */
 /*-------------------------------------------------------------------*/

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ptrack.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: ptrack.h 5899 2018-08-23 02:10:59Z her127 $
  */
 
 
@@ -23,6 +23,7 @@ typedef struct {
   double e1;
   double e2;
   double e3;
+  int c;
   short flag;
   int dumpf;
   double age;

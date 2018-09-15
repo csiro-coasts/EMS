@@ -103,6 +103,7 @@ process_library/seagrass_grow_epi.o \
 process_library/seagrass_mortality_epi.o \
 process_library/tfactor.o \
 process_library/trichodesmium_grow_wc.o \
+process_library/trichodesmium_spectral_grow_wc.o \
 process_library/trichodesmium_mortality_sed.o \
 process_library/trichodesmium_mortality_wc.o \
 process_library/values_common.o \
@@ -150,6 +151,8 @@ process_library/seagrass_spectral_mortality_proto_epi.o \
 process_library/coral_spectral_grow_epi.o \
 process_library/coral_spectral_grow_bleach_epi.o \
 process_library/coral_spectral_carb_epi.o \
+process_library/filter_feeder_wc.o \
+process_library/filter_feeder_epi.o \
 process_library/age_wc.o \
 process_library/co2_exchange_wc.o \
 process_library/gas_exchange_wc.o \
@@ -162,7 +165,8 @@ process_library/macroalgae_spectral_mortality_wc.o\
 process_library/macroalgae_spectral_grow_wc.o \
 process_library/salmon_waste.o \
 process_library/recom_extras.o \
-process_library/variable_parameter.o 
+process_library/variable_parameter.o \
+process_library/carbon_leak_sed.o 
 
 
 

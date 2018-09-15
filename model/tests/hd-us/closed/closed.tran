@@ -1,0 +1,91 @@
+
+# SHOC transport file
+CODEHEADER           COMPAS default version
+PARAMETERHEADER      COMPAS closed basin
+DESCRIPTION          Closed basin test, quad grid
+NAME                 GRID0
+TIMEUNIT             seconds since 2000-01-01 00:00:00 +08
+OUTPUT_TIMEUNIT      days since 2000-01-01 00:00:00 +08
+LENUNIT              metre
+ID_NUMBER            1.0
+START_TIME           0 days
+STOP_TIME            20 days
+
+INPUT_FILE           closed_quad.nc
+
+TRANS_DATA           closed_trans_2000-01.nc(u1=umean)(w=wmean)(Kz=Kzmean)
+
+TRANS_MODE           SP_FFSL
+FILL_METHOD          MONOTONIC
+#STABILITY            SUB-STEP-NOSURF
+STABILITY            NONE
+CONSERVATION         ETA W
+
+TRA_SCHEME           FFSL
+#TRA_SCHEME           LAGRANGE
+#ORDER_SL             BAYCENTRIC
+#ORDER_SL             LINEAR
+#ORDER_SL             BILINEAR
+ORDER_SL             QUADRATIC
+#ORDER_SL             CUBIC
+#ORDER_SL             NN_NON_SIBSON
+#ULTIMATE             YES
+
+DT                   1 hour
+HMIN                 0.07
+Z0                   0.001
+MERGE_THIN           YES
+COMPATIBLE           V4201
+NUMBERS              DUMMIES
+TOTALS               YES passive
+
+# Horizontal mixing
+U1VH                 4690.0
+U1KH                  120.0
+#SMAGORINSKY          200.1
+
+#TRANS_OMP_NUM_THREADS 8
+
+OutputFiles          1
+
+file0.name           out1_tran.nc
+file0.filetype       standard
+file0.tinc           1 day
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Tracers
+NTRACERS             3
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0  
+TRACER0.valid_range  0.0    40.0  
+TRACER0.advect       0
+TRACER0.diffuse      0
+TRACER0.diagn        0
+TRACER0.data         profile.nc
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.fill_value   20.0  
+TRACER1.valid_range  0.0    40.0  
+TRACER1.advect       0
+TRACER1.diffuse      0
+TRACER1.diagn        0
+TRACER1.data         profile.nc
+
+TRACER2.name         passive
+TRACER2.long_name    Passive tracer
+TRACER2.units        
+TRACER2.fill_value   20.0  
+TRACER2.valid_range  0.0 40.0
+TRACER2.advect       1
+TRACER2.diffuse      1
+TRACER2.diagn        0
+TRACER2.data         profile.nc(passive=temp)
+
+# Open boundaries
+NBOUNDARIES 0

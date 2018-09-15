@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: allprocesses.c 5844 2018-06-29 03:30:57Z riz008 $
+ *  $Id: allprocesses.c 5945 2018-09-13 21:56:39Z bai155 $
  *
  */
 
@@ -37,6 +37,7 @@
 #include "process_library/microphytobenthos_grow_sed.h"
 #include "process_library/microphytobenthos_grow_wc.h"
 #include "process_library/trichodesmium_grow_wc.h"
+#include "process_library/trichodesmium_spectral_grow_wc.h"
 #include "process_library/microphytobenthos_mortality_sed.h"
 #include "process_library/trichodesmium_mortality_sed.h"
 #include "process_library/trichodesmium_mortality_wc.h"
@@ -104,8 +105,12 @@
 #include "process_library/macroalgae_grow_wc.h"
 #include "process_library/macroalgae_mortality_wc.h"
 #include "process_library/salmon_waste.h"
+#include "process_library/filter_feeder_wc.h"
+#include "process_library/filter_feeder_epi.h"
 #include "process_library/variable_parameter.h"
 #include "process_library/recom_extras.h"
+#include "process_library/carbon_leak_sed.h"
+
 
 
 /* Do NOT move the lines below */
@@ -127,13 +132,6 @@
 #include "process_library/macroalgae_spectral_grow_wc.h"
 #include "process_library/macroalgae_spectral_mortality_wc.h"
 
-
-
-/*PISCES style NPZD Mongin 2011 */
-/*#include "process_library/phytoplankton_grow_small_BGC1_wc.h"  
-#include "process_library/zooplankton_grow_small_BGC1_wc.h"  
-#include "process_library/phytoplankton_small_mortality_BGC1_wc.h"  
-#include "process_library/zooplankton_small_mortality_BGC1_wc.h"*/
 
 /** List of all processes in the process library.
  *
@@ -189,6 +187,7 @@ eprocess_entry eprocesslist[] = {
     {"tfactor", PT_GEN, 0, 0, tfactor_init, NULL, tfactor_destroy, tfactor_precalc, NULL, NULL},
     {"tfactor_epi", PT_EPI, 0, 0, tfactor_init, NULL, tfactor_destroy, tfactor_precalc, NULL, NULL},
     {"recom_extras", PT_GEN, 0, 0, recom_extras_init, recom_extras_postinit, recom_extras_destroy, NULL, NULL, recom_extras_postcalc},
+    {"carbon_leak_sed", PT_SED, 0, 0, carbon_leak_sed_init, NULL, carbon_leak_sed_destroy, NULL, carbon_leak_sed_calc, carbon_leak_sed_postcalc},
     {"values_common", PT_GEN, 0, 0, values_common_init, values_common_post_init, values_common_destroy, values_common_precalc, NULL, values_common_postcalc},
     {"values_common_epi", PT_EPI, 0, 0, values_common_epi_init, NULL, values_common_epi_destroy, values_common_epi_precalc, NULL, values_common_epi_postcalc},
     {"viscosity", PT_GEN, 0, 0, viscosity_init, NULL, viscosity_destroy, viscosity_precalc, NULL, NULL},
@@ -227,7 +226,9 @@ eprocess_entry eprocesslist[] = {
     {"seagrass_spectral_mortality_proto_epi", PT_EPI, 1, 0, seagrass_spectral_mortality_proto_epi_init, NULL, seagrass_spectral_mortality_proto_epi_destroy, seagrass_spectral_mortality_proto_epi_precalc, seagrass_spectral_mortality_proto_epi_calc, seagrass_spectral_mortality_proto_epi_postcalc},
     {"coral_spectral_grow_epi", PT_EPI, 0, 0, coral_spectral_grow_epi_init, coral_spectral_grow_epi_postinit, coral_spectral_grow_epi_destroy, coral_spectral_grow_epi_precalc, coral_spectral_grow_epi_calc, coral_spectral_grow_epi_postcalc},
     {"coral_spectral_grow_bleach_epi", PT_EPI, 0, 0, coral_spectral_grow_bleach_epi_init, coral_spectral_grow_bleach_epi_postinit, coral_spectral_grow_bleach_epi_destroy, coral_spectral_grow_bleach_epi_precalc, coral_spectral_grow_bleach_epi_calc, coral_spectral_grow_bleach_epi_postcalc},
-    {"coral_spectral_carb_epi", PT_EPI, 0, 0, coral_spectral_carb_epi_init, coral_spectral_carb_epi_postinit, coral_spectral_carb_epi_destroy, coral_spectral_carb_epi_precalc, coral_spectral_carb_epi_calc, coral_spectral_carb_epi_postcalc},
+    {"coral_spectral_carb_epi", PT_EPI, -1, 0, coral_spectral_carb_epi_init, coral_spectral_carb_epi_postinit, coral_spectral_carb_epi_destroy, coral_spectral_carb_epi_precalc, coral_spectral_carb_epi_calc, coral_spectral_carb_epi_postcalc},
+    {"filter_feeder_wc", PT_WC, 0, 0, filter_feeder_wc_init, filter_feeder_wc_postinit, filter_feeder_wc_destroy, filter_feeder_wc_precalc, filter_feeder_wc_calc, filter_feeder_wc_postcalc},
+    {"filter_feeder_epi", PT_EPI, 0, 0, filter_feeder_epi_init, filter_feeder_epi_postinit, filter_feeder_epi_destroy, filter_feeder_epi_precalc, filter_feeder_epi_calc, filter_feeder_epi_postcalc},
     {"age_wc", PT_WC, 0, 0, age_wc_init, NULL, age_wc_destroy, age_wc_precalc, age_wc_calc, NULL},
 /*    {"light_wc_gradient", PT_WC, 0, 0, light_wc_gradient_init, light_wc_gradient_postinit, light_wc_gradient_destroy, light_wc_gradient_precalc, NULL, NULL},
 */
@@ -241,6 +242,7 @@ eprocess_entry eprocesslist[] = {
     {"zooplankton_mortality_wc", PT_WC, 1, 0, zooplankton_mortality_wc_init, NULL, zooplankton_mortality_wc_destroy, zooplankton_mortality_wc_precalc, zooplankton_mortality_wc_calc, zooplankton_mortality_wc_postcalc},
 	{"zooplankton_mortality_sed", PT_SED, 1, 0, zooplankton_mortality_sed_init, NULL, zooplankton_mortality_sed_destroy, zooplankton_mortality_sed_precalc, zooplankton_mortality_sed_calc, zooplankton_mortality_sed_postcalc},
     {"trichodesmium_grow_wc", PT_WC, 0, 0, trichodesmium_grow_wc_init, trichodesmium_grow_wc_postinit, trichodesmium_grow_wc_destroy, trichodesmium_grow_wc_precalc, trichodesmium_grow_wc_calc, trichodesmium_grow_wc_postcalc},
+{"trichodesmium_spectral_grow_wc", PT_WC, 0, 0, trichodesmium_spectral_grow_wc_init, trichodesmium_spectral_grow_wc_postinit, trichodesmium_spectral_grow_wc_destroy, trichodesmium_spectral_grow_wc_precalc, trichodesmium_spectral_grow_wc_calc, trichodesmium_spectral_grow_wc_postcalc},
     {"trichodesmium_mortality_wc", PT_WC, 0, 0, trichodesmium_mortality_wc_init, trichodesmium_mortality_wc_postinit, trichodesmium_mortality_wc_destroy, trichodesmium_mortality_wc_precalc, trichodesmium_mortality_wc_calc, trichodesmium_mortality_wc_postcalc},
     {"trichodesmium_mortality_sed", PT_SED, 0, 0, trichodesmium_mortality_sed_init, trichodesmium_mortality_sed_postinit, trichodesmium_mortality_sed_destroy, trichodesmium_mortality_sed_precalc, trichodesmium_mortality_sed_calc, trichodesmium_mortality_sed_postcalc},
     {"gas_exchange_wc", PT_WC, 2, 0, gas_exchange_wc_init, NULL, gas_exchange_wc_destroy, gas_exchange_wc_precalc, gas_exchange_wc_calc, gas_exchange_wc_postcalc},

@@ -4,8 +4,21 @@
  *  
  *  File: model/lib/ecology/process_library/phytoplankton_spectral_mortality_sed.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Phytoplankton mortality in sediments
+ *
+ *  Options: phytoplankton_spectral_mortality_wc(small|large)
+ *
+ *  Small - State variables PhyS_*, parameters PS*
+ *  Large - State variables PhyL_*, parameters PL*
+ *
+ *  Process includes return of nutrient reserves to porewater, structural material to detritus, and 
+ *  consumption of oxygen when photosynthates are released during mortality.
+ *
+ *  Model description: See zooxanthallae equations in:
+ * 
+ *  Baird, M. E., M. Mongin, F. Rizwi, L. K. Bay, N. E. Cantin, M. Soja-Wozniak and J. Skerratt (2018) 
+ *  A mechanistic model of coral bleaching due to temperature-mediated light-driven reactive oxygen 
+ *  build-up in zooxanthellae. Ecol. Model 386: 20-37.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_spectral_mortality_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: phytoplankton_spectral_mortality_sed.c 5934 2018-09-12 03:34:13Z bai155 $
  *
  */
 

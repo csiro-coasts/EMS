@@ -5,41 +5,20 @@
  *  File: model/lib/ecology/process_library/coral_spectral_grow_bleach_epi.h
  *  
  *  Description:
- *  Implementation of simplified version of the host-symbiont model developed at UTS 
- *  by Malin Gustafsson, Mark Baird and Peter Ralph.
+ * 
+ *  This process contains a coral model with autorophic and heterotrophic growth, zooxanthhellae physiology, 
+ *  xanthophyll cycle and reaction centre dynamics and reative oxygen build-up.
  *
  *  Gustafsson et al. (2013) The interchangeability of autotrophic 
  *  and hetertrophic nitrogen sources in Scleractinian coral symbiotic relationships: a 
  *  numerical study Ecol. Model.250:183-194.
  *
- *  Gustafsson et al. (2014) Modelling photoinhibition-driven
- *  bleaching in Scleractinian corals as a function of light,
- *  emperature and heterotrophy. LO 59:603-622.
+ *  Gustafsson et al. (2014) Modelling photoinhibition-driven bleaching in Scleractinian 
+ *  corals as a function of light, temperature and heterotrophy. LO 59:603-622.
  *
- *  Coral host consumes water column zooplankton, phytoplankton, organic N and 
- *  the symbiont. 
- *
- *  Symbiont grows like water column microalgae.
- *
- *  Note that host is in g N, symbiont in mg N.
- *
- *  Coral symbiont's and their hosts are both at the Redfield ratio, and release DetPL. 
- *  For the moment, lets have no DetBL grazing.
- *
- *  - Nutrient uptake by corals is reduced by the presence of macroalgae
- *  - Corals exist below macroalgae and seagrass leaves.
- *
- *  17/09/2012 Mark Baird (UTS,WfO), Mathieu Mongin (CSIRO), Malin Gustafsson (UTS).
- *  25/01/2013 MEB (CSIRO) - Add coral calcification (implemented only
- *  if omega_ar is a tracer)
- *
- *  23/04/2013 MEB Add oxygen terms
- *  21/10/2016 Internal reserves for zoos means we can have daily oxygen cycle.
- *  19/10/2016 Add xanthophyll cycle, and reserves of nutrients to resolve bleaching.
- *  19/10/2016 Add photochemical quenching.
- *  21/10/2016 Since mass of reaction centres is not considered, Qi,
- *  Qred, Qox and ROS are quantified per cell.
- *               Needs revising if they become water-bourne particulates.
+ *  Baird, M. E., M. Mongin, F. Rizwi, L. K. Bay, N. E. Cantin, M. Soja-Wozniak and J. Skerratt (2018) 
+ *  A mechanistic model of coral bleaching due to temperature-mediated light-driven reactive oxygen 
+ *  build-up in zooxanthellae. Ecol. Model 386: 20-37.
  *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -47,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_grow_bleach_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: coral_spectral_grow_bleach_epi.c 5911 2018-09-03 22:43:25Z bai155 $
  *
  */
 
@@ -101,8 +80,7 @@ typedef struct {
   double xan2chl_CS;
   double ROSthreshold;
   double ROSmult;
-
-  // double inhibit_CS;
+  double RubiscoOffTemp;
 
   /*
    * epis
@@ -156,6 +134,15 @@ typedef struct {
   int PhyL_N_wc_i;
   int DetPL_N_wc_i;
 
+  int PhyS_NR_wc_i;
+  int PhyS_PR_wc_i;
+  int PhyS_I_wc_i;
+  int PhyS_Chl_wc_i; 
+  int PhyL_NR_wc_i;
+  int PhyL_PR_wc_i;
+  int PhyL_I_wc_i;
+  int PhyL_Chl_wc_i;
+
   int IN_up_i;
   int ON_up_i;
   int CS_N_pr_i;
@@ -208,19 +195,21 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
     ws->CSm = PhyCellMass(ws->CSrad);
 
     ws->C2Chlmin = try_parameter_value(e,"C2Chlmin");
-    if (isnan(ws->C2Chlmin))
+    if (isnan(ws->C2Chlmin)){
       ws->C2Chlmin = 20.0;
-
+      eco_write_setup(e,"Code default of C2Chlmin = %e \n",ws->C2Chlmin);
+    }
     ws->CSmort_t0 = get_parameter_value(e, "CSmort");
     ws->CHmort_t0 = get_parameter_value(e, "CHmort");
 
     ws->CHremin = get_parameter_value(e, "CHremin");
     ws->Splank = get_parameter_value(e, "Splank");
-
     
     ws->CHarea = try_parameter_value(e, "CHarea");
-    if (isnan(ws->CHarea))
+    if (isnan(ws->CHarea)){
       ws->CHarea = 1.0;
+      eco_write_setup(e,"Code default of CHarea = %e \n",ws->CHarea);
+    }
 
     ws->Xanth_tau = try_parameter_value(e, "Xanth_tau");
     if (isnan(ws->Xanth_tau)){
@@ -264,6 +253,12 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
     if (isnan(ws->Plank_resp)){
       ws->Plank_resp = 0.1;   // fraction of maximum growth rate.
       eco_write_setup(e,"Code default of Plank_resp = %e \n",ws->Plank_resp);
+    }
+
+    ws->RubiscoOffTemp = try_parameter_value(e, "RubiscoOffTemp");
+    if (isnan(ws->RubiscoOffTemp)){
+      ws->RubiscoOffTemp = 2.0;   // fraction of maximum growth rate.
+      eco_write_setup(e,"Code default of RubiscoOffTemp = %e \n",ws->RubiscoOffTemp);
     }
 
     ws->KO_aer = get_parameter_value(e, "KO_aer");
@@ -321,7 +316,16 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
     ws->PhyL_N_wc_i = e->find_index(tracers, "PhyL_N", e);
     ws->PhyS_N_wc_i = e->find_index(tracers, "PhyS_N", e);
     ws->DetPL_N_wc_i = e->find_index(tracers, "DetPL_N", e);
+    
+    ws->PhyS_I_wc_i = e->find_index(tracers, "PhyS_I", e);
+    ws->PhyS_NR_wc_i = e->find_index(tracers,"PhyS_NR", e);
+    ws->PhyS_PR_wc_i = e->find_index(tracers,"PhyS_PR", e);
+    ws->PhyS_Chl_wc_i = e->find_index(tracers,"PhyS_Chl", e);
 
+    ws->PhyL_I_wc_i = e->find_index(tracers, "PhyL_I", e);
+    ws->PhyL_NR_wc_i = e->find_index(tracers,"PhyL_NR", e);
+    ws->PhyL_PR_wc_i = e->find_index(tracers,"PhyL_PR", e);
+    ws->PhyL_Chl_wc_i = e->find_index(tracers,"PhyL_Chl", e);
     /*
      * common variables
      */
@@ -406,19 +410,21 @@ void coral_spectral_grow_bleach_epi_precalc(eprocess* p, void* pp)
     double area;
 
     if (e->nstep == 0){
-      if (y[ws->CS_RO_i] == 0.0){
-	y[ws->CS_Xp_i] = y[ws->CS_Chl_i]/2.0 * ws->xan2chl_CS;
-	y[ws->CS_Xh_i] = y[ws->CS_Chl_i]/2.0 * ws->xan2chl_CS;
-	y[ws->CS_Qred_i] = ws->chla2rcii * y[ws->CS_Chl_i] / 3.0; // mmol m-2
-	y[ws->CS_Qox_i] =  ws->chla2rcii * y[ws->CS_Chl_i] / 3.0; // mmol m-2
-	y[ws->CS_Qi_i] =   ws->chla2rcii * y[ws->CS_Chl_i] / 3.0; // mmol m-2
-	y[ws->CS_RO_i] = 0.0;
-	y[ws->CS_NR_i] =  y[ws->CS_N_i]/2.0;
-	y[ws->CS_PR_i] =  y[ws->CS_N_i]/2.0/16.0*32.0/14.0;
-	y[ws->CS_I_i] =  y[ws->CS_N_i]/2.0/14.0*1060.0/16.0;
+      if (process_present(e,PT_WC,"recom_extras")){
+	if (y[ws->CS_RO_i] == 0.0){
+	  y[ws->CS_Xp_i] = y[ws->CS_Chl_i]/2.0 * ws->xan2chl_CS;
+	  y[ws->CS_Xh_i] = y[ws->CS_Chl_i]/2.0 * ws->xan2chl_CS;
+	  y[ws->CS_Qred_i] = ws->chla2rcii * y[ws->CS_Chl_i] / 3.0; // mmol m-2
+	  y[ws->CS_Qox_i] =  ws->chla2rcii * y[ws->CS_Chl_i] / 3.0; // mmol m-2
+	  y[ws->CS_Qi_i] =   ws->chla2rcii * y[ws->CS_Chl_i] / 3.0; // mmol m-2
+	  y[ws->CS_RO_i] = 0.0;
+	  y[ws->CS_NR_i] =  y[ws->CS_N_i]/2.0;
+	  y[ws->CS_PR_i] =  y[ws->CS_N_i]/2.0/16.0*32.0/14.0;
+	  y[ws->CS_I_i] =  y[ws->CS_N_i]/2.0/14.0*1060.0/16.0;
+	}
       }
     }
-    cv[ws->CHarea_cv_i] = ws->CHarea; // get from bio.prm file.
+    cv[ws->CHarea_cv_i] = ws->CHarea;
     
     if (ws->recom){
       
@@ -443,9 +449,8 @@ void coral_spectral_grow_bleach_epi_precalc(eprocess* p, void* pp)
 
     if (ws->CS_tempfunc_i > -1){
       if (y[ws->temp_clim_wc_i] > 10.0){  // sometimes zeros come thru - if so, leave as last time step.
-	double explim = 2.0;
-	double deltemp = min(max(0.0,(y[ws->temp_wc_i] - max(y[ws->temp_clim_wc_i],26.0))),explim);
-	y[ws->CS_tempfunc_i] = (1.0 - exp(-(explim-deltemp)))/(1.0-exp(-explim));
+	double deltemp = min(max(0.0,(y[ws->temp_wc_i] - max(y[ws->temp_clim_wc_i],26.0))),ws->RubiscoOffTemp);
+	y[ws->CS_tempfunc_i] = (1.0 - exp(-(ws->RubiscoOffTemp-deltemp)))/(1.0-exp(-(ws->RubiscoOffTemp)));
       }
     }
 
@@ -456,7 +461,6 @@ void coral_spectral_grow_bleach_epi_precalc(eprocess* p, void* pp)
       y[ws->EpiTC_i] += Coral_N * red_W_C + y[ws->CS_I_i] * 106.0/1060.0*12.01;
       y[ws->EpiBOD_i] += (Coral_N * red_W_C + y[ws->CS_I_i] *106.0/1060.0*12.01)*C_O_W;
     }
-
 }
 
 void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
@@ -530,9 +534,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     /* Zoothanthellae - cells quantified per m2 of host tissue. */
 
     double cellnum = CS_N / (ws->CSm * red_A_N * 1000.0 * MW_Nitr); /* cell m-2 */
-    double cellChl = CS_Chl / (ws->CSvol * cellnum);    /* mg Chl m-3  */
-    // double cellXp = CS_Xp / (ws->CSvol * cellnum);    /* mg Xp m-3  */
-    // double cellXh = CS_Xh / (ws->CSvol * cellnum);    /* mg Xh m-3  */
+    double cellChl = CS_Chl / (ws->CSvol * cellnum);                /* mg Chl m-3  */
 
     /* now get normalised reserves. */
 
@@ -574,16 +576,6 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double kN_mass = S_DIN * SA * DIN_wc;  /* mg N m-2 s-1 */
     double kP_mass = S_DIP * SA * DIP_wc;  /* mg P m-2 s-1 */
     double k_NH4_mass = S_DIN * SA * NH4_wc;    /* DNO3 only 4% different to DNH4 */
-   
-    // double Iuptake = kI*(1.0-Iquota) * cellnum * 1000.0; /* mmol photon m-2 s-1 */
-
-    // double Iuptake = kI * min(1.0-Iquota, e_max(CS_Qox)/CS_Qt * y[ws->CS_tempfunc_i]) * cellnum * 1000.0; /* mmol photon m-2 s-1 */
-
-    // double ox2 = CS_Qox/CS_Qt * CS_Qox/CS_Qt;
-
-    // double siggy  = ox2 / (0.1 + ox2) * (CS_Qox/CS_Qt);
-
-    // double Iuptake = kI * siggy * y[ws->CS_tempfunc_i] * (1.0 - Iquota) * cellnum * 1000.0;
 
     double Iuptake = 0.0;
 
@@ -609,6 +601,16 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double ZooS = y[ws->ZooS_N_wc_i];
     double ZooL = y[ws->ZooL_N_wc_i];
     double DetPL = y[ws->DetPL_N_wc_i];
+
+    double PhyS_NR = y[ws->PhyS_NR_wc_i];
+    double PhyS_PR = y[ws->PhyS_PR_wc_i];
+    double PhyS_I = y[ws->PhyS_I_wc_i];
+    double PhyS_Chl = y[ws->PhyS_Chl_wc_i];
+
+    double PhyL_NR = y[ws->PhyL_NR_wc_i];
+    double PhyL_PR = y[ws->PhyL_PR_wc_i];
+    double PhyL_I = y[ws->PhyL_I_wc_i];
+    double PhyL_Chl = y[ws->PhyL_Chl_wc_i];
 
     /* Uptake of animals is only weakly depended on velocity and is probably not mass transfer limited. 
        Instead specificy a constant rate transfer coefficient */
@@ -700,10 +702,10 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     if (ws->COD_wc_i > -1){
       y1[ws->COD_wc_i] += (polypmort * CS_N  + translocate) * red_W_C * Iquota / dz_wc * C_O_W * (1.0 - sigmoid);
     }
-    /* respiration and uptake */
+    /* respiration, carbon fixation and nitrate uptake */
 
     y1[ws->DIC_wc_i] += (Iresp - Iuptake) * 106.0/1060.0*12.01 / dz_wc;
-    y1[ws->Oxygen_wc_i] -= (Iresp - Iuptake) * 138.0/1060.0*32.00 / dz_wc;
+    y1[ws->Oxygen_wc_i] += (-(Iresp - Iuptake) * 106.0/1060.0*32.00 + NO3uptake * 48.0/14.01) / dz_wc;
 
     /* Uptake from water column - growth of cells  */
 
@@ -718,12 +720,33 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     total_grazing  = total_grazing * unitch; /* unit change for changing water column properties */    
 
     if (Splank > 0.0){
-      y1[ws->DetPL_N_wc_i] -= total_grazing * Splank * SA * DetPL / pot_grazing / dz_wc;
-      y1[ws->PhyL_N_wc_i] -= total_grazing * Splank * SA * PhyL / pot_grazing / dz_wc;
-      y1[ws->PhyS_N_wc_i] -= total_grazing * Splank * SA * PhyS / pot_grazing / dz_wc;
-      y1[ws->ZooS_N_wc_i] -= total_grazing * Splank * SA * ZooS / pot_grazing / dz_wc;
-      y1[ws->ZooL_N_wc_i] -= total_grazing * Splank * SA * ZooL / pot_grazing / dz_wc;
+
+      double loss = total_grazing * Splank * SA / pot_grazing / dz_wc;
+
+      y1[ws->DetPL_N_wc_i] -= loss * DetPL ;
+      y1[ws->PhyL_N_wc_i] -=  loss * PhyL ;
+      y1[ws->PhyS_N_wc_i] -=  loss * PhyS ;
+      y1[ws->ZooS_N_wc_i] -=  loss * ZooS ;
+      y1[ws->ZooL_N_wc_i] -=  loss * ZooL ;
+
+      //  added bits for B3p0
+
+      y1[ws->PhyS_NR_wc_i] -= loss * PhyS_NR ;
+      y1[ws->PhyS_I_wc_i] -= loss * PhyS_I;
+      y1[ws->PhyS_PR_wc_i] -= loss * PhyS_PR ;
+      y1[ws->PhyS_Chl_wc_i] -= loss * PhyS_Chl;
+      
+      y1[ws->PhyL_NR_wc_i] -= loss * PhyL_NR ;
+      y1[ws->PhyL_I_wc_i] -= loss * PhyL_I;
+      y1[ws->PhyL_PR_wc_i] -= loss * PhyL_PR ;
+      y1[ws->PhyL_Chl_wc_i] -= loss * PhyL_Chl;
+
+      y1[ws->DIP_wc_i] += loss * (PhyS_PR + PhyL_PR) ;
+      y1[ws->NH4_wc_i] += loss * (PhyS_NR + PhyL_NR); 
+
+      y1[ws->DIC_wc_i] += loss * (PhyS_I + PhyL_I) * 106.0/1060.0 * 12.01;
     }
+
     y1[ws->DetPL_N_wc_i] += (((1.0 - CHremin) * polypmort * CH_N + mucus) * unitch + polypmort * CS_N) / dz_wc;
 
     /* Pigment synthesis -----------------------------------------------------------------------------------*/
@@ -741,11 +764,6 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double dXhdt_syn = 0.0;
 
     dXpdt_syn = dChldt_syn * ws->xan2chl_CS;
-
-    // if (xans > 0.0){
-      // dXpdt_syn = dChldt_syn* (CS_Xp / xans) * ws->xan2chl_CS;
-      //  dXhdt_syn = dChldt_syn* (CS_Xh / xans) * ws->xan2chl_CS;
-    // }
     
     if (CS_N * 5.6786 < ws->C2Chlmin * CS_Chl ){  /* don't synthesise if can't fit in any more. */
       dChldt_syn = 0.0;
@@ -788,20 +806,11 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     double Qi2Qox = 268.0 * ws->photon2rcii * CS_Qi; // this repairs 10 mol ph m-2 d-1 hitting 1 mmol of RCII.
 
-      // CS_Qi * Iquota * Nquota * Pquota * CSumax * 60.0; // Use CSumax temperature dependence.
-
     double ARO = CSumax * Nquota * Iquota * Pquota * CS_RO;  // rate of detoxification.
 
     /* We are assuming that the oxygen in this cascade is not part of the oxygen balance (i.e. came from H20) */
 
     double absorb = kI * cellnum * ws->photon2rcii * 1000.0; //   units now mmol rcii m-2 s-1 
-
-    // Fixation oxidises reduced RCII, but only if it can use it: note this is an immediate return, since it will always be less than 
-    // the oxidation rate of  absorb * (CS_Qox / CS_Qt).
-
-    // double C_fix = absorb * e_max(min(1.0-Iquota, CS_Qox/CS_Qt) * y[ws->CS_tempfunc_i]);
-
-    //    double C_fix = absorb * CS_Qox/CS_Qt * y[ws->CS_tempfunc_i] * (1.0 - Iquota);
 
     double C_fix = absorb * (CS_Qox/CS_Qt) * y[ws->CS_tempfunc_i] * (1.0 - Iquota);
     double C_notfixed = absorb * (CS_Qox/CS_Qt) - C_fix;
@@ -813,17 +822,11 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     if (CS_Qt > 1.0e-9){
 
-      y1[ws->CS_Qox_i]  += - C_notfixed + Qi2Qox; // - psi; // CS_Qox * symb_grow; // + Qi2Qox - delta_ROS * (CS_Qox / CS_Qt); 
-      y1[ws->CS_Qred_i] += C_notfixed - absorb * (CS_Qred / CS_Qt); // + psi - CS_Qred * symb_grow; // - delta_ROS * (CS_Qred / CS_Qt);
-      y1[ws->CS_Qi_i]   += - Qi2Qox + absorb * (CS_Qred / CS_Qt); // - CS_Qi * symb_grow; // - Qi2Qox + 0.5 * delta_ROS;
-      // y1[ws->CS_RO_i]   += - ARO + 0.5 * (CS_Qi / CS_Qt) * absorb * 32.0 * (138.0 / 106.0) / 10.0 / ws->photon2rcii;
+      y1[ws->CS_Qox_i]  += - C_notfixed + Qi2Qox;  
+      y1[ws->CS_Qred_i] += C_notfixed - absorb * (CS_Qred / CS_Qt);
+      y1[ws->CS_Qi_i]   += - Qi2Qox + absorb * (CS_Qred / CS_Qt);
       y1[ws->CS_RO_i]   += - ARO + 0.5 * (CS_Qi / CS_Qt) * absorb / ws->photon2rcii / 7000.0;
     }
-
-    // double test = (CS_Qt/ws->chla2rcii)/CS_Chl;
-    // printf("RCII ratio = %e \n",test);
-    // printf("change in RCII %e \n",y1[ws->CS_Qox_i] + y1[ws->CS_Qred_i] + y1[ws->CS_Qi_i]);
-    // printf("ARO %e Qi2Qox %e \n",ARO,Qi2Qox);
 
     /* symbiont expulsion - assuming a 1:1 relationship between ROS and C destruction, and only affects 
        pigments and cell properties since they are per m2 */ 
@@ -860,7 +863,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     /* need to careful when oxygen approaches zero */
 
-    y1[ws->Oxygen_wc_i] -= (expulsion * CS_N * red_W_C * Iquota) / dz_wc * C_O_W * sigmoid;
+    y1[ws->Oxygen_wc_i] -= (expulsion * CS_N * red_W_C * Iquota * C_O_W) / dz_wc * sigmoid;
 
     if (ws->COD_wc_i > -1){
       y1[ws->COD_wc_i] += (expulsion * CS_N * red_W_C * Iquota) / dz_wc * C_O_W * (1.0-sigmoid);
@@ -881,6 +884,9 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
       y1[ws->CH_N_pr_i] += host_growth * SEC_PER_DAY ;
     if (ws->mucus_i > -1)
       y1[ws->mucus_i] = (((1.0 - CHremin) * polypmort * CH_N + mucus) * unitch + polypmort * CS_N);
+
+    /* Okay, mortality not part of oxygen balance - need to accumulate oxy_pr through processes, then apply to oxygen state variable */
+
     if (ws->Oxy_pr_wc_i > -1)
       y1[ws->Oxy_pr_wc_i] = CS_N * symb_grow * SEC_PER_DAY * red_W_O / dz_wc;
 }

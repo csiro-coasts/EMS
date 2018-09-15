@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_tracer_defaults.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: ecology_tracer_defaults.c 5907 2018-08-29 03:29:00Z bai155 $
  *
  */
 
@@ -386,6 +386,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"R_655",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"nFLH",  "mW cm-2 um-1 sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Secchi", "m", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Zenith2D", "rad", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SWR_bot_abs", "-", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"NULL",      "NULL",     0.0,   0.0,       0, 0, 0, 0, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"xco2_in_air", "ppmv",  390.0,    390.0,      0, 0, 0, 2, 0, 0, 1, 1, 0, FILEIN, ECOLOGY|DIAGNOSTIC},

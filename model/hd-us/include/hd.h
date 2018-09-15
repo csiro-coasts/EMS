@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: hd.h 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -39,6 +39,10 @@
 /* ANSI value may not be defined in old stdio.h */
 #ifndef SEEK_SET
 #define SEEK_SET	1
+#endif
+
+#ifdef HAVE_MPI
+#include <mpi.h>
 #endif
 
 /* include file for MAXSTRLEN */

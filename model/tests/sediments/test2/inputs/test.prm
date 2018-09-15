@@ -1,0 +1,268 @@
+# Test 3D model: wind-driven closed basin with flat bathymetry
+# All values should remain unchanged for the duration of the run
+
+CODEHEADER           SHOC default version
+PARAMETERHEADER	     Test 1 - no forcing
+DESCRIPTION          SHOC test 1
+NAME                 SHOC test 1 grid
+TIMEUNIT             seconds since 1990-01-01 00:00:00 +10
+OUTPUT_TIMEUNIT      seconds since 1990-01-01 00:00:00 +10
+LENUNIT              metre
+START_TIME           0.0
+STOP_TIME            864000  # 10 days
+#STOP_TIME            1728000 # 20 days
+#STOP_TIME             2592000 # 30 days
+
+INPUT_FILE           inputs/in_test.nc
+
+TRANS_DT             30 mins
+TRANS_OUTPUT         YES
+TRANS_MODE           SP_FFSL
+
+WIND_TS              inputs/wind_test2_strong.ts
+WIND_INPUT_DT        30 mins
+WIND_SPEED_SCALE     1.0
+DRAG_LAW_V0          10.0
+DRAG_LAW_V1          26.0
+DRAG_LAW_CD0         0.00114
+DRAG_LAW_CD1         0.00218
+
+# Output files
+OutputFiles 1
+
+file0.name           outputs/out.nc
+file0.filetype       standard
+file0.tstart         0.0
+file0.tinc           21600
+file0.tstop          864000
+file0.bytespervalue  4
+file0.vars           ALL
+
+# Flags
+WINDOWS              1
+NONLINEAR            YES
+CALCDENS             YES
+HEATFLUX             NONE
+SALTFLUX             NONE
+2D-MODE              NO
+STABILITY            SUB-STEP-NOSURF
+RAMPSTART            0 days
+RAMPEND              0.25 days
+MERGE_THIN           YES
+HMIN                 0.0700
+SLIP                 1.0   
+SIGMA                NO
+
+# Time steps
+DT                   100.00     seconds
+IRATIO               4
+TRATIO               1
+
+# Advection
+MOM_SCHEME           ORDER2
+TRA_SCHEME           VANLEER
+ULTIMATE             NO
+
+# Horizontal mixing
+U1VH                 100.0 
+U2VH                 100.0 
+U1KH                 100.0 
+U2KH                 100.0 
+SMAGORINSKY          0.000
+
+# Vertical mixing
+MIXING_SCHEME        constant
+VZ0                  1.0000e-2
+KZ0                  1.0000e-2
+
+# Bottom friction
+QBFC                 0.0020
+UF                   0.0500
+Z0                   0.001
+
+# Constants
+G                    9.8100
+SPECHEAT             3990.0
+AIRDENS              1.2250
+AMBIENT_AIR_PRESSURE 100800.0000
+CORIOLIS             100
+1.0000e-04
+
+# Diagnostics
+CFL                  NONE
+MIX_LAYER            NONE
+MEAN                 NONE
+VORTICITY            NONE
+NUMBERS              NONE
+ALERT                NONE
+MOM_TEND             NO
+CALC_FLUXES          NONE
+FLUSHING_TR          NO
+STERIC_HEIGHT        0.00  
+
+# Grid
+GRIDTYPE             RECTANGULAR
+NCE1                 10
+NCE2                 10
+X00                  0.0
+Y00                  0.0
+DX                   1000.0 
+DY                   1000.0 
+ROTATION             0.0  
+
+# Vertical grid spacing
+LAYERFACES           11
+-10.00
+-9.00
+-8.00
+-7.00
+-6.00
+-5.00   
+-4.00   
+-3.00   
+-2.00   
+-1.00   
+0.00    
+
+# Bathymetry limits
+BATHYMIN             1.0   
+BATHYMAX             30.0  
+ETAMAX               10.0  
+MIN_CELL_THICKNESS   0.1
+
+# Tracers
+NTRACERS             2
+
+TRACER0.name         salt
+TRACER0.long_name    Salinity
+TRACER0.units        PSU
+TRACER0.fill_value   35.0  
+TRACER0.valid_range  0.0    40.0  
+TRACER0.advect       1
+TRACER0.diffuse      1
+TRACER0.diagn        0
+
+TRACER1.name         temp
+TRACER1.long_name    Temperature
+TRACER1.units        degrees C
+TRACER1.fill_value   20.0  
+TRACER1.valid_range  0.0    40.0  
+TRACER1.advect       1
+TRACER1.diffuse      1
+TRACER1.diagn        0
+
+# Forcing
+# Time series
+TSPOINTS             0
+TS0.name             loc_z.ts
+TS0.location         1234.0604  4011.6799  0
+TS0.dt               3600 seconds
+TS0.reference        msl
+
+# Open boundaries
+NBOUNDARIES           0
+
+# Bathymetry
+BATHY    100
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+ 10.000
+
+

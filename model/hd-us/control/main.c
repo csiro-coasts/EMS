@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 5875 2018-07-06 07:46:39Z riz008 $
+ *  $Id: main.c 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -131,6 +131,8 @@ void print_vers(void)
 
 void process_args(int argc, char *argv[])
 {
+  char buf[MAXSTRLEN];
+  
   if (argc <= 1)
     usage();
   /*UR store the name of this executable for logging */  
@@ -419,6 +421,13 @@ int main(int argc, char *argv[])
   killed = 0;
   model_running = 0;
 
+#ifdef HAVE_MPI
+  /* Must come early in the program */
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+#endif
+
   /* Capture the QUIT, TERMinate & SEGmentationViolation signals */
   signal(SIGQUIT, kill_signal_handler);
   signal(SIGTERM, kill_signal_handler);
@@ -443,7 +452,13 @@ int main(int argc, char *argv[])
   process_args(argc, argv);
   prm_set_case(0);
 
-  fprintf(stderr, "Run start:\t%s\n", ctime(&now));
+  /* MPI Info */
+#ifdef HAVE_MPI
+  fprintf(stderr, "\nMPI_RANK %d for %s(%d)\n", mpi_rank, prmname, getpid());
+  fprintf(stderr, "\nMPI support is *only* for debugging purposes\n");
+#endif
+
+  // sleep(15);
 /* Open/Read in the parameter files and setup a scheduler
  */
   if ((prmfd = fopen(prmname, "r")) == NULL)
@@ -456,6 +471,7 @@ int main(int argc, char *argv[])
    * leave this in front */
   ems_init(prmfd, 0);
 
+  INIT_TIMING;
 
 /* 
  * Schedule the events and the main data.
@@ -463,8 +479,6 @@ int main(int argc, char *argv[])
  */
   schedule = sched_init(prmfd, now);
   hd_data = hd_init(prmfd);
-
-  INIT_TIMING;
 
   /* 
    * Start the main loop
@@ -563,6 +577,10 @@ int main(int argc, char *argv[])
   /*UR-ADDED to clear any ems lib specific functions */
   ems_clear();
 
+#ifdef HAVE_MPI
+  MPI_Finalize();
+#endif
+  
   exit(0);
 
 }

@@ -1,0 +1,9 @@
+Closed basin with 25km grid spacing, 22 layers and sloping bottom in N-S direction (50 - 100m).
+Forced with a constant westerly wind. Same as test7 in the SHOC tests.
+
+closed.prm 	  : SHOC
+closed_quad.prm	  : COMPAS quad grid
+closed_quad5w.prm : COMPAS quad grid, 5 windows
+closed_hex.prm	  : COMPAS hex grid
+
+View results with out.m.

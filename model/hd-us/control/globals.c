@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: globals.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: globals.c 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -81,6 +81,10 @@ char version[MAXSTRLEN];        /* version string of this executable */
 /*UR-ADDED */
 int stat_log = 0;               /* enable/disable raw runtime statistics */
 char stat_logfile[MAXSTRLEN];
+
+/* Process ID for MPI */
+int mpi_rank;
+int mpi_size;
 
 /*
  * The following are related to the timing profile

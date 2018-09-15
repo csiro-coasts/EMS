@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: transfers.c 5923 2018-09-06 02:10:19Z her127 $
  *
  */
 
@@ -324,6 +324,10 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     lc = window->m2s[cc];
     c = window->wsa[lc];
     windat->w[lc] = master->w[c];
+    /*
+    windat->u[lc] = master->u[c];
+    windat->v[lc] = master->v[c];
+    */
     windat->Kz[lc] = master->Kz[c];
     windat->Vz[lc] = master->Vz[c];
     windat->dens[lc] = master->dens[c];
@@ -335,7 +339,9 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     lc = window->m2se1[cc];
     ce1 = window->wse[lc];
     windat->u1[lc] = master->u1[ce1];
+    windat->u2[lc] = master->u2[ce1];
     windat->u1b[lc] = master->u1b[ce1];
+    windat->u2b[lc] = master->u2b[ce1];
     windat->u1flux3d[lc] = master->u1flux3d[ce1];
   }
 
@@ -354,8 +360,7 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     windat->wtop[lc] = master->wtop[c];
     windat->wbot[lc] = master->wbot[c];
     /* The updated value of eta is required at the auxiliary cells   */
-    /* to set dzu1 and dzu2, used in the calculation of the          */
-    /* advection terms.                                              */
+    /* to set dzu1, used in the calculation of the advection terms.  */
     windat->eta[lc] = master->eta[c];
   }
   for (cc = 1; cc <= window->nm2se1S; cc++) {
@@ -436,6 +441,10 @@ void win_data_fill_2d(master_t *master,     /* Master data           */
     lc = window->m2s[cc];
     c = window->wsa[lc];
     windat->eta[lc] = master->eta[c];
+    /*
+    windat->uav[lc] = master->uav[c];
+    windat->vav[lc] = master->vav[c];
+    */
     windat->detadt[lc] = master->detadt[c];
     windat->etab[lc] = master->etab[c];
     /* Uncomment to check master to slave transfer indicies          */
@@ -449,6 +458,7 @@ void win_data_fill_2d(master_t *master,     /* Master data           */
     lc = window->m2se1[cc];
     ce1 = window->wse[lc];
     windat->u1av[lc] = master->u1av[ce1];
+    windat->u2av[lc] = master->u2av[ce1];
     windat->depth_e1[lc] = master->depth_e1[ce1];
   }
   /* These fluxes do not need to be transferred unless diagnostic    */
@@ -568,10 +578,19 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
       le = window->m2se1[ee];
       e = window->wse[le];
       windat->u1[le] = master->u1[e];
+      /*windat->u2[le] = master->u2[e];*/
       windat->u1flux3d[le] = master->u1flux3d[e];
       /* Cell thickness is required for tracer horizontal diffusion  */
       windat->dzu1[le] = master->dzu1[e];
     }
+    /*
+    for (cc = 1; cc <= window->nm2s; cc++) {
+      lc = window->m2s[cc];
+      c = window->wsa[lc];
+      windat->u[lc] = master->u[c];
+      windat->v[lc] = master->v[c];
+    }
+    */
     /*
     zflux_e1(geom, window, master->u1flux3d, windat->u1flux3d, window->m2se1,
              window->wse, window->nm2se1);
@@ -767,14 +786,28 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
   if (mode & VELOCITY) {
     s2m_vel(master->u1, windat->u1,
             window->s2me1, window->wse, window->ns2me1);
+    /*
+    s2m_vel(master->u2, windat->u2,
+            window->s2me1, window->wse, window->ns2me1);
+    */
     s2m_vel(master->u1flux3d, windat->u1flux3d,
             window->s2me1, window->wse, window->ns2me1);
     s2m_vel(master->u1b, windat->u1b,
+            window->s2me1, window->wse, window->ns2me1);
+    s2m_vel(master->u2b, windat->u2b,
             window->s2me1, window->wse, window->ns2me1);
 
     /* Set in set_new_cells_ and used in tracer horz diffusion       */
     s2m_vel(master->dzu1, windat->dzu1,
 	    window->s2me1, window->wse, window->ns2me1);
+    /*
+    for (cc = 1; cc <= window->ns2m; cc++) {
+      lc = window->s2m[cc];
+      c = window->wsa[lc];
+      master->u[c] = windat->u[lc];
+      master->v[c] = windat->v[lc];
+    }
+    */
   }
   /* mode = WVEL : 3D vertical velocity and 2D surface and bottom    */
   /* vertical velocities. Also include the 3D velocity deviations    */
@@ -787,6 +820,8 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
       c = window->wsa[lc];
       master->w[c] = windat->w[lc];
     }
+    s2m_vel(master->u2, windat->u2,
+            window->s2me1, window->wse, window->ns2me1);
     s2m_vel(master->u1bot, windat->u1bot,
             window->s2me1, window->wse, window->ns2me1S);
     for (cc = 1; cc <= window->ns2mS; cc++) {
@@ -949,11 +984,17 @@ void win_data_empty_2d(master_t *master,    /* Master data           */
   if (mode & VELOCITY) {
     s2m_vel(master->u1av, windat->u1av,
 	    window->s2me1, window->wse, window->ns2me1S);
+    s2m_vel(master->u2av, windat->u2av,
+	    window->s2me1, window->wse, window->ns2me1S);
 
     for (cc = 1; cc <= window->ns2mS; cc++) {
       lc = window->s2m[cc];
       c = window->wsa[lc];
       master->eta[c] = windat->eta[lc];
+      /*
+      master->uav[c] = windat->uav[lc];
+      master->vav[c] = windat->vav[lc];
+      */
       master->detadt[c] = windat->detadt[lc];
       master->etab[c] = windat->etab[lc];
     }
@@ -1451,7 +1492,10 @@ void s2m_3d(master_t *master,   /* Master data                       */
     master->dens_0[c] = windat->dens_0[lc];
     master->Vz[c] = windat->Vz[lc];
     master->Kz[c] = windat->Kz[lc];
+    master->u[c] = windat->u[lc];
+    master->v[c] = windat->v[lc];
     master->dz[c] = wincon->dz[lc];
+    master->u1kh[c] = wincon->u1kh[lc];
     for (tt = 0; tt < master->ntrmap_s2m_3d; tt++) {
       tn = master->trmap_s2m_3d[tt];
       master->tr_wc[tn][c] = windat->tr_wc[tn][lc];
@@ -1463,6 +1507,7 @@ void s2m_3d(master_t *master,   /* Master data                       */
     le = window->w3_e1[ee];
     e = window->wse[le];
     master->u1[e] = windat->u1[le];
+    master->u2[e] = windat->u2[le];
     master->dzu1[e] = windat->dzu1[le];
     master->u1vh[e] = wincon->u1vh[le];
   }
@@ -1532,6 +1577,8 @@ void s2m_2d(master_t *master,   /* Master data                       */
     master->eta[c] = windat->eta[lc];
     master->topz[c] = windat->topz[lc];
     master->wtop[c] = windat->wtop[lc];
+    master->uav[c] = windat->uav[lc];
+    master->vav[c] = windat->vav[lc];
     for (tn = 0; tn < master->ntrS; tn++)
       master->tr_wcS[tn][c] = windat->tr_wcS[tn][lc];
     for (tn = 0; tn < windat->nsed; tn++) {
@@ -1546,6 +1593,7 @@ void s2m_2d(master_t *master,   /* Master data                       */
     cb = window->wse[window->bot_e1[ee]];
     e = window->wse[le];
     master->u1av[e] = windat->u1av[le];
+    master->u2av[e] = windat->u2av[le];
     /* Re-setting the master for printing purposes can interfere     */
     /* with master-slave transfers.                                  */
     /* master->u1bot[e]=windat->u1[cb]; */
@@ -2609,4 +2657,447 @@ void check_s2m(geometry_t **window, window_t **windat)
   d_free_1d(a);
 }
 
+/*
+ * Rank 0 assumes host
+ * Rank 1 assumes remote
+ */
+int mpi_check_multi_windows_sparse_arrays(geometry_t *geom)
+{
+  int ret = 0;
+  
+#ifdef HAVE_MPI
+  int mpi_rank_other = (mpi_rank == 0 ? 1 : 0);
 
+  /* Only works for exactly 2 processes */
+  if (mpi_size != 2)
+    return(0);
+
+  /*
+   * Multiple windows receives from single window
+   */
+  if (master->nwindows > 1) {
+    /* _o denotes other */
+    int v2_e1_o, v3_e1_o, v2_t_o, v3_t_o;
+    int szeS_o, sze_o;
+    int szcS_o, szc_o;
+    int *w2_e1_o, *w3_e1_o, *w2_t_o, *w3_t_o;
+    int ee, cc;
+    
+    /* Receive total number of 2D surface edges */
+    MPI_Recv(&szeS_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->szeS != szeS_o) {
+      printf("szeS mismatch : %d(multi) vs %d(single)\n", geom->szeS, szeS_o);
+      ret = 1;
+    } else
+      printf("szeS = %d check\n", geom->szeS);
+
+    /* Receive total number of 3D edges */
+    MPI_Recv(&sze_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->sze != sze_o) {
+      printf("sze mismatch : %d(multi) vs %d(single)\n", geom->sze, sze_o);
+      ret = 1;
+    } else
+      printf("sze  = %d check\n", geom->sze);
+
+    /* Receive total number of 2D surface faces */
+    MPI_Recv(&szcS_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->szcS != szcS_o) {
+      printf("szcS mismatch : %d(multi) vs %d(single)\n", geom->szcS, szcS_o);
+      ret = 1;
+    } else
+      printf("szcS = %d check\n", geom->szcS);
+
+    /* Receive total number of 3D faces */
+    MPI_Recv(&szc_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->szc != szc_o) {
+      printf("szc mismatch : %d(multi) vs %d(single)\n", geom->szc, szc_o);
+      ret = 1;
+    } else
+      printf("szc  = %d check\n", geom->szc);
+
+    /* Receive number of 2D edges */
+    MPI_Recv(&v2_e1_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->v2_e1 != v2_e1_o) {
+      printf("v2_e1 mismatch : %d(multi) vs %d(single)\n", geom->v2_e1, v2_e1_o);
+      ret = 1;
+    } else
+      printf("v2_e1 = %d check\n", geom->v2_e1);
+
+    /* Receive number of 3D edges */
+    MPI_Recv(&v3_e1_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->v3_e1 != v3_e1_o) {
+      printf("v3_e1 mismatch : %d(multi) vs %d(single)\n", geom->v3_e1, v3_e1_o);
+      ret = 1;
+    } else
+      printf("v3_e1 = %d check\n", geom->v3_e1);
+
+    /* Receive number of 2D faces */
+    MPI_Recv(&v2_t_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->v2_t != v2_t_o) {
+      printf("v2_t mismatch : %d(multi) vs %d(single)\n", geom->v2_t, v2_t_o);
+      ret = 1;
+    } else
+      printf("v2_t = %d check\n", geom->v2_t);
+
+    /* Receive number of 3D faces */
+    MPI_Recv(&v3_t_o, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (geom->v3_t != v3_t_o) {
+      printf("v3_t mismatch : %d(multi) vs %d(single)\n", geom->v3_t, v3_t_o);
+      ret = 1;
+    } else
+      printf("v3_t = %d check\n", geom->v3_t);
+
+    /* Send acknowledgement */
+    MPI_Send(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    if (ret) return(ret);
+
+    /* Sizes match, allocate arrays */
+    w2_e1_o = i_alloc_1d(geom->szeS);
+    w3_e1_o = i_alloc_1d(geom->sze);
+    w2_t_o  = i_alloc_1d(geom->szcS);
+    w3_t_o  = i_alloc_1d(geom->szc);
+
+    /* Receive sparse arrays */
+    MPI_Recv(&w2_e1_o[1], geom->szeS-1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    MPI_Recv(&w3_e1_o[1], geom->sze-1,  MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    MPI_Recv(&w2_t_o[1],  geom->szcS-1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    MPI_Recv(&w3_t_o[1],  geom->szc-1,  MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+
+    /* Do checks */
+    /* 2D edges */
+    for (ee = 1; ee < geom->szeS; ee++) {
+      if (geom->w2_e1[ee] != w2_e1_o[ee]) {
+	printf("w2_e1 mismatch, ee=%d, w2_e1[ee]=%d, w2_e1_o[ee]=%d\n",
+	       ee, geom->w2_e1[ee], w2_e1_o[ee]);
+	ret = 1;
+	break;
+      }
+    }
+    if (!ret) printf("w2_e1 check\n");
+    
+    /* 3D edges */
+    if (!ret)
+      for (ee = 1; ee < geom->sze; ee++) {
+	if (geom->w3_e1[ee] != w3_e1_o[ee]) {
+	  printf("w3_e1 mismatch, ee=%d, w3_e1[ee]=%d, w3_e1_o[ee]=%d\n",
+		 ee, geom->w3_e1[ee], w3_e1_o[ee]);
+	  ret = 1;
+	  break;
+	}
+      }
+    if (!ret) printf("w3_e1 check\n");
+
+    /* 2D faces */
+    if (!ret)
+      for (cc = 1; cc < geom->szcS; cc++) {
+	if (geom->w2_t[cc] != w2_t_o[cc]) {
+	  printf("w2_t mismatch, cc=%d, w2_t[cc]=%d, w2_t_o[cc]=%d\n",
+		 cc, geom->w2_t[cc], w2_t_o[cc]);
+	  ret = 1;
+	  break;
+	}
+      }
+    if (!ret) printf("w2_t check\n");
+
+    /* 2D faces */
+    if (!ret)
+      for (cc = 1; cc < geom->szc; cc++) {
+	if (geom->w3_t[cc] != w3_t_o[cc]) {
+	  printf("w3_t mismatch, cc=%d, w3_t[cc]=%d, w3_t_o[cc]=%d\n",
+		 cc, geom->w3_t[cc], w3_t_o[cc]);
+	  ret = 1;
+	  break;
+	}
+      }
+    if (!ret) printf("w3_t check\n");
+    
+    i_free_1d(w2_e1_o);
+    i_free_1d(w3_e1_o);
+    i_free_1d(w2_t_o);
+    i_free_1d(w3_t_o);
+    
+    /* Send acknowledgement */
+    MPI_Send(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    if (ret) return(ret);
+    
+  } else {
+    /* Send sizes */
+    MPI_Send(&geom->szeS,  1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->sze,   1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->szcS,  1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->szc,   1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->v2_e1, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->v3_e1, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->v2_t,  1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->v3_t,  1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+
+    /* Check acknowledgement */
+    MPI_Recv(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (ret) return(ret);
+
+    /* Send sparse arrays */
+    MPI_Send(&geom->w2_e1[1], geom->szeS-1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->w3_e1[1], geom->sze-1,  MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->w2_t[1],  geom->szcS-1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    MPI_Send(&geom->w3_t[1],  geom->szc-1,  MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+
+    /* Check acknowledgement */
+    MPI_Recv(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    if (ret) return(ret);
+  }
+  
+#endif
+
+  return(ret);
+}
+
+/*
+ * Rank 0 assumes host
+ * Rank 1 assumes remote
+ */
+int mpi_check_multi_windows_velocity(geometry_t *geom, master_t *master,
+				     geometry_t **window, window_t **windat,
+				     int flag)
+{
+  int ret = 0;
+  
+#ifdef HAVE_MPI
+  static int first = 1;
+  int mpi_rank_other = (mpi_rank == 0 ? 1 : 0);
+  FILE *fp;
+  char fname[MAXSTRLEN];
+  
+  /* global */
+  int v_size, *w_e1, vel_sz;
+  double *vel;
+
+  /* windows */
+  int win_v_size, *win_w_e1;
+  double *win_vel;
+  
+  /* Only works for exactly 2 processes */
+  if (mpi_size != 2)
+    return(0);
+
+  /* Set up sizes and arrays for this process */
+  if (flag == VEL2D) {
+    v_size = geom->v2_e1;
+    w_e1   = geom->w2_e1;
+    vel    = master->u1av; // same as windat[1]->u1av
+    vel_sz = geom->szeS;
+  } else
+    if (flag == VEL3D) {
+      /* 3D */
+      v_size = geom->v3_e1;
+      w_e1   = geom->w3_e1;
+      vel    = master->u1; // same as windat[1]->u1
+      vel_sz = geom->sze;
+    } else {
+      printf("mpi_check unsupported flag\n");
+      return(1);
+    }
+  
+  /* Construct unique file name */
+  sprintf(fname, "check_vel_%d.txt", mpi_rank);
+  
+  /* Open file the first time around */
+  if (first)
+    fp = fopen(fname, "w");
+  else {
+    fp = fopen(fname, "a");
+    first = 0;
+  }
+  
+  fprintf(fp,"MPI Multi window check invoded\n");
+  fprintf(fp,"------------------------------\n");
+  fprintf(fp,"t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->t, mpi_rank,
+	 master->nwindows, prmname);
+  fprintf(fp,"\n");
+  
+  /*
+   * Multiple windows receives from single window
+   */
+  if (master->nwindows > 1) {
+    double *vel_o;   /* _o for other */
+    int sz = 0, n, ee;
+    
+    fprintf(fp,"Remote receives and compares\n\n");
+
+    vel_o = d_alloc_1d(vel_sz);
+    MPI_Recv(&vel_o[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+
+    /* Print header */
+    fprintf(fp,"es\te\tk\tle\twn\tvel_w\t\tvel_m\n");
+
+    /* Check array */
+    for (n = 1; n <= master->nwindows; n++) {
+      if (flag == VEL2D) {
+	win_v_size = window[n]->v2_e1;
+	win_w_e1   = window[n]->w2_e1;
+	win_vel    = windat[n]->u1av;
+      } else {
+	win_v_size = window[n]->v3_e1;
+	win_w_e1   = window[n]->w3_e1;
+	win_vel    = windat[n]->u1;
+      }
+      for (ee = 1; ee <= win_v_size; ee++) {
+	int le = win_w_e1[ee];
+	int e  = window[n]->wse[le];
+	/* Compare results within epsilon of double precision */
+	if (fabs(win_vel[le] - vel_o[e]) > DBL_EPSILON) {
+	  int es = geom->m2de[e];
+	  int k  = geom->e2k[e];
+	  fprintf(fp,"%d\t%d\t%d\t%d\t%d\t%.3e\t%.3e\t%.3e\n", es, e, k, le, n,
+		  win_vel[le], vel_o[e], fabs(win_vel[le]-vel_o[e]));
+	  ret = 1;
+	}
+	sz++;
+      }
+    }
+    fprintf(fp,"------------------------------\n\n");
+    
+    /* Make sure we got everything */
+    if (sz != v_size) {
+      fprintf(fp,"Not all edges accounted for %d vs %d\n",sz, v_size);
+      ret = 1;
+    }
+
+    d_free_1d(vel_o);
+
+    /* Send flag for a clean exit */
+    MPI_Send(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    
+  } else {
+    fprintf(fp,"Host sends\n\n");
+
+    /* Send velocity array itself */
+    MPI_Send(&vel[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD);
+
+    /* Receive exit status from dst */
+    MPI_Recv(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+  }
+
+  fclose(fp);
+
+#endif
+
+  return(ret);
+}
+
+/*
+ * Rank 0 assumes host
+ * Rank 1 assumes remote
+ */
+int mpi_check_multi_windows_Vz(geometry_t *geom, master_t *master,
+			       geometry_t **window, window_t **windat)
+{
+  int ret = 0;
+  
+#ifdef HAVE_MPI
+  static int first = 1;
+  int mpi_rank_other = (mpi_rank == 0 ? 1 : 0);
+  FILE *fp;
+  char fname[MAXSTRLEN];
+  
+  /* global */
+  int v_size, *w_t, vel_sz;
+  double *vel;
+
+  /* windows */
+  int win_v_size, *win_w_t;
+  double *win_vel;
+  
+  /* Only works for exactly 2 processes */
+  if (mpi_size != 2)
+    return(0);
+
+  /* Set up sizes and arrays for this process */
+  /* 3D */
+  v_size = geom->v3_t;
+  w_t    = geom->w3_t;
+  vel    = master->Vz; // same as windat[1]->Vz
+  //vel    = master->tr_wc[master->sno]; // same as windat[1]->Vz
+  vel_sz = geom->szc;
+
+  /* Construct unique file name */
+  sprintf(fname, "check_Vz_%d.txt", mpi_rank);
+  
+  /* Open file the first time around */
+  if (first)
+    fp = fopen(fname, "w");
+  else {
+    fp = fopen(fname, "a");
+    first = 0;
+  }
+  
+  fprintf(fp,"MPI Multi window check invoded\n");
+  fprintf(fp,"------------------------------\n");
+  fprintf(fp,"t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->t, mpi_rank,
+	 master->nwindows, prmname);
+  fprintf(fp,"\n");
+
+  /*
+   * Multiple windows receives from single window
+   */
+  if (master->nwindows > 1) {
+    double *vel_o;   /* _o for other */
+    int sz = 0, n, cc;
+    
+    fprintf(fp,"Remote receives and compares\n\n");
+
+    vel_o = d_alloc_1d(vel_sz);
+    MPI_Recv(&vel_o[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    
+    /* Print header */
+    fprintf(fp,"cs\tc\tk\tlc\twn\tVz_w\t\tVz_m\n");
+    
+    /* Check array */
+    for (n = 1; n <= master->nwindows; n++) {
+      win_v_size = window[n]->v3_t;
+      win_w_t    = window[n]->w3_t;
+      win_vel    = windat[n]->Vz;
+      //win_vel    = windat[n]->tr_wc[windat[n]->sno];
+      
+      for (cc = 1; cc <= win_v_size; cc++) {
+	int lc = win_w_t[cc];
+	int c  = window[n]->wsa[lc];
+	/* Compare results within epsilon of double precision */
+	if (fabs(win_vel[lc] - vel_o[c]) > DBL_EPSILON) {
+	  int cs = geom->m2d[c];
+	  int k  = geom->s2k[c];
+	  fprintf(fp,"%d\t%d\t%d\t%d\t%d\t%.3e\t%.3e\t%.3e\n", cs, c, k, lc, n,
+		  win_vel[lc], vel_o[c], fabs(win_vel[lc]-vel_o[c]));
+	  ret = 1;
+	}
+	sz++;
+      }
+    }
+    fprintf(fp,"------------------------------\n\n");
+    
+    /* Make sure we got everything */
+    if (sz != v_size) {
+      fprintf(fp,"Not all edges accounted for %d vs %d\n",sz, v_size);
+      ret = 1;
+    }
+    
+    d_free_1d(vel_o);
+    
+    /* Send flag for a clean exit */
+    MPI_Send(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    
+  } else {
+    fprintf(fp,"Host sends\n\n");
+    
+    /* Send velocity array itself */
+    MPI_Send(&vel[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD);
+
+    /* Receive exit status from dst */
+    MPI_Recv(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+  }
+  
+  fclose(fp);
+  
+#endif
+  
+  return(ret);
+}

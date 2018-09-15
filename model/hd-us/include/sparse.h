@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: sparse.h 5913 2018-09-05 02:35:27Z her127 $
  *
  */
 
@@ -417,6 +417,7 @@ struct win_priv {
   int pssinput;                 /* Point ss input method              */
   int conserve;                 /* Volume conservation */
   int do_closure;               /* Do vertical mixing (transport mode) */
+  int do_pt;                    /* Do particle tracking */
   int compatible;               /* Backwards compatible flag */
   int sh_f;                     /* Data input type for specific humidity */
   int filter;                   /* Filtering options */
@@ -858,6 +859,8 @@ struct geometry {
   int *bine2S;                  /* As for bine2 but for 2D arrays */
   int *brsm;                    /* Boundary radiation stress mask */ 
   int *wgst;                    /* Ghost cells for windows */
+  int *cask;                    /* Cell centre codes */
+  int *eask;                    /* Edge codes */
 
   /* Cells which need to be transferred from master to slave.  */
   /* These arrays are only defined for windows.  */
@@ -964,6 +967,8 @@ struct geometry {
   /* Transport */
   transport_t *trans;
 
+  int is_geog;                  /* Grid specified in geographical projection */
+  
   /* Multiple time-stepping arrays for tracers */
   int naux_t;
   int *aux_t;

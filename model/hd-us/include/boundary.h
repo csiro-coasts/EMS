@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundary.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: boundary.h 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -206,6 +206,7 @@ struct open_bdrys {
   int ocodex;                   /* Orientation of edge in x direction */
   int ocodey;                   /* Orientation of edge in y direction */
   int ocodec;                   /* Orientation of centre from edge */
+  int *dir;                     /* Direction of edge vector (1=in, -1=out) */
   int *outi;                    /* Index pointing into the domain */
   int *ini;                     /* Index pointing out of the domain */
   int *ceni;                    /* Orientation of centre from edge */
@@ -297,8 +298,13 @@ struct open_bdrys {
   double rtan_b;                /* Relaxation timescale on boundary */
   double rtan_i;                /* Relaxation timescale in interior */
   int sponge_zone;              /* Sponge zone for bottom friction */
-  int sponge_zone_h;            /* Sponge zone for horizontal friction */
+  double sponge_zone_h;         /* Sponge zone for horizontal friction */
   double sponge_f;              /* Multiplication factor for sponges */
+  int nspc, nspe1;              /* Number of cells / edges in the zone */
+  int *spc, *spe1;              /* Cells / edges in the zone */
+  double *swc, *swe1;           /* Weights for linear interpolation */
+  int *snc, *smc;               /* Closest cell to boundary / outer perimeter */
+  int *sne1, *sme1;             /* Closest edge to boundary / outer perimeter */
   double ncells;                /* Number of cells in this boundary */
   double *nepc;                 /* 1 / Number of edges per cell */
   double area;                  /* Area of boundary */

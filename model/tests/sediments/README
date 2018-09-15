@@ -1,0 +1,47 @@
+SEDIMENT MODEL TEST RUNS
+September 2018
+
+There are 5 simulation scenarios in the "test1" directory each simulating different configuration of the 1D vertical sediment transport model. The key purpose of these simulations is to test conservation properties of the 1D sediment transport model. These tests also enable a quick qualitative assessment of the key sediment processes (sanity check).  
+
+In the directory test2 the model simulates 3D transport of the dissolved and particulate tracers in a wind-driven, closed basin. The main purpose of this simulation is to test mass balance equations of the 3D sediment transport model in a high energy environment with strong currents.
+
+Simulation scenarios in the test3 directory, illustrate a 3D application of the model to an idealised estuary.
+
+Test1, test2 and test3 simulate sediment transport in off-line mode - the hydrodynamic model runs first to provide inputs to the stand-alone sediment transport model. The simulation time-step for the sediment model is 30 min, much larger than the time-step of the hydrodynamic model. 
+Test4 repeats test2 except that now the hydrodynamic model is fully coupled to the sediment transport model. The sediment transport model runs concurrently with the hydrodynamic model and the time-step of the sediment model is the same as the time step of the hydrodynamic model.
+
+Usage:
+copy shoc executable to test directories test1, test2, test3, and test4.
+cd test1 (or test2, or test4)
+./run_all.sh
+
+cd test3
+./run.sh test_basic 
+./run.sh test_advanced
+
+In test1, test2, and test4 dirtectories the script must return OK if everything is fine or ERROR if something goes wrong.
+Output from test3 scenarios is stored in test3/tran_outputs/
+1D tests in test1 directory can be simulated individually. Run "./run.sh" for more details.
+More detailed breakdown of these tests follows.
+
+
+
+A 1D-vertical sediment transport model simulates transport of the dissolved and particulate materials in a coupled, vertically resolved benthic and pelagic layers. The modelling domain comprises 10 meters of the water column (resolved by 1 m layers) coupled to 10 cm of sediments (resolved by 1 cm layers). Sediments are represented by gravel, sand, and mud, initially allocated in sediment layers. Passive tracer is added to the model configuration to represent a dissolved conservative tracer initially also allocated in sediment layers. The model first simulates hd forcing and then runs sediment transport model in an offline mode.
+
+1. Diffusion test simulates diffusion of the dissolved conservative tracer across water sediment interface in a still environment.
+
+2. Resuspension test simulates exchange of the dissolved and particulated traces across water and sediments. The sediment resuspension is induced by varying bottom shear stress. Resupension-driven exchange of pore water drives fluxes of the dissolved tracer between benthis and pelagic layers.
+
+3. Compaction test simulates expulsion of pore water and dissolved tracers from consolidating benthic sediment.
+
+4. The pollutant test simulated dissolution of the sediment reactive tracer from sediments into the pore ware.
+
+5. Scenarios 1 to 4 simulate one key sediment process at a time. Scenario 5 simulates diffusion, resuspension and compaction of sediments running simultaneously.
+
+
+A simulation scenario in the "test2" directory simulates transport of dissolved and particulate tracers in a wind-driven closed basin with a flat bathymetry. The water depth is 10 m (1m vertical resolutin), and the sediment depth  is 10 cm (1cm vertical resolution). In horizontal directions the modelling domain is resolved by 10x10 cells of the numerical grid, each cell representing 1x1 km**2. Sediment resuspension is enhanced by surface gravity waves. The model runs for 10 days.     
+
+
+Scenarios in test3 directory simulate sediment transport in an idealised estuary with a varying river flow and tidally driven ocean boundary. Sediment load from catchments is represented by constant concentration of catchment sediment set at the river boundary. Sediment concentration at the ocean boundary is set to zero. Initial concentration of catchment sediment is zero throughout the modelling domain. Past accumulated deposits of sediments are represented by gravel, sand and mud allocated initially in benthic layers. First scenario ("test_basic") runs reduced configuration of the model (no flocculation, constant critical shear stress, no consolidation, 10 cm sediments resolved into 1 cm layers). Another simulation scenario ("test_advanced") runs a more advanced configuration of the model with flocculation and consolidation of fine sediment switched on, critical shear stress varying over the sediment depth, and varying vertical resolution of the sediment layer. To mitigate impact of z-coordinate grid on sediment dynamics, scenario with an advanced configuration of the model simulates transport of only fine fractions sediments (gravel and sand are locked inside benthic layers).    
+
+

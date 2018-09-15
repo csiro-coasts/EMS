@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: dumpdata.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -348,7 +348,7 @@ void dumpdata_init(dump_data_t *dumpdata, /* Dump data structure */
   if (!(geom->us_type & US_IJ)) return;
 
   neighbour_none(dumpdata);
-  dumpdata_init_geom(geom, dumpdata);
+  dumpdata_init_geom(master->params, geom, dumpdata);
 
   for (cc = 1; cc <= geom->n2_t; cc++) {
     c = geom->w2_t[cc];
@@ -371,13 +371,23 @@ void dumpdata_init(dump_data_t *dumpdata, /* Dump data structure */
 /*-------------------------------------------------------------------*/
 /* Fills the dump structure with model geometry                      */
 /*-------------------------------------------------------------------*/
-void dumpdata_init_geom(geometry_t *geom, dump_data_t *dumpdata)
+void dumpdata_init_geom(parameters_t *params, geometry_t *geom, dump_data_t *dumpdata)
 {
   int c, cc, e, ee, v, vv;
   int i, j;
 
   if (!(geom->us_type & US_IJ)) return;
 
+  /* Structured grids often have vertices defined over land, and     */
+  /* these need to be included in dumpdata->grid to correctly set    */
+  /* the xytoij map. Use params->x and y to achieve this.            */
+  for (j = 0; j < geom->nce2 + 1; j++) {
+    for (i = 0; i < geom->nce1 + 1; i++) {
+      dumpdata->gridx[j][i] = params->x[j * 2][i * 2];
+      dumpdata->gridy[j][i] = params->y[j * 2][i * 2];
+    }
+  }
+  /*
   for (vv = 1; vv <= geom->n2_e2; vv++) {
     v = geom->w2_e2[vv];
     i = geom->v2i[v];
@@ -385,6 +395,16 @@ void dumpdata_init_geom(geometry_t *geom, dump_data_t *dumpdata)
     dumpdata->gridx[j][i] = geom->gridx[v];
     dumpdata->gridy[j][i] = geom->gridy[v];
   }
+
+  for (j = 0; j < geom->nce2 + 1; j++) {
+    for (i = 0; i < geom->nce1 + 1; i++) {
+      if (dumpdata->gridx[j][i] != params->x[j * 2][i * 2])
+	printf("%d %d %f %f\n",i,j,dumpdata->gridx[j][i],params->x[j * 2][i * 2]);
+      if (dumpdata->gridy[j][i] != params->y[j * 2][i * 2])
+	printf("%d %d %f %f\n",i,j,dumpdata->gridy[j][i],params->y[j * 2][i * 2]);
+    }
+  }
+  */
 
   for (cc = 1; cc <= geom->n2_t; cc++) {
     c = geom->w2_t[cc];

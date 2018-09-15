@@ -4,8 +4,24 @@
  *  
  *  File: model/lib/ecology/process_library/phytoplankton_spectral_mortality_wc.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Phytoplankton mortality.
+ *
+ *  Options: phytoplankton_spectral_mortality_wc(small|large)
+ *
+ *  Small - State variables PhyS_*, parameters PS*
+ *  Large - State variables PhyL_*, parameters PL*
+ *
+ *  Process includes return of nutrient reserves to water column, structural material to detritus, and 
+ *  consumption of oxygen when photosynthates are released during mortality.
+ *
+ *  WARNING: Mass balance check requires that if this processes is active, then so must be  
+ *           phytoplankton_spectral_grow_wc
+ *
+ *  Model description: See zooxanthallae equations in:
+ * 
+ *  Baird, M. E., M. Mongin, F. Rizwi, L. K. Bay, N. E. Cantin, M. Soja-Wozniak and J. Skerratt (2018) 
+ *  A mechanistic model of coral bleaching due to temperature-mediated light-driven reactive oxygen 
+ *  build-up in zooxanthellae. Ecol. Model 386: 20-37.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +29,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_spectral_mortality_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: phytoplankton_spectral_mortality_wc.c 5932 2018-09-11 22:46:50Z bai155 $
  *
  */
 

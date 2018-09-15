@@ -1,0 +1,15 @@
+#!/bin/csh -f
+
+echo "Testing COMPAS cetas..."
+rm *.msh
+rm *.txt
+rm *.us
+rm *.jig
+rm *.site
+rm in.nc
+
+../compas -ag auto.prm
+
+echo "DONE"
+
+

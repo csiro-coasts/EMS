@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vtransp.c 5848 2018-06-29 05:01:15Z riz008 $
+ *  $Id: vtransp.c 5895 2018-08-21 06:58:38Z mar644 $
  *
  */
 
@@ -1466,6 +1466,7 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
   double rho_w = 1025.;
   double bs;                    /* bottom shear stress */
   double nxsbs;                 /* normalized excess bottom shear stress */
+  double css_depX;
   double depfluxcoef;           /* deposition term coefficient for
                                    implicit calculation */
   double r;
@@ -1502,7 +1503,14 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
   sm->erflux[n] = param->erflux_scale *
       r * 0.002 * sm->css[tk_sed] * nxsbs;  /* erosion flux, in kg m-2 s-1 */
   /* Define deposition term coefficient for implicit calculation */
-  nxsbs = (bs < sm->css_dep) ? (1.0 - bs / sm->css_dep) : 0.0;  
+/*NMY tmp fix for fluff 2018 */
+if (strcmp("Dust",tracer->name) == 0)
+   css_depX=0.0;
+else
+   css_depX=sm->css_dep;
+
+
+  nxsbs = (bs < css_depX) ? (1.0 - bs / css_depX) : 0.0;  
   /* normalised excess stress */
 
   v = sm->svel_wc[n][bk_wc];

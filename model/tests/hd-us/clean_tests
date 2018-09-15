@@ -1,0 +1,66 @@
+#!/bin/csh -f
+
+echo "Cleaning directory test2/closed..."
+rm test2/closed/*~
+rm test2/closed/out1*nc
+rm test2/closed/in1*nc
+rm test2/closed/win*nc
+rm test2/closed/s_in1_*nc
+rm test2/closed/loc*.ts
+rm test2/closed/*.txt
+rm test2/closed/*.us
+rm test2/closed/runlog
+rm test2/closed/*.jpg
+echo "Done test2/closed"
+
+echo "Cleaning directory test2/open..."
+rm test2/open/*~
+rm test2/open/out1*nc
+rm test2/open/in1*nc
+rm test2/open/s_in1_*nc
+rm test2/open/loc*.ts
+rm test2/open/*.txt
+rm test2/open/*.us
+rm test2/open/runlog
+rm test2/open/*.jpg
+echo "Done test2/open"
+
+echo "Cleaning directory closed.."
+rm closed/*~
+rm closed/out1*.nc
+rm closed/closed.nc
+rm closed/closed_quad.nc
+rm closed/s_closed_quad.nc
+rm closed/closed_hex.nc
+rm closed/loc*.ts
+rm closed/*.txt
+rm closed/totals.ts
+rm closed/*.us
+rm closed/runlog
+rm closed/*.jpg
+echo "Done closed"
+
+echo "Cleaning directory est.."
+rm est/*~
+rm est/out1*.nc
+rm est/est.nc
+rm est/est_quad.nc
+rm est/s_est_quad.nc
+rm est/est_hex.nc
+rm est/loc*.ts
+rm est/*.txt
+rm est/*.us
+rm est/region*.ts
+rm est/totals.ts
+rm est/runlog
+rm est/*.jpg
+echo "Done est"
+
+echo "Cleaning directory cetas.."
+rm cetas/*.msh
+rm cetas/*.txt
+rm cetas/*.us
+rm cetas/*.jig
+rm cetas/*.site
+rm cetas/in.nc
+echo "Done cetas"

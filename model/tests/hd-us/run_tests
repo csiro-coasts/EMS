@@ -1,0 +1,37 @@
+#!/bin/csh -f
+
+cp ~/ems_us/main/model/hd/shoc .
+cp ~/ems_us/main/model/hd-us/compas .
+
+echo "Running test2/closed..."
+cd test2/closed
+cat README
+./run_closed
+echo "Done test2/closed"
+echo "-------------------------------"
+echo "Running test2/open..."
+cd ../../test2/open
+cat README
+./run_open
+echo "Done test2/open"
+echo "-------------------------------"
+echo "Running closed..."
+cd ../../closed
+cat README
+./run_closed
+echo "Done closed"
+echo "-------------------------------"
+echo "Running est..."
+cd ../est
+cat README
+./run_est
+echo "Done est"
+echo "-------------------------------"
+echo "Running cetas..."
+cd ../cetas
+cat README
+./run_cetas
+echo "Done cetas"
+
+
+

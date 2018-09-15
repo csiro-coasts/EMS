@@ -1,0 +1,181 @@
+# auto file for generation of SE Tasmania model.
+
+timeunit seconds since 2014-12-07 12:00:00
+output_timeunit days since 2014-12-07 12:00:00
+START_TIME           10074.00   days
+STOP_TIME            10165.00   days
+
+PARAMETERHEADER      CETAS
+
+# Input files
+input_file 	     in
+
+# Diagnostics
+NUMBERS              RESOLUTION
+
+# Grid
+projection geographic
+GRIDTYPE             UNSTRUCTURED
+INTERIOR_COORD       147.4 -43.6
+
+# Write JIGSAW .msh compatible files
+JIG_GEOM_FILE        cetas_geom.msh
+HFUN_FILE            auto_hfun.msh
+
+# HFUN file (bathymetry weighted)
+HFUN_BATHY_FILE      se_tas.bty
+
+# Interpolation rule for bathymetry (linear, cubic, nn_sibson, nn_non_sibson)
+HFUN_INTERP_RULE     linear
+
+# Put hfun on a regular grid
+HFUN_GRID            yes
+HFUN_SMOOTH          2
+
+# Other weighting options
+#HFUN_BATHY_FILE      COAST
+#HFUN_BATHY_FILE      1000.0
+#HFUN_VAR             temp
+#HFUN_TIME            10314 days
+
+# Mapping functions from bathymetry to resolution
+NHFUN                2
+HMIN0                200.0
+HMAX0                400.0
+BMIN0                -5.0
+BMAX0                -70.0
+TYPE0                -10.0
+
+HMIN1                400.0
+HMAX1                3000.0
+BMIN1                -70.0
+BMAX1                -150.0
+TYPE1                -10.0
+
+# Increase resolution at selected locations
+HFUN_OVERRIDE        3
+146.9322 -43.6025 20e3 -100
+147.042 -43.052 2e3 -70
+147.9750 -43.2685 15e3 -150
+
+# Coastmesh
+COASTFILE            setas.cst
+PLOTFILE             cetas_p
+CUTOFF               50
+#RADIUS               500
+LENGTH               500
+MINLON               146.66
+MINLAT               -44.0
+MAXLON               148.1
+MAXLAT               -42.7
+START_COORD          146.9214 -43.5995
+END_COORD            147.9986717 -43.2464189
+MID_COORD            146.9235 -43.581
+SMOOTH               1
+SMOOTHZ              3
+RESAMPLE             2
+NOBC                 1
+OBC0                 setas_obc.xy
+SMOOTH_SEGMENT	     566:4:12 168:6:10 568:4:10 567:4:12 163:4:6
+
+LINKS                22
+LINK0.start          147.1875 -42.7429
+LINK0.end            147.1861 -42.7408
+LINK0.text           Derwent
+
+LINK1.start          147.8023 -42.893 
+LINK1.end            147.8031 -42.894
+LINK1.dir            -
+#LINK1.mid            147.804 -42.8941
+LINK1.text           Dunally
+
+LINK2.start          147.0436995 -43.0465703
+LINK2.end            147.0450856 -43.0466359
+LINK2.text           Huon
+
+LINK3.start          147.2734 -43.0247
+LINK3.end            147.2727 -43.0244
+LINK3.text           Margate
+
+LINK4.start          146.8928702 -43.5824022
+LINK4.end            146.8925353 -43.5824259
+LINL4.text	     Recherche 1
+
+LINK5.start          146.8851115 -43.5551429
+LINK5.end            146.8846721 -43.5552228
+LINL5.text	     Recherche 2
+
+LINK6.start          146.9027510 -43.5162178
+LINK6.end            146.9031013 -43.5168870
+LINL6.text	     Recherche 3
+
+LINK7.start          146.9206220 -43.4384200
+LINK7.end            146.9213481 -43.4382572
+LINL7.text	     Lune River
+
+LINK8.start          146.9730136 -43.3280226
+LINK8.end            146.9721598 -43.3266722
+LINL8.text	     Dover
+
+LINK9.start          146.9623092 -43.1584191
+LINK9.end            146.9637982 -43.1580298
+LINL9.text	     Port Huon
+
+LINK10.start         147.1037360   -43.1850546
+LINK10.end           147.1036020   -43.1853487
+LINL10.text	     Nicholls Rivulet
+
+LINK11.start         147.1432222 -43.2499330
+LINK11.end           147.1436945 -43.2504262
+LINL11.text	     Garden Is
+
+LINK12.start         147.2626459 -43.0615773 
+LINK12.end           147.2632726 -43.0614050
+LINL12.text	     Snug
+
+LINK13.start         147.3295470 -42.9779898
+LINK13.end           147.3312061 -42.9769456
+LINL13.text	     Kingston
+
+LINK14.start         147.2543934 -42.7475051
+LINK14.end           147.2560536 -42.7481491
+LINL14.text	     Jordan River
+
+LINK15.start         147.4380447 -42.7814521
+LINK15.end           147.4395477 -42.7804372
+LINL15.text	     Duckhole River
+
+LINK16.start         147.4487701 -42.7657518
+LINK16.end           147.4528095 -42.7657518
+LINL16.text	     Coal River
+
+LINK17.start         147.5348852 -42.7836352
+LINK17.end           147.5377728 -42.7836746
+LINL17.text	     Orielton Rivulet 
+
+LINK18.start         147.5648370 -42.7927104
+LINK18.end           147.5650380 -42.7933272
+LINL18.text	     Sorell Rivulet
+
+LINK19.start         147.5947237 -42.7848911
+LINK19.end           147.5960639 -42.7852860
+LINL19.text	     Iron Creek
+
+LINK20.start         147.6435105 -42.8763888
+LINK20.end           147.6430303 -42.8775190
+LINL20.text	     Carlton River
+
+LINK21.start         148.0013259 -43.2276752
+LINK21.end           148.0007227 -43.2314244
+LINK21.mid           147.9977066 -43.2381283
+LINL21.text	     Tasman Is
+
+# Bathymetry
+BATHYFILE            setas_botz.nc
+BATHY_INTERP_RULE    cubic
+BATHYFILL            AVERAGE
+
+NBOUNDARIES          0
+
+# Output
+outputfiles          0

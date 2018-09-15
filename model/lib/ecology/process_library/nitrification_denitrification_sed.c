@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: nitrification_denitrification_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: nitrification_denitrification_sed.c 5908 2018-08-29 04:27:09Z bai155 $
  *
  */
 
@@ -152,9 +152,6 @@ void nitrification_denitrification_sed_calc(eprocess* p, void* pp)
   
   y1[ws->NH4_i] -= Nitrification;
   y1[ws->NO3_i] += Nitrification - Denitrification;
-
-  if (ws->COD_i > -1)
-    y1[ws->COD_i] -= (Nitrification - Denitrification) * NIT_N_0 ;
     
   if (ws-> NH4_pr_i > -1)
     y1[ws->NH4_pr_i] -= Nitrification * SEC_PER_DAY * c->dz_sed * porosity;
@@ -164,14 +161,14 @@ void nitrification_denitrification_sed_calc(eprocess* p, void* pp)
   
   /*
    * KWA added : 2 moles of DO lost for every mole of N == 4.57 g (NIT_N_0)
-   *             DO per g of N nitrified and not denitrified 
+   *             DO per g of N nitrified and not denitrified
+   * MEB added : This does not include O2 going into water. NIT_N_O has to be changed when NO3 included in O2 budget.
    */
   
-  y1[ws->Oxygen_i] -= (Nitrification - Denitrification) * NIT_N_0 ;
+  y1[ws->Oxygen_i] -= (Nitrification - Denitrification) * 48.0/14.01 ;
   
   if (ws-> Oxy_pr_i > -1)
-    y1[ws->Oxy_pr_i] -= (Nitrification - Denitrification) * NIT_N_0 
-      * porosity * c->dz_sed * SEC_PER_DAY;
+    y1[ws->Oxy_pr_i] -= (Nitrification - Denitrification) * 48.0/14.01 *  porosity * c->dz_sed * SEC_PER_DAY;
 }
 void nitrification_denitrification_sed_postcalc(eprocess* p, void* pp)
 {
