@@ -45,7 +45,7 @@ There are many tests available for each module. See [model/tests](model/tests) f
 
 EMS is wrtten and maintained by the [Coastal Environmental Modelling team](https://research.csiro.au/cem/people/)
 
-See also the list of [contributors](https://github.com/csiro-coasts/EMS-pre-release/CONTRIBUTORS.md) who participated in this project.
+See also the list of [contributors](CONTRIBUTORS.md) who participated in this project.
 
 ## License
 
