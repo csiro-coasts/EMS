@@ -11,6 +11,11 @@ The CSIRO Coastal Environmental Modelling (CEM) team develops, maintains and use
 
 Additional software exists to generate the complex orthogonal curvilinear grids that are typically used for case studies. These grids allow variable resolution over the domain, useful for representing areas of interest with high resolution and less critical regions with coarser resolution. The curvilinear grid may also allow a dimensionality to be reduced from 3-D to 2-D within the same grid. This is useful when representing rivers or narrow estuaries, since the cross-river coordinate becomes very small in these areas and therefore becomes the defining grid size for setting the model time-step. Eliminating these small grid cells by making rivers or estuaries 2-D laterally averaged allows larger time-steps, hence a faster model. The curvilinear grids require dedicated software for visualizisation of model output, and the CEM supports several visualisation platforms to archive this. These software packages allow publication quality images and animations to be produced, and allow exploration of the data in 4 dimensions for analysis purposes.
 
+## User registration
+We strongly encourage all users of EMS to register their details with our group.
+
+Please [use this form to do so](https://research.csiro.au/cem/software/ems/ems-user-registration/)
+
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
