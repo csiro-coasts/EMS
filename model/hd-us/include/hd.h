@@ -28,7 +28,7 @@
 #include <time.h>
 #include <semaphore.h>
 #include "ems.h"
-#include "svn_rev.h"
+//#include "svn_rev.h"
 
 /*
  * This is just the Version of SHOC. The subversion revision string
