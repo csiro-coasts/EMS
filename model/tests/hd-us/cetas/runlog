@@ -1,16 +1,3 @@
-[2018/08/13 11:22:12]-[warn  ]() HFUN_OVERRIDE0 minimum dist @ 146.934975 -43.600559
-[2018/08/13 11:22:12]-[warn  ]() HFUN_OVERRIDE1 minimum dist @ 147.043518 -43.048603
-[2018/08/13 11:22:12]-[warn  ]() HFUN_OVERRIDE2 minimum dist @ 147.976985 -43.266480
-[2018/08/13 11:23:41]-[warn  ]() convert_hex_mesh: Can't create closed cell at 1650 [147.478559 -42.812684]. Removing cell.
-[2018/08/13 11:23:43]-[warn  ]() No bathymetry provided in parameter file.
-[2018/08/13 11:23:43]-[warn  ]() mesh_expand: 0 cells eliminated
-[2018/08/13 11:25:46]-[warn  ]() value_init_3d: No 3D information provided to populate array salt; using defaults
-[2018/08/13 11:25:46]-[warn  ]() value_init_3d: No 3D information provided to populate array temp; using defaults
-[2018/08/13 11:25:46]-[warn  ]() value_init_3d: No 3D information provided to populate array tke; using defaults
-[2018/08/13 11:25:46]-[warn  ]() value_init_3d: No 3D information provided to populate array diss; using defaults
-[2018/08/13 11:25:46]-[warn  ]() temp_salt_init: No temp forcing data specified for TEMP_DATA
-[2018/08/13 11:25:46]-[warn  ]() temp_salt_init: No salt forcing data specified for SALT_DATA
-[2018/08/13 11:25:47]-[warn  ]() value_init_2d: No information provided to populate array cell_resolution; using defaults
-[2018/08/13 11:25:47]-[warn  ]() floor(2D time-step) <= 1 (0.700000)
-[2018/08/13 11:25:47]-[warn  ]() dumpfile_init: No netCDF output files have been specified.
-[2018/08/13 11:25:48]-[warn  ]() No tracer percentile region specified.
+[2018/08/17 10:21:46]-[warn  ]() HFUN_OVERRIDE0 minimum dist @ 146.934975 -43.600559
+[2018/08/17 10:21:46]-[warn  ]() HFUN_OVERRIDE1 minimum dist @ 147.043518 -43.048603
+[2018/08/17 10:21:46]-[warn  ]() HFUN_OVERRIDE2 minimum dist @ 147.976985 -43.266480
