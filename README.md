@@ -14,7 +14,7 @@ Additional software exists to generate the complex orthogonal curvilinear grids 
 See [more EMS info on the CEM website](https://research.csiro.au/cem/software/ems/)
 
 ## Documentation
-Manuals for all modules [is available from this link](https://research.csiro.au/cem/software/ems/ems-documentation/)
+Manuals for all modules [are available from this link](https://research.csiro.au/cem/software/ems/ems-documentation/)
 
 ## User registration
 We strongly encourage all users of EMS to register their details with our group.
