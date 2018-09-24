@@ -12,4 +12,7 @@ part of the EMS package - [see here](../../ext/jigsaw)
 ### Documentation
 [See here for more info](https://research.csiro.au/cem/software/ems/hydro/unstructured-compas/)
 
+[COMPAS user manual](https://research.csiro.au/cem/?ddownload=124)
+
+
 

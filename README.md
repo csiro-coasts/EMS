@@ -11,6 +11,11 @@ The CSIRO Coastal Environmental Modelling (CEM) team develops, maintains and use
 
 Additional software exists to generate the complex orthogonal curvilinear grids that are typically used for case studies. These grids allow variable resolution over the domain, useful for representing areas of interest with high resolution and less critical regions with coarser resolution. The curvilinear grid may also allow a dimensionality to be reduced from 3-D to 2-D within the same grid. This is useful when representing rivers or narrow estuaries, since the cross-river coordinate becomes very small in these areas and therefore becomes the defining grid size for setting the model time-step. Eliminating these small grid cells by making rivers or estuaries 2-D laterally averaged allows larger time-steps, hence a faster model. The curvilinear grids require dedicated software for visualizisation of model output, and the CEM supports several visualisation platforms to archive this. These software packages allow publication quality images and animations to be produced, and allow exploration of the data in 4 dimensions for analysis purposes.
 
+See [more EMS info on the CEM website](https://research.csiro.au/cem/software/ems/)
+
+## Documentation
+Manuals for all modules [is available from this link](https://research.csiro.au/cem/software/ems/ems-documentation/)
+
 ## User registration
 We strongly encourage all users of EMS to register their details with our group.
 
@@ -31,14 +36,16 @@ NetCDF library
 ```
 
 ### Building
-To get started, type the following commands on a Linux command line to build SHOC:
+To get started, type the following on a Linux command line:
 
 ```
 conf/configure
 make
-# The SHOC executable will be model/hd/shoc
-# Type the following to get version information
+# This will build all libraries and modules including SHOC & COMPAS
+# SHOC will be available in model/hd, to check version info type:
 model/hd/shoc -v
+# COMPAS will be available in model/hd-us, to check version info type:
+model/hd-us/compas -v
 ```
 See [this page](conf/README.md) for full explaination of the build procedure
 
