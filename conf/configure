@@ -4518,10 +4518,10 @@ found_header=no
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $found_header" >&5
 $as_echo "$found_header" >&6; }
 
-test "$found_header" = yes && GSL_INC=$header_path
-test "$found_header" = no && GSL_INC=
+test "$found_header" = yes && GSLINC=$header_path
+test "$found_header" = no && GSLINC=
 
-       if test -z "$GSL_INC" ; then
+       if test -z "$GSLINC" ; then
        	 as_fn_error $? "'Unable to find the gsl headers as needed by DA'" "$LINENO" 5
        fi
        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -lgsl" >&5
