@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.h 5848 2018-06-29 05:01:15Z riz008 $
+ *  $Id: sediments.h 6154 2019-03-05 02:54:04Z riz008 $
  *
  */
 
@@ -40,7 +40,7 @@ extern sedlogtag sedtag;
 
 /* Release verions and getters */
 #define SEDIMENTS_MAJOR_VERSION 1
-#define SEDIMENTS_MINOR_VERSION 0
+#define SEDIMENTS_MINOR_VERSION 1
 #define SEDIMENTS_PATCH_VERSION 0
 
 int get_sediments_major_vers(void);
@@ -163,6 +163,7 @@ struct sed_params {
 
   int n_hripple, n_lripple, n_ustrcw_skin, n_depth_sedi, n_dzactive;
   int n_erdepflux_total, n_erdepflux_total_ac, n_tss, n_svel_floc;
+  int n_erdepflux_oxygen, n_erdepflux_oxygen_ac;
   int n_por_sed, n_coh_sed;
 
   /* sediments */
@@ -284,8 +285,9 @@ struct sed_params {
   double ship_Kz; // ship-induced vertical diffusion coefficient
 
 //2016
-double erflux_scale; // erision rate scaling parameter, default 1;
+ double erflux_scale; // erision rate scaling parameter, default 1;
 
+ int *fluxsedimap_inst, *fluxsedimap_ac;                /* 2018 map from 2D to 3D variables */
 
 };
 
@@ -420,7 +422,8 @@ struct sed_column {
   double *erflux;               /* Erosion flux kg m-2 s-1 (ntr) */
   double *depflux;              /* Deposition flux kg m-2 s-1 (ntr) */
   double *erdepflux;            /* Erosion+Deposition kg m-2 s-1 (ntr) */
-  double erdepflux_total;
+  double erdepflux_total;       /* flux of sediment particles */
+  double erdepflux_oxygen;
   double *bedloadflux;          /* Bedload flux kg m-2 s-1 (ntr) */
   double *ref_c_eq;             /* Equilibrium reference concebtration kg
                                    m-3 (ntr) */

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed_init.c 5848 2018-06-29 05:01:15Z riz008 $
+ *  $Id: sed_init.c 5975 2018-09-26 00:09:12Z mar644 $
  *
  */
 
@@ -25,14 +25,12 @@ extern "C" {
 #include "sediments.h"
 
 #if defined(HAVE_SEDIMENT_MODULE)
-/* Initialise the sediment structure.
- */
+/* Initialise the sediment structure */
 static void sed_params_init(FILE * prmfd, sediment_t *sediment);
 static void sed_tracers_init(FILE * prmfd, sediment_t *sediment);
 static void sed_grid_init(FILE * prmfd, sediment_t *sediment, sed_column_t *sm, int write_log);
 static void alloc_sed_spatial(sediment_t *sediment);
 static void sed_optimization(sediment_t *sediment);
-
 static FILE *get_sed_params(FILE *fp, sediment_t *sediment);
 static void sed_params_build(sediment_t *sediment);
 static void sed_params_est(sediment_t *sediment);
@@ -51,30 +49,20 @@ int sinterface_getnumberoftracers(void* hmodel);
 int si_getmap2hdwctracer(void* hmodel, int n, char *name);
 int si_getmap2hdsedtracer(void* hmodel, int n, char *name);
 int si_getmap2filetracer(void* hmodel, FILE *fp, int n, char *name);
-  //2010
-  int sinterface_getcss_er_val(FILE* prmfd, double *css_er_val);
-  int sinterface_getcss_er_depth(FILE* prmfd, double *css_er_depth);
-//2016
+int sinterface_getcss_er_val(FILE* prmfd, double *css_er_val);
+int sinterface_getcss_er_depth(FILE* prmfd, double *css_er_depth);
 double sinterface_erflux_scale(FILE* prmfd);
-
 /** UR added */
 FILE* si_getparamfile_tracer(FILE *fp);
 FILE* si_getparamfile_sed(FILE *fp);
 /* end UR */
-  char* _itoa(int value, char* str, int base);
-  void strreverse(char* begin, char* end);
-
+char* _itoa(int value, char* str, int base);
+void strreverse(char* begin, char* end);
 void sinterface_getmap2diagtracer_2d(void* hmodel,
-   int *n_hripple, int *n_lripple, int *n_ustrcw_skin,
-   int *n_depth_sedi, int *n_dzactive, int *n_erdepflux_total,
-   int *n_erdepflux_total_ac);
-  /*
-void sinterface_getmap2diagtracer_3d(void* hmodel,
-   int *n_tss, int *n_svel_floc, int *n_por_sed, int *n_coh_sed);
-  */
-
+int *n_hripple, int *n_lripple, int *n_ustrcw_skin,
+int *n_depth_sedi, int *n_dzactive, int *n_erdepflux_total,
+int *n_erdepflux_total_ac, int *n_erdepflux_oxygen, int *n_erdepflux_oxygen_ac);
 double sinterface_getquad_bfc(FILE* prmfd);
-
 int sinterface_getverbose_sed(FILE* prmfd);
 int sinterface_getgeomorph(FILE* prmfd);
 int sinterface_getconsolidate(FILE* prmfd);
@@ -87,7 +75,7 @@ int sinterface_getflocmode(FILE* prmfd);
 double sinterface_getflocprm1(FILE* prmfd);
 double sinterface_getflocprm2(FILE* prmfd);
 int sinterface_getbblnonlinear(FILE* prmfd);
-  double sinterface_getcssscale(FILE* prmfd);//Nov12
+double sinterface_getcssscale(FILE* prmfd);
 int sinterface_getcalcripples(FILE* prmfd);
 double sinterface_getphysriph(FILE* prmfd);
 double sinterface_getbioriph(FILE* prmfd);
@@ -97,70 +85,58 @@ double sinterface_getbiodens(FILE* prmfd);
 double sinterface_getmaxbiodepth(FILE* prmfd);
 double sinterface_getbi_dissol_kz(FILE* prmfd);
 double sinterface_getbt_partic_kz(FILE* prmfd);
-
 double sinterface_getbi_dissol_kz_i(FILE* prmfd);
 double sinterface_getbt_partic_kz_i(FILE* prmfd);
-
 char sinterface_getbiosedprofile(FILE* prmfd);
 double sinterface_getz0(FILE* prmfd);
 int sinterface_getdzinit_sed(FILE* prmfd, double *dz_sed, int sednzc);
-
 double sinterface_gettheta(void *hmodel, double *theta, int ncol);
-
 void si_set_errfn_warn(void *hmodel);
 int si_gettracernames(void* hmodel, char **tracername);
-
 double sinterface_getmaxthicksed(FILE* prmfd);
-  
-  //2012 
-  void sed_tracers_benthic_init(FILE * prmfd, sediment_t *sediment);
-  int sinterface_getnumberofBtracer(void* hmodel);
-  void sinterface_getnameofBtracer(void* hmodel, int n, char *tracername);
-
-  void sinterface_get_tracerunits(void* model, char *name, char *units);
-  double sinterface_get_fillvalue_wc(void* model, char *name);
-  double sinterface_get_fillvalue_sed(void* model, char *name);
-  double sinterface_get_decay(void* model, char *name);
-  double sinterface_get_psize(void* model, char *name);
-  double sinterface_get_b_dens(void* model, char *name);
-  double sinterface_get_i_conc(void* model, char *name);
-  double sinterface_get_svel(void* model, char *name);
-  void sinterface_get_svel_name(void* model, char *name, char *sname);
-  int sinterface_get_diagn(void* model, char *name);
-  int sinterface_get_dissol(void* model, char *name);
-  int sinterface_get_partic(void* model, char *name);
-  int sinterface_get_adsorb(void* model, char *name);
-  int sinterface_get_diffuse(void* model, char *name);
-  int sinterface_get_cohesive(void* model, char *name);
-  int sinterface_get_floc(void* model, char *name);
-  int sinterface_get_resuspend(void* model, char *name);
-  int sinterface_get_deposit(void* model, char *name);
-  int sinterface_get_calcvol(void* model, char *name);
-  int sinterface_get_adsorb_kd(void* model, char *name);
-  int sinterface_get_adsorb_rate(void* model, char *name);
-  int sinterface_get_carriername(void* model, char *name,char *carriername );
-  int sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname);
-  int sinterface_gethindered_svel_patch(FILE* prmfd);
-  int sinterface_gethindered_svel(FILE* prmfd);
-  double sinterface_reef_scale_depth(FILE* prmfd);
-
+void sed_tracers_benthic_init(FILE * prmfd, sediment_t *sediment);
+void fluxsedimap(sediment_t *sediment);
+int sinterface_getnumberofBtracer(void* hmodel);
+void sinterface_getnameofBtracer(void* hmodel, int n, char *tracername);
+void sinterface_get_tracerunits(void* model, char *name, char *units);
+double sinterface_get_fillvalue_wc(void* model, char *name);
+double sinterface_get_fillvalue_sed(void* model, char *name);
+double sinterface_get_decay(void* model, char *name);
+double sinterface_get_psize(void* model, char *name);
+double sinterface_get_b_dens(void* model, char *name);
+double sinterface_get_i_conc(void* model, char *name);
+double sinterface_get_svel(void* model, char *name);
+void sinterface_get_svel_name(void* model, char *name, char *sname);
+int sinterface_get_diagn(void* model, char *name);
+int sinterface_get_dissol(void* model, char *name);
+int sinterface_get_partic(void* model, char *name);
+int sinterface_get_adsorb(void* model, char *name);
+int sinterface_get_diffuse(void* model, char *name);
+int sinterface_get_cohesive(void* model, char *name);
+int sinterface_get_floc(void* model, char *name);
+int sinterface_get_resuspend(void* model, char *name);
+int sinterface_get_deposit(void* model, char *name);
+int sinterface_get_calcvol(void* model, char *name);
+int sinterface_get_adsorb_kd(void* model, char *name);
+int sinterface_get_adsorb_rate(void* model, char *name);
+int sinterface_get_carriername(void* model, char *name,char *carriername );
+int sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname);
+int sinterface_gethindered_svel_patch(FILE* prmfd);
+int sinterface_gethindered_svel(FILE* prmfd);
+double sinterface_reef_scale_depth(FILE* prmfd);
 int sinterface_getshipfile(FILE* prmfd, char *shipfile);
 #if defined(HAVE_OMP)
 int sinterface_get_trans_num_omp(void *model);
 #endif
-
-
 /* Version information */
 int get_sediments_major_vers(void)
 {
   return(SEDIMENTS_MAJOR_VERSION);
 }
-
 int get_sediments_minor_vers(void)
 {
   return(SEDIMENTS_MINOR_VERSION);
 }
-
 int get_sediments_patch_vers(void)
 {
   return(SEDIMENTS_PATCH_VERSION);
@@ -230,8 +206,7 @@ sediment_t *sed_init(FILE * prmfd, void *hmodel)
   return sediment;
 }
 
-/* Close down the window, freeing and dellocate memory, etc.
- */
+/* Close down the window, freeing and dellocate memory, etc. */
 void sed_cleanup(sediment_t *sediment)
 {
   sed_params_t *param = sediment->msparam;
@@ -281,16 +256,13 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   }
   memset(param, 0, sizeof(sed_params_t));
   sediment->msparam = param;
-
-    /* Initialise MecoSedParam Structure */
-    /* Data available from hd */
-    /*
-       param->calcvol_wc  will be defined in MecoSedTracers_init
-       param->calcvol_sed  will be defined in MecoSedTracers_init
-    */
-
+  /* Initialise MecoSedParam Structure */
+  /* Data available from hd */
+  /*
+     param->calcvol_wc  will be defined in MecoSedTracers_init
+     param->calcvol_sed  will be defined in MecoSedTracers_init
+  */
   param->verbose_sed = sinterface_getverbose_sed(prmfd);
-
   param->t=sinterface_getmodeltime(hmodel);
   param->dt =  sinterface_getmodeltimestep(hmodel);
   param->nz = sinterface_getnumberwclayers(hmodel)+1;
@@ -304,24 +276,18 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
       sedtag(LFATAL,"sed:sed_init:sed_tracers_init","At least two sediment layers must be specified");
       exit(1);
   }
-
   param->nstep=0;
   param->ncol =  sinterface_getnumbercolumns(hmodel);
   param->ntr = sinterface_getnumberoftracers(hmodel);
-
   sinterface_getmap2diagtracer_2d(hmodel,
           &param->n_hripple,  &param->n_lripple,
           &param->n_ustrcw_skin,
           &param->n_depth_sedi,  &param->n_dzactive,
           &param->n_erdepflux_total,
-          &param->n_erdepflux_total_ac);
-  /*
-  sinterface_getmap2diagtracer_3d(hmodel,
-          &param->n_tss,  &param->n_svel_floc,
-          &param->n_por_sed,  &param->n_coh_sed);
-  */
+          &param->n_erdepflux_total_ac,
+          &param->n_erdepflux_oxygen,
+	  &param->n_erdepflux_oxygen_ac);
   si_set_errfn_warn(hmodel);
-
   param->quad_bfc = sinterface_getquad_bfc(prmfd);
   /* Read data from the parameter file */
   /* param->mindepth_sedi will be defined in sed_grid_init as
@@ -335,10 +301,8 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   param->consolrate =  sinterface_getconsolrate( prmfd);
   param->cssmode = sinterface_getcssmode(prmfd);
   param->css = sinterface_getcss(prmfd);
- 
- //2010
-  param->css_er_val = d_alloc_1d(param->sednz); //2010
-  param->css_er_depth = d_alloc_1d(param->sednz); //2010
+  param->css_er_val = d_alloc_1d(param->sednz);
+  param->css_er_depth = d_alloc_1d(param->sednz);
   if (param->cssmode == 4) {
     i=sinterface_getcss_er_val(prmfd, param->css_er_val);
     if ( i+1 != param->sednz) {
@@ -356,36 +320,31 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   param->ship_N=0;
   param->ship_Kz=0.0;
   k = sinterface_getshipfile(prmfd, shipfile);
-  // fprintf(stderr,"shipfile=%s",shipfile);
   if(k) {
-   // read from the shipfile 
+    // read from the shipfile 
     //the number of grid-cells on track (ship_C)
     //the number of ships per day (ship_N)
     //time on track for a ship in hours (ship_T)
     // i.j cells comprising ship-track
-  fp = fopen(shipfile,"r");
-  fscanf(fp,"%s",buf);
-  fscanf(fp,"%s",buf);
-  fscanf(fp,"%s",buf);
-  fscanf(fp,"%s",buf);
-  fscanf(fp,"%s",buf);
-  fscanf(fp,"%d",&param->ship_C);
-  fscanf(fp,"%d",&param->ship_C);
-  fscanf(fp,"%d",&param->ship_N);
-  fscanf(fp,"%lf",&param->ship_T);
-  fscanf(fp,"%lf",&param->ship_Kz);
-  // fprintf(stderr,"C=%d N=%d \n", param->ship_C, param->ship_N  );
-  param->ship_i = (int *) i_alloc_1d(param->ship_C);
-  param->ship_j = (int *) i_alloc_1d(param->ship_C);
-  for (i=0;i<param->ship_C;i++) {
-     fscanf(fp,"%d",&param->ship_i[i]);
-     fscanf(fp,"%d",&param->ship_j[i]);
+    fp = fopen(shipfile,"r");
+    fscanf(fp,"%s",buf);
+    fscanf(fp,"%s",buf);
+    fscanf(fp,"%s",buf);
+    fscanf(fp,"%s",buf);
+    fscanf(fp,"%s",buf);
+    fscanf(fp,"%d",&param->ship_C);
+    fscanf(fp,"%d",&param->ship_C);
+    fscanf(fp,"%d",&param->ship_N);
+    fscanf(fp,"%lf",&param->ship_T);
+    fscanf(fp,"%lf",&param->ship_Kz);
+    param->ship_i = (int *) i_alloc_1d(param->ship_C);
+    param->ship_j = (int *) i_alloc_1d(param->ship_C);
+    for (i=0;i<param->ship_C;i++) {
+       fscanf(fp,"%d",&param->ship_i[i]);
+       fscanf(fp,"%d",&param->ship_j[i]);
+    }
+    fclose(fp);
   }
- fclose(fp);
- }
-
-
-  
 
   param->css_dep = sinterface_getcssdep(prmfd);
   param->flocmode = sinterface_getflocmode(prmfd);
@@ -397,7 +356,7 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   param->reef_scale_depth = sinterface_reef_scale_depth( prmfd);
   param->calc_ripples = sinterface_getcalcripples( prmfd);
   param->physriph = sinterface_getphysriph( prmfd);
-  param->css_scale = sinterface_getcssscale( prmfd); //nov12
+  param->css_scale = sinterface_getcssscale( prmfd);
   param->bioriph = sinterface_getbioriph( prmfd);
   param->physripl = sinterface_getphysripl( prmfd);
   param->bioripl = sinterface_getbioripl( prmfd);
@@ -408,11 +367,8 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   param->bi_dissol_kz_i= sinterface_getbi_dissol_kz_i( prmfd);
   param->bt_partic_kz_i= sinterface_getbt_partic_kz_i( prmfd);
   param->biosedprofile = sinterface_getbiosedprofile( prmfd);
-
-  param->max_thick_sed = sinterface_getmaxthicksed(prmfd);//2010
-
-param->erflux_scale = sinterface_erflux_scale(prmfd); //2016
-
+  param->max_thick_sed = sinterface_getmaxthicksed(prmfd);
+  param->erflux_scale = sinterface_erflux_scale(prmfd);
 }
 
 /**********************************/
@@ -437,9 +393,9 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
  	  sedtag(LFATAL,"sed:sed_init:sed_tracers_init"," No sed tracers, ntr == 0");
   	exit(1);
  	}
-/* get tracer names beforehand, as they will be used to
-to map mecosed tracers to those in hd module and in prm-file
-*/
+  /* get tracer names beforehand, as they will be used to
+     to map mecosed tracers to those in hd module and in prm-file
+  */
  {
   char **tracername = (char **)p_alloc_1d(param->ntr);
   int m;
@@ -453,11 +409,9 @@ to map mecosed tracers to those in hd module and in prm-file
     for (n = 0; n < ntr; ++n) {
       sed_tracer_t *tr = &sediment->mstracers[n];
       strcpy(tr->name, tracername[n]);
-  //	fprintf(stderr,"n=%d, tr->name=%s \n",n, tr->name);
     }
     free(tracername);
   }
-
 
   /* Read tracer attributes for all tracers */
   param->calcvol_wc = 0;
@@ -465,7 +419,6 @@ to map mecosed tracers to those in hd module and in prm-file
   for (n = 0; n < ntr; ++n) {
     sed_tracer_t *tr = &sediment->mstracers[n];
     int nf, col;
-
     tr->n = n;
     /* maps */
     tr->n_hd_wc = si_getmap2hdwctracer(hmodel, n, tr->name);
@@ -478,7 +431,6 @@ to map mecosed tracers to those in hd module and in prm-file
       sedtag(LFATAL,"sed:sed_init:sed_tracers_init"," -> si_getmap2hdsedtracer, failed to retrieve name: %s",tr->name);
       exit(1);
     }
-
     tr->inwc = 1;
     tr->insed = 1;
     sinterface_get_tracerunits(hmodel, tr->name, tr->units);
@@ -488,10 +440,6 @@ to map mecosed tracers to those in hd module and in prm-file
     tr->dissol = sinterface_get_dissol(hmodel, tr->name);
     tr->partic = sinterface_get_partic(hmodel, tr->name);
     tr->adsorb = sinterface_get_adsorb(hmodel, tr->name);
-
-    //NMY2015
-    // fprintf(stderr,"sed_init: adsorb=%d, name = %s \n", tr->adsorb,tr->name);
-
     if(tr->dissol && tr->partic) {
       sedtag(LFATAL,"Sediments:sed_init:sed_tracers_init","Tracer %s must be either partic or dissol \n", tr->name);
       exit(1);
@@ -516,7 +464,6 @@ to map mecosed tracers to those in hd module and in prm-file
       tr->u_scale=1e+6;
     }else
       tr->u_scale = 1;
-
 
     /* Read data from prm file */
     if(tr->partic) { /* if the tracer is particulate or adsorbed */
@@ -551,10 +498,6 @@ to map mecosed tracers to those in hd module and in prm-file
 	  /* MH: 08.2012. Read tracer attributes via the trinfo private data */
 	  sinterface_get_carriername(hmodel, tr->name, carriername);
 	  sinterface_get_dissolvedname(hmodel, tr->name, dissolvedname);
-
-    //NMY2015
-    fprintf(stderr,"sed_init: carrier name = %s \n", carriername);
-
 	  /* END MH */
 	  for (nn=0; nn<ntr;nn++) {
 	    sed_tracer_t *trr = &sediment->mstracers[nn];
@@ -566,9 +509,7 @@ to map mecosed tracers to those in hd module and in prm-file
 	  if (tr->carriernum == 0 || tr->dissolvednum == 0) {
 	    fprintf(stderr,"ERROR:sed_init:sed_tracers_init: either carriername or dissolvedname missed in prm file \n"); exit(1);
 	  }
-       /*
-	* MH: 08.2012. Read tracer attributes via the trinfo private data 
-	*/
+       /* MH: 08.2012. Read tracer attributes via the trinfo private data */
 	  tr->adsorbkd = sinterface_get_adsorb_kd(hmodel, tr->name);
 	  tr->adsorbrate = sinterface_get_adsorb_rate(hmodel, tr->name);
 	  /* END MH */
@@ -590,26 +531,25 @@ to map mecosed tracers to those in hd module and in prm-file
         tr->adsorbkd = -1.;
         tr->adsorbrate = -1.;
     }
-
     param->calcvol_wc += tr->calcvol_wc;
     param->calcvol_sed += tr->calcvol_sed;
   }
-
 
   if (param->calcvol_sed < 1){
       sedtag(LFATAL,"sed:sed_init:sed_tracers_init","At least one volumetric particulate tracer must be specified \n");
       exit(1);
   }
 
+   // read names and total number of benthic (ie 2d) variables
+   // such as (param->ntrB = ntrB; param->trnameB[n];)
+   sed_tracers_benthic_init(prmfd, sediment);
+   // material fluxes across water and sediments
+   fluxsedimap(sediment);
 
- // 2012 subregions
-  //spatially varying parameters 
-  //nov11
+  // subregions to handle spatially varying parameters 
  {
     int m, col;
     int np;  //max number of prm
-    // read names and total number of benthic (ie 2d) variables
-    sed_tracers_benthic_init(prmfd, sediment);
     // set max number of spatially varying prms
     np = param->ntr + 30;
     //allocate mem
@@ -624,8 +564,7 @@ to map mecosed tracers to those in hd module and in prm-file
 	param->prmpointS[i][col] = NULL;
       sprintf(param->prmnameS[i], "%c", '\0');
     }
-    // fprintf(stderr,"%s \n",  param->prmnameS[3]);
-    //fill up the list of the candidate prm-names and the list of pointers to corresonding values
+    //fill up the list of the candidate prm-names and the list of pointers to corresponding values
     // start with settling velocities
     for (n=0; n<param->ntr; n++) {
       sed_tracer_t *tr = &sediment->mstracers[n];
@@ -634,17 +573,6 @@ to map mecosed tracers to those in hd module and in prm-file
       */
       sprintf(buf, "%c", '\0');
       sinterface_get_svel_name(hmodel, tr->name, buf);
-
-      // fprintf(stderr, "n=%d tr->name=%s \n", n, buf);
-
-      //NM commented out MH above
-      // strcpy(buf,"TRACER"); strcat(buf,_itoa(tr->n_file,buf1,10)); strcat(buf,".svel");
-
-    // NM if we decide to get rid of numbers in prm tracer names then
-      // we can specify prmnameS for svel as follows 
-      // (no dots in names because dive does not like that) 
-      // strcpy(buf,tr->name); strcat(buf,"_svel");
-
       strcpy(param->prmnameS[n],buf);
       for (col = 0; col < param->ncol; col++)
 	param->prmpointS[n][col] = &tr->svel[col];
@@ -673,7 +601,7 @@ to map mecosed tracers to those in hd module and in prm-file
 	  i=param->nprmS;
 	  param->prmindexS[i] = k; // prm index (eg param->prmpointS[k]) 
 	  param->trindexS[i] = n; // tracer index  
-	  // tracer value at location c is acecssed in hd2sed.c through 
+	  // tracer value at location c is passed to hd2sed.c through 
 	  // sinterface_getvalueofBtracer(void* hmodel, int n, int c)
 	  // and then that value is assigned to  *param->prmpointS[k]
 	  param->nprmS += 1; 
@@ -722,8 +650,7 @@ to map mecosed tracers to those in hd module and in prm-file
 	      param->css_scale_spv = d_alloc_1d(param->ncol);
 	      for (col = 0; col < param->ncol; col++)
 	      param->prmpointS[k][col] = &param->css_scale_spv[col];
-	    }
-	  
+	    }	  
 	}
       }
    }
@@ -732,26 +659,21 @@ to map mecosed tracers to those in hd module and in prm-file
       for (m=0;m<param->nprmS;m++){
 	k=param->prmindexS[m]; 
 	n=param->trindexS[m];
-	// FR commented 03/2014 - if its important it can go in the
-	//    runlog or setup.txt
-	// fprintf(stderr,"spatial prm %s; tarcer number %d \n",param->prmnameS[k],n);
-      }
-    
- } //end nov11
+	//fprintf(stderr,"spatial prm %s; tarcer number %d \n",param->prmnameS[k],n);
+      }    
+ }
 
- //2012 hardsub
+ // hardsubstrate
  param->hardsub_numb = -1;
  for(n=0; n < param->ntrB; n++) {
    if ( (strcmp(param->trnameB[n],"reef") == 0) ||  
 	(strcmp(param->trnameB[n],"Reef") == 0) ){
-     param->hardsub_numb = n;
+         param->hardsub_numb = n;
    }
  }
 
-
   if (param->verbose_sed) {
     flog = fopen("sedlog.txt","a");
-
     fprintf(flog, "\n Tracer attributes \n \n");
     for (n = 0; n < ntr; ++n) {
       sed_tracer_t *tr = &sediment->mstracers[n];
@@ -784,15 +706,11 @@ to map mecosed tracers to those in hd module and in prm-file
         n, tr->adsorb , tr->carriernum, tr->dissolvednum);
       fprintf(flog, "n=%d, tr->adsorbkd=%f, tr->adsorbrate=%f \n \n",
         n, tr->adsorbkd , tr->adsorbrate);
-
     }
     fprintf(flog,"param->calcvol_wc=%d \n",param->calcvol_wc);
     fprintf(flog,"param->calcvol_sed=%d \n \n",param->calcvol_sed);
-
     fclose(flog);
   }
-
-
 }
 
 /******************************************************/
@@ -814,13 +732,63 @@ void sed_tracers_benthic_init(FILE * prmfd, sediment_t *sediment)
   for(n=0; n < ntrB; n++) {
     param->trnameB[n] = malloc(MAXSTRLEN *sizeof(char));
     sinterface_getnameofBtracer(hmodel, n, param->trnameB[n]);
-    //    fprintf(stderr,"sed_tracers_benthic_init %d %d %s \n",  ntrB, n, param->trnameB[n]);
-    
   }
   param->ntrB = ntrB;  
 }
 
-  /**/
+/**********************************************************/
+// NMY 2018  fluxes across water and sediments 
+// Find 2D tracers wich names have "fluxsedi_ac" or "fluxsedi_inst" substrings
+// map these 2D tracers to 3D coutreparts (i.e. mapping to erdepflux[m]) 
+void fluxsedimap(sediment_t *sediment)
+{
+  int m,n;
+  char name[MAXSTRLEN];
+  sed_params_t *param = sediment->msparam;
+
+  if (param->ntrB < 1)
+     return;
+
+  param->fluxsedimap_inst = i_alloc_1d(param->ntrB);
+  param->fluxsedimap_ac = i_alloc_1d(param->ntrB);
+  for(n=0; n < param->ntrB; n++) {
+     param->fluxsedimap_inst[n] = 0;
+     param->fluxsedimap_ac[n] = 0;
+  }
+
+  for(n=0; n < param->ntrB; n++) {
+     if (strstr(param->trnameB[n], "fluxsedi_inst") != NULL) {
+         m=-1;
+         for(m=0; m < param->ntr; m++) { //find a 3D counterpart
+            sed_tracer_t *tr = &sediment->mstracers[m];
+            if ( strstr( (const char *) param->trnameB[n], (const char *) tr->name) != NULL) {  
+               param->fluxsedimap_inst[n] = m;
+               break;
+            }
+         }
+         if(m<0) {
+            fprintf(stderr, "ERROR: sed_init: prm file missing a 3D counterpart of the 2D diagnostic tracer: %s \n", param->trnameB[n]);
+            exit(1);
+         }
+     }
+     if (strstr(param->trnameB[n], "fluxsedi_ac") != NULL) {
+         m=-1;
+         for(m=0; m < param->ntr; m++) {
+            sed_tracer_t *tr = &sediment->mstracers[m];
+            if ( strstr( (const char *) param->trnameB[n], (const char *) tr->name) != NULL) {
+               param->fluxsedimap_ac[n] = m;
+               break;
+            }
+         }
+         if(m<0) {
+            fprintf(stderr, "ERROR: sed_init: prm file missing a 3D counterpart of the 2D diagnostic tracer: %s \n", param->trnameB[n]);
+            exit(1);
+         }
+     }
+  }
+}
+
+/**/
 
 /****************************************************************/
 
@@ -836,9 +804,7 @@ sed_column_t *alloc_sed_column(sediment_t *sediment)
 
   /* allocate memory for sed_column_t arrays, and
      for i,j-dependent variables */
-
   sm->col_number = 0;
-
   sm->dz_sed = d_alloc_1d(msparam->sednz-1);
   sm->dz_wc = d_alloc_1d(msparam->nz-1);
   /*UR added 5/2006 */
@@ -858,19 +824,15 @@ sed_column_t *alloc_sed_column(sediment_t *sediment)
   sm->tr_sed = d_alloc_2d(msparam->sednz-1, msparam->ntr);
   sm->tr_wc = d_alloc_2d(msparam->nz-1, msparam->ntr);
   sm->svel_wc = d_alloc_2d(msparam->nz, msparam->ntr);
-
   sm->ptr_sed = (double ***) p_alloc_2d(msparam->sednz-1, msparam->ntr);
   sm->ptr_wc = (double ***) p_alloc_2d(msparam->nz-1, msparam->ntr);
-
   sm->tss_wc = d_alloc_1d(msparam->nz-1);
   sm->tss_sed = d_alloc_1d(msparam->sednz-1);
   sm->sigma_sed = d_alloc_1d(msparam->sednz);
-
   sm->tmp_sed = d_alloc_1d(msparam->sednz);
   sm->tmp1000a = d_alloc_1d(1001);
   sm->tmp1000b = d_alloc_1d(1001);
   sm->tmp1000c = d_alloc_1d(1001);
-
   sm->dissol_kz = d_alloc_1d(msparam->sednz);
   sm->partic_kz = d_alloc_1d(msparam->sednz);
   sm->svel_consolid = d_alloc_1d(msparam->sednz);
@@ -879,12 +841,10 @@ sed_column_t *alloc_sed_column(sediment_t *sediment)
   sm->gridvel_wc = d_alloc_1d(msparam->nz);
   sm->watvel_wc = d_alloc_1d(msparam->nz);
   sm->watvel_sed = d_alloc_1d(msparam->sednz);
-
   sm->u1_wc = d_alloc_1d(msparam->nz-1);
   sm->u2_wc = d_alloc_1d(msparam->nz-1);
   sm->Kz_wc = d_alloc_1d(msparam->nz);
   sm->diss_wc = d_alloc_1d(msparam->nz);
-
   sm->css = d_alloc_1d(msparam->sednz);
   sm->coh_sed = d_alloc_1d(msparam->sednz-1);
   sm->coh_wc = d_alloc_1d(msparam->nz-1);
@@ -901,9 +861,7 @@ sed_column_t *alloc_sed_column(sediment_t *sediment)
   sm->cbnm4 = d_alloc_1d(msparam->ntr);
   sm->cbfilt = d_alloc_1d(msparam->ntr);
   sm->tr_srf_flux = d_alloc_1d(msparam->ntr);
-
   return(sm);
-
 }
 
 /**********************************************************/
@@ -935,18 +893,16 @@ static void sed_grid_init(FILE * prmfd, sediment_t *sediment, sed_column_t *sm, 
 
   /* Specify minimal thickness of the sediment bed and z0_skin*/
   sm->depth_sedi = sm->gridz_sed[topk_sed+1] - sm->gridz_sed[botk_sed];
-  // param->mindepth_sedi = 0.001 * sm->depth_sedi;
   param->mindepth_sedi = 2. * sm->dzactive;//Sep2011
   if( param->mindepth_sedi >=  sm->depth_sedi) {
     fprintf(stderr,"sed_init.c:ERROR:  initial thickness of sediments must exceed the minimum thickness of sediments (which is the double thickness of the top sediment layer) \n");
     exit(1);
   }
-
   sm->z0_skin = sinterface_getz0(prmfd);
 
   /* Specify sigma levels for sediment bed below active layer.
-     Note that the sigma levels are specified only once and then
-     do not change during calculations */
+     Note that these sigma levels are specified only once and then
+     they do not change during the simulation */
   dhinter = (-sm->gridz_sed[botk_sed] + sm->gridz_sed[topk_sed]);
   for(k=botk_sed;k<=topk_sed;k++)
       sm->sigma_sed[k] = -
@@ -989,15 +945,6 @@ static void alloc_sed_spatial(sediment_t *sediment)
   spatial->cbnm3 = d_alloc_2d(msparam->ncol, msparam->ntr);
   spatial->cbnm4 = d_alloc_2d(msparam->ncol, msparam->ntr);
   spatial->erdeprate = d_alloc_2d(msparam->ncol, msparam->ntr);
-
-  // FR 06-2015: Deferred to hd2sed
-  /*  
-      for (c=0;c<msparam->ncol;c++)
-      {
-      spatial->hripples[c] = max(msparam->physriph, msparam->bioriph);
-      spatial->lripples[c] = max(msparam->physripl, msparam->bioripl);
-      }
-  */
   sinterface_gettheta(hmodel, spatial->theta, msparam->ncol);
 }
 
@@ -1006,7 +953,6 @@ static void sed_optimization(sediment_t *sediment)
 {
   int n;
   sed_params_t *param = sediment->msparam;
-
 
   if(param->flocmode == 1 && strcmp("salt",(&sediment->mstracers[0])->name) != 0) {
     sedtag(LFATAL,"sed:sed_init:sed_optimization","First tracer name should be salt when floculation mode = 1 - %s",(&sediment->mstracers[0])->name);
@@ -1190,7 +1136,9 @@ void sed_params_build(sediment_t *sediment)
 				  &param->n_ustrcw_skin,
 				  &param->n_depth_sedi,  &param->n_dzactive,
 				  &param->n_erdepflux_total,
-				  &param->n_erdepflux_total_ac);
+				  &param->n_erdepflux_total_ac,
+				  &param->n_erdepflux_oxygen,
+ 				  &param->n_erdepflux_oxygen_ac);
   si_set_errfn_warn(hmodel);
 }
 
@@ -1583,63 +1531,38 @@ int sedtagimpl(int level, char *tag, char *format, ...)
   return i;
 }
 
-
 sedlogfn  sedlog = sedlogimpl;
 sedlogtag sedtag = sedtagimpl;
 
 #endif
-
-
 #endif
 
-
-
-
-
-
-
-
-
-
-
-
-
 /**
-        * Ansi C "itoa" based on Kernighan & Ritchie's "Ansi C":
-	 */
-	void strreverse(char* begin, char* end) {
-		char aux;
-		while(end>begin)
-			aux=*end, *end--=*begin, *begin++=aux;
-	}
-	char* _itoa(int value, char* str, int base) {
-		static char num[] = "0123456789abcdefghijklmnopqrstuvwxyz";
-		char* wstr=str;
-		int sign;
+* Ansi C "itoa" based on Kernighan & Ritchie's "Ansi C":
+*/
+void strreverse(char* begin, char* end) {
+  char aux;
+  while(end>begin)
+     aux=*end, *end--=*begin, *begin++=aux;
+}
+
+char* _itoa(int value, char* str, int base) {
+  static char num[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+  char* wstr=str;
+  int sign;	
+  // Validate base
+  if (base<2 || base>35){ *wstr='\0'; return 0; }	
+  // Take care of sign
+  if ((sign=value) < 0) value = -value;	
+  // Conversion. Number is reversed.
+  do *wstr++ = num[value%base]; while(value/=base);
+  if(sign<0) *wstr++='-';
+  *wstr='\0';	
+  // Reverse string
+  strreverse(str,wstr-1);
+  return(str);
+}
 	
-		// Validate base
-		if (base<2 || base>35){ *wstr='\0'; return 0; }
-	
-		// Take care of sign
-		if ((sign=value) < 0) value = -value;
-	
-		// Conversion. Number is reversed.
-		do *wstr++ = num[value%base]; while(value/=base);
-		if(sign<0) *wstr++='-';
-		*wstr='\0';
-	
-		// Reverse string
-		strreverse(str,wstr-1);
-		return(str);
-	}
-	
-
-
-
-
-
-
-
 #ifdef __cplusplus
 }
 #endif

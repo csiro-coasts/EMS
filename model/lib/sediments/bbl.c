@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bbl.c 5848 2018-06-29 05:01:15Z riz008 $
+ *  $Id: bbl.c 5955 2018-09-17 00:23:31Z mar644 $
  *
  */
 
@@ -100,14 +100,6 @@ void reef_scale_depth(sediment_t *sediment, sed_column_t *sm);
       sm->lripples = max(param->bioripl, physripl);
     }
 
-    //   if(param->reef_scale_depth > 1e-11)
-    //  reef_scale_depth(sediment, sm); //2013
-
-    /*
-  if(sm->i == 361 && sm->j==51)
-    fprintf(stderr,"hd2sed depth_wc= %lf, css=%lf, kz_i=%e, hripples=%lf \n", sm->depth_wc,sm->css[0], sm->partic_kz_i,sm->hripples);
-    */
-
     /* Calculate total (grain + ripples) physical roughness */
     calc_phys_roughness(sm);
 
@@ -159,36 +151,38 @@ static void reference_velocity(sed_column_t *sm, double *pzr, double *pui,
   double zc,u2bcc;
   int kzc;
   /* Reference height */
- if (kb < kt) 
-    zc = (sm->gridz_wc[kb + 1] - bot) / 2.;
+  if (kb < kt) 
+     zc = (sm->gridz_wc[kb + 1] - bot) / 2.;
   else
     zc = (top - bot) / 2.;
- kzc=kb;
+  kzc=kb;
 
- /*Fix for 3d-z-grid atrefacts: near-bottom cells with stagnant water, occassionally produced by a 3d-z-grid over complex bathymetry, result in zero friction and artificial accumulation of sediments in these cells. Mecosed takes velocity from the next cell above the near bottom stagnant one. */
-  u2bcc =  sm->u1_wc[kb]*sm->u1_wc[kb]+sm->u2_wc[kb]*sm->u2_wc[kb];
-  //  if(u2bcc == 0.0 && kb < kt) {
-  // take all ref velocity from the 2nd cell above the ground NMY Oct2015
+  /*Fix for 3d-z-grid atrefacts: near-bottom cells with stagnant water, 
+   occassionally produced by a 3d-z-grid over complex bathymetry, result 
+   in zero friction and artificial accumulation of sediments in these cells. 
+   To mitigate such grid-dependency, Mecosed takes velocity from the next 
+   cell above the near bottom stagnant one. 
+  */
+  // u2bcc =  sm->u1_wc[kb]*sm->u1_wc[kb]+sm->u2_wc[kb]*sm->u2_wc[kb];
+  // if(fabs(u2bcc) < 1e-9 && kb < kt) {
+
+  // tmp fix: taking all ref velocity from the 2nd cell above the ground
+  // comment out if-block below to reference velocities in the the near-bottom cell
   if(kb < kt) {
      zc = (sm->cellz_wc[kb + 1] - bot);
      kzc=kb+1;
   }
 
- /* If the reference height is less than 1m use log-profile to 
+  /* If the reference height is less than 1m use log-profile to 
     interpolate velocities to 1m hight, so that in a typical application 
     zr exceeds the thickness of wave bbl */
     *pzr = zc;
     if (zc < 1.) *pzr = 1.;
 
   /*check that the cell centre is above the roughness hight */
-  if (zc < *pz0) {
-    // fprintf(stderr,"WARNING: Cell centre below the roughness height. bbl.c: reference_velocity \n");
-    //  fprintf(stderr," zcell=%f, roughness=%f, i=%d, j=%d \n", zc, *pz0, sm->i, sm->j);
-    zc = (*pz0) * 2;
-    // exit(1);
-  }
+  if (zc < *pz0)  zc = (*pz0) * 2;
 
- /* Reference velocity */
+  /* Reference velocity */
   *pui = sm->u1_wc[kzc] * log(*pzr / *pz0) / log(zc / *pz0);
   *puj = sm->u2_wc[kzc] * log(*pzr / *pz0) / log(zc / *pz0);
 
@@ -267,43 +261,29 @@ static int madsen94(sed_column_t *sm, double ubr, double wr, double ucr,
 
   /* some data checks */
   if (wr <= 0.) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:bbl:madsen94", "Bad value for ang. freq. in Madsen94 at (%d,%d): wr = %g", ci, cj, wr); 
-    /*exit(1);*/
     return(1);
-    /* END MH */
   }
   else if (ubr < 0.) {
-    /* MH 07/2012: included instability handling */
       sedtag(LWARN,"sed:bbl:madsen94", "Bad value for orbital vel. in Madsen94 at (%d,%d): ub = %g",ci, cj, ubr); 
       return(1);
-      /*exit(1);*/
-      /* END MH */
   }
   else if (kN <= 0.) {
-    /* MH 07/2012: included instability handling */
       sedtag(LWARN,"sed:bbl:madsen94", "Negative roughness in Madsen94 at (%d,%d): kN = %g", ci, cj, kN); 
       return(1);
-      /*exit(1);*/
-      /* END MH */
   }
 
 /* The reference height for current velocity zr should be located above the turbulent wave boundary layer. Here following Madsen 1994, we use a somewhat arbitrary criteria to check this condition (eg assuming that the wave bbl thickness ~ kN). If zr is too small then go to a linear bbl model swart74*/
   if (zr < 5. * kN) {
       if (zr < 5. * zo) { 
 	/* The reference height zr should exceed the physical roughness zo*/
-	/* MH 07/2012: included instability handling */
 	  sedtag(LWARN,"sed:bbl:madsen94", "Low value for ref. level in Madsen94 at (%d,%d): zr = %g", ci, cj, zr); 
 	  return(1);
-	  /*exit(1);*/
-	  /* END MH */
       }
-      /* MH 07/2012: included instability handling */
       if(swart74(sm,ubr,wr,ucr,zr,zo,zo,pustrc,pustrwm,pustrr,pfwc,pzoa))
 	return(1);
       else
 	return(0);
-      /* END MH */
   }
   
   if (ubr <= LOWU) {
@@ -408,33 +388,21 @@ static int swart74(sed_column_t *sm, double ubr, double wr, double ucr,
 
   /* some data checks */
   if (wr <= 0.) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:bbl:swart74", "Bad value for ang. freq. in swart74 at (%d,%d): wr = %g", i, j, wr); 
     return(1);
-    /*exit(1);*/
-    /* END MH */
   }
   else if (ubr < 0.) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:bbl:swart74", "Bad value for orbital vel. in swart74 at (%d,%d): ub = %g",i, j, ubr); 
     return(1);
-    /*exit(1);*/
-    /* END MH */
   }
   else if (kN <= 0.) {
-    /* MH 07/2012: included instability handling */
     fprintf(stderr,"swart74: Negative roughness in swart94 at (%d,%d): kN = %g", i, j, kN); 
     return(1);
-    /*exit(1);*/
-    /* END MH */
   }
 
   if (zr < 5. * zoc) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:bbl:swart74", "Low value for ref. level in Madsen94 at (%d,%d): zr = %g", i, j, zr); 
     return(1);
-    /*exit(1);*/
-    /* END MH */
   }
 
   if (ubr <= LOWU) {
@@ -465,7 +433,6 @@ static int swart74(sed_column_t *sm, double ubr, double wr, double ucr,
 /********************************************************/
 
 /* Black K., Oldman J. 1999, Marine Geology 162, pp 121-132. */
-/* MH 07/2012. Changed function type to int, returning 1 on fail. */
 static int wripples(sed_column_t *sm, double ubr, double wr,
                      double zo)
 {
@@ -480,17 +447,11 @@ static int wripples(sed_column_t *sm, double ubr, double wr,
 
   /* some data checks */
   if (wr <= 0.) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:bbl:wripples", "Bad value for ang. freq. in wripples at (%d,%d): wr = %g",i, j, wr); 
-    /*exit(1);*/
     return(1);
-    /* END MH */
   } else if (ubr < 0.) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:bbl:wripples", "Bad value for orbital vel. in wripples at (%d,%d): ub = %g",i, j, ubr);
-    /*exit(1);*/
     return(1);
-    /* END MH */
   }
 
   /* Start Ripples */

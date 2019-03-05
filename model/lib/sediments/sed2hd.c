@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed2hd.c 5848 2018-06-29 05:01:15Z riz008 $
+ *  $Id: sed2hd.c 5975 2018-09-26 00:09:12Z mar644 $
  *
  */
 
@@ -26,76 +26,51 @@ extern "C" {
 #if defined(HAVE_SEDIMENT_MODULE)
 
 
-  int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw);
-
+int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw);
 static void sed2hd_internal(sediment_t *sediment, sed_column_t *sm, int c);
 void sinterface_putgridz_sed(void* hmodel, int c, double *gridz_sed);
 void sinterface_putcellz_sed(void* hmodel, int c, double *cellz_sed);
-
 void sinterface_putgridz_wc(void* hmodel, int c, double *gridz_wc);
 void sinterface_putcellz_wc(void* hmodel, int c, double *cellz_wc);
 void sinterface_putdz_wc(void* hmodel, int c, double *dz_wc) ;
 void sinterface_puttopz_wc(void* hmodel, int c, double topz_wc);
 void sinterface_putbotz_wc(void* hmodel, int c, double botz_wc);
-
 int sinterface_gettopk_wc(void* hmodel, int c) ;
 int sinterface_getbotk_wc(void* hmodel, int c) ;
-
 void sinterface_putdiagtracer_2d(void* hmodel, int c,
 double hripple,int n_hripple,  double lripple, int n_lripple,
 double ustrcw_skin, int n_ustrcw_skin,
 double depth_sedi, int n_depth_sedi, double dzactive,  int n_dzactive,
-double erdepflux_total, int n_erdepflux_total, int n_erdepflux_total_ac);
-  /*void sinterface_putdiagtracer_3d(void* hmodel, int c,
-double *tss, int n_tss, double *svel_floc, int n_svel_floc,
-double *por_sed, int n_por_sed, double *coh_sed, int n_coh_sed);
-  */
+double erdepflux_total, int n_erdepflux_total, int n_erdepflux_total_ac,
+double erdepflux_oxygen, int n_erdepflux_oxygen, int n_erdepflux_oxygen_ac);
 
 void cohsedcontent(sediment_t *sediment, sed_column_t *sm);
 void diagnostics(sediment_t *sediment, sed_column_t *sm, const char *comment);
 void mass_balance(sediment_t *sediment, sed_column_t *sm);
+
+double *sinterface_getpointerBtracer(void* hmodel, int n, int c);
 
 
 /* Update hydro using sediment data */
 void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
 {
   void *hmodel = sediment->hmodel;
-  int k, n;
+  int k, n, m;
   int tk,bk;
+  double *point = malloc(sizeof *point);
   sed_params_t *param = sediment->msparam;
   int col_index = sm->col_number-1;
-  /*UR-CHANGED double u_scale; */
   /* Copy internal spatial sediment variables */
   sed2hd_internal(sediment, sm, col_index);
   /* wc */
   sm->sed_start=0;
-
   k = sinterface_put_ustrcw(hmodel, c, sm->ustrcw_skin);
-
   /* put wc tracers */
   tk =sinterface_gettopk_wc( hmodel, c) ;
   bk =sinterface_getbotk_wc( hmodel, c) ;
-
-  /* fix 28_Oct_2004 (get rid of this: duplicated below)
-  for(k=sm->botk_wc;k<=sm->topk_wc;k++) {
-    sm->tss_wc[k] = 0.;
-    for(n=0; n < param->ntr; n++) {
-      sed_tracer_t *tracer = &sediment->mstracers[n];
-      if (!tracer->diagn && tracer->partic && !tracer->adsorb && tracer->u_scale==1) {
-	// if (tracer->partic && tracer->calcvol_sed && !tracer->diagn) {
-        if(bk < tk)
-          sm->tss_wc[k] += sm->tr_wc[n][k];
-        else
-          sm->tss_wc[k] += 0.5*(sm->tr_wc[n][0]+sm->tr_wc[n][1]);
-      }
-    }
-  }
-  */
-
-  cohsedcontent(sediment, sm); //2010
-
-     /**/
-   for(n=0; n < param->ntr; n++) {
+  cohsedcontent(sediment, sm);
+ 
+  for(n=0; n < param->ntr; n++) {
      sed_tracer_t *tracer = &sediment->mstracers[n];
      if (tracer->diagn) {
        if (strcmp(tracer->name, "tss") == 0 ) {
@@ -123,11 +98,10 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
          sm->tr_sed[n][k]=sm->coh_sed[k];
        }
      }
-   }
-   /**/
+  }
 
-   /* fill up empty layers with surface value */
- if(sm->topk_wc < param->nz-2){
+  /* fill up empty layers with surface value */
+  if(sm->topk_wc < param->nz-2){
     for(n=0; n < param->ntr; n++) {
     sed_tracer_t *tracer = &sediment->mstracers[n];
     for(k=sm->topk_wc+1;k<param->nz-1;k++)
@@ -135,10 +109,9 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
     }
   }
 
- // move 1d arrays to 3d
-
-   if(tk > bk)
-   {
+  // move 1d arrays to 3d
+  if(tk > bk)
+  {
      for(n=0; n < param->ntr; n++) {
        sed_tracer_t *tr = &sediment->mstracers[n];
         /* do not update water column T,S in hd wc,
@@ -150,9 +123,8 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
         else
           continue;
       }
-
-    }
-    else  if (tk == bk) {
+   }
+   else  if (tk == bk) {
     /* If there was one water colum layer in hydromodule, then
        merge two layers, created by mecosed into one and move
        data to hydromodule. Note that the mixing procedure used
@@ -191,18 +163,14 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
 	    *sm->ptr_sed[n][k] = tr->u_scale*sm->tr_sed[n][k];
 	  if (!tr->dissol && !tr->diagn) {
 	    sm->erdepflux_total += sm->erdepflux[n];
-
-	    //   if(sm->i == 361 && sm->j==51)
-	    //  fprintf(stderr,"n = %d, erdep = %lf,erdep_tot = %lf \n", 
-	    //	    n, sm->erdepflux[n],  sm->erdepflux_total);
 	  }
 	  //	}
+          if(strcmp("Oxygen",tr->name) == 0 )
+              sm->erdepflux_oxygen = sm->erdepflux[n];
     }
+
     sinterface_putgridz_sed( hmodel, c, sm->gridz_sed);
     sinterface_putcellz_sed( hmodel, c, sm->cellz_sed);
-
-
-
     sinterface_putdiagtracer_2d(hmodel, c,
 	   sm->hripples, param->n_hripple,
 	   sm->lripples, param->n_lripple,
@@ -210,62 +178,30 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
 	   sm->depth_sedi, param->n_depth_sedi,
 	   sm->dzactive,  param->n_dzactive,
 	   sm->erdepflux_total, param->n_erdepflux_total,
-	   param->n_erdepflux_total_ac);
-/*  sinterface_putdiagtracer_3d(hmodel, c,
-            sm->tss, param->n_tss,
-            sm->svel_floc, param->n_svel_floc,
-            sm->por_sed, param->n_por_sed,
-            sm->coh_sed, param->n_coh_sed);
+	   param->n_erdepflux_total_ac,
+           sm->erdepflux_oxygen, param->n_erdepflux_oxygen, param->n_erdepflux_oxygen_ac);
 
-*/
+//NMY 2018
+// material fluxes across water and sediments
+ for(n=0; n < param->ntrB; n++) {
+     if (param->fluxsedimap_inst[n] > 0) {
+         point = sinterface_getpointerBtracer(hmodel, n, c); //get pointer to 2D diag tracer
+         m = param->fluxsedimap_inst[n]; // get the number of the corresponding 3D tracer (i.e. erdepflux[m])
+        *point = sm->erdepflux[m];  // update value of the 2D diagn tracer
+     } else {
+         if (param->fluxsedimap_ac[n] > 0) {
+             point = sinterface_getpointerBtracer(hmodel, n, c); //get pointer to 2D diag tracer
+             m = param->fluxsedimap_ac[n]; // get number of the corresponding 3D tracer
+            *point += sm->erdepflux[m]*param->dt;  // update value of the 2D diagn tracer
+         }
+    }
+  }
+
 
   if (param->verbose_sed == 2)
     mass_balance(sediment, sm);
   /*
     sed_limits(sediment, c);
-
-  if (param->verbose_sed == 1) {
-
-    for(n=0; n < param->ntr; n++) {
-      sed_tracer_t *tr = &sediment->mstracers[n];
-      for(k=sm->botk_wc;k<=sm->topk_wc;k++) {
-	if (!tr->prmspatial)
-        if (tr->diagn < 1 && sm->tr_wc[n][k] < 0.) {
-          sedtag(LERROR,"sed:sed2hd:sed2hd"," Negative tracer output in wc n=%d ", n);
-          sedtag(LFATAL,"sed:sed2hd:sed2hd","k=%d topk=%d botk=%d topz=%f botz=%f col_numb=%d nstep=%d\n",
-            k, sm->topk_wc, sm->botk_wc,  sm->topz_wc, sm->botz_wc,
-            sm->col_number, param->nstep);
-         diagnostics(sediment); exit(1);
-         }
-        if (tr->diagn < 1 && finite(sm->tr_wc[n][k])==0 ) {
-          sedtag(LERROR,"sed:sed2hd:sed2hd"," NaN or INF tracer output in wc n=%d ", n);
-          sedtag(LFATAL,"sed:sed2hd:sed2hd","k=%d topk=%d botk=%d topz=%f botz=%f col_numb=%d nstep=%d\n",
-            k, sm->topk_wc, sm->botk_wc,  sm->topz_wc, sm->botz_wc,
-            sm->col_number, param->nstep);
-         diagnostics(sediment); exit(1);
-         }
-      } 
-      for(k=sm->botk_sed;k<=sm->topk_sed;k++) {
-	if (!tr->prmspatial)
-        if (tr->diagn < 1 && sm->tr_sed[n][k] < 0.) {
-          sedtag(LERROR,"sed:sed2hd:sed2hd"," Negative tracer output in sed n=%d \n", n);
-          sedtag(LFATAL,"sed:sed2hd:sed2hd","k=%d topk=%d botk=%d topz=%f botz=%f col_numb=%d nstep=%d tr_sed=%e \n",
-            k, sm->topk_sed, sm->botk_sed,  sm->topz_sed,
-            sm->botz_sed, sm->col_number, param->nstep,
-            sm->tr_sed[n][k]);
-         diagnostics(sediment); exit(1);
-        }
-	if (tr->diagn < 1 && finite(sm->tr_sed[n][k])==0 ) {
-          sedtag(LERROR,"sed:sed2hd:sed2hd"," NaN or INF tracer output in sed n=%d \n", n);
-          sedtag(LFATAL,"sed:sed2hd:sed2hd","k=%d topk=%d botk=%d topz=%f botz=%f col_numb=%d nstep=%d tr_sed=%e \n",
-            k, sm->topk_sed, sm->botk_sed,  sm->topz_sed,
-            sm->botz_sed, sm->col_number, param->nstep,
-            sm->tr_sed[n][k]);
-         diagnostics(sediment); exit(1);
-        }
-      } 
-    }
-  }
   */
 }
 

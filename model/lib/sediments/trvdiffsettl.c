@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: trvdiffsettl.c 5848 2018-06-29 05:01:15Z riz008 $
+ *  $Id: trvdiffsettl.c 5955 2018-09-17 00:23:31Z mar644 $
  *
  */
 
@@ -31,7 +31,6 @@ static int implicit_vadv_vdiff(double dt, int nz, double *dz, double *dzold,
                                 double botoutfluxcoef,
                                 double topoutfluxcoef, int kb, int kt,
                                 double *Splus, double *Sminus, double *dzface);
-
 
 void vdiff_sedim_wc(sediment_t *sediment, sed_column_t *sm,
 		    sed_tracer_t *tracer,
@@ -64,7 +63,6 @@ void vdiff_sedim_wc(sediment_t *sediment, sed_column_t *sm,
   if ( tracer->diffuse == 0 )
    s=0;
 
-
   /* Get diffusion coefficients for this column */
   Kzij[kt + 1] = 0;
   Kzij[kt] = s * sm->Kz_wc[kt];
@@ -84,7 +82,6 @@ void vdiff_sedim_wc(sediment_t *sediment, sed_column_t *sm,
 			  botinflux, topinflux, botoutfluxcoef, topoutfluxcoef,
 			  kb, kt, NULL, NULL,sm->dzface_wc))
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "trvdiffsettl:vdiff_sedim_wc: Error encountered in implicit_vadv_vdiff().\n");
-  /* END MH */
 
   /* free temporary arrays */
   d_free_1d(Kzij);
@@ -137,7 +134,6 @@ void vdiff_dissolved_wc(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *tr
 			  botinflux, topinflux, botoutfluxcoef, topoutfluxcoef,
 			  kb, kt, NULL, NULL,sm->dzface_wc))
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "trvdiffsettl:vdiff_dissolved_wc: Error encountered in implicit_vadv_vdiff().\n");
-  /* END MH */
 
   /* free temporary arrays */
   d_free_1d(Kzij);
@@ -193,7 +189,6 @@ void vdiff_sedim_sed(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *trace
 			  botinflux, topinflux, botoutfluxcoef, topoutfluxcoef,
 			  kb, kt, NULL, NULL,sm->dzface_sed))
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "trvdiffsettl:vdiff_sedim_sed: Error encountered in implicit_vadv_vdiff().\n");
-  /* END MH */
   /* free temporary arrays */
   d_free_1d(Kzij);
   d_free_1d(w);
@@ -243,7 +238,6 @@ void vdiff_dissolved_sed(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
 			  botinflux, topinflux, botoutfluxcoef, topoutfluxcoef,
 			  kb, kt, NULL, NULL,sm->dzface_sed))
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "trvdiffsettl:vdiff_dissolved_sed: Error encountered in implicit_vadv_vdiff().\n");
-  /* END MH */
   /* free temporary arrays */
   d_free_1d(Kzij);
   d_free_1d(w);
@@ -295,7 +289,7 @@ void vdiff_dissolved_sed(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
                     07/2012 MH
                     Made the function type int, returning 1 if it fails.
 
-    $Id: trvdiffsettl.c 5848 2018-06-29 05:01:15Z riz008 $
+    $Id: trvdiffsettl.c 5955 2018-09-17 00:23:31Z mar644 $
 
 *********************************************************************/
 
@@ -338,18 +332,10 @@ static int implicit_vadv_vdiff(double dt, int nz, double *dz, double *dzold, dou
 
   /* Single layer - the calling routine should deal with this */
   if (kt <= kb) {
-    /* MH 07/2012: included instability handling */
     sedtag(LWARN,"sed:trvdiffsettl:implicit_vadv_vdiff"," less than 2 layers\n");
     return(1);
-    /*exit(1);*/
-    /* END MH */
   }
-  /* Calculate dz values at interfaces */
-/*  for (k = kb + 1; k <= kt; k++)
-    dzface[k] = (dz[k - 1] + dz[k]) / 2.;
-*/
   /* Set up tri-diagonal set of equations */
-
   /* Bottom layer */
   dzdt = por[kb] * dz[kb] / dt;
   dzdtold = porold[kb] * dzold[kb] / dt;
@@ -418,11 +404,8 @@ static int implicit_vadv_vdiff(double dt, int nz, double *dz, double *dzold, dou
     ud[k] = Cp1[k - 1] / div;
     div = C[k] - Cm1[k] * ud[k];
     if (div == 0.0) {
-      /* MH 07/2012: included instability handling */
       sedtag(LWARN,"sed:trvdiffsettl:implicit_vadv_vdiff","(solvetri): zero divisor\n");
       return(1);
-      /*exit(1);*/
-      /* END MH */
     }
     sol[k] = (rhs[k] - Cm1[k] * sol[k - 1]) / div;
   }
@@ -440,7 +423,6 @@ static int implicit_vadv_vdiff(double dt, int nz, double *dz, double *dzold, dou
   d_free_1d(rhs);
   d_free_1d(sol);
   d_free_1d(ud);
-  /*2007jul  d_free_1d(dzface); */
 #endif
   return(0);
 }

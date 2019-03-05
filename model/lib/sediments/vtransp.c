@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vtransp.c 5895 2018-08-21 06:58:38Z mar644 $
+ *  $Id: vtransp.c 5960 2018-09-20 03:14:25Z mar644 $
  *
  */
 
@@ -25,9 +25,7 @@ extern "C" {
 
 #include "sediments.h"
 
-
 void reef_scale_depth(sediment_t *sediment, sed_column_t *sm);
-
 static void calc_active_dz(sediment_t *sediment, sed_column_t *sm);
 static void cbfiltered(sediment_t *sediment, sed_column_t *sm);
 static void biodiffkz(sediment_t *sediment, sed_column_t *sm);
@@ -51,25 +49,19 @@ static double calc_css(sediment_t *sediment, sed_column_t *sm, int k);
 static double erdep_coarse(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *tracer);
 static void calculate_dzface_sed(sed_column_t *sm);
 static void calculate_dzface_wc(sed_column_t *sm);
-
 static void srf_flux_inout(sediment_t *sediment, sed_column_t *sm, 
 			   int nt, double *srf_flux_in, double *srf_flux_out_coef);
-  
 double wgt_tophat(double x,double scale);
 double wgt_linear(double x,double scale);
 double wgt_parabolic(double x,double scale);
 double wgt_gaussian(double x,double scale);
-
 void sinterface_getsvel_custom(void* hmodel, int c, int n,
      char *name, double *svel_wc, int topk_wc, int botk_wc);
-
 #if defined(ENABLE_REF_C_COEF)
 static double ref_c_coef(sediment_t *sediment, sed_column_t *sm, int n);
 #endif
-
 void update_porosity_wc(sediment_t *sediment, sed_column_t *sm);
 void update_porosity_sed(sediment_t *sediment, sed_column_t *sm);
-
 extern void vdiff_sedim_wc(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *tracer,
                            sed_tracer_t *tracercar, double botinflux,
                            double topinflux, double botoutfluxcoef,
@@ -87,7 +79,6 @@ extern void vdiff_dissolved_sed(sediment_t *sediment, sed_column_t *sm, sed_trac
                                 double botoutfluxcoef,
                                 double topoutfluxcoef, double *dvar);
 
-
 void vert_transport(sediment_t *sediment, sed_column_t *sm)
 {
   sed_params_t *param = sediment->msparam;
@@ -98,8 +89,10 @@ void vert_transport(sediment_t *sediment, sed_column_t *sm)
   /* CALCULATE SEDIMENT FLUXES and DISTRIBUTION in WC */
   /* Calculate thickness of the upper most, sediment bed active layer. */
   calc_active_dz(sediment, sm);
+
   /* Calculate HF filtered sediment concentration in active layer */
   cbfiltered(sediment, sm);
+
   /* Calculate diffusion coefficient for bioturbation and bioirrigation */
   biodiffkz(sediment, sm);
 
@@ -109,7 +102,6 @@ void vert_transport(sediment_t *sediment, sed_column_t *sm)
  
  /* Find settling velocities of flocculating particles in wc */
   update_svel_floc(sediment, sm);
-
 
   /*UR added  Calculate dz values at wc interfaces */
   calculate_dzface_wc(sm);
@@ -141,6 +133,7 @@ void vert_transport(sediment_t *sediment, sed_column_t *sm)
     calculate_dzface_sed(sm);
     calculate_dzface_wc(sm);
   }
+
   /* Update porosity in wc and sedbed and redistribute concentration if
      necessary */
   update_porosity_wc(sediment, sm);
@@ -149,12 +142,14 @@ void vert_transport(sediment_t *sediment, sed_column_t *sm)
   /* CALCULATE DISSOLVED TRACER */
   /* dissolved transport in wc and bottom */
   update_dissolved_tr(sediment, sm);
+
   /* mixing of the dissolved tracer across the wc_sedbed interface */
   mix_tr_wcbed(sediment, sm);
 
   /* TRACER on SEDIMENT */
   /* adsorbed concentrations in wc */
   adsorbed_wc(sediment, sm);
+
   /* adsorbed concentrations in bed */
   adsorbed_sed(sediment, sm);
   /* END TRANSPORT */
@@ -162,18 +157,10 @@ void vert_transport(sediment_t *sediment, sed_column_t *sm)
   /* MISC */
   /* truncate numericall errors */
   truncate_errors(sediment, sm);
+
   /* Sorption - desorption and decay */
   sorption(sediment, sm);
   sed_tracer_decay(sediment, sm);
-
-  /* Print section */
-  /*
-     { int k; int tk_sed = sm->topk_sed; int bk_sed = sm->botk_sed; warn("
-     water depth = %f", sm->depth_wc); warn(" sedim depth = %f",
-     sm->depth_sedi); warn(" total depth = %f",
-     sm->depth_wc+sm->depth_sedi); for (k=bk_sed; k<=tk_sed; k++) warn("
-     por_sed[%d] = %f", k, sm->por_sed[k]); } */
-
 
 }
 
@@ -192,9 +179,6 @@ static void calc_active_dz(sediment_t *sediment, sed_column_t *sm)
   if (sm->dzactive > sm->depth_sedi) {
     /* MH 07/2012: included instability handling */
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:calc_active_dz: Thickness of an active layer greater then the total sediment thickness");
-    /*sedtag(LFATAL,"sed:vtransp:calc_active_dz"," Thickness of an active layer greater then the total sediment thickness");
-      exit(1);*/
-    /* END MH */
   }
   /* if (sm->depth_sedi < param->mindepth_sedi) warn("sediment bed almost
      totally eroded"); */
@@ -213,13 +197,7 @@ static void cbfiltered(sediment_t *sediment, sed_column_t *sm)
   sed_params_t *param = sediment->msparam;
   int tk_sed = sm->topk_sed;
   int n;
-
   for (n = 0; n < param->ntr; n++) {
-
-    /* 2011 tmp: Restore Markovian property (may cause stability problems)
-       sm->cbfilt[n] = 0.5*(sm->tr_sed[n][tk_sed] + sm->tr_sed[n][tk_sed - 1]);
-    */
-
     sm->cbfilt[n] = (sm->cbnm1[n] + sm->cbnm2[n] + sm->cbnm3[n] +
                      sm->cbnm4[n] + sm->tr_sed[n][tk_sed] +
                      sm->tr_sed[n][tk_sed - 1]) / 6.;
@@ -320,15 +298,12 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
 
   /* tested in sed_optimization */
   n_salt=0;
-
   for (n = 0; n < param->ntr; n++)
   {
     sm->erflux[n] = 0.;
     /*no sediment flux at the water surface*/
     sm->svel_wc[n][tk_wc+1] = 0.;
   }
-
-
 
   switch (param->flocmode) {
     case 0:
@@ -341,7 +316,7 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
     {
       for (k = bk_wc; k <= tk_wc; k++) {
         c_fine = 0.;
-        /* get rtracer which contribute to c-fine */
+        /* get rtracers contributing to c-fine */
         for (n = 0; n < param->n_vtransp_floc; n++) {
           c_fine += sm->tr_wc[param->vtransp_floc[n]][k];
         }
@@ -363,11 +338,7 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
 	  sm->svel_floc[k] = -a_coef *  (b_coef*c_salt/(1+b_coef*c_salt));
 	else
 	  sm->svel_floc[k] = 0.;
-      }
- 
-      //     sedtag(LFATAL,"vtransp:update_svel_floc","Option FLOC_MODE = 2 is not available");
-      // exit(1);
-            
+      }            
       break;
     }
   case 3:
@@ -379,10 +350,7 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
 	sm->svel_floc[k] = -a_coef * sm->Kz_wc[k];
       else
 	sm->svel_floc[k] = 0.;
-    }
-
-    // sedtag(LFATAL,"vtransp:update_svel_floc","Option FLOC_MODE = 3 is not available");
-    // exit(1);     
+    }  
       break;
     }
     case 4:
@@ -400,8 +368,6 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
    else
      sm->svel_floc[k] = 0.;
  }
-
- // sedtag(LFATAL,"vtransp:update_svel_floc","Option FLOC_MODE = 4 is not available");  exit(1);
       break;
     }
 
@@ -453,8 +419,6 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
   }
 }
 /*end */
-/*UR-OPT end */
-
 
 /***************************************************/
 /* Find cohesive sediment content
@@ -517,8 +481,6 @@ for (k = bk_wc; k <= tk_wc; k++) {
 
 }
 /* end  */
-/*UR-OPT end */
-
 
 /************************************************************************/
 /* Advect, diffuse, settle and resuspend
@@ -549,8 +511,6 @@ static void update_sedim_wc(sediment_t *sediment, sed_column_t *sm)
     sed_tracer_t *tracer = &sediment->mstracers[nt];
     double depfluxcoef;
     double *dvar = d_alloc_1d(param->nz + 1);
-
-    //  nt = param->vtransp_nd_insed_partic[n];
 
     // NMY 2013 surface flux
     srf_flux_inout(sediment, sm, nt, &srf_flux_in, &srf_flux_out_coef);
@@ -583,7 +543,7 @@ static void update_sedim_wc(sediment_t *sediment, sed_column_t *sm)
       sm->erflux[nt] = 0.0;
       depfluxcoef = 0.0;
     }
-    //2012 hardsub scaling
+    //hardsub scaling
     sm->erflux[nt] *= sm->hardsub_scale;
     depfluxcoef *= sm->hardsub_scale;
     // scaling with depth
@@ -615,7 +575,7 @@ static void update_sedim_wc(sediment_t *sediment, sed_column_t *sm)
       sm->erdepflux[nt] = sm->erflux[nt] + sm->depflux[nt];
     }
 
-    // if the sediment thickness exceeds critical value and sediments settle 2010
+    // if the sediment thickness exceeds critical value and sediments settle
     if(sm->depth_sedi > param->max_thick_sed) {
       if( sm->erdepflux[nt] < 0) {
 	for (k = bk_wc; k <= tk_wc; k++)
@@ -634,8 +594,6 @@ static void update_sedim_wc(sediment_t *sediment, sed_column_t *sm)
   }
 }
 /* end */
-/*UR-OPT end */
-
 
 /**************************************************/
 /* Calculate particles velocity in a
@@ -674,9 +632,6 @@ static void calc_svel_consolid(sediment_t *sediment, sed_column_t *sm)
   if (sm->topk_wc == sm->botk_wc) {
     /* MH 07/2012: included instability handling */
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:svel_consolid: At least two wc cells must be present.");
-    /*sedtag(LFATAL,"sed:vtransp:svel_consolid"," At least two wc cells must be present.");
-      exit(1);*/
-    /* END MH */
   }
 
 }
@@ -703,10 +658,7 @@ static void update_sed_levels(sediment_t *sediment, sed_column_t *sm)
       sprintf(etext, "sed:vtransp:update_sed_levels: Sediment volume in bed less/equal 0.0: por_sed = %f, i=%d, j=%d \n",
 	      sm->por_sed[tk_sed], sm->i, sm->j);
       i_set_error(sediment->hmodel, sm->col_number, LFATAL, etext);
-      /*sedtag(LFATAL,"sed:vtransp:update_sed_levels"," Sediment volume in bed less/equal 0.0: por_sed = %d, i=%d, j=%d \n",sm->por_sed[tk_sed], sm->i, sm->j);*/
       voidratio = 1.;
-      /*exit(1);*/
-      /* END MH */
     }
     /* find erosion/deposition rate term in equation for the sediment
        thickness */
@@ -723,7 +675,6 @@ static void update_sed_levels(sediment_t *sediment, sed_column_t *sm)
   }
 
   /* find new coordinate of the sediment top level */
-
   newgridz = sm->gridz_sed[tk_sed + 1] +
     param->dt * (sm->svel_consolid[tk_sed + 1] - flowrate);
   sm->gridvel_sed[tk_sed + 1] =
@@ -759,45 +710,16 @@ static void update_sed_levels(sediment_t *sediment, sed_column_t *sm)
   if (sm->gridz_sed[bk_sed + 1] <= sm->gridz_sed[bk_sed]) {
     /* MH 07/2012: included instability handling */
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:update_sed_levels: Wrong allocation of the grid levels");
-    /*sedtag(LFATAL,"sed:vtransp:update_sed_levels"," Wrong allocation of the grid levels");
-      exit(1);*/
-    /* END MH */
   }
   /* new2 end */
 
   sm->gridvel_sed[bk_sed] = 0.0;
-
-/*UR-OPT start
-  for (k = bk_sed; k <= tk_sed; k++)
-    sm->cellz_sed[k] = (sm->gridz_sed[k] + sm->gridz_sed[k + 1]) / 2.;
-
-  sm->botz_sed = sm->gridz_sed[sm->botk_sed];
-  sm->topz_sed = sm->gridz_sed[sm->topk_sed + 1];
-  sm->depth_sedi = sm->topz_sed - sm->botz_sed;
-
-  for (k = bk_sed; k <= tk_sed; k++)
-    sm->dzold_sed[k] = sm->dz_sed[k];
-
-  if (2 > 1) {
-    double cbot, ctop;
-    cbot = sm->botz_sed;
-    for (k = bk_sed; k < tk_sed; k++) {
-      ctop = sm->gridz_sed[k + 1];
-      sm->dz_sed[k] = ctop - cbot;
-      cbot = ctop;
-    }
-    ctop = sm->topz_sed;
-    sm->dz_sed[tk_sed] = ctop - cbot;
-
-  }
-
-  / *UR-OPT 4/2006 */
-	/* merge the three loops, remove the unecessary conditional statement */
+  /* merge the three loops, remove the unecessary conditional statement */
   sm->botz_sed = sm->gridz_sed[sm->botk_sed];
   sm->topz_sed = sm->gridz_sed[sm->topk_sed + 1];
   sm->depth_sedi = sm->topz_sed - sm->botz_sed;
   {
-  	double cbot, ctop;
+    double cbot, ctop;
     cbot = sm->botz_sed;
     /* reduce exit condition by one and merge the three loops */
    	for (k = bk_sed; k < tk_sed; k++)
@@ -815,13 +737,8 @@ static void update_sed_levels(sediment_t *sediment, sed_column_t *sm)
     sm->dz_sed[tk_sed] = ctop - cbot;
 
   }
-
-  /*UR-OPT end */
-
 }
 /*end */
-/*UR-OPT end */
-
 
 /* **************************************** */
 /* Advect and diffuse sediment
@@ -869,7 +786,6 @@ static void correct_wc(sediment_t *sediment, sed_column_t *sm)
   /* Correct for changed water volume */
 
   /* update dz, gridz and cellz in wc */
-
   if (param->geomorph > 0) {
     Ho = sm->topz_wc - sm->botz_wc;
     Hn = Ho - sm->gridvel_sed[tk_sed + 1] * param->dt;
@@ -909,8 +825,6 @@ static void correct_wc(sediment_t *sediment, sed_column_t *sm)
   }
 }
 /* end */
-/*UR-OPT end */
-
 
 /*******************************/
 /* Update porosity
@@ -955,15 +869,10 @@ static void correct_wc(sediment_t *sediment, sed_column_t *sm)
       if (sm->por_wc[k] > 1.) {
 	/* MH 07/2012: included instability handling */
 	i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:por_wc: Negative concentration of sediment in wc");
-        /*sedtag(LFATAL,"sed:vtransp:por_wc"," Negative concentration of sediment in wc");
-	  exit(1);*/
-	/* END MH */
       }
     }
   }
 }/*end update_porosity_wc*/
-/*UR-OPT end */
-
 
 /*********************************************************/
 /* update porosity
@@ -990,7 +899,7 @@ void update_porosity_sed(sediment_t *sediment, sed_column_t *sm)
     sm->porold_sed[k] = sm->por_sed[k];
     sm->por_sed[k] = 1. - sed_vol;
     
-    //NMY Oct11: if initial concentration of sediments is inconsistent with the init grid structure
+    // if initial concentration of sediments is inconsistent with the init grid,
     // rescale init concentrations and update porosity
     if ( param->nstep <= 1 && sm->por_sed[k] < param->minpor_sed) {
       for (n = 0; n < param->n_vtransp_por_sed; n++) {
@@ -999,7 +908,6 @@ void update_porosity_sed(sediment_t *sediment, sed_column_t *sm)
       }
       sm->por_sed[k] = 2.*param->minpor_sed;
    }
-
 
     // this seem become redundant now
     if (sm->por_sed[k] < param->minpor_sed) {
@@ -1022,15 +930,11 @@ void update_porosity_sed(sediment_t *sediment, sed_column_t *sm)
       if (sm->por_sed[k] > 1.){
 	/* MH 07/2012: included instability handling */
 	i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:pr_sed: Negative concentration of sediment in bottom");
-        /*sedtag(LFATAL,"sed:vtransp:pr_sed"," Negative concentration of sediment in bottom");
-	  exit(1);*/
-	/* END MH */
       }
     }
   }
 }
 /*end update_porosity_sed */
-/*UR-OPT end */
 
 /**************************
 sets wc surface influx and outflux_coefficient for a tracer nt
@@ -1080,12 +984,7 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
   if (tk_wc == bk_wc) { /* one wc layer */
     /* MH 07/2012: included instability handling */
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:update_dissolved_tr: At least two wc cells must be present");
-    /*sedtag(LFATAL,"sed:vtransp:update_dissolved_tr"," At least two wc cells must be present");
-      exit(1);*/
-    /* END MH */
   }
-
-
 
   sm->watvel_sed[bk_sed] = 0.;
   for (k = bk_sed; k <= tk_sed; k++)
@@ -1100,7 +999,7 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
        sm->porold_wc[k] * sm->dzold_wc[k]) / param->dt;
   sm->watvel_wc[bk_wc] = sm->watvel_sed[tk_sed + 1];
 
-  if (sm->watvel_sed[tk_sed + 1] > 0.) { // if deposition event
+  if (sm->watvel_sed[tk_sed + 1] > 0.) { // if resuspension event
     /* Update dissolved concentration first in bottom then in water */
     for (n = 0; n < param->n_vtransp_dissolv; n++) {
       double zeroval = 0.;
@@ -1123,6 +1022,8 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
       // NMY 2013 surface flux
       srf_flux_inout(sediment, sm, nt, &srf_flux_in, &srf_flux_out_coef);
       botinflux = sm->watvel_sed[tk_sed + 1] * sm->tr_sed[nt][tk_sed];
+// NMY 2018 
+      sm->erdepflux[param->vtransp_dissolv[n]] = botinflux;
       if (!param->geomorph && (strcmp("temp",tracer->name) == 0 ||
           strcmp("salt",tracer->name) == 0) )
         botinflux = 0.;     /* Cut temp and salt influx */
@@ -1133,7 +1034,7 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
         sm->tr_wc[nt][k] += dvar[k];
       d_free_1d(dvar);
     }
-  } else { // if erosion event
+  } else { // if deposition event
     /* Update dissolved concentration first in water then in bottom */
     for (n = 0; n < param->n_vtransp_dissolv; n++) {
       double zeroval = 0.;
@@ -1159,6 +1060,8 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
 
       /* explicit influx in sediment from water */
       topinflux = sm->watvel_sed[tk_sed + 1] * sm->tr_wc[nt][bk_wc];
+// NMY 2018 
+      sm->erdepflux[param->vtransp_dissolv[n]] = topinflux;
       dvar = d_alloc_1d(param->sednz + 1);
       vdiff_dissolved_sed(sediment, sm, tracer, zeroval, topinflux,
                           zeroval, zeroval, dvar);
@@ -1170,7 +1073,6 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
   }
 }
 /* end update_dissolved_tr */
-/*UR-OPT end */
 
 /*********************************************/
 /* Diffusion of the dissolved tracer
@@ -1314,8 +1216,6 @@ void adsorbed_sed(sediment_t *sediment, sed_column_t *sm)
   }
 }
 /* end */
-/*UR-OPT end */
-
 
 /*******************************************/
 /* Cut numerical truncation errors */
@@ -1369,9 +1269,6 @@ void sorption(sediment_t *sediment, sed_column_t *sm)
         if (!tracerd->dissol){
 	  /* MH 07/2012: included instability handling */
 	  i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:sorption: desorbed traced must be dissolved");
-          /*sedtag(LFATAL,"sed:vtransp:sorption"," desorbed traced must be dissolved");
-	    exit(1);*/
-	  /* END MH */
         }
         for (k = bk_wc; k <= tk_wc; k++) {
           R = (sm->tr_wc[ns][k] / sm->por_wc[k]) * Kd;
@@ -1398,8 +1295,6 @@ void sorption(sediment_t *sediment, sed_column_t *sm)
           Cw = (D + B) / sm->por_sed[k];
           sm->tr_sed[np][k] = Cp > 0. ? Cp : 0.;
           sm->tr_sed[nd][k] = Cw > 0. ? Cw : 0.;
-
-
         }
       } else {              /* equilibrium sorption */
 
@@ -1453,7 +1348,6 @@ void sed_tracer_decay(sediment_t *sediment, sed_column_t *sm)
   }
 }
 /* end */
-/*UR-OPT end */
 
 /********************************************/
 /* Calculate erosion rate on cohesive bed, in kg m-2 s-1 */
@@ -1488,9 +1382,6 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
     /* MH 07/2012: included instability handling */
     sprintf(etext, "sed:vtransp:erdep_fine: Negative critical shear on cohesive sed.bed %f",sm->css[tk_sed]);
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, etext);
-    /*sedtag(LFATAL,"sed:vtransp:erdep_fine"," Negative critical shear on cohesive sed.bed %f",sm->css[tk_sed]);
-      exit(1);*/
-    /* END MH */
   }
   nxsbs = (bs > sm->css[tk_sed]) ? (bs / sm->css[tk_sed] - 1.0) : 0.0;
 /* normalised excess stress */
@@ -1503,12 +1394,11 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
   sm->erflux[n] = param->erflux_scale *
       r * 0.002 * sm->css[tk_sed] * nxsbs;  /* erosion flux, in kg m-2 s-1 */
   /* Define deposition term coefficient for implicit calculation */
-/*NMY tmp fix for fluff 2018 */
-if (strcmp("Dust",tracer->name) == 0)
-   css_depX=0.0;
-else
-   css_depX=sm->css_dep;
-
+  /*NMY tmp fix for fluff 2018 */
+  if (strcmp("Dust",tracer->name) == 0)
+     css_depX=0.0;
+  else
+     css_depX=sm->css_dep;
 
   nxsbs = (bs < css_depX) ? (1.0 - bs / css_depX) : 0.0;  
   /* normalised excess stress */
@@ -1545,9 +1435,6 @@ static double calc_css(sediment_t *sediment, sed_column_t *sm, int k)
   if (vr < 0.) {
     /* MH 07/2012: included instability handling */
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, "sed:vtransp:calc_css: negative void ratio in sediment bed");
-    /*sedtag(LFATAL,"sed:vtransp:calc_css"," negative void ratio in sediment bed");
-      exit(1);*/
-    /* END MH */
   }
   rho_b = (vr * rho_w + rho_p) / (1. + vr);
   rho_d = rho_p / (1. + vr);
@@ -1629,7 +1516,6 @@ static void calculate_dzface_sed(sed_column_t *sm)
     sm->dzface_sed[k] = (sm->dz_sed[k - 1] + sm->dz_sed[k]) / 2.;
 }
 
-
 static void calculate_dzface_wc(sed_column_t *sm)
 {
   int k;
@@ -1664,12 +1550,9 @@ double ref_c_coef(sediment_t *sediment, sed_column_t *sm, int n)
   double delta;
   double kapu;
 
-
   zref = 7. * 30. * sm->z0_skin;
   dzc = dzc;
-
   v = -sm->svel_wc[n][bk_wc];
-
   c0 = sm->tr_wc[n][bk_wc];
   kapu = (sm->Kz_wc[bk_wc + 1] - K0) / dzc;
   /* kapu = 0.4 * sm->ustrcw; */
@@ -1687,11 +1570,9 @@ double ref_c_coef(sediment_t *sediment, sed_column_t *sm, int n)
     ref_c_c = (dzc * pp) / (1. - pdzc);
     ref_c_c = ref_c_c * (pzref / (zref + delta));
   }
-
   return (max(ref_c_c, 1.));
 }
 #endif
-
 
 #ifdef __cplusplus
 }
