@@ -154,7 +154,7 @@ TRACER1.diagn        0
 TRACER1.data         profile.nc
 
 # Forcing
-WIND_TS               closed_chan.ts
+WIND_TS               /home/her127/work/meco/closed_chan.ts
 WIND_INPUT_DT        10.0   day
 WIND_SPEED_SCALE     1.0   
 DRAG_LAW_V0          10.0  
