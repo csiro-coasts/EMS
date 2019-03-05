@@ -1,4 +1,4 @@
-# EMS-pre-release
+# EMS
 
 ## Features
 * Hydrodynamic models for [structured](model/hd) and [unstructured](model/hd-us) grids
