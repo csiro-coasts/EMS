@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: diffusion_epi.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: diffusion_epi.h 6007 2018-10-30 00:08:59Z bai155 $
  *
  */
 
@@ -22,6 +22,7 @@
 void diffusion_epi_init(eprocess* p);
 void diffusion_epi_destroy(eprocess* p);
 void diffusion_epi_calc(eprocess* p, void* pp);
+void diffusion_epi_postcalc(eprocess* p, void* pp);
 
 #define _DIFFUSION_EPI_H
 #endif

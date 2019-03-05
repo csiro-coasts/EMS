@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_wc.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: massbalance_wc.c 6043 2018-12-07 03:33:38Z bai155 $
  *
  */
 
@@ -91,9 +91,11 @@ void massbalance_wc_init(eprocess* p)
     ws->TP_old_i = find_index_or_add(e->cv_cell, "TP_old", e);
     ws->TC_old_i = find_index_or_add(e->cv_cell, "TC_old", e);
 
-    if (ws->COD_i > -1){
+    if (ws->COD_i > -1 && ws->O2_flux_i > -1 && ws->BOD_i > -1){
       ws->TO_old_i = find_index_or_add(e->cv_cell, "TO_old", e);
-    }
+    }else{
+      eco_write_setup(e,"\nNot doing oxygen balance because either COD, O2_flux or BOD is not in tracer list\n");
+      }
     /*
      * set a flag indicating doing mass balance calculations
      */
@@ -126,7 +128,7 @@ void massbalance_wc_precalc(eprocess* p, void* pp)
     cv[ws->TP_old_i] = y[ws->TP_i];
     cv[ws->TC_old_i] = y[ws->TC_i];
 
-    if (ws->COD_i > -1){
+    if (ws->TO_old_i > -1){
       cv[ws->TO_old_i] = y[ws->Oxygen_i] - y[ws->BOD_i] - y[ws->COD_i] + y[ws->NO3_i] / 14.01 * 48.0;
       y[ws->BOD_i] = 0.0;
     }
@@ -176,7 +178,7 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
     if (eps > MASSBALANCE_EPS)
       e->quitfn("ecology: error: C balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
 
-    if (ws->COD_i > -1){
+    if (ws->TO_old_i > -1){
 	O2_flux = (ws->O2_flux_i >= 0) ? y[ws->O2_flux_i] : 0.0;
 
           TO = y[ws->Oxygen_i] - y[ws->COD_i]  - y[ws->BOD_i];

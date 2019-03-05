@@ -26,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_sed.c 5935 2018-09-12 04:59:19Z bai155 $
+ *  $Id: light_spectral_sed.c 6036 2018-11-28 00:24:02Z bai155 $
  *
  */
 
@@ -172,11 +172,18 @@ void light_spectral_sed_postinit(eprocess* p)
 {
   ecology* e = p->ecology;
   workspace* ws = (workspace *)p->workspace;
-
+  
+  if (e->pre_build) return;
+  
   if (ws->pig == 'H'){  // HPLC determined absorption coefficients
 
     eco_write_setup(e,"\nHPLC determined absorption coefficients in sediments \n");
     
+    if (e->bio_opt==NULL){
+      ecology_find_rsr_waves(e);
+      e->bio_opt = bio_opt_init(e);
+    }
+
     bio_opt_prop *bio = e->bio_opt;
     
     int w;

@@ -4,8 +4,14 @@
  *  
  *  File: model/lib/ecology/process_library/zooplankton_small_spectral_grow_wc.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Zooplankton growth from grazing on small zooplankton. 
+ *
+ *  Grazing equations include a maximum encounter rate and maximum growth rate limit.
+ *
+ *  Baird, M. E., S. J. Walker, B. B. Wallace, I. T. Webster and J. S. Parslow (2003) 
+ *        The use of mechanistic descriptions of algal growth and zooplankton grazing 
+ *        in an estuarine eutrophication model. 
+ *        Estuarine, Coastal and Shelf Science 56, 685-695.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +19,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_small_spectral_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: zooplankton_small_spectral_grow_wc.c 6049 2018-12-20 03:02:48Z bai155 $
  *
  */
 

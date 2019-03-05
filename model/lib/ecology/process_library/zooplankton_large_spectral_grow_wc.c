@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_large_spectral_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: zooplankton_large_spectral_grow_wc.c 5968 2018-09-24 02:03:43Z bai155 $
  *
  */
 
@@ -241,7 +241,7 @@ void zooplankton_large_spectral_grow_wc_postinit(eprocess* p)
   
   ws->do_mb = (try_index(e->cv_model, "massbalance_wc", e) >= 0) ? 1 : 0;
   
-  if(ws->with_df)
+  /*  if(ws->with_df)
     ws->with_df = process_present(e,PT_WC,"dinoflagellate_spectral_grow_wc");
   emstag(LINFO,"eco:zooplankton_large_spectral_grow_wc:postinit","%sCalculating consumption of Dinoflagellates",(ws->with_df?"":"NOT "));
   
@@ -251,7 +251,7 @@ void zooplankton_large_spectral_grow_wc_postinit(eprocess* p)
   
   if(ws->with_Tricho)
     ws->with_Tricho = process_present(e,PT_WC,"trichodesmium_grow_wc");
-  emstag(LINFO,"eco:zooplankton_large_spectral_grow_wc:postinit","%sCalculating consumption of Tricho",(ws->with_Tricho?"":"NOT "));
+    emstag(LINFO,"eco:zooplankton_large_spectral_grow_wc:postinit","%sCalculating consumption of Tricho",(ws->with_Tricho?"":"NOT ")); */
 }
 
 void zooplankton_large_spectral_grow_wc_destroy(eprocess* p)

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: einterface.h 5852 2018-06-29 07:20:12Z riz008 $
+ *  $Id: einterface.h 5976 2018-09-26 00:30:13Z riz008 $
  *
  */
 
@@ -242,6 +242,12 @@ extern double einterface_cellarea(void* hmodel, int b);
  *
  */
 extern int einterface_transport_mode(void);
+
+/**
+ * Get output path from host model
+ *
+ */
+char *einterface_get_output_path(void);
 
 /*
  * Calculates the Zenith using the library function

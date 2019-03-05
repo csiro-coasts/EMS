@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_epi.c 5928 2018-09-10 05:29:03Z bai155 $
+ *  $Id: seagrass_spectral_grow_epi.c 6051 2019-01-21 02:37:59Z bai155 $
  *
  */
 
@@ -401,6 +401,8 @@ void seagrass_spectral_grow_epi_precalc(eprocess* p, void* pp)
     double DIP_sed = 0.0;
 
     double Tfactor = (ws->Tfactor_i >= 0) ? cv[ws->Tfactor_i] : 1.0;
+
+    /* Multiply SG_N and SGROOT_N by unitch so that mass balance units are consistent */
 
     double SG_N = y[ws->SG_N_i] * unitch;
     double SGROOT_N = y[ws->SGROOT_N_i] * unitch;

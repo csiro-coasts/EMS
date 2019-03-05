@@ -2,10 +2,31 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/lib/ecology/process_library/light_spectral_epi.c
+ *  File: model/lib/ecology/process_library/light_spectral_uq_epi.c
  *  
  *  Description:
- *  Process implementation
+ *
+ *  Epi-benthic spectrally-resolved optical model. This is the standard routine for B3p0.
+ *  
+ *  Model calculates:
+ *  
+ *  - absorption by each model autotroph in precalc (output time minus ECOLOGY_DT).
+ *  - the component of light returned to the surface from the bottom (at the output time).
+ *  - since light_spectral_sed does not return light to the surface, all of the simulated 
+ *    satellite products are caluclated here (output time).
+ *  
+ *  WARNING: variables last calculated in precalc (PAR etc.) are output at the output time but are the value from 
+ *           output time - ECOLOGY_DT. 
+ *           Variables calculated in postcalc are at the correct time.
+ *  
+ *  To output remote-sensing relectance at wavelenth XXX requires a 2D tracer named: R_XXX 
+ *
+ *  Optical model described in:
+ *  
+ *  Baird, M. E., N. Cherukuru, E. Jones, N. Margvelashvili, M. Mongin, K. Oubelkheir, P. J. Ralph, F. Rizwi, 
+ *  B. J. Robson, T. Schroeder, J. Skerratt, A. D. L. Steven and K. A. Wild-Allen (2016) Remote-sensing 
+ *  reflectance and true colour produced by a coupled hydrodynamic, optical, sediment, biogeochemical 
+ *  model of the Great Barrier Reef, Australia: comparison with satellite data. Env. Model. Software 78: 79-96.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +34,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_uq_epi.c 5906 2018-08-29 03:27:43Z bai155 $
+ *  $Id: light_spectral_uq_epi.c 6044 2018-12-12 00:20:19Z bai155 $
  *
  */
 
@@ -853,7 +874,8 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
 
   double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
   
-  y[ws->Zenith_i] = zenith;
+  if (ws->Zenith_i > -1)
+    y[ws->Zenith_i] = zenith;
 
   zenith = (fabs(zenith)<1.0e-15)? 1.0e-15:zenith;
   zenith = ((zenith-M_PI/2.0)-fabs(zenith-M_PI/2.0))/2.0+M_PI/2.0;

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: allprocesses.c 5945 2018-09-13 21:56:39Z bai155 $
+ *  $Id: allprocesses.c 6109 2019-02-08 05:50:00Z wil00y $
  *
  */
 
@@ -83,6 +83,7 @@
 #include "process_library/phytoplankton_spectral_grow_wc.h"
 #include "process_library/phytoplankton_spectral_mortality_sed.h"
 #include "process_library/phytoplankton_spectral_mortality_wc.h"
+#include "process_library/dinoflagellate_spectral_mortality_wc.h"
 #include "process_library/zooplankton_small_spectral_grow_wc.h"
 #include "process_library/zooplankton_large_spectral_grow_wc.h"
 #include "process_library/zooplankton_large_carnivore_spectral_grow_wc.h"
@@ -151,7 +152,7 @@
  * } process_entry;
  */
 eprocess_entry eprocesslist[] = {
-    {"diffusion_epi", PT_EPI, 0, 0, diffusion_epi_init, NULL, diffusion_epi_destroy, NULL, diffusion_epi_calc, NULL},
+    {"diffusion_epi", PT_EPI, 0, 0, diffusion_epi_init, NULL, diffusion_epi_destroy, NULL, diffusion_epi_calc, diffusion_epi_postcalc},
     {"dinoflagellate_grow_wc", PT_WC, 0, 0, dinoflagellate_grow_wc_init, dinoflagellate_grow_wc_postinit, dinoflagellate_grow_wc_destroy, dinoflagellate_grow_wc_precalc, dinoflagellate_grow_wc_calc, dinoflagellate_grow_wc_postcalc},
     {"dinoflagellate_mortality_sed", PT_SED, 0, 0, dinoflagellate_mortality_sed_init, dinoflagellate_mortality_sed_postinit, dinoflagellate_mortality_sed_destroy, dinoflagellate_mortality_sed_precalc, dinoflagellate_mortality_sed_calc, dinoflagellate_mortality_sed_postcalc},
     {"anm_epi", PT_EPI, 0, 0, anm_epi_init, NULL, anm_epi_destroy, NULL, anm_epi_calc, NULL},
@@ -162,8 +163,8 @@ eprocess_entry eprocesslist[] = {
     {"light_wc", PT_WC, 0, 0, light_wc_init, light_wc_postinit, light_wc_destroy, light_wc_precalc, NULL, NULL},
     {"light_spectral_wc", PT_WC, -1, 0, light_spectral_wc_init, light_spectral_wc_postinit, light_spectral_wc_destroy, light_spectral_wc_precalc, NULL, light_spectral_wc_postcalc},
     {"macroalgae_grow_epi", PT_EPI, 0, 0, macroalgae_grow_epi_init, macroalgae_grow_epi_postinit, macroalgae_grow_epi_destroy, macroalgae_grow_epi_precalc, macroalgae_grow_epi_calc, macroalgae_grow_epi_postcalc},
-    {"macroalgae_mortality_epi", PT_EPI, 0, 0, macroalgae_mortality_epi_init, NULL, macroalgae_mortality_epi_destroy, macroalgae_mortality_epi_precalc, macroalgae_mortality_epi_calc, macroalgae_mortality_epi_postcalc},
-    {"massbalance_epi", PT_EPI, 0, 1, massbalance_epi_init, NULL, massbalance_epi_destroy, massbalance_epi_precalc, NULL, massbalance_epi_postcalc},
+    {"macroalgae_mortality_epi", PT_EPI, 0, 0, macroalgae_mortality_epi_init, macroalgae_mortality_epi_postinit, macroalgae_mortality_epi_destroy, macroalgae_mortality_epi_precalc, macroalgae_mortality_epi_calc, macroalgae_mortality_epi_postcalc},
+    {"massbalance_epi", PT_EPI, 0, 1, massbalance_epi_init, massbalance_epi_postinit, massbalance_epi_destroy, massbalance_epi_precalc, NULL, massbalance_epi_postcalc},
     {"massbalance_sed", PT_SED, 0, 0, massbalance_sed_init, NULL, massbalance_sed_destroy, massbalance_sed_precalc, NULL, massbalance_sed_postcalc},
     {"massbalance_wc", PT_WC, 0, 0, massbalance_wc_init, NULL, massbalance_wc_destroy, massbalance_wc_precalc, NULL, massbalance_wc_postcalc},
     {"microphytobenthos_grow_sed", PT_SED, 0, 0, microphytobenthos_grow_sed_init, microphytobenthos_grow_sed_postinit, microphytobenthos_grow_sed_destroy, microphytobenthos_grow_sed_precalc, microphytobenthos_grow_sed_calc, microphytobenthos_grow_sed_postcalc},
@@ -223,13 +224,13 @@ eprocess_entry eprocesslist[] = {
     {"light_spectral_uq_epi", PT_EPI, 0, 0, light_spectral_uq_epi_init, light_spectral_uq_epi_postinit, light_spectral_uq_epi_destroy, light_spectral_uq_epi_precalc, NULL, light_spectral_uq_epi_postcalc},
     {"light_spectral_proto_epi", PT_EPI, 0, 0, light_spectral_proto_epi_init, light_spectral_proto_epi_postinit, light_spectral_proto_epi_destroy, light_spectral_proto_epi_precalc, NULL, NULL},
     {"seagrass_spectral_mortality_epi", PT_EPI, 1, 0, seagrass_spectral_mortality_epi_init, NULL, seagrass_spectral_mortality_epi_destroy, seagrass_spectral_mortality_epi_precalc, seagrass_spectral_mortality_epi_calc, seagrass_spectral_mortality_epi_postcalc},
-    {"seagrass_spectral_mortality_proto_epi", PT_EPI, 1, 0, seagrass_spectral_mortality_proto_epi_init, NULL, seagrass_spectral_mortality_proto_epi_destroy, seagrass_spectral_mortality_proto_epi_precalc, seagrass_spectral_mortality_proto_epi_calc, seagrass_spectral_mortality_proto_epi_postcalc},
+    {"seagrass_spectral_mortality_proto_epi", PT_EPI, 1, 0, seagrass_spectral_mortality_proto_epi_init, seagrass_spectral_mortality_proto_epi_postinit, seagrass_spectral_mortality_proto_epi_destroy, seagrass_spectral_mortality_proto_epi_precalc, seagrass_spectral_mortality_proto_epi_calc, seagrass_spectral_mortality_proto_epi_postcalc},
     {"coral_spectral_grow_epi", PT_EPI, 0, 0, coral_spectral_grow_epi_init, coral_spectral_grow_epi_postinit, coral_spectral_grow_epi_destroy, coral_spectral_grow_epi_precalc, coral_spectral_grow_epi_calc, coral_spectral_grow_epi_postcalc},
     {"coral_spectral_grow_bleach_epi", PT_EPI, 0, 0, coral_spectral_grow_bleach_epi_init, coral_spectral_grow_bleach_epi_postinit, coral_spectral_grow_bleach_epi_destroy, coral_spectral_grow_bleach_epi_precalc, coral_spectral_grow_bleach_epi_calc, coral_spectral_grow_bleach_epi_postcalc},
     {"coral_spectral_carb_epi", PT_EPI, -1, 0, coral_spectral_carb_epi_init, coral_spectral_carb_epi_postinit, coral_spectral_carb_epi_destroy, coral_spectral_carb_epi_precalc, coral_spectral_carb_epi_calc, coral_spectral_carb_epi_postcalc},
     {"filter_feeder_wc", PT_WC, 0, 0, filter_feeder_wc_init, filter_feeder_wc_postinit, filter_feeder_wc_destroy, filter_feeder_wc_precalc, filter_feeder_wc_calc, filter_feeder_wc_postcalc},
     {"filter_feeder_epi", PT_EPI, 0, 0, filter_feeder_epi_init, filter_feeder_epi_postinit, filter_feeder_epi_destroy, filter_feeder_epi_precalc, filter_feeder_epi_calc, filter_feeder_epi_postcalc},
-    {"age_wc", PT_WC, 0, 0, age_wc_init, NULL, age_wc_destroy, age_wc_precalc, age_wc_calc, NULL},
+    {"age_wc", PT_WC, 0, 0, age_wc_init, age_wc_postinit, age_wc_destroy, age_wc_precalc, age_wc_calc, NULL},
 /*    {"light_wc_gradient", PT_WC, 0, 0, light_wc_gradient_init, light_wc_gradient_postinit, light_wc_gradient_destroy, light_wc_gradient_precalc, NULL, NULL},
 */
 
@@ -254,7 +255,7 @@ eprocess_entry eprocesslist[] = {
     {"macroalgae_grow_wc", PT_WC, 0, 0, macroalgae_grow_wc_init, macroalgae_grow_wc_postinit, macroalgae_grow_wc_destroy, macroalgae_grow_wc_precalc, macroalgae_grow_wc_calc, macroalgae_grow_wc_postcalc},
     {"macroalgae_mortality_wc", PT_WC, 0, 0, macroalgae_mortality_wc_init, NULL, macroalgae_mortality_wc_destroy, macroalgae_mortality_wc_precalc, macroalgae_mortality_wc_calc, macroalgae_mortality_wc_postcalc},
     {"salmon_waste", PT_WC, 0, 0, salmon_waste_init, NULL, salmon_waste_destroy, salmon_waste_precalc, NULL, salmon_waste_postcalc},
-
+    {"dinoflagellate_spectral_mortality_wc", PT_WC, 0, 0, dinoflagellate_spectral_mortality_wc_init, dinoflagellate_spectral_mortality_wc_postinit, dinoflagellate_spectral_mortality_wc_destroy, dinoflagellate_spectral_mortality_wc_precalc, dinoflagellate_spectral_mortality_wc_calc, dinoflagellate_spectral_mortality_wc_postcalc},
     /*add macroalgae growing on the water column*/
 
     {"macroalgae_spectral_grow_wc", PT_WC, 0, 0, macroalgae_spectral_grow_wc_init, macroalgae_spectral_grow_wc_postinit, macroalgae_spectral_grow_wc_destroy, macroalgae_spectral_grow_wc_precalc, macroalgae_spectral_grow_wc_calc, macroalgae_spectral_grow_wc_postcalc},

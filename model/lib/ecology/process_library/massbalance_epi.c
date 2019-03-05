@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_epi.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: massbalance_epi.c 5972 2018-09-25 05:50:32Z riz008 $
  *
  */
 
@@ -142,10 +142,6 @@ void massbalance_epi_init(eprocess* p)
     ws->KO_aer = get_parameter_value(e, "KO_aer");
     ws->KO_nit = get_parameter_value(e, "KO_nit");
 
-    if (process_present(e,PT_WC,"coral_spectral_grow_wc") && (ws->Gnet_i < 0)){
-      emstag(LPANIC,"eco:massbalance_epi:init","Mass balance in epi not possible with corals calcifying and Gnet not in the tracer list. Put Gnet in tracer list or remove massbalance_epi.");
-    }
-    
     /*
      * set a flag indicating doing mass balance calculations
      */
@@ -154,6 +150,20 @@ void massbalance_epi_init(eprocess* p)
     stringtable_add_ifabscent(e->cv_model, "massbalance_sed", -1);
     ws->fact = 10000.0;
     eco_write_setup(e,"\nMass balance in epibenthic to %e mg N / m3 \n",MASSBALANCE_EPS * ws->fact);
+}
+
+void massbalance_epi_postinit(eprocess* p)
+{
+  ecology* e = p->ecology;
+  workspace* ws = p->workspace;
+  
+  if (process_present(e,PT_EPI,"coral_spectral_grow_epi") && (ws->Gnet_i < 0)){
+    emstag(LPANIC,"eco:massbalance_epi:init","Mass balance in epi not possible with corals calcifying and Gnet not in the tracer list. Put Gnet in tracer list or remove massbalance_epi.");
+  }
+  
+  if (process_present(e,PT_EPI,"coral_spectral_carb_epi") && (ws->Gnet_i < 0)){
+    emstag(LPANIC,"eco:massbalance_epi:init","Mass balance in epi not possible with corals calcifying and Gnet not in the tracer list. Put Gnet in tracer list or remove massbalance_epi.");
+  }
 }
 
 void massbalance_epi_destroy(eprocess* p)

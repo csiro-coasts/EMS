@@ -2,13 +2,15 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/lib/ecology/process_library/coral_spectral_grow_bleach_epi.h
+ *  File: model/lib/ecology/process_library/coral_spectral_grow_bleach_epi.c
  *  
  *  Description:
  * 
- *  This process contains a coral model with autorophic and heterotrophic growth, zooxanthhellae physiology, 
- *  xanthophyll cycle and reaction centre dynamics and reative oxygen build-up.
+ *  This process contains a coral model with autotrophic and heterotrophic growth, zooxanthellae physiology, 
+ *  xanthophyll cycle, reaction centre dynamics and reative oxygen build-up.
  *
+ *  References:
+ * 
  *  Gustafsson et al. (2013) The interchangeability of autotrophic 
  *  and hetertrophic nitrogen sources in Scleractinian coral symbiotic relationships: a 
  *  numerical study Ecol. Model.250:183-194.
@@ -26,7 +28,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_grow_bleach_epi.c 5911 2018-09-03 22:43:25Z bai155 $
+ *  $Id: coral_spectral_grow_bleach_epi.c 5954 2018-09-15 12:57:55Z bai155 $
  *
  */
 

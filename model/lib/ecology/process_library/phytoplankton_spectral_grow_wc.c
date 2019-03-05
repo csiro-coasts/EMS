@@ -19,14 +19,18 @@
  *  Baird, M. E., M. Mongin, F. Rizwi, L. K. Bay, N. E. Cantin, M. Soja-Wozniak and J. Skerratt (2018) 
  *  A mechanistic model of coral bleaching due to temperature-mediated light-driven reactive oxygen 
  *  build-up in zooxanthellae. Ecol. Model 386: 20-37.
- *  
+ *
+ *  Note: The published model description describes fixed carbon reserves (mg C cell-1). The code is written as 
+ *         energy reverse (mmol photon cell-1) - the published description is clearer but the difference is just 
+ *         a scaling factor. 
+ *   
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_spectral_grow_wc.c 5931 2018-09-11 22:36:36Z bai155 $
+ *  $Id: phytoplankton_spectral_grow_wc.c 6058 2019-02-07 02:59:39Z bai155 $
  *
  */
 

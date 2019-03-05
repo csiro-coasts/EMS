@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_info.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: parameter_info.h 6037 2018-11-28 00:53:01Z bai155 $
  *
  */
 
@@ -96,6 +96,7 @@ void eco_params_std(parameter_info **parameters, int *nprm);
 void eco_params_est(parameter_info **parameters, int *nprm);
 void eco_params_gbr4(parameter_info **parameters, int *nprm);
 void eco_params_bgc2p0(parameter_info **parameters, int *nprm);
+void eco_params_bgc3p0(parameter_info **parameters, int *nprm);
 
 #define _PARAMETER_INFO_H
 #endif

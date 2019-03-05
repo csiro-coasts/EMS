@@ -4,8 +4,7 @@
  *  
  *  File: model/lib/ecology/process_library/light_spectral2par_epi.c
  *  
- *  Description:
- *  Process implementation
+ *  OBSOLETE: not necessary if using light_spectral_sed.c
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral2par_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_spectral2par_epi.c 6046 2018-12-12 00:53:28Z bai155 $
  *
  */
 

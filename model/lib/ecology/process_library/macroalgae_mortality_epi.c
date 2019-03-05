@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_mortality_epi.c 5946 2018-09-14 00:21:27Z bai155 $
+ *  $Id: macroalgae_mortality_epi.c 5977 2018-09-27 03:28:41Z riz008 $
  *
  */
 
@@ -91,13 +91,18 @@ void macroalgae_mortality_epi_init(eprocess* p)
      */
     ws->Tfactor_i = try_index(e->cv_cell, "Tfactor", e);
     ws->mL_i = find_index_or_add(e->cv_cell, "MA_mL", e);
-    
+}
+
+void macroalgae_mortality_epi_postinit(eprocess* p)
+{
+    ecology* e = p->ecology;
+    workspace* ws = p->workspace;
     /*
      * Key off the light spectral process
      */
     ws->unitch = 1;
-    if (process_present(e, PT_WC, "light_spectral_wc")){
-      ws->unitch = 1000;
+    if (process_present(e, PT_EPI, "macroalgae_spectral_grow_epi")){
+      ws->unitch = 1000.0;
       eco_write_setup(e,"Macroalgae mortality: spectral model so units of macroalgae grams \n");
     }else{
       eco_write_setup(e,"Macroalgae mortality: non-spectral model so units of macroalgae mg \n");

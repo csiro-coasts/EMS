@@ -13,8 +13,9 @@
  *  - the component of light returned to the surface from each layer for calculating simulated 
  *    satelitte products in postcalc (output time).
  *
- *  WARNING: variables output in precalc are calculated at output time - ECOLOGY_DT, but are stored in
- *           output files at output time.
+ *  WARNING: variables last calculated in precalc (PAR etc.) are output at the output time but are the value from 
+ *                 output time - ECOLOGY_DT from calculation at 
+ *            variables calculated in postcalc are at the correct time.
  *
  *  Options: light_spectral_wc(G|H|C,G|H)
  *  
@@ -24,6 +25,15 @@
  * 
  *  Second argument: G - Gaussian approx. of chl-a and non chl-a specific absorption.
  *                   H - HPLC-determined of pigment-specific absorption.
+ *  
+ *  To output remote-sensing relectance at wavelenth XXX requires a 2D tracer named: R_XXX 
+ *
+ *  Optical model described in:
+ *  
+ *  Baird, M. E., N. Cherukuru, E. Jones, N. Margvelashvili, M. Mongin, K. Oubelkheir, P. J. Ralph, F. Rizwi, 
+ *  B. J. Robson, T. Schroeder, J. Skerratt, A. D. L. Steven and K. A. Wild-Allen (2016) Remote-sensing 
+ *  reflectance and true colour produced by a coupled hydrodynamic, optical, sediment, biogeochemical 
+ *  model of the Great Barrier Reef, Australia: comparison with satellite data. Env. Model. Software 78: 79-96.
  *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -31,7 +41,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_wc.c 5930 2018-09-11 01:17:11Z bai155 $
+ *  $Id: light_spectral_wc.c 6036 2018-11-28 00:24:02Z bai155 $
  *
  */
 
@@ -442,8 +452,11 @@ void light_spectral_wc_postinit(eprocess* p)
    * actual ecology_build not pre_build
    * Note: do not call try/find_index on tracers in this function
    */
-  ecology_find_rsr_waves(e);
-  e->bio_opt = bio_opt_init(e);
+
+  if (e->bio_opt==NULL){
+    ecology_find_rsr_waves(e);
+    e->bio_opt = bio_opt_init(e);
+  }
 
   /* set light indexes so that code isn't looking for them each time step. */
 
@@ -1067,8 +1080,10 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
     }
 
     if (ws->domain == 'C'){
-      // From cruises in Oct 2017, Mar 2018.
-      at_s[w] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM*(wave[w]-443.0));
+      // From cruises in Oct 2017, Mar 2018 - based on 440 nm
+      // at_s[w] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM*(wave[w]-440.0));
+      at_s[w] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) 
+	* exp(-(ws->S_CDOM - max(y[ws->salt_i]-30.0,0.0)*0.007/5.0 ) * (wave[w]-440.0));
     }
 
     switch (ws->domain){     /* Still need to think through NAP */
@@ -1081,7 +1096,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       at_s[w] += bio->aC_CAL1[w] * Mud_carbonate * 1000.0 ; // Calcite
       break;
     case 'C' :
-      at_s[w] += bio->aC_QUA1[w] * NAP * 1.0e3;
+      at_s[w] += bio->aC_ICE2[w] * NAP * 1.0e3;
       break;
     }
     
@@ -1128,7 +1143,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       bb_s[w] += bio->bbp_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
       break;
     case 'C' :
-      bb_s[w] += bio->bC_QUA1[w] * NAP * 1.0e3;
+      bb_s[w] += bio->bC_ICE2[w] * NAP * 1.0e3;
      break;
     }
     /*  
@@ -1653,8 +1668,10 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	at_r[w2] += 0.01 * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0));
       }
       if (ws->domain == 'C'){
-	// From cruises in Oct 2017, Mar 2018.
-	at_r[w2] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM * (e->rsr_waves[w2]-443.0));
+	// From cruises in Oct 2017, Mar 2018
+	// at_r[w2] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM * (e->rsr_waves[w2]-440.0));
+	at_r[w2] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) 
+	  * exp(-(ws->S_CDOM - max(y[ws->salt_i]-30.0,0.0)*0.007/5.0 ) * (e->rsr_waves[w2]-440.0));
       }
 
       bb_r[w2] = ws->bbw_ratio * bio->bw_s2[w2];  // clear water.
@@ -1678,8 +1695,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bbp_A2[w2] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
 	break;
       case 'C' :
-	at_r[w2] += bio->aC_QUA1_rsr[w2] * NAP * 1.0e3;
-	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_MON1_rsr[w2] * NAP * 1.0e3;
+	at_r[w2] += bio->aC_ICE2_rsr[w2] * NAP * 1.0e3;
+	// bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_MON1_rsr[w2] * NAP * 1.0e3;
+	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
 	//bb_r[w2] += ws->bbnap_ratio * bio->bbp_A2[w2] * pow(NAP, bio->bbp_B2[w2]); /* NAP backscattering */
 	//bb_r[w2] += ws->bbnap_ratio * bio->bbp_CarbSand_A2[w2] * pow(CarbSand, bio->bbp_CarbSand_B2[w2]); /* NAP backscattering */
        break;

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_version.h 5876 2018-07-06 07:48:40Z riz008 $
+ *  $Id: ecology_version.h 6156 2019-03-05 03:00:49Z riz008 $
  *
  */
 
@@ -21,8 +21,8 @@
 
 /* Release verions and getters */
 #define ECOLOGY_MAJOR_VERSION 1
-#define ECOLOGY_MINOR_VERSION 0
-#define ECOLOGY_PATCH_VERSION 0
+#define ECOLOGY_MINOR_VERSION 1
+#define ECOLOGY_PATCH_VERSION 1
 
 int get_ecology_major_vers(void);
 int get_ecology_minor_vers(void);

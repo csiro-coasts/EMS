@@ -10,7 +10,7 @@
  * 
  *  Options: coral_spectral_carb_epi(G|H)
  *  
- *  G - constant dissolution terms.
+ *  G - constant dissolution terms (default).
  *  H - aragonite saturation and sediment minerology dependent dissolution.   
  *  
  *  WARNING - must be run with a coral growth that resolves internal reserves of energy.
@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_carb_epi.c 5947 2018-09-14 00:22:21Z bai155 $
+ *  $Id: coral_spectral_carb_epi.c 6058 2019-02-07 02:59:39Z bai155 $
  *
  */
 

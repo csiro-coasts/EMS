@@ -26,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_mortality_proto_epi.c 5942 2018-09-13 04:28:00Z bai155 $
+ *  $Id: seagrass_spectral_mortality_proto_epi.c 6057 2019-02-06 02:33:51Z bai155 $
  *
  */
 
@@ -260,14 +260,7 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
     ws->SG_mQ = try_parameter_value(e, "SGD_mQ");
     if (isnan(ws->SG_mQ)){
       ws->SG_mQ = (0.1/86400.0)/0.02;
-      eco_write_setup(e,"Code default:  SGH_mQ  = %e \n", ws->SG_mQ);
-    }
-
-    /* overwrite default if recom for UQ group */
-
-    if (process_present(e,PT_WC,"recom_extras")){
-      ws->SG_mQ = (0.1/86400.0)/0.02;
-      eco_write_setup(e,"Written over because in RECOM for UQ:  SGH_mQ  = %e \n", ws->SG_mQ);
+      eco_write_setup(e,"Code default:  SGD_mQ  = %e \n", ws->SG_mQ);
     }
 
     ws->SG_N_i = e->find_index(epis, "SGD_N", e) + OFFSET_EPI;
@@ -280,6 +273,19 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
     e->quitfn("ecology: error: \"%s\": \"%s(%s)\": unexpected seagrass type: expected \"Zostera\", \"Halophila\" or \"Posidonia\"\n", e->processfname, p->name, prm);
   }    
 }
+
+void seagrass_spectral_mortality_proto_epi_postinit(eprocess* p)
+{
+  ecology* e = p->ecology;
+  workspace* ws = malloc(sizeof(workspace));
+
+  /* overwrite default if recom for UQ group */
+  if (ws->species == 'D' && process_present(e,PT_WC,"recom_extras")) {
+    ws->SG_mQ = (0.1/86400.0)/0.02;
+    eco_write_setup(e,"Written over because in RECOM for UQ:  SGH_mQ  = %e \n", ws->SG_mQ);
+  }
+}
+
 
 void seagrass_spectral_mortality_proto_epi_destroy(eprocess* p)
 {

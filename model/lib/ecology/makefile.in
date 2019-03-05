@@ -135,6 +135,7 @@ process_library/microphytobenthos_spectral_grow_wc.o \
 process_library/microphytobenthos_spectral_grow_sed.o \
 process_library/microphytobenthos_spectral_mortality_sed.o \
 process_library/dinoflagellate_spectral_grow_wc.o \
+process_library/dinoflagellate_spectral_mortality_wc.o \
 process_library/dinoflagellate_spectral_mortality_sed.o \
 process_library/light_spectral_wc.o \
 process_library/light_spectral2par_epi.o \

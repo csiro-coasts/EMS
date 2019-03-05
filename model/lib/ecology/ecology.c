@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 5852 2018-06-29 07:20:12Z riz008 $
+ *  $Id: ecology.c 5976 2018-09-26 00:30:13Z riz008 $
  *
  */
 
@@ -444,6 +444,7 @@ ecology* ecology_create()
     e->pre_build = 0;
     e->use_multi_sed = 0;
     e->eco_setup = NULL;
+    e->eco_osetup = NULL;
     
     return e;
 }
@@ -757,7 +758,15 @@ ecology* ecology_build(void* model, char* prmfname)
      *    capture the events once (see call below)
      */
     e->eco_setup = e_fopen("ecology_setup.txt", "w");
-
+    {
+      /* Open file in the outputs area */
+      char *opath = einterface_get_output_path();
+      if (opath) {
+	sprintf(buf, "%s/ecology_setup.txt", opath);
+	e->eco_osetup = e_fopen(buf, "w");
+      }
+    }
+	
     if (e->internaltracers) {
         e->ntr = e->tracers->n;
         e->nepi = e->epis->n;
@@ -948,7 +957,10 @@ ecology* ecology_build(void* model, char* prmfname)
 
     /* Close setup file, use the runlog from now on */
     fclose(e->eco_setup);
-    e->eco_setup = NULL;
+    if (e->eco_osetup)
+      fclose(e->eco_osetup);
+    e->eco_setup  = NULL;
+    e->eco_osetup = NULL;
 
 #if (NCPU > 1)
     if (e->multithreaded)
@@ -1515,10 +1527,17 @@ void eco_write_setup(ecology *e, const char *str, ...)
 
   /* Guard against pre_build */
   if (e->eco_setup == NULL) return;
-  
+
   va_start(args, str);
   vfprintf(e->eco_setup, str, args);
   va_end(args);
+
+  /* Write into outputs as well */
+  if (e->eco_osetup) {
+    va_start(args, str);
+    vfprintf(e->eco_osetup, str, args);
+    va_end(args);
+  }
 }
 
 /* Public function */

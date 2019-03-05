@@ -4,8 +4,7 @@
  *  
  *  File: model/lib/ecology/process_library/co2_exchange_wc.c
  *  
- *  Description:
- *  Process co2_exchange
+ *  OBSOLETE: use gas_exchange_wc(carbon).
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: co2_exchange_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: co2_exchange_wc.c 6046 2018-12-12 00:53:28Z bai155 $
  *
  */
 

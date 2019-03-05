@@ -5,6 +5,8 @@
  *  File: model/lib/ecology/process_library/dinoflagellate_spectral_grow_wc.c
  *  
  *  Description: Dinoflagellate growth model.
+ *
+ *  For more details see phytoplankton_spectral_grow_wc.c
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -12,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dinoflagellate_spectral_grow_wc.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: dinoflagellate_spectral_grow_wc.c 5957 2018-09-19 08:29:58Z bai155 $
  *
  */
 
@@ -343,13 +345,9 @@ void dinoflagellate_spectral_grow_wc_calc(eprocess* p, void* pp)
     y1[ws->PhyD_NR_i] += Nuptake - growth;
     y1[ws->PhyD_PR_i] += Puptake - growth * red_W_P;
     y1[ws->PhyD_N_i] += growth;
-    // y1[ws->NH4_i] -= Nuptake * NH4 / DIN;
-    // y1[ws->NO3_i] -= Nuptake * NO3 / DIN;
     y1[ws->NO3_i] -= NO3uptake ;
     y1[ws->NH4_i] -= NH4uptake ;
     y1[ws->DIP_i] -= Puptake;
-    // y1[ws->DIC_i] -= growth * red_W_C;
-    // y1[ws->Oxygen_i] += growth * red_W_O;
     y1[ws->DIC_i] += (Iresp - Iuptake) * 106.0/1060.0*12.01;
     y1[ws->Oxygen_i] += - (Iresp - Iuptake) * 106.0/1060.0*32.00 + NO3uptake * 48.0/14.01;
 

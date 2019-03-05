@@ -4,8 +4,13 @@
  *  
  *  File: model/lib/ecology/process_library/zooplankton_large_carnivore_spectral_grow_wc.c
  *  
- *  Description:
- *  Process implementation
+ *  Description: Large zooplankton growth from grazing, including eating small zooplankton.
+ * 
+ *  Grazing equations include a maximum encounter rate and maximum growth rate limit.
+ *
+ *  Baird, M. E., S. J. Walker, B. B. Wallace, I. T. Webster and J. S. Parslow (2003) The use of 
+ *        mechanistic descriptions of algal growth and zooplankton grazing in an estuarine 
+ *        eutrophication model. Estuarine, Coastal and Shelf Science 56, 685-695.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_large_carnivore_spectral_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: zooplankton_large_carnivore_spectral_grow_wc.c 5974 2018-09-25 22:18:15Z bai155 $
  *
  */
 
@@ -214,15 +219,29 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   ws->PLrad = get_parameter_value(e, "PLrad");
   ws->ZSrad = get_parameter_value(e, "ZSrad");
   
-  if (ws->with_mpb)
+  eco_write_setup(e,"\nDiet for Large Zoos: PhyL");
+
+  if (ws->with_mpb){
+    eco_write_setup(e," MPB");
+  }
+  if (ws->with_df){
+    eco_write_setup(e," PhyD ");
+  }
+  if (ws->with_Tricho){
+    eco_write_setup(e," Tricho");
+  }
+  eco_write_setup(e,"\n");
+
+  if (ws->with_mpb){
     ws->MBrad = get_parameter_value(e, "MBrad");
-  
-  if (ws->with_df)
+  }
+  if (ws->with_df){
     ws->DFrad = get_parameter_value(e, "DFrad");
-
-  if (ws->with_Tricho)
-      ws->Tricho_rad = get_parameter_value(e, "Tricho_rad");
-
+  }
+  if (ws->with_Tricho){
+    ws->Tricho_rad = get_parameter_value(e, "Tricho_rad");
+  }
+  
   ws->m = try_parameter_value(e, "ZLm");  /* mol P cell-1 */
   if (isnan(ws->m)){
     ws->m = ZooCellMass(ws->rad);
@@ -255,7 +274,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_postinit(eprocess* p)
   
   ws->do_mb = (try_index(e->cv_model, "massbalance_wc", e) >= 0) ? 1 : 0;
   
-  if(ws->with_df)
+  /*  if(ws->with_df)
     ws->with_df = process_present(e,PT_WC,"dinoflagellate_spectral_grow_wc");
   emstag(LINFO,"eco:zooplankton_large_carnivore_spectral_grow_wc:postinit","%sCalculating consumption of Dinoflagellates",(ws->with_df?"":"NOT "));
   
@@ -265,8 +284,10 @@ void zooplankton_large_carnivore_spectral_grow_wc_postinit(eprocess* p)
   
   if(ws->with_Tricho)
     ws->with_Tricho = process_present(e,PT_WC,"trichodesmium_grow_wc");
-  emstag(LINFO,"eco:zooplankton_large_carnivore_spectral_grow_wc:postinit","%sCalculating consumption of Tricho",(ws->with_Tricho?"":"NOT "));
+    emstag(LINFO,"eco:zooplankton_large_carnivore_spectral_grow_wc:postinit","%sCalculating consumption of Tricho",(ws->with_Tricho?"":"NOT ")); */
 }
+
+
 
 void zooplankton_large_carnivore_spectral_grow_wc_destroy(eprocess* p)
 {

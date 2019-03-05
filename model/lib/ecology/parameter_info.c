@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_info.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: parameter_info.c 6038 2018-11-28 11:14:46Z bai155 $
  *
  */
 
@@ -316,6 +316,7 @@ static int get_eco_params(char name[], parameter_info *parameters[], int *nprm)
     {"estuary", "Estuarine ecology parameters", eco_params_est},
     {"gbr4", "GBR4 ecology parameters", eco_params_gbr4},
     {"BGC2p0", "Parameters used in BGC 2.0.", eco_params_bgc2p0},
+    {"BGC3p0", "Parameters used in BGC 3.0.", eco_params_bgc3p0},
     {NULL, NULL, NULL}
   };
   void (*init) (parameter_info *params[], int *nprm)= NULL;

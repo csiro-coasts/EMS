@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: process_defaults.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: process_defaults.c 6039 2018-11-28 11:31:16Z bai155 $
  *
  */
 
@@ -498,6 +498,85 @@ const int NUM_SED_PROCESS_BGC2p0 =
   (int)(sizeof(SED_PROCESS_BGC2p0)/sizeof(char *));
 
 
+/*
+ * BGC3p0 for nesting RECOM\.
+ */
+
+// "BGC3p0" water column
+const char *WC_PROCESS_BGC3p0[] = {
+  "tfactor",
+  "viscosity",
+  "moldiff",
+  "values_common",
+  "remineralization",
+  "microphytobenthos_spectral_grow_wc",
+  "phytoplankton_spectral_grow_wc(small)",
+  "phytoplankton_spectral_grow_wc(large)",
+  "trichodesmium_mortality_wc",
+  "trichodesmium_spectral_grow_wc",
+  "phytoplankton_spectral_mortality_wc(small)",
+  "phytoplankton_spectral_mortality_wc(large)",
+  "zooplankton_mortality_wc(small)",
+  "zooplankton_mortality_wc(large)",
+  "zooplankton_large_carnivore_spectral_grow_wc",
+  "zooplankton_small_spectral_grow_wc",
+  "nitrification_wc",
+  "p_adsorption_wc",
+  "carbon_chemistry_wc",
+  "gas_exchange_wc(carbon,oxygen)",
+  "massbalance_wc",
+  "light_spectral_wc(H,HPLC)",
+  "age_wc",
+  "recom_extras"
+};
+const int NUM_WC_PROCESS_BGC3p0 =
+  (int)(sizeof(WC_PROCESS_BGC3p0)/sizeof(char *));
+
+// "BGC3p0" epibenthos
+const char *EPI_PROCESS_BGC3p0[] = {
+  "tfactor_epi",
+  "values_common_epi",
+  "macroalgae_spectral_grow_epi",
+  "seagrass_spectral_grow_epi(Zostera)",
+  "seagrass_spectral_grow_epi(Halophila)",
+  "seagrass_spectral_grow_epi(Deep)",
+  "coral_spectral_grow_bleach_epi",
+  "coral_spectral_carb_epi(H)",
+  "macroalgae_mortality_epi",
+  "seagrass_spectral_mortality_proto_epi(Zostera)",
+  "seagrass_spectral_mortality_proto_epi(Halophila)",
+  "seagrass_spectral_mortality_proto_epi(Deep)",
+  "massbalance_epi",
+  "light_spectral_uq_epi",
+  "diffusion_epi"
+};
+const int NUM_EPI_PROCESS_BGC3p0 =
+  (int)(sizeof(EPI_PROCESS_BGC3p0)/sizeof(char *));
+
+// "standard" sediment
+const char *SED_PROCESS_BGC3p0[] = {
+  "tfactor",
+  "viscosity",
+  "moldiff",
+  "values_common",
+  "remineralization",
+  "microphytobenthos_spectral_grow_sed",
+  "light_spectral_sed(HPLC)",
+  "carbon_chemistry_wc",
+  "microphytobenthos_spectral_mortality_sed",
+  "phytoplankton_spectral_mortality_sed(small)",
+  "phytoplankton_spectral_mortality_sed(large)",
+  "zooplankton_mortality_sed(small)",
+  "zooplankton_mortality_sed(large)",
+  "trichodesmium_mortality_sed",
+  "nitrification_denitrification_sed",
+  "p_adsorption_sed",
+  "massbalance_sed",
+  "recom_extras"
+};
+const int NUM_SED_PROCESS_BGC3p0 =
+  (int)(sizeof(SED_PROCESS_BGC3p0)/sizeof(char *));
+
 
 
 /*
@@ -760,6 +839,32 @@ static void eco_processes_bgc2p0(int type, const char **procs[], int *nprocs)
 }
 
 /*
+ * "BGC3p0" processes
+ */
+static void eco_processes_bgc3p0(int type, const char **procs[], int *nprocs)
+{
+
+  /* Key off process type */
+  switch(type) {
+  case PT_WC:
+    *procs  = WC_PROCESS_BGC3p0;
+    *nprocs = NUM_WC_PROCESS_BGC3p0;
+    return;
+  case PT_EPI:
+    *procs  = EPI_PROCESS_BGC3p0;
+    *nprocs = NUM_EPI_PROCESS_BGC3p0;
+    return;
+  case PT_SED:
+    *procs  = SED_PROCESS_BGC3p0;
+    *nprocs = NUM_SED_PROCESS_BGC3p0;
+    return;
+  default:
+    e_quit("eco_processes_bgc3p0: Unknown Process Type '%d'\n", type);
+  }
+}
+
+
+/*
  * "GBR4_SMALL" processes
  */
 static void eco_processes_gbr4_small(int type, const char **procs[], int *nprocs)
@@ -867,6 +972,7 @@ int get_eco_processes(char *name, int type, const char **procs[], int *nprocs)
     {"gbr4_coral", "GBR4 + coral bleaching processes", eco_processes_gbr4_coral},
     {"gbr4_small", "GBR4 SMALL ecology processes", eco_processes_gbr4_small},
     {"BGC2p0", "BGC 2.0 processes", eco_processes_bgc2p0},
+    {"BGC3p0", "BGC 3.0 processes", eco_processes_bgc3p0},
     {NULL, NULL, NULL}
   };
   void (*init) (int type, const char **procs[], int *nprocs) = NULL;
@@ -884,7 +990,6 @@ int get_eco_processes(char *name, int type, const char **procs[], int *nprocs)
     } else
       return(1);
   }
-
   return(0);
 }
 

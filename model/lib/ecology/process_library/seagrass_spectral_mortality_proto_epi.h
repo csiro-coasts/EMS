@@ -13,13 +13,14 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_mortality_proto_epi.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: seagrass_spectral_mortality_proto_epi.h 5972 2018-09-25 05:50:32Z riz008 $
  *
  */
 
 #if !defined(_SEAGRASS_SPECTRAL_MORTALITY_PROTO_EPI_H)
 
 void seagrass_spectral_mortality_proto_epi_init(eprocess* p);
+void seagrass_spectral_mortality_proto_epi_postinit(eprocess* p);
 void seagrass_spectral_mortality_proto_epi_destroy(eprocess* p);
 void seagrass_spectral_mortality_proto_epi_precalc(eprocess* p, void* pp);
 void seagrass_spectral_mortality_proto_epi_calc(eprocess* p, void* pp);

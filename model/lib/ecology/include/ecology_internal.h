@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_internal.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: ecology_internal.h 5976 2018-09-26 00:30:13Z riz008 $
  *
  */
 
@@ -272,6 +272,7 @@ struct ecology {
 
     /* Ecology setup.txt file */
     FILE *eco_setup;
+    FILE *eco_osetup; // output path copy
 
 #if (NCPU > 1)
     int multithreaded;          /* flag */

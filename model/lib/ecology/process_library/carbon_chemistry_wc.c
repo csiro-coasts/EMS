@@ -5,7 +5,17 @@
  *  File: model/lib/ecology/process_library/carbon_chemistry_wc.c
  *  
  *  Description:
- *  Process implementation template
+ *  
+ *  Equilibrium state calculation of carbon chemistry system. This process can be applied in 
+ *  either the water column or sediment (where it calculates porewater chemistry).
+ *
+ *  The numberical scheme is adapted from OCMIP routines, but includes a larger search range for pH for the iterative scheme.
+ *
+ *  For desription see:
+ *  Mongin, M., M. E. Baird, B. Tilbrook, R. J. Matear, A. Lenton, M. Herzfeld, K. A. Wild-Allen, J. Skerratt, N. Margvelashvili, 
+ *  B. J. Robson, C. M. Duarte, M. S. M. Gustafsson, P. J. Ralph, A. D. L. Steven (2016). The exposure of the Great Barrier Reef 
+ *  to ocean acidification. Nature Communications 7, 10732.
+ * 
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +23,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: carbon_chemistry_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: carbon_chemistry_wc.c 6045 2018-12-12 00:33:37Z bai155 $
  *
  */
 

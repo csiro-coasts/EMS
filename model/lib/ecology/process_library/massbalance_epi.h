@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_epi.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: massbalance_epi.h 5972 2018-09-25 05:50:32Z riz008 $
  *
  */
 
@@ -23,6 +23,7 @@
 
 
 void massbalance_epi_init(eprocess* p);
+void massbalance_epi_postinit(eprocess* p);
 void massbalance_epi_destroy(eprocess* p);
 void massbalance_epi_precalc(eprocess* p, void* pp);
 void massbalance_epi_postcalc(eprocess* p, void* pp);

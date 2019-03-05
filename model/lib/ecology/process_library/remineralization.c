@@ -5,15 +5,19 @@
  *  File: model/lib/ecology/process_library/remineralization.c
  *  
  *  Description:
- *  Process implementation
  *  
+ *  - Remineralisation processes affecting C, N, P and O budgets.
+ *  - Works in both water column and sediments (porewaters).
+ *  - Does mass balance terms for all particulate organic and inorganic nutrients.
+ *  
+ *  19/12/18 MEB - changed COD / DO interaction term.
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: remineralization.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: remineralization.c 6048 2018-12-19 02:01:55Z bai155 $
  *
  */
 
@@ -281,10 +285,13 @@ void remineralization_calc(eprocess* p, void* pp)
 
     /* Now consume oxygen with COD */
 
-      double tau_oxy = 1.0/3600.0;   // consume oxygen with COD within an hour.    
+      // double tau_oxy = 1.0/3600.0;   // consume oxygen with COD within an hour.    
+      // y1[ws->Oxygen_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0); 
+      // y1[ws->COD_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0);
 
-      y1[ws->Oxygen_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0); 
-      y1[ws->COD_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0); 
+      double consume = 1.0/3600.0 * min(y[ws->COD_i],8000.0) * (y[ws->Oxygen_i] / 8000.0);
+      y1[ws->Oxygen_i] -= consume;
+      y1[ws->COD_i] -= consume;
     }
 
  if (ws-> NH4_pr_i > -1)

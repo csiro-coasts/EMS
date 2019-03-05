@@ -6,17 +6,18 @@
  *  
  *  Description:
  *  Performs misc. tasks for RECOM to handle the fact that we don't
- *  have a fully qualified prm file. These ar:
+ *  have a fully qualified prm file. These include:
  *  o) Forces a find_index on COD
- *  o) Does the chlorophyll sum
+ *  o) Adds a large number of diagnostic variables
  *  
+ *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: recom_extras.c 5907 2018-08-29 03:29:00Z bai155 $
+ *  $Id: recom_extras.c 6052 2019-01-21 02:41:06Z bai155 $
  *
  */
 
@@ -54,20 +55,10 @@ typedef struct {
   int PAR_z_i;
   int K_heat_i;
 
-  int EpiPAR_i;
-  int EpiPAR_sg_i;
-
   int SG_shear_mort_i;
   int SGH_shear_mort_i;  
   int SGP_shear_mort_i;  
   int SGD_shear_mort_i;
-
-  int IN_up_i;
-  int ON_up_i; 
-  int mucus_i;
-  int CS_bleach_i;
-  int photochemicalquench_i;
-  int nonphotochemicalquench_i;
 
   int CO32_i;
   int HCO3_i;
@@ -78,8 +69,6 @@ typedef struct {
 
   int oxy_sat_i;
   int O2_flux_i;
-
-  // MODIS - [412 443 488 531 547 667 678 748 470 555 645]
 
   int OC3M_i;
   int TSSM_i;
@@ -103,15 +92,6 @@ typedef struct {
   int R_551_i;
   int R_671_i;
   int R_745_i;
-
-  int R_510_i;
-  int R_640_i;
-
-  int R_482_i;
-  int R_561_i;
-  int R_655_i;
-
-  int NTU_i;
   
 } workspace;
 
@@ -141,14 +121,6 @@ void recom_extras_init(eprocess* p)
   ws->PAR_i = -1;
   ws->K_heat_i = -1;
   ws->PAR_z_i = -1;
-  
-  ws->EpiPAR_i = -1;
-  ws->EpiPAR_sg_i = -1;
-  
-  ws->IN_up_i = -1;
-  ws->ON_up_i = -1; 
-  ws->mucus_i = -1;
-  ws->CS_bleach_i = -1;
 
   ws->CO32_i = -1;
   ws->HCO3_i = -1;
@@ -177,6 +149,14 @@ void recom_extras_postinit(eprocess* p)
   int OFFSET_EPI = tracers->n * 2;
 
   int dummy_i;
+
+  if (process_present(e,PT_EPI,"diffusion_epi")){
+    dummy_i = e->find_index(epis, "Oxygen_sedflux", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "DIC_sedflux", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "NH4_sedflux", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "NO3_sedflux", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "DIP_sedflux", e) + OFFSET_EPI;
+  }
 
   if (process_present(e,PT_WC,"phytoplankton_spectral_grow_wc(small)")){
     ws->PhyL_Chl_i   = e->find_index(tracers, "PhyL_Chl", e);
@@ -212,8 +192,8 @@ void recom_extras_postinit(eprocess* p)
   }
 
   if (process_present(e,PT_EPI,"light_spectral_uq_epi")){
-    ws->EpiPAR_i = e->find_index(epis, "EpiPAR", e) + OFFSET_EPI;
-    ws->EpiPAR_sg_i = e->find_index(epis, "EpiPAR_sg", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "EpiPAR", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "EpiPAR_sg", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "Zenith2D", e) + OFFSET_EPI;
   }
 
@@ -250,14 +230,14 @@ void recom_extras_postinit(eprocess* p)
 
     /* Himawari-8 - assume MODIS 470 nm */
 
-    ws->R_510_i = e->find_index(epis, "R_510", e) + OFFSET_EPI;
-    ws->R_640_i = e->find_index(epis, "R_640", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_510", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_640", e) + OFFSET_EPI;
 
     /* Landsat8 */
 
-    ws->R_482_i = e->find_index(epis, "R_482", e) + OFFSET_EPI;
-    // ws->R_561_i = e->find_index(epis, "R_561", e) + OFFSET_EPI;
-    ws->R_655_i = e->find_index(epis, "R_655", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_482", e) + OFFSET_EPI;
+    // dummy_i = e->find_index(epis, "R_561", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_655", e) + OFFSET_EPI;
 
     /* Sentinal-3 - 412, 443, 490 in MODIS, 510 in Himawari8, */
 
@@ -274,7 +254,7 @@ void recom_extras_postinit(eprocess* p)
     /* NTU comparison */
 
     ws->R_590_i = e->find_index(epis, "R_590", e) + OFFSET_EPI;
-    ws->NTU_i = e->find_index(tracers, "Turbidity", e);
+    dummy_i = e->find_index(tracers, "Turbidity", e);
 
     dummy_i = e->find_index(tracers, "Fluorescence", e);
     dummy_i = e->find_index(epis, "nFLH", e) + OFFSET_EPI;
@@ -287,18 +267,18 @@ void recom_extras_postinit(eprocess* p)
   /* add diagnostics if particular processes specificed */ 
      
   if (process_present(e,PT_EPI,"coral_spectral_grow_epi")){
-    ws->IN_up_i = e->find_index(epis, "Coral_IN_up", e) + OFFSET_EPI ;
-    ws->ON_up_i = e->find_index(epis, "Coral_ON_up", e) + OFFSET_EPI; 
-    ws->mucus_i = e->find_index(epis, "mucus", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Coral_IN_up", e) + OFFSET_EPI ;
+    dummy_i = e->find_index(epis, "Coral_ON_up", e) + OFFSET_EPI; 
+    dummy_i = e->find_index(epis, "mucus", e) + OFFSET_EPI;
   }
   if (process_present(e,PT_EPI,"coral_spectral_grow_bleach_epi")){
-    ws->IN_up_i = e->find_index(epis, "Coral_IN_up", e) + OFFSET_EPI ;
-    ws->ON_up_i = e->find_index(epis, "Coral_ON_up", e) + OFFSET_EPI; 
-    ws->mucus_i = e->find_index(epis, "mucus", e) + OFFSET_EPI;
-    ws->CS_bleach_i = e->find_index(epis, "CS_bleach", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Coral_IN_up", e) + OFFSET_EPI ;
+    dummy_i = e->find_index(epis, "Coral_ON_up", e) + OFFSET_EPI; 
+    dummy_i = e->find_index(epis, "mucus", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "CS_bleach", e) + OFFSET_EPI;
 
-    // ws->photochemicalquench_i = e->find_index(epis, "photochemicalquench", e) + OFFSET_EPI;
-    // ws->nonphotochemicalquench_i = e->find_index(epis, "nonphotochemicalquench", e) + OFFSET_EPI;
+    // dummy_i = e->find_index(epis, "photochemicalquench", e) + OFFSET_EPI;
+    // dummy_i = e->find_index(epis, "nonphotochemicalquench", e) + OFFSET_EPI;
   }
   if (process_present(e,PT_EPI,"seagrass_spectral_mortality_proto_epi(Zostera)")){
     ws->SG_shear_mort_i = e->find_index(epis, "SG_shear_mort", e) + OFFSET_EPI ;

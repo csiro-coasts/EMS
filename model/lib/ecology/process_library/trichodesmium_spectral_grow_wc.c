@@ -6,6 +6,14 @@
  *  
  *  Description: Trichodesmium growth model.
  *  
+ *  Growth of trichodesmium from dissovled nutrients and N fixation.
+ *  Variable sinking rate dependent on cell density, a function of carbon reserves.
+ *
+ *  Reference: Robson, B. J., M. E. Baird and K. A. Wild-Allen. (2013). A physiological model for the marine cyanobacteria, 
+ *             Trichodesmium. In Piantadosi, J., Anderssen, R.S. and Boland J. (eds) MODSIM2013, 20th International Congress on Modelling 
+ *             and Simulation. Modelling and Simulation Society of Australia and New Zealand, December 2013, pp. 1652-1658. ISBN: 978-0-9872143-3-1. 
+ *             www.mssanz.org.au/modsim2013/L5/robson.pdf
+ *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
@@ -38,7 +46,6 @@ typedef struct {
   /* parameters */
   
   double umax_t0;
-  double aA;
   double psi;
   double DINcrit;
   double N2;
@@ -52,6 +59,9 @@ typedef struct {
   double Chlmax; 
   double Plank_resp;
   double C2Chlmin;
+
+  double fnitro;
+  double fNfix;
 
   /*  tracers   */
 
@@ -132,16 +142,22 @@ void trichodesmium_spectral_grow_wc_init(eprocess* p)
   ws->Chlmax = PhyCellChl(ws->rad);
 
   ws->C2Chlmin = try_parameter_value(e,"C2Chlmin");
-  if (isnan(ws->C2Chlmin))
+  if (isnan(ws->C2Chlmin)){
     ws->C2Chlmin = 20.0;
-  
-  /* absorption done the old way until Kd removed from all code 
-  ws->aA = try_parameter_value(e, "Tricho_aA");
-  if (isnan(ws->aA)) {
-    double absorb = get_parameter_value(e, "Tricho_absorb");
-    ws->aA = aa(ws->rad, absorb);
+    eco_write_setup(e,"Code default of C2Chlmin = %e \n",ws->C2Chlmin);
   }
-  */
+
+  ws->fnitro = try_parameter_value(e,"Tricho_fnitro");
+  if (isnan(ws->fnitro)){
+    ws->fnitro = 0.07;
+    eco_write_setup(e,"Code default of Tricho_fnitro = %e \n",ws->fnitro);
+  }
+
+  ws->fNfix = try_parameter_value(e,"Tricho_fNfix");
+  if (isnan(ws->fNfix)){
+    ws->fNfix = 1.0/3.0;
+    eco_write_setup(e,"Code default of Tricho_fNfix = %e \n",ws->fNfix);
+  }
 
   /* tracers */
 
@@ -279,9 +295,6 @@ void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
   double dip = y[ws->DIP_i];
   double DIP = (dip > 0.0) ? dip : EPS_DIP;
   double Iuptake;
-  //double NO3uptake;
-  //double NH4uptake;
-  //double N2uptake;
   double Puptake;
   double Nuptake;
   double umax = cv[ws->umax_i];	
@@ -319,7 +332,7 @@ void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
     double KNO3 = (ws->psi * cv[ws->DNO3_i] * DIN * ws->Sh);   /* mg N cell-1 s-1 */
     double KP = (ws->psi * cv[ws->DPO4_i] * DIP * ws->Sh);   /* mg P cell-1 s-1 */
     double KN2 = (ws->psi * cv[ws->DNO3_i] * ws->DINcrit * ws->Sh);   /* mg N cell-1 s-1 */
-    double Nitrogenase_prop = (DIN <= ws->DINcrit) ? 0.07 : 0.0;
+    double Nitrogenase_prop = (DIN <= ws->DINcrit) ? ws->fnitro : 0.0;
 
     /* Uptake of dissolved nutrients and light/ATP */
     Iuptake = KI*(1.0-Iquota) * (1. - Nitrogenase_prop) * cellnum * 1000.0; /* mmol photon m-3 s-1 */
@@ -348,7 +361,7 @@ void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
     double growth = Tricho_N * growthrate;         /* mg N m-3 s-1 */
 
     /* Ifix is the energy loss associated with nitrogenase production */
-    double Ifix = (DIN <= ws->DINcrit) ? Iuptake/3.0 : 0.0;
+    double Ifix = (DIN <= ws->DINcrit) ? Iuptake * ws->fNfix : 0.0;
 
     /* growth is transfer of nutrient reserve NR to structual cell nutrient N
      * with corresponding reduction in energy reserve */
@@ -395,14 +408,9 @@ void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
     y1[ws->NH4_i] -= NH4uptake;
     y1[ws->NO3_i] -= NO3uptake;
     y1[ws->DIP_i] -= Puptake;
-    //    y1[ws->DIC_i] -= (growth - resp) * red_W_C;
-    //    y1[ws->Oxygen_i] += (growth - resp) * red_W_O;
 
     y1[ws->DIC_i] += (Ifix + Iresp - Iuptake) * 106.0/1060.0*12.01;
     y1[ws->Oxygen_i] += - (Ifix + Iresp - Iuptake) * 106.0/1060.0*32.00 + NO3uptake * 48.0/14.01;
-
-    //    y1[ws->DIC_i] += (Ifix + Iresp - Iuptake) * 106.0/1060.0*12.01;
-    //    y1[ws->Oxygen_i] -= (Ifix + Iresp - Iuptake) * 138.0/1060.0*32.00;
 
     /* update water column chlorophyll concentration, units mg Chl m-3 s-1 */
 
@@ -414,7 +422,6 @@ void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
     if (ws->Tricho_N_gr_i > -1)
       y1[ws->Tricho_N_gr_i] = growthrate * SEC_PER_DAY;
     if (ws->Oxy_pr_i > -1)
-      //   y1[ws->Oxy_pr_i] += (growth - resp) * red_W_O * SEC_PER_DAY;
       y1[ws->Oxy_pr_i] += growth * red_W_O * SEC_PER_DAY;
     y1[ws->Nfix_i] += N2uptake;
   }
@@ -438,7 +445,7 @@ void trichodesmium_spectral_grow_wc_postcalc(eprocess* p, void* pp)
 
   // double density = 1020.0; //y[ws->dens_i];
   double density = y[ws->dens_i];
-  double kinematic_viscosity = y[ws->vis_i];
+  // double kinematic_viscosity = y[ws->vis_i];
   //double dynamic_viscosity_w = kinematic_viscosity * density; /* Dynamic viscosity of seawater at 20C is 1.08e-3 Pa.s */
 
   //  double Iquota = y[ws->Tricho_I_i]/PI_max;
@@ -452,13 +459,11 @@ void trichodesmium_spectral_grow_wc_postcalc(eprocess* p, void* pp)
 
   double Tricho_density = ws->p_min + Iquota * (ws->p_max - ws->p_min);
 
-  if (density<100) e->quitfn("Water density has not been correctly passed to trichodesmium_spectral_grow_wc()");
+  if (density<100.0) e->quitfn("Water density has not been correctly passed to trichodesmium_spectral_grow_wc() %e \n",density);
+  
   y[ws->Tricho_sv_i] = -2.0/9.0 * (Tricho_density - density) * g * ws->colrad * ws->colrad / 1e-3; // dynamic_viscosity_w; 
 //  changed units of sinking rate to m/s like all the other sinking rates that Nugzar's code handles 
 //  also limited sinking to 3m/d (same as PhyL_N) as code was returning >1500m/d!  should still allow floating.
-
-  // printf("Iquota %e, dens %e sink %e, dynamic_viscosity_w %e \n", Iquota,Tricho_density,y[ws->Tricho_sv_i],dynamic_viscosity_w);
-
 
 // KWA additional non-conservative N2uptake accounted for in mass balance Nfix
   
