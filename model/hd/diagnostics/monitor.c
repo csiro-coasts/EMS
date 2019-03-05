@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: monitor.c 6145 2019-03-05 01:58:05Z her127 $
  *
  */
 
@@ -2661,6 +2661,41 @@ double calc_min_cfl_3d(geometry_t *window, /* Window geometry        */
 
 
 /*-------------------------------------------------------------------*/
+/* Computs a normalized vertical profile of a tracer. Note: this     */
+/* differs to the tracerstats version in that a no-gradient is set   */
+/* above the surface, whereas all tracerstats routines only perform  */
+/* operations on wet cells.                                          */
+/*-------------------------------------------------------------------*/
+void nor_vert_prof(geometry_t *window,       /* Window geometry       */
+		   window_t *windat,         /* Window data           */
+		   win_priv_t *wincon        /* Window constants      */
+		   )
+{
+  int c, cc, cs;
+  double trs;
+
+  for (cc = 1; cc <= wincon->vcs2; cc++) {
+    c = wincon->s2[cc];
+    cs = c;
+    trs = windat->tr_wc[wincon->nprof][cs];
+    while (c != window->zm1[c]) {
+      windat->nprof[c] = (trs) ? windat->tr_wc[wincon->nprof][c] / trs : 0.0;
+      c = window->zm1[c];
+    }
+    trs = windat->nprof[cs];
+    c = cs;
+    while(c != window->zp1[c]) {
+      c = window->zp1[c];
+      windat->nprof[c] = trs;
+    } 
+  }
+}
+
+/* END nor_vert_prof()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Calculates diagnostic numbers and saves to tracers if required    */
 /*-------------------------------------------------------------------*/
 void diag_numbers(geometry_t *window,       /* Window geometry       */
@@ -3185,7 +3220,7 @@ void sound_channel(geometry_t *window,  /* Processing window         */
 
 
 /*-------------------------------------------------------------------*/
-/* Routine to calculate the Brunt Vaisala (buoyancy) frequency (s-1) */
+/* Routine to calculate the Brunt Vaisala (buoyancy) frequency (s-2) */
 /*-------------------------------------------------------------------*/
 double buoyancy_frequency2(geometry_t *window, /* Window geometry       */
 			window_t *windat,   /* Window data           */
@@ -3203,6 +3238,26 @@ double buoyancy_frequency2(geometry_t *window, /* Window geometry       */
   /* Brunt Vaisala frequency squared                                 */
   N2 = -(wincon->g / RHO_0) *
     (drho / (0.5 * (wincon->dz[zm1] + wincon->dz[c])));
+
+  return(N2);
+}
+
+double buoyancy_frequency2_m(master_t *master,  /* Master data       */
+			     geometry_t *geom,  /* Global geometry   */
+			     double *dens,      /* Density           */
+			     int c              /* Sparse coordinate */
+)
+{
+  int zm1;
+  double drho, N2, dz;
+
+  /* Density gradient                                                */
+  zm1 = geom->zm1[c];
+  drho = dens[c] - dens[zm1];
+  dz = fabs(geom->cellz[c] - geom->cellz[zm1]);
+
+  /* Brunt Vaisala frequency squared                                 */
+  N2 = -(master->g / RHO_0) * (drho / dz);
 
   return(N2);
 }
@@ -3893,7 +3948,7 @@ void reset_means(geometry_t *window,  /* Window geometry             */
 	for (cc = 1; cc <= vs; cc++) {
 	  c = vec[cc];
 	  cs = window->m2d[c];
-	  windat->tempm[c] = (windat->tram[c] * windat->meanc[cs] + 
+	  windat->tram[c] = (windat->tram[c] * windat->meanc[cs] + 
 			      windat->tr_wc[wincon->means_tra][c] * ns) / 
 	    (windat->meanc[cs] + ns);
 	}
@@ -3912,6 +3967,9 @@ void reset_means(geometry_t *window,  /* Window geometry             */
       else if (wincon->means_dt == MONTHLY)
 	wincon->means_next = windat->t + next_month(windat->t, 
 						    wincon->timeunit, &c);
+      else if (wincon->means_dt == DAILY)
+	wincon->means_next = windat->t + next_day(windat->t, 
+						  wincon->timeunit, &c);
       else
 	wincon->means_next = windat->t + wincon->means_dt;
     }
@@ -3975,7 +4033,7 @@ void reset_means(geometry_t *window,  /* Window geometry             */
 void reset_means_m(master_t *master)
 {
   geometry_t *geom = master->geom;
-  int mon;
+  int mon, day;
   double itc;
   int n;
 
@@ -4005,6 +4063,10 @@ void reset_means_m(master_t *master)
       master->means_next = master->t + next_month(master->t, 
 						  master->timeunit, &mon);
       master->meancs[mon] = itc;
+    } else if (master->means_dt == DAILY) {
+      master->means_next = master->t + next_day(master->t, 
+						  master->timeunit, &day);
+      master->meancs[day] = itc;
     }
     else
       master->means_next = master->t + master->means_dt;
@@ -4036,6 +4098,10 @@ void reset_means3d_m(master_t *master, int trm)
     if (master->means_dt == MONTHLY) {
       t = prev_month(master->t, master->timeunit, &mon);
       sf = MONTHLY;
+    }
+    if (master->means_dt == DAILY) {
+      t = prev_day(master->t, master->timeunit, &mon);
+      sf = DAILY;
     }
     if (read_mean_3d(master, t, sf, vname, master->tr_wc[trm], 
 		     dumpdata->tr_wc[trd])) {
@@ -4077,6 +4143,8 @@ int read_mean_3d(master_t *master, double t, int sf, char *var,
   strcpy(incname, "SEASONAL");
   if (sf == MONTHLY)
     strcpy(incname, "MONTHLY");
+  if (sf == DAILY)
+    strcpy(incname, "DAILY");
 
   /*-----------------------------------------------------------------*/
   /* Loop through the dump files                                     */
@@ -4169,6 +4237,10 @@ void reset_means2d_m(master_t *master, int trm)
       t = prev_month(master->t, master->timeunit, &mon);
       sf = MONTHLY;
     }
+    if (master->means_dt == DAILY) {
+      t = prev_day(master->t, master->timeunit, &mon);
+      sf = DAILY;
+    }
     if (read_mean_2d(master, t, sf, vname, master->tr_wcS[trm], 
 		     dumpdata->tr_wcS[trd])) {
       if (master->meanc[0]) {
@@ -4208,6 +4280,8 @@ int read_mean_2d(master_t *master, double t, int sf, char *var,
   strcpy(incname, "SEASONAL");
   if (sf == MONTHLY)
     strcpy(incname, "MONTHLY");
+  if (sf == DAILY)
+    strcpy(incname, "DAILY");
 
   /*-----------------------------------------------------------------*/
   /* Loop through the dump files                                     */
@@ -5322,7 +5396,7 @@ void calc_perc(FILE *fp)
 	  }
 	}
       }
-      hd_warn("  Domain mean of %s = %f\n", vars[v], mean / nm);
+      if (!isnan(mean / nm)) hd_warn("  Domain mean of %s = %f\n", vars[v], mean / nm);
     }
   }
   

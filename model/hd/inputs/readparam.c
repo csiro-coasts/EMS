@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 5901 2018-08-28 02:10:22Z riz008 $
+ *  $Id: readparam.c 6091 2019-02-08 04:33:19Z her127 $
  *
  */
 
@@ -246,6 +246,7 @@ void set_default_param(parameters_t *params)
   params->noutside = 0;
   params->porusplate = 0;
   params->sharp_pyc = 0;
+  sprintf(params->nprof, "%c", '\0');
   sprintf(params->reef_frac, "%c", '\0');
   params->dbi = params->dbj = params->dbk = -1;
   params->dbgf = NONE;
@@ -736,6 +737,11 @@ parameters_t *params_read(FILE *fp)
   if (params->lnm != 0.0)
     params->ntrS++;
   read_debug(params, fp);
+  sprintf(keyword, "PROFILE");
+  if (prm_read_char(fp, keyword, buf)) {
+    strcpy(params->nprof, buf);
+    params->ntr += 1;
+  }
 
   read_decorr(params, fp, 0);
 
@@ -845,6 +851,12 @@ parameters_t *params_read(FILE *fp)
 
   /* Degree heating days */
   params->ntr += read_dhw(params, fp);
+
+  /* Auto point source                                               */
+  if (prm_read_char(fp, "pss", buf)) {
+    params->numbers |= PASS;
+    params->ntr += 1;
+  }
 
   /* River flow diagnostic */
   if (check_river_bdry(params, fp)) {
@@ -2330,6 +2342,12 @@ parameters_t *auto_params(FILE * fp, int autof)
   params->atr += numbers_init(params);
 
   params->atr += read_dhw(params, fp);
+
+  /* Auto point source                                               */
+  if (prm_read_char(fp, "pss", buf)) {
+    params->numbers |= PASS;
+    params->ntr += 1;
+  }
 
   /* River flow diagnostic */
   if (check_river_bdry(params, fp)) {
@@ -4655,6 +4673,14 @@ int numbers_init(parameters_t *params      /* Input parameter data   */
       }
       if (contains_token(buf, "UNIT") != NULL) {
 	params->numbers |= UNIT;
+	ntr++;
+      }
+      if (contains_token(buf, "PASSIVE") != NULL) {
+	params->numbers |= PASS;
+	ntr++;
+      }
+      if (contains_token(buf, "GLIDER") != NULL) {
+	params->numbers |= GLIDER;
 	ntr++;
       }
       if (contains_token(buf, "EKMAN_PUMP") != NULL) {
@@ -7346,6 +7372,15 @@ void read_means(parameters_t *params, FILE *fp, int mode)
 	    params->means |= MTRA3D;
 	}
       }
+    }
+    /* Generic (auto) tracers */
+    if (contains_token(buf, "TRA3D") != NULL) {
+      params->means |= MTRA3D;
+      strcpy(params->means_tra, buf);
+    }
+    if (contains_token(buf, "TRA2D") != NULL) {
+      params->means |= MTRA2D;
+      strcpy(params->means_tra, buf);
     }
 
     if (params->means & ETA_M)

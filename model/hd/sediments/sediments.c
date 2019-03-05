@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: sediments.c 6124 2019-02-27 04:55:42Z riz008 $
  *
  */
 
@@ -23,8 +23,6 @@
 #if defined(HAVE_OMP)
 #include <omp.h>
 #endif
-
-/* debug #define HAVE_SEDIMENT_MODULE*/
 
 #if defined(HAVE_SEDIMENT_MODULE)
 
@@ -78,8 +76,8 @@ typedef struct {
   char svel_name[MAXSTRLEN];    /* Settling velocity name */
   double adsorbkd;              /* Adsorbtion Kd */
   double adsorbrate;            /* Adsorbtion rate */
-  char carriername[MAXSTRLEN];
-  char dissolvedname[MAXSTRLEN];
+  char carriername[MAXSTRLEN];  /* particulate tracer carrying sediment reactive tracer */
+  char dissolvedname[MAXSTRLEN];/* dissolved coutrepart of the sediment reactive tracer */
 } trinfo_priv_sed_t;
 
 /*
@@ -117,19 +115,265 @@ static void sed_defaults_bsc(tracer_info_t *tracer, char *trname);
 static void init_tracer_atts_sed(tracer_info_t *tracer, char *trname, 
 				 sed_def_t *sed_def, char *sed_def_name);
 
-//2012
-int sinterface_getnumberofBtracer(void* hmodel);
-void sinterface_getnameofBtracer(void* hmodel, int n, char *tracername);
-double sinterface_getvalueofBtracer(void* hmodel, int n, int c);
-double sinterface_get_srf_flux(void* hmodel, char *name, int c);
-
 //2015
 int sinterface_getshipfile(FILE* prmfd, char *shipfile);
 
-double sinterface_getmodeltime(void* hmodel);
-
 //2016
 double sinterface_erflux_scale(FILE* prmfd);
+
+/*-------------------------------------------------------------------*/
+/* Sediment specific interface routines
+int sinterface_getcss_er_val(FILE* prmfd, double *css_er_val)
+int sinterface_getcss_er_depth(FILE* prmfd, double *css_er_depth)
+void sinterface_putgridz_sed(void* hmodel, int c, double *gridz_sed)
+void sinterface_putcellz_sed(void* hmodel, int c, double *cellz_sed)
+void sinterface_putgriddz_wc(void* hmodel, int c, double *gridz_wc)
+void sinterface_putcellz_wc(void* hmodel, int c, double *cellz_wc)
+void sinterface_putdz_wc(void* hmodel, int c, double *dz_wc)
+void sinterface_puttopz_wc(void* hmodel, int c, double topz_wc)
+void sinterface_putbotz_wc(void* hmodel, int c, double botz_wc)
+int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw)
+int sinterface_getverbose_sed(FILE* prmfd)
+int sinterface_getgeomorph(FILE* prmfd)
+int sinterface_getconsolidate(FILE* prmfd)
+double sinterface_getfinpor_sed(FILE* prmfd)
+double sinterface_getconsolrate(FILE* prmfd)
+double sinterface_getmaxthicksed(FILE* prmfd)
+int sinterface_getcssmode(FILE* prmfd)
+double sinterface_getcss(FILE* prmfd)
+double sinterface_getcssdep(FILE* prmfd)
+int sinterface_getflocmode(FILE* prmfd)
+double sinterface_getflocprm1(FILE* prmfd)
+double sinterface_getflocprm2(FILE* prmfd)
+int sinterface_getbblnonlinear(FILE* prmfd)
+int sinterface_gethindered_svel_patch(FILE* prmfd)
+int sinterface_gethindered_svel(FILE* prmfd)
+double sinterface_reef_scale_depth(FILE* prmfd)
+int sinterface_getcalcripples(FILE* prmfd)
+double sinterface_getcssscale(FILE* prmfd)
+double sinterface_getphysriph(FILE* prmfd)
+double sinterface_getphysripl(FILE* prmfd)
+double sinterface_getbioriph(FILE* prmfd)
+double sinterface_getbioripl(FILE* prmfd)
+double sinterface_getbiodens(FILE* prmfd)
+double sinterface_getmaxbiodepth(FILE* prmfd)
+double sinterface_getbi_dissol_kz(FILE* prmfd)
+double sinterface_getbt_partic_kz(FILE* prmfd)
+double sinterface_getbi_dissol_kz_i(FILE* prmfd)
+double sinterface_getbt_partic_kz_i(FILE* prmfd)
+char sinterface_getbiosedprofile(FILE* prmfd)
+double sinterface_getz0(FILE* prmfd)
+double sinterface_getquad_bfc(FILE* prmfd)
+int sinterface_getshipfile(FILE* prmfd, char *shipfile)
+double sinterface_erflux_scale(FILE* prmfd)
+FILE* si_getparamfile_tracer(FILE* fp)
+FILE* si_getparamfile_sed(FILE *fp)
+double sinterface_get_psize(void* model, char *name)
+double sinterface_get_b_dens(void* model, char *name)
+double sinterface_get_i_conc(void* model, char *name)
+double sinterface_get_svel(void* model, char *name)
+void sinterface_get_svel_name(void* model, char *name, char *sname)
+int sinterface_get_cohesive(void* model, char *name)
+int sinterface_get_resuspend(void* model, char *name)
+int sinterface_get_deposit(void* model, char *name)
+int sinterface_get_floc(void* model, char *name)
+int sinterface_get_calcvol(void* model, char *name)
+int sinterface_get_adsorb(void* model, char *name)
+void sinterface_get_carriername(void* model, char *name,char *carriername )
+void sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname)
+double sinterface_get_adsorb_kd(void* model, char *name)
+double sinterface_get_adsorb_rate(void* model, char *name)
+*/
+
+/*-------------------------------------------------------------------*/
+/* Generic interface routines                                        *
+/*-------------------------------------------------------------------*/
+extern void gi_set_errfn_warn(void *hmodel);
+extern int ginterface_getdzinit_sed(FILE* prmfd, double *dz_sed, int sednzc);
+extern int  ginterface_getnumberwclayers(void* model);
+extern int  ginterface_getnumbersedlayers(void* model);
+extern int ginterface_getnumbercolumns(void* model);
+extern int ginterface_getnumberoftracers(void* hmodel);
+extern int ginterface_getnumberofBtracer(void* hmodel);
+extern void ginterface_getnameofBtracer(void* hmodel, int n, char *tracername);
+extern double ginterface_getvalueofBtracer(void* hmodel, int n, int c);
+extern double *ginterface_getpointerBtracer(void* hmodel, int n, int c);
+extern int gi_gettracernames(void* hmodel, char **tracername);
+extern int gi_getmap2hdsedtracer(void *hmodel, int ns, char *name);
+extern int gi_getmap2hdsedtracer(void *hmodel, int ns, char *name);
+extern double ginterface_get_fillvalue_wc(void* model, char *name);
+extern double ginterface_get_fillvalue_sed(void* model, char *name);
+extern int ginterface_get_diagn(void* model, char *name);
+extern int ginterface_get_dissol(void* model, char *name);
+extern int ginterface_get_partic(void* model, char *name);
+extern int ginterface_get_diffuse(void* model, char *name);
+extern double ginterface_get_decay(void* model, char *name);
+extern void ginterface_get_tracerunits(void* model, char *name, char *units);
+extern int ginterface_get_trans_num_omp(void *model);
+extern void ginterface_gettheta(void* hmodel, double *theta, int ncol);
+extern void gi_set_errfn_warn(void *hmodel);
+extern int ginterface_getcelli(void* hmodel, int c);
+extern int ginterface_getcellj(void* hmodel, int c);
+extern double ginterface_getcellarea(void* hmodel, int c);
+extern double ginterface_getwind1(void* hmodel, int c);
+extern double ginterface_getwind2(void* hmodel, int c);
+extern double ginterface_getwindspeed(void* hmodel, int c);
+extern double ginterface_getwave_ub(void* hmodel, int c);
+extern double ginterface_getwave_period(void* hmodel, int c);
+extern double ginterface_getwave_dir(void* hmodel, int c);
+extern int ginterface_gettopk_wc(void* hmodel, int c);
+extern int ginterface_getbotk_wc(void* hmodel, int c);
+extern double ginterface_getbotz_wc(void* hmodel, int c);
+extern double ginterface_gettopz_wc(void* hmodel, int c);
+extern void ginterface_getdz_wc(void* hmodel, int c, double *dz_wc);
+extern void ginterface_getu1_wc(void* hmodel, int c, double *u1_wc);
+extern void ginterface_getu2_wc(void* hmodel, int c, double *u2_wc);
+extern void ginterface_getkz_wc(void* hmodel, int c, double *Kz_wc);
+extern double ginterface_get_srf_flux(void* hmodel, char *name, int c);
+extern double ginterface_getmodeltime(void* hmodel);
+extern double ginterface_getmodeltimestep(void* hmodel);
+extern void ginterface_getgridz_sed(void* hmodel, int c, double *gridz_sed);
+extern int gi_getmap2hdwctracer(void *hmodel, int ns, char *name);
+extern int gi_getmap2hdsedtracer(void *hmodel, int ns, char *name);
+
+/*-------------------------------------------------------------------*/
+/* Re-directed interface routines. These should be replaced with     */
+/* direct calls to the generic interface routines, bypassing         */
+/* wrappers where possible.                                          */
+/*-------------------------------------------------------------------*/
+double sinterface_getmodeltimestep(void* hmodel) {
+  return ginterface_getmodeltimestep(hmodel);
+}
+int  sinterface_getnumberwclayers(void* model) {
+  return ginterface_getnumberwclayers(model);
+}
+int  sinterface_getnumbersedlayers(void* model) {
+  return ginterface_getnumbersedlayers(model);
+}
+int sinterface_getnumbercolumns(void* model) {
+  ginterface_getnumbercolumns(model);
+}
+int sinterface_getnumberoftracers(void* hmodel) {
+  return ginterface_getnumberoftracers(hmodel);
+}
+int sinterface_getdzinit_sed(FILE* prmfd, double *dz_sed, int sednzc) {
+  return ginterface_getdzinit_sed(prmfd, dz_sed, sednzc);
+}
+int sinterface_getnumberofBtracer(void* hmodel) {
+  return ginterface_getnumberofBtracer(hmodel);
+}
+void sinterface_getnameofBtracer(void* hmodel, int n, char *tracername) {
+  ginterface_getnameofBtracer(hmodel, n, tracername);
+}
+double sinterface_getvalueofBtracer(void* hmodel, int n, int c) {
+  return ginterface_getvalueofBtracer(hmodel, n, c);
+}
+double *sinterface_getpointerBtracer(void* hmodel, int n, int c) {
+  return sinterface_getpointerBtracer(hmodel, n, c);
+}
+int si_gettracernames(void* hmodel, char **tracername) {
+  return gi_gettracernames(hmodel, tracername);
+}
+int si_getmap2hdwctracer(void *hmodel, int ns, char *name) {
+  return gi_getmap2hdwctracer(hmodel, ns, name);
+}
+int si_getmap2hdsedtracer(void *hmodel, int ns, char *name) {
+  return gi_getmap2hdsedtracer(hmodel, ns, name);
+}
+double sinterface_get_fillvalue_wc(void* model, char *name) {
+  return ginterface_get_fillvalue_wc(model, name);
+}
+double sinterface_get_fillvalue_sed(void* model, char *name) {
+  return ginterface_get_fillvalue_sed(model, name);
+}
+int sinterface_get_diagn(void* model, char *name) {
+  return ginterface_get_diagn(model, name);
+}
+int sinterface_get_dissol(void* model, char *name) {
+  return ginterface_get_dissol(model, name);
+}
+int sinterface_get_partic(void* model, char *name) {
+  return ginterface_get_partic(model, name);
+}
+int sinterface_get_diffuse(void* model, char *name) {
+  return ginterface_get_diffuse(model, name);
+}
+double sinterface_get_decay(void* model, char *name) {
+  return ginterface_get_decay(model, name);
+}
+void sinterface_get_tracerunits(void* model, char *name, char *units) {
+  ginterface_get_tracerunits(model, name, units);
+}
+int sinterface_get_trans_num_omp(void *model) {
+  return ginterface_get_trans_num_omp(model);
+}
+void sinterface_gettheta(void* hmodel, double *theta, int ncol) {
+  ginterface_gettheta(hmodel, theta, ncol);
+}
+void si_set_errfn_warn(void *hmodel) {
+  gi_set_errfn_warn(hmodel);
+}
+int sinterface_getcelli(void* hmodel, int c) {
+  return ginterface_getcelli(hmodel, c);
+}
+int sinterface_getcellj(void* hmodel, int c) {
+  return ginterface_getcellj(hmodel, c);
+}
+double sinterface_getcellarea(void* hmodel, int c) {
+  return ginterface_getcellarea(hmodel, c);
+}
+double sinterface_getwind1(void* hmodel, int c) {
+  return ginterface_getwind1(hmodel, c);
+}
+double sinterface_getwind2(void* hmodel, int c) {
+  return ginterface_getwind2(hmodel, c);
+}
+double sinterface_getwindspeed(void* hmodel, int c) {
+  return ginterface_getwindspeed(hmodel, c);
+}
+double sinterface_getwave_ub(void* hmodel, int c) {
+  return ginterface_getwave_ub(hmodel, c);
+}
+double sinterface_getwave_period(void* hmodel, int c) {
+  return ginterface_getwave_period(hmodel, c);
+}
+double sinterface_getwave_dir(void* hmodel, int c) {
+  return ginterface_getwave_dir(hmodel, c);
+}
+int sinterface_gettopk_wc(void* hmodel, int c) {
+  return ginterface_gettopk_wc(hmodel, c);
+}
+int sinterface_getbotk_wc(void* hmodel, int c) {
+  return ginterface_getbotk_wc(hmodel, c);
+}
+double sinterface_getbotz_wc(void* hmodel, int c) {
+  return ginterface_getbotz_wc(hmodel, c);
+}
+double sinterface_gettopz_wc(void* hmodel, int c) {
+  return ginterface_gettopz_wc(hmodel, c);
+}
+void sinterface_getdz_wc(void* hmodel, int c, double *dz_wc) {
+  ginterface_getdz_wc(hmodel, c, dz_wc);
+}
+void sinterface_getu1_wc(void* hmodel, int c, double *u1_wc) {
+  ginterface_getu1_wc(hmodel, c, u1_wc);
+}
+void sinterface_getu2_wc(void* hmodel, int c, double *u2_wc) {
+  ginterface_getu2_wc(hmodel, c, u2_wc);
+}
+void sinterface_getkz_wc(void* hmodel, int c, double *Kz_wc) {
+  ginterface_getkz_wc(hmodel, c, Kz_wc);
+}
+double sinterface_get_srf_flux(void* hmodel, char *name, int c) {
+  return ginterface_get_srf_flux(hmodel, name, c);
+}
+double sinterface_getmodeltime(void* hmodel) {
+  return ginterface_getmodeltime(hmodel);
+}
+void sinterface_getgridz_sed(void* hmodel, int c, double *gridz_sed) {
+  ginterface_getgridz_sed(hmodel, c, gridz_sed);
+}
+
 
 static int log_DVM = 0;
 /*-------------------------------------------------------------------*/
@@ -160,11 +404,11 @@ void sed_step(geometry_t *window)
   vel_center(window, windat, wincon, nu, nv, nw);
 
   // Set global
-  wincon->sediment->msparam->ncol = wincon->vcs2;
+  wincon->sediment->msparam->ncol = wincon->vca2;
 
   /* Do this outside the loop - pulled out from hd2sed */
   sed_nstep = (wincon->sediment->msparam->nstep += 1);
-  wincon->sediment->msparam->t = sinterface_getmodeltime(window);
+  wincon->sediment->msparam->t = ginterface_getmodeltime(window);
   //     fprintf(stderr,"%f \n",  param->t);
 
   /*
@@ -176,7 +420,7 @@ void sed_step(geometry_t *window)
 #if defined(HAVE_OMP)
 #pragma omp parallel for private(c)
 #endif
-  for (cc = 1; cc <= wincon->vcs2; cc++) {
+  for (cc = 1; cc <= wincon->vca2; cc++) {
     sed_column_t *sm = wincon->sediment->sm;
     c = wincon->s2[cc];
     
@@ -227,278 +471,16 @@ void sed_step(geometry_t *window)
   }
 }
 
-/* Read model parameters (sed_init)*/
-
-/* model time in seconds */
-double sinterface_getmodeltime(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    return windat->t;
-}
-
-/* model time step in seconds */
-double sinterface_getmodeltimestep(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    return windat->dt;
-}
-
-int  sinterface_getnumberwclayers(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->nz;
-}
-
-int  sinterface_getnumbersedlayers(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->sednz;
-}
-
-int  sinterface_getnumbercolumns(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->b2_t;
-}
-
-/* number of tracers to be calculated by the sediment module */
-int sinterface_getnumberoftracers(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;
-    int ns,n,m;
-    char name_wc[MAXSTRLEN];
-    char name_sed[MAXSTRLEN];
-    ns=0;
-    for(n=0; n < windat->ntr; n++) {
-	strcpy(name_wc, wincon->trinfo_3d[n].name);
-	for(m=0; m < windat->nsed; m++) {
-	    strcpy(name_sed, wincon->trinfo_sed[m].name);
-	    if(strcmp(name_sed,name_wc)==0) {
-		ns=ns+1;
-	    }
-	}
-    }
-    return ns;
-}
-
-
-/*2012*/
-int sinterface_getnumberofBtracer(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;  
-    return windat->ntrS;
-}
-void sinterface_getnameofBtracer(void* hmodel, int n, char *tracername)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;
-    strcpy(tracername, wincon->trinfo_2d[n].name);
-}
-double sinterface_getvalueofBtracer(void* hmodel, int n, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2=window->m2d[c];
-    // fprintf(stderr,"sediments:tarcer number %d, val %lf \n", n, windat->tr_wcS[n][c2] );
-  return windat->tr_wcS[n][c2];
-    //    return windat->tr_wcS[n][c];
-}
-
 /**/
 
 
-void si_set_errfn_warn(void *hmodel)
-{
- prm_set_errfn(warn);
-}
-
 		       /*************************** GEOMETRY */
 
-/*
-Function:
-  get angle between OX direction of the grid and W-E direction ;
-Input:
-   hmodel is a pointer to hd model structure;
-   ncol is number of columns;
-Output:
-  updates theta[c] - a 1d array of angles;
-Note:
- c index changes from 0 to ncol-1;
- angle units are rad;
- OX direction of the grid is cell centered.
-*/
-void sinterface_gettheta(void* hmodel, double *theta, int ncol)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon=window->wincon;
-    int c, cc;
-    if (window->b2_t > ncol)
-	hd_quit("Wrong number of columns in sinterface_gettheta");
-    for(cc=1; cc<=window->b2_t; cc++) {
-	c=window->w2_t[cc];
-	theta[cc-1] = wincon->d1[c];
-    }
-}
-
-double sinterface_getcellarea(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2=window->m2d[c];
-    double v = window->cellarea[c2];
-    return v;
-}
-
-
-int sinterface_getcelli(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->s2i[c];
-}
-
-int sinterface_getcellj(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->s2j[c];
-}
-
-
-/*
-Note:
-If in hd model cell numbering increases downward,
-return the number of the bottom hd cell
-*/
-int sinterface_gettopk_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int v =   window->s2k[window->nsur_t[cc]];
-    return v;
-}
-
-/*
-Note:
-If in hd model cell numbering increases downward,
-return the number of the top hd cell.
-*/
-int sinterface_getbotk_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int v = window->s2k[window->bot_t[cc]];
-    return v;
-}
-
-/*
-Note:
-If in hd model OZ is directed downward (ie. topz<botz)
-return (-1)*botz.
-*/
-double sinterface_getbotz_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon=window->wincon;
-    int c2=window->m2d[c];
-    double v =  window->botz[c2]*wincon->Hn1[c2];
-    return v;
-}
-/*
-Note:
-If in hd model OZ is directed downward (ei. topz<botz)
-return (-1)*topz.
-*/
-double sinterface_gettopz_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    // win_priv_t *wincon=window->wincon;
-    int c2=window->m2d[c];
-    //  double v = windat->topz[c2];
-    double v = windat->eta[c2];
-    return v;
-}
-/*
-Input:
-hmodel is pointer to hd model structure
-c is  current column
-
-Output:
-returns void;
-updates dz_wc[k] - a 1d array of the layer thicknesses in water column,
-
-Note:
-k index changes from botk_wc to topk_wc,
-where botk_wc and topk_wc are numbers of the bottom and top cells,
-respectively, and
-botk_wc < topk_wc <= (nwclayers-1)
-dz_wc[n][botk_wc] is thickness of the bottom cell
-dz_wc[n][topk_wc] is thickness of the top cell
-
-If in the hd model cell numbering increases downward
-(topk_wc_hd < botk_wc_hd), make sure that in dz_wc the cell
-numbering increases upward, starting from topk_wc_hd in the bottom cell
-and to  botk_wc_hd in the top cell.
- */
-void sinterface_getdz_wc(void* hmodel, int c, double *dz_wc)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon=window->wincon;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int bot_k= window->s2k[window->bot_t[cc]];
-    int top_k= window->s2k[window->nsur_t[cc]];
-    int c3=window->nsur_t[cc];
-    int k;
-
-    for(k=top_k;k>=bot_k;k--) {
-      dz_wc[k] = wincon->dz[c3]*wincon->Hn1[c2]; /*sigma*/
-      c3 = window->zm1[c3];
-    }
-
-}
-
-/*
-Function:
-  reads initial thicknesses of the sediment grid layers
-  from the parameter file;
-Input:
-  prmfd is the pointer to the parameter file;
-  sednzc is number of the sed layers
-Output:
-  returns sednz - number of sediment layers;
-  updates dz_sed[k] - a 1d array of sediment thicknesses;
-Note:
-  k index changes from 0 to (sednz-1);
-  dz_sed[0] is thickness of the bottom layer;
-  dz_sed[sednz-1] is the thickness of the top layer.
-*/
-int sinterface_getdzinit_sed(FILE* prmfd, double *dz_sed, int sednzc)
-{
-    int k;
-    int sednz=0;
-    double *tmp;
-    prm_read_darray(prmfd, "NSEDLAYERS", &dz_sed, &sednz);
-    /* change order of numbering in dz_sed[k] */
-    tmp = d_alloc_1d(sednz);
-    for (k=0;k<sednz;k++)
-	tmp[k]=dz_sed[k];
-    for (k=0;k<sednz;k++)
-	dz_sed[k] = tmp[sednz-1-k];
-    d_free_1d(tmp);
-    return sednz;
-}
 
 
 ////// 2010
 
+/* critical shear stress varying with depth*/
 int sinterface_getcss_er_val(FILE* prmfd, double *css_er_val)
 {
     int k;
@@ -514,7 +496,6 @@ int sinterface_getcss_er_val(FILE* prmfd, double *css_er_val)
     d_free_1d(tmp);
     return sednz;
 }
-//
 int sinterface_getcss_er_depth(FILE* prmfd, double *css_er_depth)
 {
     int k;
@@ -529,38 +510,6 @@ int sinterface_getcss_er_depth(FILE* prmfd, double *css_er_depth)
 	css_er_depth[k] = tmp[sednz-1-k];
     d_free_1d(tmp);
     return sednz;
-}
-
-/*
-Function:
-Reads locations of the sediment interfaces
-
-Input:
-hmodel is pointer to hd model structure
-c is  current column
-
-Output:
-returns void;
-updates gridz_sed[k] - a 1d array of the layer faces in sediments.
-
-Note:
-k index changes from botk_sed to (topk_sed+1),
-where botk_sed and topk_sed are numbers of the bottom and top cells,
-respectively, and
-botk_sed < topk_sed = (sednz-1)
-gridz_sed[botk_sed] is the bottom of sediments;
-gridz_sed[topk_sed+1] is the top of sediments.
- */
-
-void sinterface_getgridz_sed(void* hmodel, int c, double *gridz_sed)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2=window->m2d[c];
-    int bot_k= 0;
-    int top_k= window->sednz-1;
-    int k;
-    for(k=bot_k;k<=top_k+1;k++)
-	gridz_sed[k] = window->gridz_sed[k][c2];
 }
 
 
@@ -587,7 +536,6 @@ void sinterface_putcellz_sed(void* hmodel, int c, double *cellz_sed)
 }
 
 /** geomorph: empty functions */
-
 void sinterface_putgriddz_wc(void* hmodel, int c, double *gridz_wc)
 { }
 void sinterface_putcellz_wc(void* hmodel, int c, double *cellz_wc)
@@ -601,33 +549,7 @@ void sinterface_putbotz_wc(void* hmodel, int c, double botz_wc)
 
 /*************************************** FORCING (hd2sed.c) */
 
-double sinterface_getwind1(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2=window->m2d[c];
-    double v =  windat->wind1[c2];
-    return v;
-}
-double sinterface_getwind2(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2=window->m2d[c];
-    double v =  windat->wind2[c2];
-    return v;
-}
 
-double sinterface_getwindspeed(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2=window->m2d[c];
-    double v = windat->windspeed[c2];
-    return v;
-}
-
-/*********/
 int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -643,162 +565,11 @@ int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw)
 }
 /**/
 
-double sinterface_getwave_ub(void* hmodel, int c)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  win_priv_t *wincon=window->wincon;
-  int c2;
-  double v;
-  if(wincon->waves & ORBITAL) {
-  	c2=window->m2d[c];
-  	v =   windat->wave_ub[c2];
-  	return v;
-  }
-  else
-    return 0;
-}
-
-double sinterface_getwave_period(void* hmodel, int c)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  win_priv_t *wincon=window->wincon;
-  int c2;
-  double v;
-  if(wincon->waves & ORBITAL) {
-  	c2=window->m2d[c];
-  	v =  windat->wave_period[c2];
-  	return v;
-  }
-  else
-	 return 1;
-}
-
-double sinterface_getwave_dir(void* hmodel, int c)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  win_priv_t *wincon=window->wincon;
-  int c2;
-  double v;
-  if(wincon->waves & ORBITAL) {
-    c2=window->m2d[c];
-    v =  windat->wave_dir[c2];
-    return v;
-  }
-  else
-	 return 0;
-}
-
-/*
-Function:
-Read horizontal velocities in water
-
-Input:
-hmodel is hd model
-c is  current column
-
-Output:
-returns void;
-updates u1_wc[k] - u1 component of water velocity.
-
-Note:
-k index changes from botk_wc to topk_wc,
-where botk_wc and topk_wc are numbers of the bottom and top cells,
-respectively, and
-botk_wc < topk_wc <= (nwclayers-1)
-u1_wc[n][botk_wc] is velocity in the bottom cell
-u1_wc[n][topk_wc] is velocity in the top cell
-
-If in the hd model cell numbering increases downward
-(topk_wc_hd < botk_wc_hd), make sure that in u1_wc the cell
-numbering increases upward, starting from topk_wc_hd in the bottom cell
-and to  botk_wc_hd in the top cell.
-*/
-
-void sinterface_getu1_wc(void* hmodel, int c, double *u1_wc)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon=window->wincon;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int bot_k= window->s2k[window->bot_t[cc]];
-    int top_k= window->s2k[window->nsur_t[cc]];
-    int c3=window->nsur_t[cc];
-    int k;
-    for(k=top_k;k>=bot_k;k--) {
-    	u1_wc[k] = wincon->w4[c3];
-	//tmp 2013
-	//	if(fabs(u1_wc[k]) > 1e-9) fprintf(stderr, "sinterface_get_u1: u1=%lf \n", u1_wc[k]); 
-    	/*u1_wc[k] = windat->u1[c3];*/
-    	c3 = window->zm1[c3];
-    }
-}
-
-void sinterface_getu2_wc(void* hmodel, int c, double *u2_wc)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon=window->wincon;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int bot_k= window->s2k[window->bot_t[cc]];
-    int top_k= window->s2k[window->nsur_t[cc]];
-    int c3=window->nsur_t[cc];
-    int k;
-    for(k=top_k;k>=bot_k;k--) {
-    	u2_wc[k] = wincon->w5[c3];
-    	/*u2_wc[k] = windat->u2[c3];*/
-    	c3 = window->zm1[c3];
-    }
-}
-
-
-/*
-Function:
-Read diffusion coefficients in water
-
-Input:
-hmodel is hd model
-c is  current column
-
-Output:
-returns void;
-updates Kz_wc[k] - vertical diffusion coefficient in water.
-
-Note:
-k index changes from botk_wc to topk_wc+1,
-where botk_wc and topk_wc are numbers of the bottom and top cells,
-respectively, and
-botk_wc < topk_wc <= (nwclayers-1)
-u1_wc[n][botk_wc] is Kz in the bottom cell
-u1_wc[n][topk_wc] is Kz in the top cell
-
-If in the hd model cell numbering increases downward
-(topk_wc_hd < botk_wc_hd), make sure that in Kz_wc the cell
-numbering increases upward, starting from topk_wc_hd in the bottom cell
-and to  (botk_wc_hd+1) in the top cell.
-*/
-void sinterface_getkz_wc(void* hmodel, int c, double *Kz_wc)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int bot_k= window->s2k[window->bot_t[cc]];
-    int top_k= window->s2k[window->nsur_t[cc]];
-    int c3=window->nsur_t[cc];
-    int k;
-    for(k=top_k;k>=bot_k;k--) {
-	Kz_wc[k] = windat->Kz[c3];
-	c3 = window->zm1[c3];
-    }
-    Kz_wc[top_k+1] = 0.;
-}
 
 /*************************** SEDIMENT PROCESS PARAMETERS (sed_init.c)*/
 
 
+/*************************** SEDIMENT PROCESS PARAMETERS (sed_init.c)*/
 int sinterface_getverbose_sed(FILE* prmfd)
 {
     int variable;
@@ -806,7 +577,6 @@ int sinterface_getverbose_sed(FILE* prmfd)
 	variable = 0;
     return variable;
 }
-
 int sinterface_getgeomorph(FILE* prmfd)
 {
     int geomorph;
@@ -814,7 +584,6 @@ int sinterface_getgeomorph(FILE* prmfd)
 	geomorph = 0;
     return geomorph;
 }
-
 int sinterface_getconsolidate(FILE* prmfd)
 {
     int variable;
@@ -822,7 +591,6 @@ int sinterface_getconsolidate(FILE* prmfd)
 	variable = 0;
     return variable;
 }
-
 double sinterface_getfinpor_sed(FILE* prmfd)
 {
     double variable;
@@ -830,7 +598,6 @@ double sinterface_getfinpor_sed(FILE* prmfd)
 	variable = 0.4;
     return variable;
 }
-
 double sinterface_getconsolrate(FILE* prmfd)
 {
     double variable;
@@ -838,8 +605,6 @@ double sinterface_getconsolrate(FILE* prmfd)
 	variable = 1.e+13;
     return variable;
 }
-
-// 2010
 double sinterface_getmaxthicksed(FILE* prmfd)
 {
     double variable;
@@ -847,7 +612,6 @@ double sinterface_getmaxthicksed(FILE* prmfd)
 	variable = 100;
     return variable;
 }
-
 int sinterface_getcssmode(FILE* prmfd)
 {
     int v=0;
@@ -870,7 +634,6 @@ int sinterface_getcssmode(FILE* prmfd)
     }
     return v;
 }
-
 double sinterface_getcss(FILE* prmfd)
 {
     double v;
@@ -878,7 +641,6 @@ double sinterface_getcss(FILE* prmfd)
 	v = 0.2;
     return v;
 }
-
 double sinterface_getcssdep(FILE* prmfd)
 {
     double v;
@@ -886,7 +648,6 @@ double sinterface_getcssdep(FILE* prmfd)
 	v = 1.e+13;
     return v;
 }
-
 int sinterface_getflocmode(FILE* prmfd)
 {
  int v=0;
@@ -907,10 +668,8 @@ int sinterface_getflocmode(FILE* prmfd)
  {
      v=0;
  }
-
  return v;
 }
-
 double sinterface_getflocprm1(FILE* prmfd)
 {
     double v;
@@ -918,7 +677,6 @@ double sinterface_getflocprm1(FILE* prmfd)
 	v = -3.4e-4;
     return v;
 }
-
 double sinterface_getflocprm2(FILE* prmfd)
 {
     double v;
@@ -926,7 +684,6 @@ double sinterface_getflocprm2(FILE* prmfd)
 	v = 3.0;
     return v;
 }
-
 int sinterface_getbblnonlinear(FILE* prmfd)
 {
     int v;
@@ -934,8 +691,6 @@ int sinterface_getbblnonlinear(FILE* prmfd)
 	v = 1;
     return v;
 }
-
-
 int sinterface_gethindered_svel_patch(FILE* prmfd)
 {
     int v;
@@ -943,7 +698,6 @@ int sinterface_gethindered_svel_patch(FILE* prmfd)
 	v = 0;
     return v;
 }
-
 int sinterface_gethindered_svel(FILE* prmfd)
 {
     int v;
@@ -951,9 +705,6 @@ int sinterface_gethindered_svel(FILE* prmfd)
 	v = 0;
     return v;
 }
-
-
-
 double sinterface_reef_scale_depth(FILE* prmfd)
 {
     double v;
@@ -961,10 +712,8 @@ double sinterface_reef_scale_depth(FILE* prmfd)
        if(prm_read_double(prmfd,"REEF_SCALE_DEPTH",&v) <= 0.)
 	  v = 0.;
     }
-
     return v;
 }
-
 int sinterface_getcalcripples(FILE* prmfd)
 {
     int v;
@@ -972,8 +721,6 @@ int sinterface_getcalcripples(FILE* prmfd)
 	v = 0;
     return v;
 }
-
-
 double sinterface_getcssscale(FILE* prmfd)
 {
     double v;
@@ -981,8 +728,6 @@ double sinterface_getcssscale(FILE* prmfd)
 	v = 1.;
     return v;
 }
-
-
 double sinterface_getphysriph(FILE* prmfd)
 {
     double v;
@@ -990,7 +735,6 @@ double sinterface_getphysriph(FILE* prmfd)
 	v = 0.01;
     return v;
 }
-
 double sinterface_getphysripl(FILE* prmfd)
 {
     double v;
@@ -998,7 +742,6 @@ double sinterface_getphysripl(FILE* prmfd)
 	v = 0.5;
     return v;
 }
-
 double sinterface_getbioriph(FILE* prmfd)
 {
     double v;
@@ -1013,7 +756,6 @@ double sinterface_getbioripl(FILE* prmfd)
 	v = 0.5;
     return v;
 }
-
 double sinterface_getbiodens(FILE* prmfd)
 {
     double v;
@@ -1021,7 +763,6 @@ double sinterface_getbiodens(FILE* prmfd)
 	v=0.;
     return v;
 }
-
 double sinterface_getmaxbiodepth(FILE* prmfd)
 {
     double v;
@@ -1029,7 +770,6 @@ double sinterface_getmaxbiodepth(FILE* prmfd)
 	v=0.2;
     return v;
 }
-
 double sinterface_getbi_dissol_kz(FILE* prmfd)
 {
     double v;
@@ -1037,7 +777,6 @@ double sinterface_getbi_dissol_kz(FILE* prmfd)
 	v=0.;
     return v;
 }
-
 double sinterface_getbt_partic_kz(FILE* prmfd)
 {
     double v;
@@ -1045,7 +784,6 @@ double sinterface_getbt_partic_kz(FILE* prmfd)
 	v=0.;
     return v;
 }
-
 double sinterface_getbi_dissol_kz_i(FILE* prmfd)
 {
     double v;
@@ -1053,7 +791,6 @@ double sinterface_getbi_dissol_kz_i(FILE* prmfd)
 	v=0.;
     return v;
 }
-
 double sinterface_getbt_partic_kz_i(FILE* prmfd)
 {
     double v;
@@ -1061,7 +798,6 @@ double sinterface_getbt_partic_kz_i(FILE* prmfd)
 	v=0.;
     return v;
 }
-
 char sinterface_getbiosedprofile(FILE* prmfd)
 {
 	char v;
@@ -1072,7 +808,6 @@ char sinterface_getbiosedprofile(FILE* prmfd)
         v = 'p'; /* parabolic */
   return v;
 }
-
 double sinterface_getz0(FILE* prmfd)
 {
     double v;
@@ -1080,7 +815,6 @@ double sinterface_getz0(FILE* prmfd)
 	v = 0.000001;
     return v;
 }
-
 double sinterface_getquad_bfc(FILE* prmfd)
 {
    double v;
@@ -1088,8 +822,6 @@ double sinterface_getquad_bfc(FILE* prmfd)
 	v = 0.0002;
     return v;
 }
-
-
 int sinterface_getshipfile(FILE* prmfd, char *shipfile)
 {
     int v=0;
@@ -1103,8 +835,6 @@ int sinterface_getshipfile(FILE* prmfd, char *shipfile)
     }
     return v;
 }
-
-
 double sinterface_erflux_scale(FILE* prmfd)
 {
    double v;
@@ -1113,70 +843,8 @@ double sinterface_erflux_scale(FILE* prmfd)
     return v;
 }
 
-
-
 /*************************************TRACER ATTRIBUTES (sed_init.c) */
 
-int si_gettracernames(void* hmodel, char **tracername)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;
-    int ns,n,m;
-    char name_wc[MAXSTRLEN];
-    char name_sed[MAXSTRLEN];
-    ns=0;
-    for(n=0; n < windat->ntr; n++) {
-	strcpy(name_wc, wincon->trinfo_3d[n].name);
-	for(m=0; m < windat->nsed; m++) {
-	    strcpy(name_sed, wincon->trinfo_sed[m].name);
-	    if(strcmp(name_sed,name_wc)==0) {
-		strcpy(tracername[ns], name_wc);
-		ns=ns+1;
-	    }
-	}
-    }
-    return ns;
-}
-
-
-
-
-/*
-Function:
-  get map to hd tracers in water;
-Input:
-  hmodel is a pointer to hd model structure;
-  ns is the tracer number as specified in mecosed;
-  name is the tracer name;
-
-Output:
-  returns tracer number as specified in hd module;
-  if the tracer is not found, returns -1;
-*/
-int si_getmap2hdwctracer(void *hmodel, int ns, char *name)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;
-    int n;
-    for(n=0; n < windat->ntr; n++)
-	if(strcmp(name, wincon->trinfo_3d[n].name) == 0)
-	    return n;
-    return (-1);
-}
-
-int si_getmap2hdsedtracer(void *hmodel, int ns, char *name)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;
-    int n;
-    for(n=0; n < windat->nsed; n++)
-	if(strcmp(name, wincon->trinfo_sed[n].name )==0)
-		 return n;
-    return (-1);
-}
 
 
 FILE* si_getparamfile_tracer(FILE* fp)
@@ -1215,86 +883,6 @@ FILE* si_getparamfile_sed(FILE *fp)
 	return NULL;
 }
 
-
-double sinterface_get_fillvalue_wc(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    double v=0;
-    v = tr->fill_value_wc;
-    return v;
-}
-
-double sinterface_get_fillvalue_sed(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    double v=0;
-    v = tr->fill_value_sed;
-    return v;
-}
-
-int sinterface_get_diagn(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    int v=0;
-    v = tr->diagn;
-    if (strlen(tr->tracerstat)) v = 1;
-    return v;
-}
-
-
-int sinterface_get_dissol(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    int v=1;
-    v = tr->dissol;
-    return v;
-}
-
-int sinterface_get_partic(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    int v=0;
-    v = tr->partic;
-    return v;
-}
-
-
-int sinterface_get_diffuse(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    int v=1;
-    v = tr->diffuse;
-    return v;
-}
-
-double sinterface_get_decay(void* model, char *name)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    
-    double v=0;
-    v = (tr->flag & (DE_TR2|DE_TR3)) ? 0.0 : atof(tr->decay);
-    return v;
-}
 
 double sinterface_get_psize(void* model, char *name)
 {
@@ -1335,30 +923,6 @@ double sinterface_get_i_conc(void* model, char *name)
     return v;
 }
 
-// NMY 2013 Nov
-double sinterface_get_srf_flux(void* hmodel, char *name, int c)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  win_priv_t *wincon=window->wincon;
-  tracer_info_t *tr = i_get_tracer(hmodel, name);
-  int n = tr->n;
-  int c2;
-  double v;
-  if(wincon->sflux[n]>=0) {
-  	c2=window->m2d[c];
-  	v =   windat->tr_wcS[wincon->sflux[n]][c2];
-	//	fprintf(stderr,"get_srf_flux=%lf \n", v);
-	v = (windat->eta[c2] - window->botz[c2] <= wincon->hmin) ? 0.0 : v;
-  	return v;
-  }
-  else
-    return 0;
-}
-
-//////
-
-
 
 double sinterface_get_svel(void* model, char *name)
 {
@@ -1384,14 +948,6 @@ void sinterface_get_svel_name(void* model, char *name, char *sname)
       strcpy(sname, data->svel_name);
 }
 
-void sinterface_get_tracerunits(void* model, char *name, char *units)
-{
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
-    tracer_info_t *tr = i_get_tracer(model, name);
-    strcpy(units, tr->units);
-}
-
 int sinterface_get_cohesive(void* model, char *name)
 {
     geometry_t* window = (geometry_t*) model;
@@ -1404,7 +960,6 @@ int sinterface_get_cohesive(void* model, char *name)
       v = data->cohesive;
     return v;
 }
-
 
 int sinterface_get_resuspend(void* model, char *name)
 {
@@ -1482,7 +1037,6 @@ void sinterface_get_carriername(void* model, char *name,char *carriername )
       strcpy(carriername, data->carriername);
 }
 
-
 void sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname)
 {
     geometry_t* window = (geometry_t*) model;
@@ -1520,14 +1074,6 @@ double sinterface_get_adsorb_rate(void* model, char *name)
     return v;
 }
 
-#if defined(HAVE_OMP)
-int sinterface_get_trans_num_omp(void *model)
-{
-  geometry_t* window = (geometry_t*) model;
-  win_priv_t *wincon=window->wincon;
-  return(wincon->trans_num_omp);
-}
-#endif
 /************************************** CONCENTRATIONS */
 
 
@@ -1635,7 +1181,7 @@ Note:
 void sinterface_getmap2diagtracer_2d(void* hmodel,
 int *n_hripple, int *n_lripple, int *n_ustrcw_skin,
 int *n_depth_sedi, int *n_dzactive, int *n_erdepflux_total,
-int *n_erdepflux_total_ac)
+int *n_erdepflux_total_ac,int *n_erdepflux_oxygen, int *n_erdepflux_oxygen_ac)
 {
     geometry_t* window = (geometry_t*) hmodel;
     window_t *windat = window->windat;
@@ -1648,9 +1194,11 @@ int *n_erdepflux_total_ac)
   *n_lripple= n;
   *n_ustrcw_skin= n;
   *n_depth_sedi= n;
-  *n_dzactive=n; //2010 Aug
+  *n_dzactive=n;
   *n_erdepflux_total= n;
   *n_erdepflux_total_ac = n;
+  *n_erdepflux_oxygen= n;
+  *n_erdepflux_oxygen_ac = n;
 
     for(n=0; n < windat->ntrS; n++) {
 	strcpy(name, wincon->trinfo_2d[n].name);
@@ -1668,56 +1216,12 @@ int *n_erdepflux_total_ac)
 	    *n_erdepflux_total= n;
 	else if(strcmp(name, "erdepflux_total_ac")==0)
 	    *n_erdepflux_total_ac = n;
+       else if(strcmp(name, "erdepflux_oxygen")==0)
+            *n_erdepflux_oxygen = n;
+       else if(strcmp(name, "erdepflux_oxygen_ac")==0)
+            *n_erdepflux_oxygen_ac = n;
     }
 }
-
-
-/*sed_init
-Function:
-  get map to 3d diagnostic tracers;
-Input:
-  hmodel is a pointer to hd model structure;
-Output:
-  returns void;
-  updates n_tss - hd number of a 3d tracer with name "tss";
-  updates n_svel_floc ...
-Note:
-  Nothing happens if the diagnostic tracer is not specified in the prm file.
-
-void sinterface_getmap2diagtracer_3d(void* hmodel,
-int *n_tss, int *n_svel_floc, int *n_porosity, int *n_cohsed)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    win_priv_t *wincon=window->wincon;
-    int n;
-    char name[MAXSTRLEN];
-
-  n=-1;
-  *n_tss = n;
-  *n_svel_floc=n;
-  *n_porosity=n;
-  *n_cohsed=n;
-
-  // 3d tracers inwc and insed 
-    for(n=0; n < windat->ntr; n++) {
- 	strcpy(name, wincon->trinfo_3d[n].name);
- 	if(strcmp(name, "tss")==0)
-	    *n_tss = n;
-	else if(strcmp(name, "svel_floc")==0)
-	    *n_svel_floc=n;
-    }
-    //3d tracers only insed
-   for(n=0; n < windat->nsed; n++) {
- 	strcpy(name, wincon->trinfo_sed[n].name);
- 	if(strcmp(name, "por_sed")==0)
-	    *n_porosity = n;
-	else if(strcmp(name, "coh_sed")==0)
-	    *n_cohsed=n;
-    }
-
-}
-*/
 
 /*sed2hd
 Function:
@@ -1740,7 +1244,8 @@ void sinterface_putdiagtracer_2d(void* hmodel, int c,
 double hripple,int n_hripple,  double lripple, int n_lripple,
 double ustrcw_skin, int n_ustrcw_skin,
 double depth_sedi, int n_depth_sedi, double dzactive,  int n_dzactive,
-double erdepflux_total, int n_erdepflux_total, int n_erdepflux_total_ac)
+double erdepflux_total, int n_erdepflux_total, int n_erdepflux_total_ac,
+double erdepflux_oxygen,int n_erdepflux_oxygen, int n_erdepflux_oxygen_ac)
 
 {
     geometry_t* window = (geometry_t*) hmodel;
@@ -1758,75 +1263,18 @@ double erdepflux_total, int n_erdepflux_total, int n_erdepflux_total_ac)
 	if(n_dzactive>-1)
 	    windat->tr_wcS[n_dzactive][c2]= dzactive;
 	if(n_erdepflux_total>-1)
-	    windat->tr_wcS[n_erdepflux_total][c2]= erdepflux_total;
+	    windat->tr_wcS[n_erdepflux_total][c2] = erdepflux_total;
 	if(n_erdepflux_total_ac>-1)
 	    windat->tr_wcS[n_erdepflux_total_ac][c2] +=
 		windat->dt*erdepflux_total;
+        if(n_erdepflux_oxygen>-1)
+            windat->tr_wcS[n_erdepflux_oxygen][c2] = erdepflux_oxygen;
+        if(n_erdepflux_oxygen_ac>-1)
+            windat->tr_wcS[n_erdepflux_oxygen_ac][c2] +=
+                windat->dt*erdepflux_oxygen;
 
 }
 
-/*sed2hd
-Function:
-  write 3d diagnostic tracers to hd;
-Input:
-  hmodel is a pointer to hd model structure;
-  c is number of current column;
-  tss[k] is a 1d array of calculated values;
-  n_tss is hd number of 3d array with name "tss"
-  svel_floc[k] is ...
-  n_svel_floc is ...
-  ...
-Output:
-  returns void;
-  updates 3d hd arrays with numbers n_tss, n_svel_floc ...
-Note:
-  k index changes from botk_wc to topk_wc if the tracer is in wc,
-  and from botk_sed to topk_sed if the tracer is in sediments.
-  Nothing happens if the diagnostic tracer is not specified in the prm file.
-
-
-void sinterface_putdiagtracer_3d(void* hmodel, int c,
-double *tss, int n_tss, double *svel_floc, int n_svel_floc,
-double *por_sed, int n_por_sed, double *coh_sed, int n_coh_sed)
-
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2=window->m2d[c];
-    int cc=window->c2cc[c2];
-    int botk_wc= window->s2k[window->bot_t[cc]];
-    int topk_wc= window->s2k[window->nsur_t[cc]];
-    int botk_sed= 0;
-    int topk_sed= window->sednz-1;
-    int c3=window->nsur_t[cc];
-    // int c3=c;
-    int k;
-
-	// 3d tracers
- 	if(n_tss>-1) {
-	    for(k=topk_wc;k>=botk_wc;k--) {
-		windat->tr_wc[n_tss][c3] = tss[k] ;
-		c3 = window->zm1[c3];
-	    }
-	}
-	c3=window->nsur_t[cc];
-	if(n_svel_floc>-1) {
-	    for(k=topk_wc;k>=botk_wc;k--) {
-		windat->tr_wc[n_svel_floc][c3] = svel_floc[k] ;
-		c3 = window->zm1[c3];
-	    }
-	}
-	if(n_por_sed>-1) {
-	    for(k=botk_sed;k<=topk_sed;k++)
-		windat->tr_sed[n_por_sed][k][c2] = por_sed[k];
-  }
-	if(n_coh_sed>-1) {
-	    for(k=botk_sed;k<=topk_sed;k++)
-		windat->tr_sed[n_coh_sed][k][c2] = coh_sed[k];
-	}
-}
-*/
-/************************************************/
 /************************************************/
 
 void sed_set_grid(geometry_t *geom, geometry_t **window)
@@ -1884,7 +1332,6 @@ Note: k-index changes from botk_wc to topk_wc
 void sinterface_getsvel_custom(void* hmodel, int c, int n,
 		     char *name, double *svel_wc, int topk_wc, int botk_wc)
 {
-    /**/
     geometry_t* window = (geometry_t*) hmodel;
     window_t *windat = window->windat;
 
@@ -1906,7 +1353,6 @@ void sinterface_getsvel_custom(void* hmodel, int c, int n,
     if (strcmp(name,"PhyD_N") == 0 || strcmp(name,"PhyD_C") == 0 )
     {
       dayfrac = fmod(windat->t, 86400)/86400.;
-      /* fprintf(stderr,"depth = %f\n", depth); */
       if (dayfrac >0.25 && dayfrac < 0.75) // day time
 	max_swim = fabs(max_swim);
       else //night time
@@ -1964,7 +1410,7 @@ void sinterface_getsvel_custom(void* hmodel, int c, int n,
 /* Trichodesmium variable buoyancy */
     else if (strcmp(name,"Tricho_N") == 0 || strcmp(name,"Tricho_NR") == 0 || strcmp(name,"Tricho_PR") == 0 || strcmp(name, "Tricho_I") == 0 || strcmp(name, "Tricho_Chl") == 0) {
       int Tricho_sv_i=-1;
-      Tricho_sv_i = si_getmap2hdwctracer(hmodel, n, "Tricho_sv");
+      Tricho_sv_i = gi_getmap2hdwctracer(hmodel, n, "Tricho_sv");
 
       if (Tricho_sv_i < 0) {
         hd_warn("Diagnostic tracer Tricho_sv not found (required to calculate variable settling velocity for Trichodesmium)\n");
@@ -1975,16 +1421,12 @@ void sinterface_getsvel_custom(void* hmodel, int c, int n,
   
         for(k=topk_wc;k>=botk_wc;k--) {
            svel_wc[k] = windat->tr_wc[Tricho_sv_i][c3];
-//           printf("svel[%d] = %12.6f\n", k, svel_wc[k]);
 	   c3 = window->zm1[c3];
         }
         svel_wc[botk_wc] =0.;
         svel_wc[topk_wc+1] =0.;
       }
     }
-    /**/
-
-    
 }
 
 
@@ -2379,40 +1821,6 @@ void sed_set_tr_att(tracer_info_t *tr, char *key, void *value)
    */
   sprintf(data->name, "user_spec");
 }
-
-
-/*
- * FR 09-2012
- *   This is an alternative way I thought we can handle the
- *   private_data attributes. This way we need only add a couple lines
- *   here rather than writing a whole new function everytime. However,
- *   I think it'll make more sense if we move to a more generic scheme
- *   whereby we just have a list of name/datatype pairs and all this
- *   can be farmed out to the library
- */
-/*-------------------------------------------------------------------*/
-/* Get a particular private_data attribute                           */
-/*   value must be an appropriate datatype pointer                   */
-/*-------------------------------------------------------------------*/
-// void sed_get_tr_att(tracer_info_t *tr, char *key, void *value)
-// {
-//   trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
-// 
-//  if (data != NULL) {
-//    /* Switch on key */
-//    if (strcmp(key, "psize") == 0) 
-//      {
-//	*(double *)value = data->psize;
-//      } 
-//    else if (strcmp(key, "b_dens") == 0) 
-//      {
-//	*(double *)value = data->b_dens;
-//      }
-//    else
-//      hd_quit("Unknown sediment tracer attribute '%s'\n", key);
-//  } else 
-//    hd_quit("sed_private_data is null!\n");
-//}
 
 /*-------------------------------------------------------------------*/
 /* Reads the sediment related attributes      

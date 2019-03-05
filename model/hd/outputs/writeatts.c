@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 5871 2018-07-06 07:09:44Z riz008 $
+ *  $Id: writeatts.c 6149 2019-03-05 01:59:20Z her127 $
  *
  */
 
@@ -30,7 +30,7 @@ static void write_analytic_polar_att(dump_data_t *dumpdata, int cdfid,
                                      int jlower, int ne2, int xylocation);
 static void write_grid_atts(dump_data_t *dumpdata, int cdfid, int ilower,
                             int jlower);
-
+static void write_mean_atts(dump_data_t *dumpdata, int fid);
 
 
 void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
@@ -527,6 +527,8 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
 
 
   write_grid_atts(dumpdata, cdfid, ilower, jlower);
+  write_mean_atts(dumpdata, cdfid);
+
 }
 
 
@@ -691,5 +693,59 @@ void read_grid_atts(parameters_t *params, int fid)
     nc_get_att_double(fid, NC_GLOBAL, "arc", &params->pg->arc);
     nc_get_att_double(fid, NC_GLOBAL, "rmin", &params->pg->rmin);
     nc_get_att_double(fid, NC_GLOBAL, "rotation", &params->pg->rotation);
+  }
+}
+
+static void write_mean_atts(dump_data_t *dumpdata, int fid)
+{
+  master_t *master =  dumpdata->master;
+  char buf[MAXSTRLEN], mcs[MAXSTRLEN];
+  int i;
+
+  if (!(master->means & NONE)) {
+    nc_put_att_double(fid, NC_GLOBAL, "mean_c",
+		      NC_DOUBLE, 1, &master->meanc[1]);
+    nc_put_att_double(fid, NC_GLOBAL, "mean_next",
+		      NC_DOUBLE, 1, &master->means_next);
+    if (master->means_dt == SEASONAL || master->means_dt == MONTHLY || master->means_dt == DAILY) {
+      sprintf(mcs, "%f ", master->meancs[1]);
+      if (master->means_dt == SEASONAL || master->means_dt == MONTHLY) {
+	for (i = 2; i <= 12; i++) {
+	  sprintf(buf, "%f ", master->meancs[i]);
+	  strcat(mcs, buf);
+	}
+      }
+      if (master->means_dt == DAILY) {
+	for (i = 2; i <= 365; i++) {
+	  sprintf(buf, "%f ", master->meancs[i]);
+	  strcat(mcs, buf);
+	}
+      }
+      nc_put_att_text(fid, NC_GLOBAL, "mean_mc", strlen(mcs), mcs);
+    }
+  }
+}
+
+
+void read_mean_atts(master_t *master, int fid)
+{
+  geometry_t *geom = master->geom;
+  parameters_t *params = master->params;
+  char buf[MAXSTRLEN];
+  double d1;
+  int i, cc;
+
+  if (!(params->means & NONE)) {
+    nc_get_att_double(fid, NC_GLOBAL, "mean_c", &d1);
+    for (cc = 1; cc < geom->sgsizS; cc++)
+      master->meanc[cc] = d1;
+    nc_get_att_double(fid, NC_GLOBAL, "mean_next", &master->means_next);
+    if (master->means_dt == SEASONAL || master->means_dt == MONTHLY || master->means_dt == DAILY) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      nc_get_att_text(fid, NC_GLOBAL, "mean_mc", buf);
+      cc = parseline(buf, fields, MAXNUMARGS);
+      for (i = 1; i <= cc; i++)
+	master->meancs[i] = atof(fields[i-1]);
+    }
   }
 }

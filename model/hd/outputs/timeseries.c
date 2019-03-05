@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timeseries.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: timeseries.c 6111 2019-02-21 23:48:13Z riz008 $
  *
  */
 
@@ -30,10 +30,13 @@
 
 
 // local functions
-static int depth2c(master_t *master, ts_point_t ts, double depth, 
+static int depth2c(master_t *master, ts_point_t *ts, double depth, 
 		                                      int mode, int i, int j);
+int stencil_size(geometry_t *geom, int kernal, int c);
 void read_ts_data_init(FILE *fp, int n, master_t *master, ts_point_t *ts);
-void read_ts_data(master_t *master, ts_point_t ts, double t, int c);
+int read_ts_data(master_t *master, ts_point_t *ts, double t, int c);
+double average_glider_data(master_t *master, ts_point_t *tslist, double t, int c, int tn, 
+			   int *cu, int *cd, double *tu, double *td, double *nvals);
 
 /*
  * Logs a single timepoint to the timeseries file
@@ -51,10 +54,10 @@ static void ts_add_point(double t, int n)
   double xcpt, ycpt;
   double xcpta, ycpta;
   timeseries_t *loc_ts = &tslist[n].ts;
-  
+
   i = tslist[n].i;
   j = tslist[n].j;
-  c = depth2c(master, tslist[n], tslist[n].z, tslist[n].v_offset, i, j);
+  c = depth2c(master, &tslist[n], tslist[n].z, tslist[n].v_offset, i, j);
   cs = geom->m2d[c];
   if (loc_ts->t != NULL) {
     // Need to recalculate these trigs for the new position
@@ -88,10 +91,11 @@ static void ts_add_point(double t, int n)
     xcpta = master->u1av[cs];
     ycpta = master->u2av[cs];
   }
- 
+
   /* Read in data */
   if (tslist[n].ndata)
-    read_ts_data(master, tslist[n], t, c);
+    if (read_ts_data(master, &tslist[n], t, c))
+      return;
 
   // Make sure we log in proper time units
   tm_change_time_units(master->timeunit, tslist[n].tsunits, &t, 1);
@@ -120,8 +124,13 @@ static void ts_add_point(double t, int n)
     fprintf(tslist[n].fp, " %f", master->light[cs]);
   
   if (tslist[n].ndata) {
-    for (m = 0; m < tslist[n].dnvars; m++)
+    for (m = 0; m < tslist[n].dnvars; m++) {
       fprintf(tslist[n].fp, " %f %f", tslist[n].val[m], tslist[n].obs[m]);
+      if (tslist[n].minv != NULL && tslist[n].maxv != NULL)
+	fprintf(tslist[n].fp, " %f %f", tslist[n].minv[m], tslist[n].maxv[m]);
+      if (tslist[n].nvals != NULL && tslist[n].maxv != NULL)
+	fprintf(tslist[n].fp, " %f", tslist[n].nvals[m]);
+    }
   }
 
   fprintf(tslist[n].fp, "\n");
@@ -132,7 +141,7 @@ static void ts_add_point(double t, int n)
  */
 static double ts_event(sched_event_t *event, double t)
 {
-  int n;
+  int n, c;
   timeseries_t *loc_ts = NULL;
   double tsout = schedule->stop_time;
   int fill_all = 0;
@@ -154,10 +163,15 @@ static double ts_event(sched_event_t *event, double t)
      */
     if (master->master_fill)
       master->master_fill(master, window, windat, wincon);
-  } else
+  } else {
+    for (n = 0; n < nts; ++n) {
+      if (tslist[n].metric & TS_GLIDER)
+	master_fill_glider(master, window, windat, wincon, &tslist[n], t);
+    }
     if (master->master_fill_ts)
       master->master_fill_ts(master, window, windat, wincon);
-  
+  }
+
   /* 
    * Write the next record for each timeseries file that has reached its
    * output time
@@ -171,13 +185,13 @@ static double ts_event(sched_event_t *event, double t)
       tslist[n].tsout += tslist[n].tsdt;
       continue;
     }
-    
+
     loc_ts = &tslist[n].ts;
     if (t >= (tslist[n].tsout - DT_EPS)) {
       // Keep reading from file, if necessary
       if (loc_ts->t != NULL) {
 	double ts_t = t;
-	
+
 	// Make time consistent. i.e. convert time from input file to
 	//                                                  model time
 	tm_change_time_units(master->timeunit, loc_ts->t_units, &ts_t, 1);
@@ -186,6 +200,7 @@ static double ts_event(sched_event_t *event, double t)
 	 * See if we're in the range of the file
 	 */
 	if (ts_has_time(loc_ts, ts_t)) {
+
 	  // Get the new i,j,k
 	  tslist[n].x = ts_eval(loc_ts, tslist[n].varids[0], ts_t);
 	  tslist[n].y = ts_eval(loc_ts, tslist[n].varids[1], ts_t);
@@ -200,6 +215,7 @@ static double ts_event(sched_event_t *event, double t)
 	   * We could issue a warning here but that can fill up the runlog
 	   * file really quickly
 	   */
+
 	  if (grid_xytoij(master->xyij_tree, 
 			  tslist[n].x,  tslist[n].y, 
 			  &tslist[n].i, &tslist[n].j))
@@ -244,7 +260,7 @@ int ts_init(sched_event_t *event)
     
     /* If restarting an existing run, then read the old timeseries file
      * into memory */
-    if (forced_restart) {
+    if (forced_restart || nrt_restart) {
       FILE *fp = fopen(tslist[i].pname, "rb");
       if (fp != NULL) {
 	fclose(fp);
@@ -274,9 +290,16 @@ int ts_init(sched_event_t *event)
       ++ncols;
 
     /* Add fuzzy verification comparisons */
-    if (tslist[i].ndata)
+    if (tslist[i].ndata) {
       ncols += (2 * tslist[i].dnvars);
     
+      if (tslist[i].minv != NULL && tslist[i].maxv != NULL) 
+	ncols += (2 * tslist[i].dnvars);
+
+      if (tslist[i].nvals != NULL)
+	ncols += tslist[i].dnvars;
+    }
+
     /* Create the time series and write the header */
     if ((tslist[i].fp = fopen(tslist[i].pname, "w")) == NULL)
       hd_quit_and_dump("ts_init: Can't create timeseries file '%s'.\n",
@@ -289,7 +312,7 @@ int ts_init(sched_event_t *event)
     if (tslist[i].ts.t == NULL) {
       fprintf(tslist[i].fp,
               "# Points: x y z i j k cellx celly cellz botz\n");
-      c = depth2c(master, tslist[i], tslist[i].z, tslist[i].v_offset,
+      c = depth2c(master, &tslist[i], tslist[i].z, tslist[i].v_offset,
 		  tslist[i].i,tslist[i].j);
       if (tslist[i].i >= 0)
 	cs = geom->m2d[c];
@@ -394,14 +417,12 @@ int ts_init(sched_event_t *event)
     for (j = 0; j < tslist[i].nvars; ++j) {
       int tn = tslist[i].vars[j];
       tracer_info_t *trinfo;
-      
+
       trinfo = (tslist[i].var_type[j] == WATER) ? master->trinfo_3d :
 	master->trinfo_2d;
-      fprintf(tslist[i].fp, "## COLUMN%1d.name %s\n", coli,trinfo[tn].name);
-      fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s\n", coli,
-	      trinfo[tn].long_name);
-      fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli,
-	      trinfo[tn].units);
+      fprintf(tslist[i].fp, "## COLUMN%1d.name %s\n", coli, trinfo[tn].name);
+      fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s\n", coli, trinfo[tn].long_name);
+      fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, trinfo[tn].units);
       fprintf(tslist[i].fp, "## COLUMN%1d.fill_value_wc %g\n", coli,
 	      trinfo[tn].fill_value_wc);
       fprintf(tslist[i].fp, "## COLUMN%1d.missing_value -99999999\n", coli);
@@ -436,24 +457,59 @@ int ts_init(sched_event_t *event)
     /* Header for model-data fuzzy verification */
     if (tslist[i].ndata) {
       for (j = 0; j < tslist[i].dnvars; ++j) {
-	fprintf(tslist[i].fp, "## COLUMN%1d.name %s_comp\n", coli, tslist[i].dvars[j]);
-	fprintf(tslist[i].fp,
-		"## COLUMN%1d.long_name %s_comp\n", coli, tslist[i].dvars[j]);
-	fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, tslist[i].dunits[j]);
+	char name[MAXSTRLEN], units[MAXSTRLEN];
+
+	if (strcmp(tslist[i].dvars[j], "PRES") == 0) {
+	  strcpy(name, "N2");
+	  strcpy(units, "s-2");
+	} else {
+	  strcpy(name, tslist[i].dvars[j]);
+	  strcpy(units, tslist[i].dunits[j]);
+	}
+	fprintf(tslist[i].fp, "## COLUMN%1d.name %s_comp\n", coli, name);
+	fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s_comp\n", coli, name);
+	fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, units);
 	fprintf(tslist[i].fp, "## COLUMN%1d.fill_value 0\n", coli);
 	fprintf(tslist[i].fp, "## COLUMN%1d.missing_value -99999999\n",
 		coli);
 	fprintf(tslist[i].fp, "##\n");
 	coli++;
-	fprintf(tslist[i].fp, "## COLUMN%1d.name %s_obs\n", coli, tslist[i].dvars[j]);
-	fprintf(tslist[i].fp,
-		"## COLUMN%1d.long_name %s_obs\n", coli, tslist[i].dvars[j]);
-	fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, tslist[i].dunits[j]);
+	fprintf(tslist[i].fp, "## COLUMN%1d.name %s_obs\n", coli, name);
+	fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s_obs\n", coli, name);
+	fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, units);
 	fprintf(tslist[i].fp, "## COLUMN%1d.fill_value 0\n", coli);
 	fprintf(tslist[i].fp, "## COLUMN%1d.missing_value -99999999\n",
 		coli);
 	fprintf(tslist[i].fp, "##\n");
 	coli++;
+	if (tslist[i].minv != NULL && tslist[i].maxv != NULL) {
+	  fprintf(tslist[i].fp, "## COLUMN%1d.name %s_minv\n", coli, name);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s_minv\n", coli, name);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, units);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.fill_value 0\n", coli);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.missing_value -99999999\n",
+		  coli);
+	  fprintf(tslist[i].fp, "##\n");
+	  coli++;
+	  fprintf(tslist[i].fp, "## COLUMN%1d.name %s_maxv\n", coli, name);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s_maxv\n", coli, name);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.units %s\n", coli, units);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.fill_value 0\n", coli);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.missing_value -99999999\n",
+		  coli);
+	  fprintf(tslist[i].fp, "##\n");
+	  coli++;
+	}
+	if (tslist[i].nvals != NULL) {
+	  fprintf(tslist[i].fp, "## COLUMN%1d.name %s_nvals\n", coli, name);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.long_name %s_nvals\n", coli, name);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.units \n", coli);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.fill_value 0\n", coli);
+	  fprintf(tslist[i].fp, "## COLUMN%1d.missing_value -99999999\n",
+		  coli);
+	  fprintf(tslist[i].fp, "##\n");
+	  coli++;
+	}
       }
     }
 
@@ -705,9 +761,9 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
 	}
 	if (tslist[n].v_offset == 1) {
 	  double depth = geom->botz[cs] * master->Ds[cs] + fabs(tslist[n].z);
-	  c = depth2c(master, tslist[n], depth, 2, i, j);
+	  c = depth2c(master, &tslist[n], depth, 2, i, j);
 	} else
-	  c = depth2c(master, tslist[n], tslist[n].z, 2, i, j);
+	  c = depth2c(master, &tslist[n], tslist[n].z, 2, i, j);
 	
 	if (c >= 0 && geom->m2d[c] <= geom->ewetS) {
 	  tslist[n].i = i;
@@ -766,7 +822,7 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
       c = geom->map[geom->nz - 1][tslist[n].j][tslist[n].i];
       if (c <=0 || c > geom->sgnum) continue;
       if (geom->fm[c].wn == wn) {
-	ssize = tslist[n].kernal;
+	ssize = stencil_size(geom, tslist[n].kernal, c);
 	st = stencil(geom, c, &ssize, 0);
 	for (m = 0; m < ssize; m++) {
 	  c = st[m];
@@ -787,7 +843,7 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
       c = geom->map[geom->nz - 1][tslist[n].j][tslist[n].i];
       if (c <=0 || c > geom->sgnum) continue;
       if (geom->fm[c].wn == wn) {
-	ssize = tslist[n].kernal;
+	ssize = stencil_size(geom, tslist[n].kernal, c);
 	st = stencil(geom, c, &ssize, 0);
 	for (m = 0; m < ssize; m++) {
 	  c = st[m];
@@ -820,7 +876,7 @@ void timeseries_end(void)
 /* Returns the vertical cell location given a depth.                 */
 /*-------------------------------------------------------------------*/
 static int depth2c(master_t *master,   /* Master data structure */
-		   ts_point_t ts,      /* Time series point data structure */
+		   ts_point_t *ts,     /* Time series point data structure */
 		   double depth,       /* Depth to convert to vertical index */
 		   int mode,           /* Reference level code */
 		   int i,              /* e1 coordinate */
@@ -831,7 +887,7 @@ static int depth2c(master_t *master,   /* Master data structure */
   int c = 0;
   int cs;
   if (mode == 0 || mode == 1)
-    return (ts.k);              /* ts.k contains the sparse coordinate */
+    return (ts->k);             /* ts->k contains the sparse coordinate */
   else {
     c = cs = geom->m2d[geom->map[geom->nz - 1][j][i]];
     if (c > 0 && c <= geom->sgnum) {
@@ -1051,9 +1107,9 @@ void timeseries_init_m(FILE * prmfd, master_t *master,geometry_t *geom,
 	}
 	if (tslist[n].v_offset == 1) {
 	  double depth = geom->botz[cs] * master->Ds[cs] + fabs(tslist[n].z);
-	  c = depth2c(master, tslist[n], depth, 2, i, j);
+	  c = depth2c(master, &tslist[n], depth, 2, i, j);
 	} else
-	  c = depth2c(master, tslist[n], tslist[n].z, 2, i, j);
+	  c = depth2c(master, &tslist[n], tslist[n].z, 2, i, j);
 	
 	if (c >= 0 && geom->m2d[c] <= geom->ewetS) {
 	  tslist[n].i = i;
@@ -1120,7 +1176,7 @@ void timeseries_init_w(master_t *master, geometry_t **window)
       c = geom->map[geom->nz - 1][tslist[n].j][tslist[n].i];
       if (c <=0 || c > geom->sgnum) continue;
       if (geom->fm[c].wn == wn) {
-	ssize = tslist[n].kernal;
+	ssize = stencil_size(geom, tslist[n].kernal, c);
 	st = stencil(geom, c, &ssize, 0);
 	for (m = 0; m < ssize; m++) {
 	  c = st[m];
@@ -1144,7 +1200,7 @@ void timeseries_init_w(master_t *master, geometry_t **window)
       c = geom->map[geom->nz - 1][tslist[n].j][tslist[n].i];
       if (c <=0 || c > geom->sgnum) continue;
       if (geom->fm[c].wn == wn) {
-	ssize = tslist[n].kernal;
+	ssize = stencil_size(geom, tslist[n].kernal, c);
 	st = stencil(geom, c, &ssize, 0);
 	for (m = 0; m < ssize; m++) {
 	  c = st[m];
@@ -1236,8 +1292,8 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
   int i, tn;                 /* Counters                             */
   char buf[MAXSTRLEN];       /* Dummy buffer                         */
   char key[MAXSTRLEN];       /* Dummy buffer                         */
-  char v_name[MAXSTRLEN];    /* Scaling variable name                */
-  char f_name[MAXSTRLEN];    /* Forcing file name                    */
+  char v_name[MAXSTRLEN];    /* Observation variable name            */
+  char f_name[MAXSTRLEN];    /* Observation file name                */
   geometry_t *geom = master->geom;
 
   /*-----------------------------------------------------------------*/
@@ -1245,6 +1301,7 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
   ts->ndata = 0;
   ts->dnvars = 0;
   ts->kernal = 3;
+  ts->metric = TS_NONE;
   sprintf(key, "TS%1d.data_file", n);
   if (prm_read_char(fp, key, f_name)) {
     char files[MAXNUMTSFILES][MAXSTRLEN];
@@ -1253,43 +1310,64 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
     char *thresholds[MAXSTRLEN * MAXNUMARGS];
     int nvars;
 
+    sprintf(v_name, "%c", '\0');
     sprintf(key, "TS%1d.data_name", n);
     prm_read_char(fp, key, v_name);
-    
+
     sprintf(key, "TS%1d.data_kernal", n);
-    if (!prm_read_int(fp, key, &ts->kernal))
+    if (prm_read_char(fp, key, buf)) {
+      if (parseline(buf, names, MAXNUMARGS) == 2) {
+	if (strcmp(names[1], "km") == 0)
+	  ts->kernal = -(int)(atof(names[0]) * 1000.);
+	else
+	  ts->kernal = -atoi(names[0]);
+      } else {
+	ts->kernal = atoi(buf);
+	/* Odd kernals only */
+	if (ts->kernal > 1 && ts->kernal%2 == 0) ts->kernal--;
+      }
+    } else
       ts->kernal = 1;
-    /* Odd kernals only */
-    if (ts->kernal > 1 && ts->kernal%2 == 0) ts->kernal--;
 
     ts->metric = TS_CLOS;
     sprintf(key, "TS%1d.data_metric", n);
     if (prm_read_char(fp, key, buf)) {
-    if (strcmp(buf, "CLOSEST") == 0)
-      ts->metric = TS_CLOS;      
-    if (strcmp(buf, "DIFF") == 0)
-      ts->metric = TS_DIFF;      
-    if (strcmp(buf, "MEAN") == 0)
-      ts->metric = TS_MEAN;      
-    if (strcmp(buf, "RMSE") == 0)
-      ts->metric = TS_RMSE;      
-    if (strcmp(buf, "CATEGORICAL") == 0)
-      ts->metric = TS_CAT;
-    if (strcmp(buf, "TRUE_SKILL") == 0)
-      ts->metric = TS_HK;
-    if (strcmp(buf, "CRITICAL_SUCCESS") == 0)
-      ts->metric = TS_TS;
-    if (strcmp(buf, "HIT_RATE") == 0)
-      ts->metric = TS_H;
-    if (strcmp(buf, "FALSE_ALARM_RATE") == 0)
-      ts->metric = TS_F;
-    if (strcmp(buf, "PREDICTION_RATE") == 0)
-      ts->metric = TS_PRED;
+      if (strcmp(buf, "CLOSEST") == 0)
+	ts->metric = TS_CLOS;      
+      if (strcmp(buf, "DIFF") == 0)
+	ts->metric = TS_DIFF;      
+      if (strcmp(buf, "MEAN") == 0)
+	ts->metric = TS_MEAN;      
+      if (strcmp(buf, "RMSE") == 0)
+	ts->metric = TS_RMSE;      
+      if (strcmp(buf, "CATEGORICAL") == 0)
+	ts->metric = TS_CAT;
+      if (strcmp(buf, "TRUE_SKILL") == 0)
+	ts->metric = TS_HK;
+      if (strcmp(buf, "CRITICAL_SUCCESS") == 0)
+	ts->metric = TS_TS;
+      if (strcmp(buf, "HIT_RATE") == 0)
+	ts->metric = TS_H;
+      if (strcmp(buf, "FALSE_ALARM_RATE") == 0)
+	ts->metric = TS_F;
+      if (strcmp(buf, "PREDICTION_RATE") == 0)
+	ts->metric = TS_PRED;
+      if (strcmp(buf, "GLIDER") == 0) {
+	ts->metric = TS_GLIDER;
+	if (strlen(v_name))
+	  strcat(v_name, " temp salt dens");
+	else
+	  strcpy(v_name, "temp salt dens");
+	ts->last = 0;
+	if (!(master->numbers & GLIDER))
+	  hd_quit("Set NUMBERS GLIDER to invoke the glider metric.\n");
+      }
     }
 
     ts->ndata = parseline(f_name, (char **)files, MAXNUMTSFILES);
     filenames = (cstring *)malloc(sizeof(cstring) * ts->ndata);
-    ts->dnvars = parseline(v_name, names, MAXNUMARGS);
+    if ((ts->dnvars = parseline(v_name, names, MAXNUMARGS)) == 0)
+      hd_quit("Can't file 'TS%1d.data_name'\n", n);
     ts->dvarids = i_alloc_2d(ts->ndata, ts->dnvars);
 
     ts->thresh = NULL;
@@ -1333,6 +1411,28 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
       hd_warn("read_ts_data: Can't open forcing file %s.\n", f_name);
       return;
     }
+
+    /* Check if density is in a glider file; if not read pressure    */
+    /*  compute.                                                     */
+    if(ts->metric & TS_GLIDER) {
+      int found = 0;
+      for (tn = 0; tn < ts->dnvars; tn++) {
+	if (strcmp(names[tn], "dens") == 0) {
+	  found = tn;
+	  for (i = 0; i < ts->ndata; ++i) {
+	    int varid;
+	    if ((varid = ts_get_index(ts->tsdata[i], fv_get_varname(filenames[i], names[tn], buf)) >= 0))
+	      found = 0;
+	  }
+	}
+      }
+      if (found) {
+	hd_warn("read_ts_data: Can't find '%s' in glider file : computing density.\n", 
+		names[found]);
+	strcpy(names[found], "PRES");
+      }
+    }
+
     for (tn = 0; tn < ts->dnvars; tn++) {
       if (hd_ts_multifile_get_index(ts->ndata, ts->tsdata, filenames, names[tn], ts->dvarids[tn]) > 0) {
 	for(i = 0; i < ts->ndata; i++) {
@@ -1347,6 +1447,12 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
 
     ts->val = d_alloc_1d(ts->dnvars);
     ts->obs = d_alloc_1d(ts->dnvars);
+    ts->minv = ts->maxv = ts->nvals = NULL;
+    if (ts->metric & TS_GLIDER) {
+      ts->minv = d_alloc_1d(ts->dnvars);
+      ts->maxv = d_alloc_1d(ts->dnvars);
+      ts->nvals = d_alloc_1d(ts->dnvars);
+    }
     ts->data = (double **)p_alloc_1d(ts->dnvars);
     ts->ddim = i_alloc_1d(ts->dnvars);
     ts->dvars = (char **)malloc(ts->dnvars * sizeof(char *));
@@ -1372,6 +1478,18 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
 	ts->data[tn] = master->u2;
 	strcpy(ts->dvars[tn], "u2");
 	strcpy(ts->dunits[tn], "ms-1");
+      } else if (strcmp(names[tn], "dens") == 0) {
+	ts->data[tn] = master->dens_0;
+	strcpy(ts->dvars[tn], "N2");	
+	strcpy(ts->dunits[tn], "s-2");
+      } else if (strcmp(names[tn], "PRES") == 0) {
+	ts->data[tn] = master->dens_0;
+	strcpy(ts->dvars[tn], "PRES");	
+	strcpy(ts->dunits[tn], "dbar");
+      } else if (strcmp(names[tn], "depth") == 0) {
+	ts->data[tn] = geom->cellz;
+	strcpy(ts->dvars[tn], "depth");
+	strcpy(ts->dunits[tn], "m");
       } else {
 	for (i = 0; i < master->ntr; i++) {
 	  if (strcmp(names[tn], master->trinfo_3d[i].name) == 0) {
@@ -1402,87 +1520,233 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
 
 
 /*-------------------------------------------------------------------*/
+/* Returns a stencil size                                            */
+/*-------------------------------------------------------------------*/
+int stencil_size(geometry_t *geom, int kernal, int c)
+{
+  int ssize;
+
+  if (kernal > 0)
+    ssize = kernal;
+  else {   /* Convert from a length scale to number of cells         */
+    ssize = -kernal / sqrt(geom->cellarea[geom->m2d[c]]);
+    if (ssize > 1 && ssize%2 == 0) ssize--;
+    ssize = max(ssize, 1);
+  }
+  return(ssize);
+}
+
+/* END stencil_size()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Read external data and compare to model data                      */
 /*-------------------------------------------------------------------*/
-void read_ts_data(master_t *master, ts_point_t tslist, double t, int c)
+int read_ts_data(master_t *master, ts_point_t *tslist, double t, int c)
 {
   geometry_t *geom = master->geom;
-  int cc, cs, c2, tn;
+  int cc, cs, c2, cg, tn, tid, sid;
   double val, d1, d2;
+  double tu, td;
+  double temp, sal, p, dens;
   int *st = NULL, ssize;
+  int posf;
 
   /* Get the kernal                                                  */
-  ssize = tslist.kernal;
   c2 = geom->m2d[c];
+  ssize = stencil_size(geom, tslist->kernal, c);
   st = stencil(geom, c, &ssize, 0);
 
+  /* Initialize glider data if it enters a new column                */
+  if (master->glider && tslist->metric & TS_GLIDER) {
+    if (c == tslist->last) return(1);
+    if (c2 != geom->m2d[tslist->last]) {
+      cs = c2;
+      while (cs != geom->zm1[cs]) {
+	master->glider[cs] = 0.0;
+	cs = geom->zm1[cs];
+      }
+    }
+    tslist->last = c ;
+  }
+
   /* Loop though the variables specified for comparison              */
-  for (tn = 0; tn < tslist.dnvars; tn++) {
+  for (tn = 0; tn < tslist->dnvars; tn++) {
+    int n2f = (strcmp(tslist->dvars[tn], "N2") == 0 || strcmp(tslist->dvars[tn], "PRES") == 0) ? 1 : 0;
     /* Get the observation value                                     */
-    if (tslist.ddim[tn]) {
-      val = hd_ts_multifile_eval_xyz(tslist.ndata, tslist.tsdata, tslist.dvarids[tn],
-				     t, tslist.x, tslist.y, tslist.z);
-      tslist.obs[tn] = val;
+    if (tslist->ddim[tn]) {
+
+      /* For glider metrics we compute the average denity in a cell  */
+      if (tslist->metric & TS_GLIDER) {
+	/* Add the density to the glider array                       */
+	char var[MAXSTRLEN];
+	double tzm1, nvals;
+	int cu, cd, cb, cud, cdd;
+	int zp1 = geom->zp1[c];
+	int zm1 = geom->zm1[c];
+	int dof = 0;
+
+	/* If the glider has not entered this cell, then average its */
+	/* data while in the cell.                                   */
+	if (master->glider[c] == 0.0) {
+	  strcpy(var, tslist->dvars[tn]);
+	  /* Compute buoyancy frequency                              */
+	  if (n2f) {
+	    int densf = 0;
+	    if (strcmp(var, "N2") == 0) 
+	      strcpy(var, "dens");
+	    else
+	      densf = 1;
+	    master->glider[c] = average_glider_data(master, tslist, t, c, tn, &cu, &cd, &tu, &td, &nvals);
+	    tslist->nvals[tn] = nvals;
+
+	    /* Compute glider density if not supplied in the file    */
+	    if (densf) {
+	      p = master->glider[c] * 1e6;
+	      /* eos2 expects pressure as N/m2 and converts to bars  */
+	      /* (divides by 1e5), so multiply p by 1e6 to retrieve  */
+	      /* bars in eos2().                                     */
+	      eos2(sal, temp, p, &dens, &master->glider[c]);
+	    }
+
+	    /* Get the average density in cells below c              */
+	    /* Get the orientation of the cell below or above c      */
+	    if (cd == geom->zm1[c]) {
+	      cg = c;
+	      zm1 = cd;
+	      tzm1 = td;
+	      posf = 1;
+	    } else if (cu == geom->zm1[c]) {
+	      cg = c;
+	      zm1 = cu;
+	      tzm1 = tu;
+	      posf = 1;
+	    } else if (c == geom->zm1[cu]) {
+	      zm1 = cg = cu;
+	      tzm1 = tu;
+	      posf = 0;
+	    } else if (c == geom->zm1[cd]) {
+	      zm1 = cg = cd;
+	      tzm1 = td;
+	      posf = 0;
+	    } else {
+	      /*printf("Can't find c\n");*/
+	      val = 0.0;
+	      break;
+	    }
+	    /* Get the density in this adjacent cell                 */
+	    master->glider[zm1] = average_glider_data(master, tslist, tzm1, zm1, tn, &cud, &cdd, &d1, &d2, &nvals);
+	    if (densf) {
+	      p = master->glider[zm1] * 1e6;
+	      temp = average_glider_data(master, tslist, tzm1, zm1, tid, &cud, &cdd, &d1, &d2, &nvals);
+	      sal = average_glider_data(master, tslist, tzm1, zm1, sid, &cud, &cdd, &d1, &d2, &nvals);
+	      eos2(sal, temp, p, &dens, &master->glider[zm1]);
+	    }
+	    val = buoyancy_frequency2_m(master, geom, master->glider, cg);
+	  } else {
+	    /* Average the variable in the cell. Save temp and salt  */
+	    /* for use in computing density if required.             */
+	    val = average_glider_data(master, tslist, t, c, tn, &cu, &cd, &d1, &d2, &nvals);
+	    tslist->nvals[tn] = nvals;
+	    if (strcmp(tslist->dvars[tn], "temp") == 0) {
+	      tid = tn;
+	      temp = val;
+	    }
+	    if (strcmp(tslist->dvars[tn], "salt") == 0) {
+	      sid = tn;
+	      sal = val;
+	    }
+	  }
+	}
+      } else {	
+	val = hd_ts_multifile_eval_xyz(tslist->ndata, tslist->tsdata, tslist->dvarids[tn],
+				       t, tslist->x, tslist->y, tslist->z);
+      }
+      tslist->obs[tn] = val;
+
       /* Set ghost cells in the model (on the master)                */
       for (cc = 1; cc <= geom->nbpt; cc++) {
 	int c1, c2;
 	c1 = geom->bpt[cc];
 	c2 = geom->bin[cc];
-	tslist.data[tn][c1] = tslist.data[tn][c2];
+	tslist->data[tn][c1] = tslist->data[tn][c2];
       }
     } else {
-      val = hd_ts_multifile_eval_xy(tslist.ndata, tslist.tsdata, tslist.dvarids[tn],
-				    t, tslist.x, tslist.y);
+      val = hd_ts_multifile_eval_xy(tslist->ndata, tslist->tsdata, tslist->dvarids[tn],
+				    t, tslist->x, tslist->y);
       /* Set ghost cells in the model (on the master)                */
       for (cc = 1; cc <= geom->nbptS; cc++) {
 	int c1, c2;
 	c1 = geom->bpt[cc];
 	c2 = geom->bin[cc];
-	tslist.data[tn][c1] = tslist.data[tn][c2];
+	tslist->data[tn][c1] = tslist->data[tn][c2];
       }
     }
-
+    
     /* Compare to the model within the kernal                        */
-    if (tslist.metric & (TS_CLOS)) {
+    if (tslist->metric & (TS_CLOS)) {
       d1 = HUGE;
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
-	if (fabs(val - tslist.data[tn][cs]) < d1) {
-	  d1 = fabs(val - tslist.data[tn][cs]);
-	  tslist.val[tn] = (tslist.metric & TS_DIFF) ? val - tslist.data[tn][cs] : tslist.data[tn][cs];
+	if (fabs(val - tslist->data[tn][cs]) < d1) {
+	  d1 = fabs(val - tslist->data[tn][cs]);
+	  tslist->val[tn] = (tslist->metric & TS_DIFF) ? val - tslist->data[tn][cs] : tslist->data[tn][cs];
 	}
       }
-    } else if (tslist.metric & TS_DIFF && tslist.thresh != NULL) {
+    } else if (tslist->metric & TS_DIFF && tslist->thresh != NULL) {
       double thresh, d1 = 0.0;
-      tslist.val[tn] = 0.0;
+      tslist->val[tn] = 0.0;
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
-	if (tslist.thresh[tn][0] == 0)
-	  thresh = master->tr_wc[(int)tslist.thresh[tn][1]][cs];
-	else if (tslist.thresh[tn][0] == 1)
-	  thresh = master->tr_wcS[(int)tslist.thresh[tn][1]][cs];
+	if (tslist->thresh[tn][0] == 0)
+	  thresh = master->tr_wc[(int)tslist->thresh[tn][1]][cs];
+	else if (tslist->thresh[tn][0] == 1)
+	  thresh = master->tr_wcS[(int)tslist->thresh[tn][1]][cs];
 	else
-	  thresh = tslist.thresh[tn][1];
-	if (fabs(val - tslist.data[tn][cs]) < thresh) tslist.val[tn] += 1.0;
+	  thresh = tslist->thresh[tn][1];
+	if (fabs(val - tslist->data[tn][cs]) < thresh) tslist->val[tn] += 1.0;
       }
-      tslist.val[tn] /= (double)ssize;
-    } else if (tslist.metric & TS_MEAN) {
+      tslist->val[tn] /= (double)ssize;
+    } else if (tslist->metric & TS_MEAN) {
       d1 = 0.0;
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
-	d1 += tslist.data[tn][cs];
+	d1 += tslist->data[tn][cs];
       }
       d1 /= (double)(ssize);
-      tslist.val[tn] = d1;
-    } else if (tslist.metric & TS_RMSE) {
+      tslist->val[tn] = d1;
+    } else if (tslist->metric & TS_RMSE) {
       d1 = 0.0;
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
-	d2 = (val - tslist.data[tn][cs]);
+	d2 = (val - tslist->data[tn][cs]);
 	d1 += (d2 * d2);
       }
-      tslist.val[tn] = sqrt(d1 / (double)(ssize));
-    } else if (tslist.metric & (TS_CAT|TS_HK|TS_TS|TS_H|TS_F|TS_PRED) && tslist.thresh != NULL) {
+      tslist->val[tn] = sqrt(d1 / (double)(ssize));
+    } else if (tslist->metric & TS_GLIDER) {
+      if (n2f) {
+	/* Buoyancy frequency computation; use the same cells as the */
+	/* glider used.                                              */
+	cs = (posf) ? c : geom->zp1[c];
+	tslist->val[tn] = buoyancy_frequency2_m(master, geom, master->dens, cs);
+      }
+      else
+	tslist->val[tn] = tslist->data[tn][c];
+
+      tslist->minv[tn] = HUGE;
+      tslist->maxv[tn] = 0.0;
+      for (cc = 0; cc < ssize; cc++) {
+	cs = st[cc];
+	if (n2f) {
+	  if (!posf) cs = geom->zp1[cs];
+	  d2 = buoyancy_frequency2_m(master, geom, master->dens, cs);
+	} else
+	  d2 = tslist->data[tn][cs];
+	tslist->minv[tn] = min(tslist->minv[tn], d2);
+	tslist->maxv[tn] = max(tslist->maxv[tn], d2);
+      }
+    } else if (tslist->metric & (TS_CAT|TS_HK|TS_TS|TS_H|TS_F|TS_PRED) && tslist->thresh != NULL) {
       /* Categorical contingency table                               */
       /* Hit = 0, miss = 1, false alarm = 2, reject = 3              */
       /* Hit = observation and prediction above the threshold        */
@@ -1490,53 +1754,173 @@ void read_ts_data(master_t *master, ts_point_t tslist, double t, int c)
       /* Miss = observation above and and prediction below threshold */
       /* False = observation below and prediction above threshold    */
       double cat[4], thresh;
-      tslist.val[tn] = -1.0;
+      tslist->val[tn] = -1.0;
       for (cc = 0; cc < 4; cc++) cat[cc] = 0.0;
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
-	if (tslist.thresh[tn][0] == 0)
-	  thresh = master->tr_wc[(int)tslist.thresh[tn][1]][cs];
-	else if (tslist.thresh[tn][0] == 1)
-	  thresh = master->tr_wcS[(int)tslist.thresh[tn][1]][cs];
+	if (tslist->thresh[tn][0] == 0)
+	  thresh = master->tr_wc[(int)tslist->thresh[tn][1]][cs];
+	else if (tslist->thresh[tn][0] == 1)
+	  thresh = master->tr_wcS[(int)tslist->thresh[tn][1]][cs];
 	else
-	  thresh = tslist.thresh[tn][1];
-	if (val >= thresh && tslist.data[tn][cs] >= thresh) cat[0] += 1.0;
-	if (val >= thresh && tslist.data[tn][cs] < thresh) cat[1] += 1.0;
-	if (val < thresh && tslist.data[tn][cs] >= thresh) cat[2] += 1.0;
-	if (val < thresh && tslist.data[tn][cs] < thresh) cat[3] += 1.0;
+	  thresh = tslist->thresh[tn][1];
+	if (val >= thresh && tslist->data[tn][cs] >= thresh) cat[0] += 1.0;
+	if (val >= thresh && tslist->data[tn][cs] < thresh) cat[1] += 1.0;
+	if (val < thresh && tslist->data[tn][cs] >= thresh) cat[2] += 1.0;
+	if (val < thresh && tslist->data[tn][cs] < thresh) cat[3] += 1.0;
       }
-      if (tslist.metric & TS_CAT) {
-	if (cat[0] >= cat[1] && cat[0] >= cat[2] && cat[0] >= cat[3]) tslist.val[tn] = 0;
-	if (cat[1] >= cat[0] && cat[1] >= cat[2] && cat[1] >= cat[3]) tslist.val[tn] = 1;
-	if (cat[2] >= cat[1] && cat[2] >= cat[0] && cat[2] >= cat[3]) tslist.val[tn] = 2;
-	if (cat[3] >= cat[1] && cat[3] >= cat[2] && cat[3] >= cat[0]) tslist.val[tn] = 3;
-      } else if (tslist.metric & TS_HK) {    
+      if (tslist->metric & TS_CAT) {
+	if (cat[0] >= cat[1] && cat[0] >= cat[2] && cat[0] >= cat[3]) tslist->val[tn] = 0;
+	if (cat[1] >= cat[0] && cat[1] >= cat[2] && cat[1] >= cat[3]) tslist->val[tn] = 1;
+	if (cat[2] >= cat[1] && cat[2] >= cat[0] && cat[2] >= cat[3]) tslist->val[tn] = 2;
+	if (cat[3] >= cat[1] && cat[3] >= cat[2] && cat[3] >= cat[0]) tslist->val[tn] = 3;
+      } else if (tslist->metric & TS_HK) {    
 	d1 = cat[0] + cat[1];
 	d2 = cat[2] + cat[3];
 	if (d1 && d2)
-	  tslist.val[tn] = cat[0] / d1 - cat[2] / d2;
+	  tslist->val[tn] = cat[0] / d1 - cat[2] / d2;
 	else 
-	  tslist.val[tn] = -1.0;
-      } else if (tslist.metric & TS_TS) {
+	  tslist->val[tn] = -1.0;
+      } else if (tslist->metric & TS_TS) {
 	d1 = cat[0] + cat[1] + cat[2];
-	tslist.val[tn] = (d1) ? cat[0] / d1 : -1.0;
-      } else if (tslist.metric & TS_H) {
+	tslist->val[tn] = (d1) ? cat[0] / d1 : -1.0;
+      } else if (tslist->metric & TS_H) {
 	d1 = cat[0] + cat[1];
-	tslist.val[tn] = (d1) ? cat[0] / d1 : -1.0;
-      } else if (tslist.metric & TS_F) {
+	tslist->val[tn] = (d1) ? cat[0] / d1 : -1.0;
+      } else if (tslist->metric & TS_F) {
 	d1 = cat[2] + cat[3];
-	tslist.val[tn] = (d1) ? cat[2] / d1 : -1.0;
-      } else if (tslist.metric & TS_PRED) {
+	tslist->val[tn] = (d1) ? cat[2] / d1 : -1.0;
+      } else if (tslist->metric & TS_PRED) {
 	d1 = cat[0] + cat[1] + cat[2] + cat[3];
-	tslist.val[tn] = (d1) ? (cat[0] + cat[3]) / d1 : -1.0;
+	tslist->val[tn] = (d1) ? (cat[0] + cat[3]) / d1 : -1.0;
       }
     }
-
-    /*printf("%f %d %f : %f %f %f : %f %f\n",t,tn,val,tslist.x, tslist.y, tslist.z, tslist.data[tn][c], tslist.val[tn]);*/
   }
 
   i_free_1d(st);
+  return(0);
 }
 
 /* END read_ts_data()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to average glider data onto a model cell                  */
+/*-------------------------------------------------------------------*/
+double average_glider_data(master_t *master,   /* Master data        */
+			   ts_point_t *tslist, /* Time series        */
+			   double t,           /* Time               */
+			   int c,              /* Glider location    */
+			   int tn,             /* Number of variable */
+			   int *cu,            /* Cell above c       */
+			   int *cd,            /* Cell below c       */
+			   double *tu,         /* Time when in cu    */ 
+			   double *td,         /* Time when in cd    */ 
+			   double *nvals       /* Number of samples  */
+			   )
+{
+  int m, n = 0;
+  int cp, cg = c;
+  int r1, r2;
+  double val = 0.0, v1;
+  double tg = t;
+  double frac;
+  double x, y, z;
+  timeseries_t **tsdata = tslist->tsdata;
+  timeseries_t *loc_ts = &tslist->ts;
+  datafile_t *df;
+  df_variable_t *v;
+  int fv = 1, firstval = 0;
+
+  for (m = 0; m < tslist->ndata; ++m) {
+    timeseries_t *ts = tsdata[m];
+
+    if (tslist->dvarids[tn][m] < 0) continue;
+    df = ts->df;
+    v = df_get_variable(df, tslist->dvarids[tn][m]);
+
+    /* Get the record number bracketing time t                       */
+    df_find_record(df, tg, &r1, &r2, &frac);
+
+    /* Read in glider records previous to time t until a new cell is */
+    /* entered.                                                      */
+    while (cg == c) {
+      df_read_records(df, v, r1, 1);        /* Read the record       */
+      v1 = v->data[r1 - v->start_record];   /* Record value          */
+      if (fv && !isnan(v1)) {
+	val += v1;                          /* Average value         */
+	n++;
+	if (firstval) fv = 0;
+      }
+      r1 = max(r1 - 1, 0);                  /* Increment the record  */
+      tg = df->records[r1];                 /* Glider time of record */
+      /* Get the new location in the grid                            */
+      cp = cg;
+      if (!(cg = get_glider_loc(master, tslist, loc_ts, tg))) {
+	break;
+      }
+    }
+    *cu = cg;
+    *tu = tg;
+
+    /* Read in glider records subsequrnt to time t until a new cell  */
+    /* is entered.                                                   */
+    cg = c;
+    tg = t;
+    fv = 1;
+    while (cg == c) {
+      df_read_records(df, v, r2, 1);        /* Read the record       */
+      v1 = v->data[r2 - v->start_record];   /* Record value          */
+      if (fv && !isnan(v1)) {
+	val += v1;                          /* Average value         */
+	n++;
+	if (firstval) fv = 0;
+      }
+      r2 = min(r2 + 1, v->nrecords - 1);    /* Increment the record  */
+      tg = df->records[r2];                 /* Glider time of record */
+      cp = cg;
+      if (!(cg = get_glider_loc(master, tslist, loc_ts, tg))) {
+	break;
+      }
+    }
+    *cd = cg;
+    *td = tg;
+  }
+  val = (n) ? val / (double)n : NaN;
+  *nvals = (double)n;
+  return(val);
+}
+
+/* END average_glider_data()                                         */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Gets a new glider location in the grid                            */
+/*-------------------------------------------------------------------*/
+int get_glider_loc(master_t *master, ts_point_t *tslist, timeseries_t *loc_ts, double t)
+{
+  int c, i, j;
+  double x, y, z, ts_t = t;
+
+  tm_change_time_units(master->timeunit, loc_ts->t_units, &ts_t, 1);
+
+  if (ts_has_time(loc_ts, ts_t)) {
+    x = ts_eval(loc_ts, tslist->varids[0], ts_t);
+    y = ts_eval(loc_ts, tslist->varids[1], ts_t);
+    z = ts_eval(loc_ts, tslist->varids[2], ts_t);
+    if (loc_ts->df->variables[tslist->varids[2]].z_is_depth)
+      z = -z;
+	  
+    if (grid_xytoij(master->xyij_tree, x, y, &i, &j)) {
+      c = depth2c(master, tslist, z, tslist->v_offset, i, j);
+    } else
+      return(0);
+  } else
+    return(0);
+  return(c);
+}
+
+/* END get_glider_loc()                                              */
 /*-------------------------------------------------------------------*/

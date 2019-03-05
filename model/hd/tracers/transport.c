@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: transport.c 5994 2018-10-17 04:55:14Z her127 $
  *
  */
 
@@ -1130,10 +1130,12 @@ void semi_lagrange_c(geometry_t *window,  /* Processing window */
     /* only be dumped to sparse file since interpolation from        */
     /* (x,y,z) format is not possible for the sparse coordinate of   */
     /* the streamline origin.                                        */
-    windat->origin[c] = (double)cl[cc];
-    windat->pc[c] = p;
-    windat->qc[c] = q;
-    windat->rc[c] = r;
+    if (windat->origin) {
+      windat->origin[c] = (double)cl[cc];
+      windat->pc[c] = p;
+      windat->qc[c] = q;
+      windat->rc[c] = r;
+    }
   }
   debug_c(window, D_TS, D_STRML);
 }

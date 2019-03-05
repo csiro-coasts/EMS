@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: tracers.c 6097 2019-02-08 04:43:46Z her127 $
  *
  */
 
@@ -4348,6 +4348,11 @@ void auxiliary_routines(geometry_t *window,  /* Processing window */
     diag_numbers(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
+  /* Get normalized vertical profile of a tracer if required         */
+  if (wincon->nprof >= 0)
+    nor_vert_prof(window, windat, wincon);
+
+  /*-----------------------------------------------------------------*/
   /* Get the DHW if required                                         */
   if (wincon->dhwf & DHW_NOAA)
     calc_dhd(window, windat, wincon);
@@ -6760,7 +6765,7 @@ void init_flushing(master_t *master,  /* Master data structure */
       fprintf(tsflush.fp, "## COLUMN1.name  Time\n");
       fprintf(tsflush.fp, "## COLUMN1.long_name  Time\n");
       fprintf(tsflush.fp,
-              "## COLUMN1.units  days since 1990-01-01 00:00:00 +10\n");
+              "## COLUMN1.units  %s\n", master->output_tunit);
       fprintf(tsflush.fp, "## COLUMN1.missing_value -999\n");
       fprintf(tsflush.fp, "##\n");
       fprintf(tsflush.fp, "## COLUMN2.name  total_mass\n");

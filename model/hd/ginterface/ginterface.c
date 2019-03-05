@@ -2,7 +2,7 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/hd/ginterface/ginterface.c
+ *  File: model/hd-us/ginterface/ginterface.c
  *  
  *  Description:
  *  Generic interface
@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: ginterface.c 6121 2019-02-27 03:31:33Z riz008 $
  *
  */
 
@@ -34,8 +34,16 @@ int NLOCAL_TRACERS = sizeof(LOCAL_TRACERS) / sizeof(int);
 
 #if defined(HAVE_TRACERSTATS_MODULE)
 
+char* ginterface_get2Dtracername(void* model, int i);
+int  ginterface_get_max_numbercolumns(void* model);
 
+static int e_ntr;
+static int tr_map[MAXNUMVARS];
+static int sed_map[MAXNUMVARS];
+static int e_nepi;
+static int epi_map[MAXNUMVARS];
 
+int i_get_c(void *model, int b);
 
 trs_t* trs_create();
 
@@ -86,10 +94,99 @@ void tracerstats_prestep(geometry_t *window,int step)
 
 #endif
 
-int tr_map[MAXNUMVARS];
-int epi_map[MAXNUMVARS];
+/* Ecolgy routines
+int einterface_get_eco_flag(void* model, char* name)
+double sinterface_gettracersvel(void* model, char* name)
+*/
 
+/* Sediment routines
+int sinterface_getcss_er_val(FILE* prmfd, double *css_er_val)
+int sinterface_getcss_er_depth(FILE* prmfd, double *css_er_depth)
+void sinterface_putgridz_sed(void* hmodel, int c, double *gridz_sed)
+void sinterface_putcellz_sed(void* hmodel, int c, double *cellz_sed)
+void sinterface_putgriddz_wc(void* hmodel, int c, double *gridz_wc)
+void sinterface_putcellz_wc(void* hmodel, int c, double *cellz_wc)
+void sinterface_putdz_wc(void* hmodel, int c, double *dz_wc)
+void sinterface_puttopz_wc(void* hmodel, int c, double topz_wc)
+void sinterface_putbotz_wc(void* hmodel, int c, double botz_wc)
+int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw)
+int sinterface_getverbose_sed(FILE* prmfd)
+int sinterface_getgeomorph(FILE* prmfd)
+int sinterface_getconsolidate(FILE* prmfd)
+double sinterface_getfinpor_sed(FILE* prmfd)
+double sinterface_getconsolrate(FILE* prmfd)
+double sinterface_getmaxthicksed(FILE* prmfd)
+int sinterface_getcssmode(FILE* prmfd)
+double sinterface_getcss(FILE* prmfd)
+double sinterface_getcssdep(FILE* prmfd)
+int sinterface_getflocmode(FILE* prmfd)
+double sinterface_getflocprm1(FILE* prmfd)
+double sinterface_getflocprm2(FILE* prmfd)
+int sinterface_getbblnonlinear(FILE* prmfd)
+int sinterface_gethindered_svel_patch(FILE* prmfd)
+int sinterface_gethindered_svel(FILE* prmfd)
+double sinterface_reef_scale_depth(FILE* prmfd)
+int sinterface_getcalcripples(FILE* prmfd)
+double sinterface_getcssscale(FILE* prmfd)
+double sinterface_getphysriph(FILE* prmfd)
+double sinterface_getphysripl(FILE* prmfd)
+double sinterface_getbioriph(FILE* prmfd)
+double sinterface_getbioripl(FILE* prmfd)
+double sinterface_getbiodens(FILE* prmfd)
+double sinterface_getmaxbiodepth(FILE* prmfd)
+double sinterface_getbi_dissol_kz(FILE* prmfd)
+double sinterface_getbt_partic_kz(FILE* prmfd)
+double sinterface_getbi_dissol_kz_i(FILE* prmfd)
+double sinterface_getbt_partic_kz_i(FILE* prmfd)
+char sinterface_getbiosedprofile(FILE* prmfd)
+double sinterface_getz0(FILE* prmfd)
+double sinterface_getquad_bfc(FILE* prmfd)
+int sinterface_getshipfile(FILE* prmfd, char *shipfile)
+double sinterface_erflux_scale(FILE* prmfd)
+FILE* si_getparamfile_tracer(FILE* fp)
+FILE* si_getparamfile_sed(FILE *fp)
+double sinterface_get_psize(void* model, char *name)
+double sinterface_get_b_dens(void* model, char *name)
+double sinterface_get_i_conc(void* model, char *name)
+double sinterface_get_svel(void* model, char *name)
+void sinterface_get_svel_name(void* model, char *name, char *sname)
+int sinterface_get_cohesive(void* model, char *name)
+int sinterface_get_resuspend(void* model, char *name)
+int sinterface_get_deposit(void* model, char *name)
+int sinterface_get_floc(void* model, char *name)
+int sinterface_get_calcvol(void* model, char *name)
+int sinterface_get_adsorb(void* model, char *name)
+void sinterface_get_carriername(void* model, char *name,char *carriername )
+void sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname)
+double sinterface_get_adsorb_kd(void* model, char *name)
+double sinterface_get_adsorb_rate(void* model, char *name)
+*/
 
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Generic interface functions. General functions are prefixed with  */
+/* i_. Routines prefixed by ginterface_ are typically used by        */
+/* ecology or sediments. There exist some wrapper functions in this  */
+/* class for convenience call the more generic i_ functions.         */
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+
+/* Routines specific to SHOC
+double i_get_sinthcell(void *hmodel, int cc)
+double i_get_costhcell(void *hmodel, int cc)
+double i_get_wave_wind1(void *hmodel, int c)
+double i_get_wave_wind2(void *hmodel, int c)
+void i_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
+		   double *u1bot, double *u2bot, double *botz, int c)
+void i_get_tracer_e1(void* hmodel, int c, int ntr, int *tmap, double **tr_e1)
+void i_get_tracer_e2(void* hmodel, int c, int ntr, int *tmap, double **tr_e1)
+*/
+
+/*-------------------------------------------------------------------*/
+/* 3D (water column) tracers                                         */
+/*-------------------------------------------------------------------*/
+/* Returns 1 if itr is a valid tracer or state variable defined in   */
+/* the array LOCAL_TRACERS.                                          */
 int i_is_valid_tracer(int itr)
 {
   int i;
@@ -105,6 +202,28 @@ int i_is_valid_tracer(int itr)
   return (0);
 }
 
+/* Returns 1 if 3D tracer 'name' exists                              */
+int i_tracername_exists(void* model, char*name)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn;
+
+  for(tn=0; tn<wincon->ntr; tn++) {
+    /* Water column */
+    if((tracer_find_index(name, wincon->ntr,
+              wincon->trinfo_3d) >= 0))
+      return 1;
+  }
+  return 0;
+}
+/* Wrapper to 3D tracer name exists                                  */
+int ginterface_tracername_exists(void* model, char*name)
+{
+  return i_tracername_exists(model, name);
+}
+
+/* Returns 1 if itr is a valid sediment tracer                       */
 int i_is_valid_sed_tracer(int itr)
 {
   int i;
@@ -114,9 +233,83 @@ int i_is_valid_sed_tracer(int itr)
   return (0);
 }
 
+/* Gets the number of explicit and auto 3D tracers                   */
+int i_get_num_tracers_3d(void* hmodel, int *atr)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    *atr = master->atr;
+    return wincon->ntr;
+}
 
-/* Read parameters from hydromodel */
+/* Returns the number of 3D tracers                                  */
+int ginterface_getntracers(void* model)
+{
+    return 0;
+}
 
+/* Gets an array of 3D tracer names                                  */
+void i_get_names_tracers_3d(void* hmodel, char **trname) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    int n;
+    for (n = 0; n < wincon->ntr; n++) {
+      strcpy(trname[n], wincon->trinfo_3d[n].name);
+    }
+}
+
+/* Returns the name of a 3D tracer i                                 */
+char* ginterface_gettracername(void* model, int i)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  if(i >= 0 && i < wincon->ntr)
+    return wincon->trinfo_3d[i].name;
+
+  return NULL;
+}
+
+/* Gets the index in the tracer info list of 3D tracer n             */
+int i_get_param_map_3d(void* hmodel, int n) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    return wincon->trinfo_3d[n].m;
+}
+
+/* Returns the number of 3D tracer with name 'name'                  */
+/* Can also use tracer_find_index().                                 */
+int gi_getmap2hdwctracer(void *hmodel, int ns, char *name)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    win_priv_t *wincon=window->wincon;
+    int n;
+    /*int index = tracer_find_index(name, wincon->ntr, wincon->trinfo_3d);*/
+    for(n = 0; n < windat->ntr; n++)
+	if(strcmp(name, wincon->trinfo_3d[n].name) == 0)
+	    return n;
+    return (-1);
+}
+
+/* Returns the tracer info for a 3D tracer with name 'trname'.       */
+/* Returns NULL if the tracer can't be found.                        */
+tracer_info_t* i_get_tracer(void* hmodel, char* trname)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  int n;
+  emstag(LTRACE,"hd:ginterface:i_get_tracer","looking for tracer with name: %s",trname);
+
+
+  for (n = 0; n < wincon->ntr; n++) {
+    if(strcmp(trname,wincon->trinfo_3d[n].name) == 0)
+      return &(wincon->trinfo_3d[n]);
+  }
+  return NULL;
+}
+
+/* Returns a list of 3D tracer indexes corresponding to tracer names */
+/* trname[].                                                         */
 int *i_get_tmap_3d(void* model, int ntr, char *trname[])
 {
   geometry_t *window = (geometry_t *)model;
@@ -146,449 +339,93 @@ int *i_get_tmap_3d(void* model, int ntr, char *trname[])
   return(tmap_3d);
 }
 
-int *i_get_tmap_sed(void* model, int ntr, char *trname[])
+/* Returns the fill value for 3D tracer 'name'                       */
+double ginterface_get_fillvalue_wc(void* model, char *name)
 {
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn,n;
-  int *tmap_sed = i_alloc_1d(ntr);
-  
-  for(tn=0; tn<ntr; tn++) {
-    n = tracer_find_index(trname[tn], wincon->nsed, wincon->trinfo_sed);
-    if(n < 0) {
-      hd_warn("ginterface : Can't find type SED tracer '%s' in parameter file at %d.\n", trname[tn],tn);
-    }
-    tmap_sed[tn] = n;
-  }
-
-  return(tmap_sed);
-}
-
-int *i_get_tmap_2d(void* model, int ntr, char *trname[])
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn;
-  int *tmap_2d = i_alloc_1d(ntr);
-  int n;
-  for(tn=0; tn<ntr; tn++) {
-    if(strcmp(trname[tn], "eta") == 0) {
-      tmap_2d[tn] = ETA;
-    }
-    else {
-      if((tmap_2d[tn] = tracer_find_index(trname[tn], wincon->ntrS,
-            wincon->trinfo_2d)) < 0)
-  hd_warn("ginterface : Can't find type WC2D tracer '%s' in parameter file.\n", trname[tn]);
-    }
-  }
-  return(tmap_2d);
-}
-
-double i_get_model_time(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    return windat->t;
-}
-
-char *i_get_model_timeunit(void* hmodel)
-{
-  return(master->timeunit);
-}
-
-double i_get_model_timestep(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    return windat->dt;
-}
-
-int  i_get_num_wclayers(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->nz;
-}
-
-int  i_get_num_columns(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->b2_t;
-}
-
-int i_get_nstep(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    return windat->nstep;
-}
-
-int  i_get_num_sedlayers(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->sednz;
-}
-
-int i_get_num_tracers_3d(void* hmodel, int *atr)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    *atr = master->atr;
-    return wincon->ntr;
-}
-
-void i_get_names_tracers_3d(void* hmodel, char **trname) {
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    int n;
-    for (n = 0; n < wincon->ntr; n++) {
-      strcpy(trname[n], wincon->trinfo_3d[n].name);
-    }
-}
-
-int i_get_num_tracers_2d(void* hmodel, int *atr)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    *atr = master->atrS;
-    return wincon->ntrS;
-}
-
-void i_get_names_tracers_2d(void* hmodel, char **trname) {
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    int n;
-    for (n = 0; n < wincon->ntrS; n++) {
-      strcpy(trname[n], wincon->trinfo_2d[n].name);
-    }
-}
-
-int i_get_param_map_3d(void* hmodel, int n) {
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    return wincon->trinfo_3d[n].m;
-}
-
-int i_get_param_map_2d(void* hmodel, int n) {
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    if(wincon->trinfo_2d != NULL && wincon->ntrS > 0)
-      return wincon->trinfo_2d[n].m;
-    else
-      return 0;
-}
-
-int i_get_param_map_sed(void* hmodel, int n) {
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    if(wincon->trinfo_sed != NULL && wincon->nsed > 0)
-      return wincon->trinfo_sed[n].m;
-    else
-      return 0;
-}
-
-int i_get_num_sedtracers(void* hmodel)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    return wincon->nsed;
-}
-
-void i_get_names_tracers_sed(void* hmodel, char **trname) {
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    int n;
-    for (n = 0; n < wincon->nsed; n++) {
-      strcpy(trname[n], wincon->trinfo_sed[n].name);
-    }
-}
-
-int i_get_interface_counter(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int sc = cc - 1;
-    return sc;
-}
-
-int i_get_host_counter(void* hmodel, int c)
-{
-    return c+1;
-}
-
-double i_get_cellarea_w(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2 = window->m2d[c];
-    double v = window->cellarea[c2];
-    return v;
-}
-
-void i_get_cellarea_e1(void* hmodel, int c, double *area)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  int c2 = window->m2d[c];
-  int cc = window->c2cc[c2];
-  int bot_k = window->s2k[window->bot_t[cc]];
-  int top_k = window->s2k[window->nsur_t[cc]];
-  int c3 = window->nsur_t[cc];
-  int k;
-  for(k = top_k; k >= bot_k; k--) {
-    /*
-     * Note that the dz used here is the dz at the end of the hydro
-     * timestep which could be different to the one at the start which
-     * was used to calculate u1flux3d. see vel3d for more details
-     */
-    area[k] = windat->dzu1[c3] * window->h2au1[c2];
-    c3 = window->zm1[c3];
-  }
-}
-
-void i_get_cellarea_e2(void* hmodel, int c, double *area)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  int c2 = window->m2d[c];
-  int cc = window->c2cc[c2];
-  int bot_k = window->s2k[window->bot_t[cc]];
-  int top_k = window->s2k[window->nsur_t[cc]];
-  int c3 = window->nsur_t[cc];
-  int k;
-  for(k = top_k; k >= bot_k; k--) {
-    /*
-     * Note that the dz used here is the dz at the end of the hydro
-     * timestep which could be different to the one at the start which
-     * was used to calculate u2flux3d. see vel3d for more details
-     */
-    area[k] = windat->dzu2[c3] * window->h1au2[c2];
-    c3 = window->zm1[c3];
-  }
-}
-
-int i_get_topk_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int v = window->s2k[window->nsur_t[cc]];
-    return v;
-}
-int i_get_botk_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int v = window->s2k[window->bot_t[cc]];
-    return v;
-}
-
-int i_get_topk_sed(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    return window->sednz;
-}
-
-int i_get_botk_sed(void* hmodel, int c)
-{
-  return 0;
-}
-
-double i_get_botz_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
+    geometry_t* window = (geometry_t*) model;
     win_priv_t *wincon=window->wincon;
-    int c2 = window->m2d[c];
-    double v =  window->botz[c2] * wincon->Hn1[c2];
+    tracer_info_t *tr = i_get_tracer(model, name);
+    
+    double v = 0;
+    v = tr->fill_value_wc;
     return v;
 }
 
-double i_get_topz_wc(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    double v = windat->topz[c2];
-    /* no need to multiply by depth as it
-       is zero by definition if sigma grid is applied */
-    return v;
-}
-
-double i_get_depth(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    double v = windat->eta[c2] - window->botz[c2];
-    return v;
-}
-
-double i_get_eta(void* hmodel, int c)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    double v = windat->eta[c2];
-    return v;
-}
-
-void i_get_dz_wc(void* hmodel, int c, double *dz_wc)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    win_priv_t *wincon = window->wincon;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      dz_wc[k] = wincon->dz[c3] * wincon->Hn1[c2];
-      c3 = window->zm1[c3];
-    }
-}
-
-
-void i_get_dz_sed(void* model, int c, double *dz_sed)
+/* Returns the diagnostic flag of 3D tracer 'name'                   */
+int ginterface_gettracerdiagnflag(void* model, char* name)
 {
   geometry_t *window = (geometry_t *)model;
-  int c2 = window->m2d[c];
-  int nz = window->sednz;
-  int k;
-  if(nz <= 0)
-  {
-    emstag(LPANIC,"hd:ginterface:i_get_dz_sed","Requesting sdiment cell thickness without sediment layers,exiting ...");
-    exit(0);
-  }
-  for (k = 0; k < nz; ++k) {
-    dz_sed[k] = window->gridz_sed[k + 1][c2] - window->gridz_sed[k][c2];
-  }
+  win_priv_t *wincon = window->wincon;
+  int index = tracer_find_index(name, wincon->ntr, wincon->trinfo_3d);
+  return wincon->trinfo_3d[index].diagn;
 }
-
-
-void i_get_fluxe1_wc(void* hmodel, int c, double *u1flux3d)
+/* Wrapper for diagnostic flag                                       */
+int ginterface_get_diagn(void* model, char *name)
 {
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  int c2 = window->m2d[c];
-  int cc = window->c2cc[c2];
-  int bot_k = window->s2k[window->bot_t[cc]];
-  int top_k = window->s2k[window->nsur_t[cc]];
-  int c3 = window->nsur_t[cc];
-  int k;
-  for(k = top_k; k >= bot_k; k--) {
-    u1flux3d[k] = windat->u1flux3d[c3];
-    c3 = window->zm1[c3];
-  }
+    return ginterface_gettracerdiagnflag(model, name);
 }
 
-void i_get_fluxe2_wc(void* hmodel, int c, double *u2flux3d)
+/* Returns the dissolved flag of a 3D tracer                         */
+int ginterface_get_dissol(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      u2flux3d[k] = windat->u2flux3d[c3];
-      c3 = window->zm1[c3];
-    }
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    
+    int v = 1;
+    v = tr->dissol;
+    return v;
 }
 
-void i_get_u1_wc(void* hmodel, int c, double *u1)
+/* Returns the particle flag of 3D tracers                           */
+int ginterface_gettracerparticflag(void* model, char* name)
 {
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      u1[k] = windat->u1[c3];
-      c3 = window->zm1[c3];
-    }
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int index = tracer_find_index(name, wincon->ntr, wincon->trinfo_3d);
+  return wincon->trinfo_3d[index].partic;
 }
-
-void i_get_u2_wc(void* hmodel, int c, double *u2)
+/* Wrapper for particulate flag                                      */
+int ginterface_get_partic(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      u2[k] = windat->u2[c3];
-      c3 = window->zm1[c3];
-    }
+    return ginterface_gettracerparticflag(model, name);
 }
 
-void i_get_w_wc(void* hmodel, int c, double *w)
+/* Returns the diffuse flag of 3D tracers                            */
+int ginterface_get_diffuse(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      w[k] = windat->w[c3];
-      c3 = window->zm1[c3];
-    }
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    
+    int v = 1;
+    v = tr->diffuse;
+    return v;
 }
 
-void i_get_Kz_wc(void* hmodel, int c, double *Kz_wc)
+/* Returns the decay flag of 3D tracers                              */
+double ginterface_get_decay(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      Kz_wc[k] = windat->Kz[c3];
-      c3 = window->zm1[c3];
-    }
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    
+    double v = 0;
+    v = (tr->flag & (DE_TR2|DE_TR3)) ? 0.0 : atof(tr->decay);
+    return v;
 }
 
-void i_get_Vz_wc(void* hmodel, int c, double *Vz_wc)
+/* Returns the units flag of 3D tracers                              */
+void ginterface_get_tracerunits(void* model, char *name, char *units)
 {
-    geometry_t* window = (geometry_t*) hmodel;
-    window_t *windat = window->windat;
-    int c2 = window->m2d[c];
-    int cc = window->c2cc[c2];
-    int bot_k = window->s2k[window->bot_t[cc]];
-    int top_k = window->s2k[window->nsur_t[cc]];
-    int c3 = window->nsur_t[cc];
-    int k;
-    for(k = top_k; k >= bot_k; k--) {
-      Vz_wc[k] = windat->Vz[c3];
-      c3 = window->zm1[c3];
-    }
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    strcpy(units, tr->units);
 }
 
-void i_get_gridz_sed(void* hmodel, int c, double *gridz_sed)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c2 = window->m2d[c];
-    int bot_k = 0;
-    int top_k = window->sednz-1;
-    int k;
-    for(k = bot_k; k <= top_k+1; k++)
-      gridz_sed[k] = window->gridz_sed[k][c2];
-}
-
+/* Gets 2D pointers to an array of 3D tracers at coordinate c,       */
+/* including 3D state variable tracers.                              */
 void i_get_tracer_wc(void* hmodel, int c, int ntr, int *tmap, double ***tr_wc)
 {
     geometry_t* window = (geometry_t*) hmodel;
@@ -624,7 +461,41 @@ void i_get_tracer_wc(void* hmodel, int c, int ntr, int *tmap, double ***tr_wc)
       c3 = window->zm1[c3];
     }
 }
+/* Returns 1D pointers to an array of tracers at index b.            */
+double**  ginterface_getwctracers(void* model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int nz = window->nz;
+  int ntr = e_ntr;
+  double **wctr = (double **)calloc(ntr * nz, sizeof(double*));
+  int cs2 = window->wincon->s2[b+1];
+  int c2 = window->m2d[cs2];
+  int cc = window->c2cc[c2];
+  int cs = window->nsur_t[cc];
+  int cb = window->bot_t[cc];
+  int c, k = window->s2k[cb], n;
 
+  /*
+   * Loop from the bottom cell up
+   */
+  for (c = cb; c != cs; c = window->zp1[c]) {
+    for (n = 0; n < ntr; ++n) {
+      wctr[k * ntr + n] = &windat->tr_wc[tr_map[n]][c];
+    }
+    k++;
+  }
+  // The surface cell
+  for (n = 0; n < ntr; ++n) {
+    wctr[k * ntr + n] = &windat->tr_wc[tr_map[n]][c];
+  }
+
+  return wctr;
+}
+
+/* Gets 2D pointers to an array of 3D tracers at coordinate c on the */
+/* e1 face, including 3D cell centered state variable tracers.       */
+/* Only valid for the structured model.                              */
 void i_get_tracer_e1(void* hmodel, int c, int ntr, int *tmap, double **tr_e1)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -641,27 +512,30 @@ void i_get_tracer_e1(void* hmodel, int c, int ntr, int *tmap, double **tr_e1)
     for(n = 0; n < ntr; n++) {
       m = tmap[n];
       if(m == NOT)
-  continue;
+	continue;
       else if(m == KZ)
-  tr_e1[n][k] = 0.5 * (windat->Kz[c3] + windat->Kz[xm1]);
+	tr_e1[n][k] = 0.5 * (windat->Kz[c3] + windat->Kz[xm1]);
       else if(m == VZ)
-  tr_e1[n][k] = 0.5 * (windat->Vz[c3] + windat->Vz[xm1]);
+	tr_e1[n][k] = 0.5 * (windat->Vz[c3] + windat->Vz[xm1]);
       else if(m == U1VH)
-  tr_e1[n][k] = wincon->u1vh[c3];
+	tr_e1[n][k] = wincon->u1vh[c3];
       else if(m == U2VH)
-  tr_e1[n][k] = wincon->u2vh[c3];
+	tr_e1[n][k] = wincon->u2vh[c3];
       else if(m == U1KH)
-  tr_e1[n][k] = wincon->u1kh[c3];
+	tr_e1[n][k] = wincon->u1kh[c3];
       else if(m == U2KH)
-  tr_e1[n][k] = wincon->u2kh[c3];
+	tr_e1[n][k] = wincon->u2kh[c3];
       else
-  tr_e1[n][k] = 0.5 * (windat->tr_wc[m][c3] + windat->tr_wc[m][xm1]);
+	tr_e1[n][k] = 0.5 * (windat->tr_wc[m][c3] + windat->tr_wc[m][xm1]);
     }
     c3 = window->zm1[c3];
     xm1 = window->xm1[c3];
   }
 }
 
+/* Gets 2D pointers to an array of 3D tracers at coordinate c on the */
+/* e2 face, including 3D cell centered state variable tracers.       */
+/* Only valid for the structured model.                              */
 void i_get_tracer_e2(void* hmodel, int c, int ntr, int *tmap, double **tr_e2)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -678,27 +552,29 @@ void i_get_tracer_e2(void* hmodel, int c, int ntr, int *tmap, double **tr_e2)
     for(n = 0; n < ntr; n++) {
       m = tmap[n];
       if(m == NOT)
-  continue;
+	continue;
       else if(m == KZ)
-  tr_e2[n][k] = 0.5 * (windat->Kz[c3] + windat->Kz[ym1]);
+	tr_e2[n][k] = 0.5 * (windat->Kz[c3] + windat->Kz[ym1]);
       else if(m == VZ)
-  tr_e2[n][k] = 0.5 * (windat->Vz[c3] + windat->Vz[ym1]);
+	tr_e2[n][k] = 0.5 * (windat->Vz[c3] + windat->Vz[ym1]);
       else if(m == U1VH)
-  tr_e2[n][k] = wincon->u1vh[c3];
+	tr_e2[n][k] = wincon->u1vh[c3];
       else if(m == U2VH)
-  tr_e2[n][k] = wincon->u2vh[c3];
+	tr_e2[n][k] = wincon->u2vh[c3];
       else if(m == U1KH)
-  tr_e2[n][k] = wincon->u1kh[c3];
+	tr_e2[n][k] = wincon->u1kh[c3];
       else if(m == U2KH)
-  tr_e2[n][k] = wincon->u2kh[c3];
+	tr_e2[n][k] = wincon->u2kh[c3];
       else
-  tr_e2[n][k] = 0.5 * (windat->tr_wc[m][c3] + windat->tr_wc[m][ym1]);
+	tr_e2[n][k] = 0.5 * (windat->tr_wc[m][c3] + windat->tr_wc[m][ym1]);
     }
     c3 = window->zm1[c3];
     ym1 = window->ym1[c3];
   }
 }
 
+/* Gets 2D pointers to an array of 3D tracers at coordinate c on the */
+/* gridz face, including 3D cell centered state variable tracers.    */
 void i_get_tracer_w(void* hmodel, int c, int ntr, int *tmap, double **tr_w)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -715,44 +591,217 @@ void i_get_tracer_w(void* hmodel, int c, int ntr, int *tmap, double **tr_w)
     for(n = 0; n < ntr; n++) {
       m = tmap[n];
       if(m == NOT)
-  continue;
+	continue;
       else if(m == KZ)
-  tr_w[n][k] = 0.5 * (windat->Kz[c3] + windat->Kz[zm1]);
+	tr_w[n][k] = 0.5 * (windat->Kz[c3] + windat->Kz[zm1]);
       else if(m == VZ)
-  tr_w[n][k] = 0.5 * (windat->Vz[c3] + windat->Vz[zm1]);
+	tr_w[n][k] = 0.5 * (windat->Vz[c3] + windat->Vz[zm1]);
       else if(m == U1VH)
-  tr_w[n][k] = 0.5 * (wincon->u1vh[c3] + wincon->u1vh[zm1]);
+	tr_w[n][k] = 0.5 * (wincon->u1vh[c3] + wincon->u1vh[zm1]);
       else if(m == U2VH)
-  tr_w[n][k] = 0.5 * (wincon->u2vh[c3] + wincon->u2vh[zm1]);
+	tr_w[n][k] = 0.5 * (wincon->u2vh[c3] + wincon->u2vh[zm1]);
       else if(m == U1KH)
-  tr_w[n][k] = 0.5 * (wincon->u1kh[c3] + wincon->u1kh[zm1]);
+	tr_w[n][k] = 0.5 * (wincon->u1kh[c3] + wincon->u1kh[zm1]);
       else if(m == U2KH)
-  tr_w[n][k] = 0.5 * (wincon->u2kh[c3] + wincon->u2kh[zm1]);
+	tr_w[n][k] = 0.5 * (wincon->u2kh[c3] + wincon->u2kh[zm1]);
       else
-  tr_w[n][k] = 0.5 * (windat->tr_wc[m][c3] + windat->tr_wc[m][zm1]);
+	tr_w[n][k] = 0.5 * (windat->tr_wc[m][c3] + windat->tr_wc[m][zm1]);
     }
     c3 = window->zm1[c3];
     zm1 = window->zm1[c3];
   }
 }
 
-void i_get_tracer_sed(void* hmodel, int c,  int ntr, int *tmap, double ***tr_sed)
+/* Returns the surface flux of 3D tracer 'name' at coordinate c      */
+double ginterface_get_srf_flux(void* hmodel, char *name, int c)
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
-  int c2 = window->m2d[c];
-  int bot_k = 0;
-  int top_k = window->sednz-1;
-  int k, n, m;
-  
-  for(k = bot_k; k <= top_k; k++) {
-    for(n = 0; n < ntr; n++) {
-      if((m = tmap[n]) != -1)
-	tr_sed[n][k] = &windat->tr_sed[m][k][c2];
+  win_priv_t *wincon=window->wincon;
+  tracer_info_t *tr = i_get_tracer(hmodel, name);
+  int n = tr->n;
+  int c2;
+  double v;
+  if(wincon->sflux[n]>=0) {
+  	c2=window->m2d[c];
+  	v = windat->tr_wcS[wincon->sflux[n]][c2];
+	//	fprintf(stderr,"get_srf_flux=%lf \n", v);
+	v = (windat->eta[c2] - window->botz[c2] <= wincon->hmin) ? 0.0 : v;
+  	return v;
+  }
+  else
+    return 0;
+}
+
+/*-------------------------------------------------------------------*/
+/* 2D (benthic) tracers                                              */
+/*-------------------------------------------------------------------*/
+
+/* Returns 1 if 2D tracer 'name' exists                              */
+int i_tracername_exists_2d(void* model, char*name)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn;
+
+  for(tn=0; tn<wincon->ntrS; tn++) {
+    /* Water column */
+    if((tracer_find_index(name, wincon->ntrS,
+              wincon->trinfo_2d) >= 0))
+      return 1;
+  }
+  return 0;
+}
+/* Wrapper to 2D tracer name exists                                  */
+int ginterface_tracername_exists_epi(void* model, char*name)
+{
+  return i_tracername_exists_2d(model, name);
+}
+
+/* Gets the number of explicit and auto 2D tracers                   */
+int i_get_num_tracers_2d(void* hmodel, int *atr)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    *atr = master->atrS;
+    return wincon->ntrS;
+}
+/* Wrapper for number of 2D tracers                                  */
+int ginterface_getnumberofBtracer(void* hmodel)
+{
+    int atr;
+    return i_get_num_tracers_2d(hmodel, &atr);
+}
+
+/* Returns the number of 2D tracers                                  */
+int ginterface_getnepis(void* model)
+{
+    return 0;
+}
+
+/* Gets an array of 2D tracer names                                  */
+void i_get_names_tracers_2d(void* hmodel, char **trname) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    int n;
+    for (n = 0; n < wincon->ntrS; n++) {
+      strcpy(trname[n], wincon->trinfo_2d[n].name);
     }
+}
+
+/* Returns the name of a 2D tracer i                                 */
+char* ginterface_get2Dtracername(void* model, int i)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  if(i >= 0 && i < wincon->ntrS)
+    return wincon->trinfo_2d[i].name;
+
+  return NULL;
+}
+/* Wrapper for tracer name                                           */
+char* ginterface_getepiname(void* model, int i)
+{
+  return ginterface_get2Dtracername(model,i);
+  /*  return NULL; */
+}
+void ginterface_getnameofBtracer(void* hmodel, int n, char *tracername)
+{
+    strcpy(tracername, ginterface_get2Dtracername(hmodel, n));
+}
+
+/* Gets the index in the tracer info list of 2D tracer n             */
+int i_get_param_map_2d(void* hmodel, int n) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    if(wincon->trinfo_2d != NULL && wincon->ntrS > 0)
+      return wincon->trinfo_2d[n].m;
+    else
+      return 0;
+}
+
+/* Returns the value of tracer n at coordinate c                     */
+double ginterface_getvalueofBtracer(void* hmodel, int n, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2=window->m2d[c];
+    // fprintf(stderr,"sediments:tarcer number %d, val %lf \n", n, windat->tr_wcS[n][c2] );
+  return windat->tr_wcS[n][c2];
+    //    return windat->tr_wcS[n][c];
+}
+
+/* Returns a list of 2D tracer indexes corresponding to tracer names */
+/* trname[].                                                         */
+int *i_get_tmap_2d(void* model, int ntr, char *trname[])
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn;
+  int *tmap_2d = i_alloc_1d(ntr);
+  int n;
+  for(tn=0; tn<ntr; tn++) {
+    if(strcmp(trname[tn], "eta") == 0) {
+      tmap_2d[tn] = ETA;
+    }
+    else {
+      if((tmap_2d[tn] = tracer_find_index(trname[tn], wincon->ntrS,
+            wincon->trinfo_2d)) < 0)
+  hd_warn("ginterface : Can't find type WC2D tracer '%s' in parameter file.\n", trname[tn]);
+    }
+  }
+  return(tmap_2d);
+}
+
+/* Returns the number of 2D column tracers whos name is prefixed by  */
+/* 'R_'.                                                             */
+int ginterface_get_num_rsr_tracers(void* model)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn, n;
+
+  n = 0;
+  for(tn = 0; tn < wincon->ntrS; tn++) {
+    char *trname = wincon->trinfo_2d[tn].name;
+    if (strncmp(trname, "R_", 2) == 0)
+      n++;
+  }
+  return(n);
+}
+
+/* Returns an array of 1D pointers to tracers whos name is prefixed  */
+/* by 'R_'.                                                          */
+void ginterface_get_rsr_tracers(void* model, int *rtns)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn, n;
+
+  n = 0;
+  for(tn = 0; tn < wincon->ntrS; tn++) {
+    char *trname = wincon->trinfo_2d[tn].name;
+    if (strncmp(trname, "R_", 2) == 0)
+      rtns[n++] = tn;
   }
 }
 
+/* Returns the diagnostic flag of 2D tracer 'name'                   */
+int ginterface_getepidiagnflag(void* model, char* name)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int index = tracer_find_index(name, wincon->ntrS, wincon->trinfo_2d);
+  return wincon->trinfo_2d[index].diagn;
+}
+
+/* Returns the tracer info of 2D tracers                             */
+tracer_info_t* ginterface_getepiinfo(void* model, int* n)
+{
+    return NULL;
+}
+
+/* Gets 1D pointers to an array of 2D tracers at coordinate c.        */
 void i_get_tracer_2d(void* hmodel, int c, int ntr, int *tmap, double **tr)
 {
     geometry_t* window = (geometry_t*) hmodel;
@@ -770,26 +819,1117 @@ void i_get_tracer_2d(void* hmodel, int c, int ntr, int *tmap, double **tr)
     }
 }
 
-/*UR-ADDED */
-/** Retrive tracer information given a name
- *
- * @param hmodel - the reference to the host model
- * @param trname - the string representing the tracer name
- * @return a tracer_info_t data structure or NULL if the tracer can't be found
- */
-tracer_info_t* i_get_tracer(void* hmodel, char* trname)
+/* Returns 1D pointers to an array of 2D tracers at index b.         */
+double **ginterface_getepivars(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int nepi = e_nepi;
+  double **epivar = (double **)calloc(nepi, sizeof(double*));
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+  int n;
+
+  for (n = 0; n < nepi; ++n) {
+    epivar[n] = &windat->tr_wcS[epi_map[n]][c2];
+  }
+  return epivar;
+}
+
+/* Returns a pointer to tracer 'name' at coordinate c                */
+double *ginterface_getpointerBtracer(void* hmodel, int n, int c)
+{
+    double *a;
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    a = &windat->tr_wcS[n][c2];
+    return a;
+}
+
+/*-------------------------------------------------------------------*/
+/* Sediment tracers                                                  */
+/*-------------------------------------------------------------------*/
+
+/* Returns 1 if sediment tracer 'name' exists                        */
+int i_tracername_exists_sed(void* model, char*name)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn;
+
+  for(tn=0; tn<wincon->nsed; tn++) {
+    /* SEDIMENT */
+    if((tracer_find_index(name, wincon->nsed,
+              wincon->trinfo_sed) >= 0))
+      return 1;
+  }
+  return 0;
+}
+
+/* Returns the number of 3d tracers that have a sediment component   */
+int ginterface_getnumberoftracers(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    win_priv_t *wincon=window->wincon;
+    int ns,n,m;
+    char name_wc[MAXSTRLEN];
+    char name_sed[MAXSTRLEN];
+    ns = 0;
+    for(n = 0; n < windat->ntr; n++) {
+      strcpy(name_wc, wincon->trinfo_3d[n].name);
+      for(m = 0; m < windat->nsed; m++) {
+	strcpy(name_sed, wincon->trinfo_sed[m].name);
+	if(strcmp(name_sed,name_wc) == 0) {
+	  ns = ns + 1;
+	}
+      }
+    }
+    return ns;
+}
+
+/* Gets the number of 3d tracers that have a sediment component      */
+int gi_gettracernames(void* hmodel, char **tracername)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    win_priv_t *wincon=window->wincon;
+    int ns,n,m;
+    char name_wc[MAXSTRLEN];
+    char name_sed[MAXSTRLEN];
+    ns=0;
+    for(n = 0; n < windat->ntr; n++) {
+	strcpy(name_wc, wincon->trinfo_3d[n].name);
+	for(m = 0; m < windat->nsed; m++) {
+	    strcpy(name_sed, wincon->trinfo_sed[m].name);
+	    if(strcmp(name_sed,name_wc) == 0) {
+		strcpy(tracername[ns], name_wc);
+		ns = ns + 1;
+	    }
+	}
+    }
+    return ns;
+}
+
+/* Gets the number of sediment tracers                               */
+int i_get_num_sedtracers(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    return wincon->nsed;
+}
+
+/* Gets an array of sediment tracer names                            */
+void i_get_names_tracers_sed(void* hmodel, char **trname) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    int n;
+    for (n = 0; n < wincon->nsed; n++) {
+      strcpy(trname[n], wincon->trinfo_sed[n].name);
+    }
+}
+
+/* Gets the index in the tracer info list of sediment tracer n       */
+int i_get_param_map_sed(void* hmodel, int n) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    if(wincon->trinfo_sed != NULL && wincon->nsed > 0)
+      return wincon->trinfo_sed[n].m;
+    else
+      return 0;
+}
+
+/* Returns the number of sediment tracer with name 'name'            */
+/* Can also use tracer_find_index().                                 */
+int gi_getmap2hdsedtracer(void *hmodel, int ns, char *name)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    win_priv_t *wincon=window->wincon;
+    int n;
+    /*int index = tracer_find_index(name, windat->nsed, wincon->trinfo_sed);*/
+    for(n = 0; n < windat->nsed; n++)
+	if(strcmp(name, wincon->trinfo_sed[n].name )==0)
+		 return n;
+    return (-1);
+}
+
+/* Returns a list of sediment tracer indexes corresponding to tracer */
+/* names trname[].                                                   */
+int *i_get_tmap_sed(void* model, int ntr, char *trname[])
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  int tn,n;
+  int *tmap_sed = i_alloc_1d(ntr);
+  
+  for(tn=0; tn<ntr; tn++) {
+    n = tracer_find_index(trname[tn], wincon->nsed, wincon->trinfo_sed);
+    if(n < 0) {
+      hd_warn("ginterface : Can't find type SED tracer '%s' in parameter file at %d.\n", trname[tn],tn);
+    }
+    tmap_sed[tn] = n;
+  }
+
+  return(tmap_sed);
+}
+
+/* Returns the fill value for sediment tracer 'name'                 */
+double ginterface_get_fillvalue_sed(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    
+    double v=0;
+    v = tr->fill_value_sed;
+    return v;
+}
+
+/* Gets 2D pointers to an array of sediment tracers at coordinate c  */
+void i_get_tracer_sed(void* hmodel, int c,  int ntr, int *tmap, double ***tr_sed)
 {
   geometry_t* window = (geometry_t*) hmodel;
-  win_priv_t *wincon = window->wincon;
-  int n;
-  emstag(LTRACE,"hd:ginterface:i_get_tracer","looking for tracer with name: %s",trname);
-
-
-  for (n = 0; n < wincon->ntr; n++) {
-    if(strcmp(trname,wincon->trinfo_3d[n].name) == 0)
-      return &(wincon->trinfo_3d[n]);
+  window_t *windat = window->windat;
+  int c2 = window->m2d[c];
+  int bot_k = 0;
+  int top_k = window->sednz-1;
+  int k, n, m;
+  
+  for(k = bot_k; k <= top_k; k++) {
+    for(n = 0; n < ntr; n++) {
+      if((m = tmap[n]) != -1)
+	tr_sed[n][k] = &windat->tr_sed[m][k][c2];
+    }
   }
-  return NULL;
+}
+/* Returns 1D pointers to an array of sediment tracers at index b    */
+double** ginterface_getsedtracers(void* model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int nz = window->sednz;
+  int ntr = e_ntr;
+  double **sedtr = (double **)calloc(ntr * nz, sizeof(double*));
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+  int k, n;
+
+  for (k = 0; k < nz; ++k)
+    for (n = 0; n < ntr; ++n) {
+      sedtr[k * ntr + n] = &windat->tr_sed[sed_map[n]][k][c2];
+    }
+  return sedtr;
+}
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+
+/* Returns the model time                                            */
+double i_get_model_time(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    return windat->t;
+}
+/* Wrapper for model time                                            */
+double ginterface_getmodeltime(void* model)
+{
+  return i_get_model_time(model);
+}
+
+/* Returns the master timeunit                                       */
+char *i_get_model_timeunit(void* hmodel)
+{
+  return(master->timeunit);
+}
+
+/* Returns the window timeunit                                       */
+char *ginterface_gettimeunits(void *model)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  return wincon->timeunit;
+}
+
+/* Returns the model 3D time-step                                    */
+double i_get_model_timestep(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    return windat->dt;
+}
+/* Wrapper for 3D time-step                                          */
+double ginterface_getmodeltimestep(void* hmodel)
+{
+    return i_get_model_timestep(hmodel);
+}
+
+/* Returns 1 if the driver is the transport model                    */
+int ginterface_transport_mode(void)
+{
+  return(master->runmode & TRANS);
+}
+
+char * ginterface_get_output_path(void)
+{
+  char *opath = master->opath;
+  if (strlen(opath))
+    return(opath);
+  else
+    return(NULL);
+}
+
+/* Returns the number of processors for transport                    */
+#if defined(HAVE_OMP)
+int ginterface_get_trans_num_omp(void *model)
+{
+  geometry_t* window = (geometry_t*) model;
+  win_priv_t *wincon=window->wincon;
+  return(wincon->trans_num_omp);
+}
+#endif
+
+/* Returns the window number                                         */
+int ginterface_get_win_num(void *model)
+{
+  return(((geometry_t *)model)->wn);
+}
+
+/* Sets the error function to warning                                */
+void gi_set_errfn_warn(void *hmodel)
+{
+ prm_set_errfn(warn);
+}
+
+/* Returns the number of vertical layers                             */
+int  i_get_num_wclayers(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    return window->nz;
+}
+/* Wrapper for model layers                                          */
+int  ginterface_getnumberwclayers(void* model)
+{
+  return i_get_num_wclayers(model);
+}
+
+/* Returns the size of the 2D vector                                 */
+int i_get_winsize(void *hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  return (window->sgsizS);
+}
+
+/* Returns the number of 2D columns                                  */
+int  i_get_num_columns(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    return window->b2_t;
+}
+/* Wrapper for 2D columns                                            */
+int  ginterface_get_max_numbercolumns(void* model)
+{
+  return i_get_num_columns(model);
+}
+int  ginterface_getnumbercolumns(void* hmodel) 
+{
+  return i_get_num_columns(hmodel);
+}
+
+/* Returns the number of columns in the cells-to-process vector (wet */
+/* cells only; i.e. excluding OBC cells). Note: this has to be       */
+/* called after setup is complete. Use the max_columns function if   */
+/* you need to pre-allocate stuff.                                   */
+int ginterface_getnumbercolumns_e(void* model)
+{
+  geometry_t *window = (geometry_t *)model;
+  process_cell_mask(window, window->cbgc, window->ncbgc);
+  return window->wincon->vca2;
+}
+
+/* Returns 1 if cell index b is a boundary cell                      */
+int ginterface_isboundarycolumn(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  int c = i_get_c(model, b);
+  
+  /* Exclude process points if required */
+  if (window->wincon->c2[window->m2d[c]]) return 1;
+
+  /* Do ecology on boundary cells */
+  // FR (11/09) : By definition now that we've changed over to vca2,
+  //              we wont ever have boundary or dry columns
+  return 0;
+  /* Don't do ecology on boundary cells */
+  /*return b + 1 > window->v2_t ? 1 : 0;*/
+}
+
+/* Returns the model simulation step                                 */
+int i_get_nstep(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    return windat->nstep;
+}
+
+/* Returns the number of sediment layers                             */
+int  i_get_num_sedlayers(void* hmodel)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    return window->sednz;
+}
+/* Wrapper to sediment layers                                        */
+int  ginterface_getnumbersedlayers(void* model)
+{
+  return i_get_num_sedlayers(model);
+}
+
+/* Returns the coordinate corresponding to the index in the          */
+/* cells-to-process list.                                            */
+int i_get_c(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  return window->wincon->s2[b+1];
+}
+
+/* Returns the counter index (referenced to zero) corresponding to   */
+/* the coordinate c.                                                 */
+int i_get_interface_counter(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int sc = cc - 1;
+    return sc;
+}
+
+/* Returns the counter index referenced to one.                      */
+int i_get_host_counter(void* hmodel, int c)
+{
+    return c+1;
+}
+
+/* Returns the k layer of the surface for coordinate c.              */
+int i_get_topk_wc(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int v = window->s2k[window->nsur_t[cc]];
+    return v;
+}
+/* Wrapper for surface layer                                         */
+int ginterface_gettopk_wc(void* hmodel, int c)
+{
+  return i_get_topk_wc(hmodel, c);
+}
+/* Returns the k layer of the surface for cells-to-process index b.  */
+int ginterface_getwctopk(void *model, int b)
+{
+  int c = i_get_c(model, b);
+  return i_get_topk_wc(model, c);
+}
+
+/* Returns the k layer of the bottom for coordinate c.               */
+int i_get_botk_wc(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int v = window->s2k[window->bot_t[cc]];
+    return v;
+}
+/* Wrapper for bottom layer                                          */
+/* If in hd model cell numbering increases downward, return the      */
+/* number of the top hd cell.                                        */
+int ginterface_getbotk_wc(void* hmodel, int c)
+{
+  return i_get_botk_wc(hmodel, c);
+}
+/* Returns the k layer of the bottom for cells-to-process index b.   */
+int ginterface_getwcbotk(void *model, int b)
+{
+  int c = i_get_c(model, b);
+  return i_get_botk_wc(model, c);
+}
+
+/* Returns the k layer of the sediment surface. c not used.          */
+int i_get_topk_sed(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    return window->sednz;
+}
+/* Returns the k layer of the sediment surface. b not used.          */
+int ginterface_getsedtopk(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  if (window != NULL)
+    return i_get_topk_sed(model, b) - 1;
+  else {
+    // This happens for ecology_pre_build
+    return 0;
+  }
+}
+
+/* Returns the k layer of the sediment bottom. c not used.           */
+int i_get_botk_sed(void* hmodel, int c)
+{
+  return 0;
+}
+/* Returns the k layer of the sediment bottom. b not used.           */
+int ginterface_getsedbotk(void *model, int b)
+{
+  return i_get_botk_sed(model, b);
+}
+
+/* Returns cell thickness in column c from surface to bottom. The dz */
+/* array is supplied to the function. The index c is that for the    */
+/* full 3D array.                                                    */
+/* Note:                                                             */
+/* k index changes from botk_wc to topk_wc, where botk_wc and        */
+/* topk_wc are numbers of the bottom and top cells respectively,     */
+/* botk_wc < topk_wc <= (nwclayers-1).                               */
+/* dz_wc[n][botk_wc] is thickness of the bottom cell                 */
+/* dz_wc[n][topk_wc] is thickness of the top cell                    */
+/* If in the hd model cell numbering increases downward              */
+/* (topk_wc_hd < botk_wc_hd), make sure that in dz_wc the cell       */
+/* numbering increases upward, starting from topk_wc_hd in the       */
+/* bottom cell and to  botk_wc_hd in the top cell.                   */
+void i_get_dz_wc(void* hmodel, int c, double *dz_wc)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+
+    for(k = top_k; k >= bot_k; k--) {
+      dz_wc[k] = wincon->dz[c3] * wincon->Hn1[c2];
+      c3 = window->zm1[c3];
+    }
+}
+/* Wrapper for cell thickness                                        */
+void ginterface_getdz_wc(void* hmodel, int c, double *dz_wc)
+{
+  i_get_dz_wc(hmodel, c, dz_wc);
+}
+/* Returns cell thickness in column b from surface to bottom. The dz */
+/* array is returned from the function. The index b is that for the  */
+/* reduced cells-to-process vector.                                  */
+double *ginterface_getwccellthicknesses(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  int c = i_get_c(model, b);
+  double *dz = calloc(window->nz, sizeof(double));
+  i_get_dz_wc(model, c, dz);
+  return dz;
+}
+
+/* Gets the sediment layer depths                                    */
+void i_get_gridz_sed(void* hmodel, int c, double *gridz_sed)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c2 = window->m2d[c];
+    int bot_k = 0;
+    int top_k = window->sednz-1;
+    int k;
+    for(k = bot_k; k <= top_k+1; k++)
+      gridz_sed[k] = window->gridz_sed[k][c2];
+}
+/* Wrapper for sediment layer depths                                 */
+void ginterface_getgridz_sed(void* hmodel, int c, double *gridz_sed)
+{
+  return i_get_gridz_sed(hmodel, c, gridz_sed);
+}
+
+/* Returns sediment cell thickness in sediment column c. The dz      */
+/* array is supplied to the function. The index c is that for the    */
+/* full 3D array.                                                    */
+void i_get_dz_sed(void* model, int c, double *dz_sed)
+{
+  geometry_t *window = (geometry_t *)model;
+  int c2 = window->m2d[c];
+  int nz = window->sednz;
+  int k;
+  if(nz <= 0)
+  {
+    emstag(LPANIC,"hd:ginterface:i_get_dz_sed","Requesting sdiment cell thickness without sediment layers,exiting ...");
+    exit(0);
+  }
+  for (k = 0; k < nz; ++k) {
+    dz_sed[k] = window->gridz_sed[k + 1][c2] - window->gridz_sed[k][c2];
+  }
+}
+/* Returns sediment cell thickness in sediment column b. The dz      */
+/* array is supplied to the function. The index b is that for the    */
+/* reduced cells-to-process vector.                                  */
+double *ginterface_getsedcellthicknesses(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  int c = i_get_c(model, b);
+  int nz = window->sednz;
+  double *dz = calloc(nz, sizeof(double));
+
+  i_get_dz_sed(model, c, dz);
+  return dz;
+}
+
+/* Returns the cell area of the host grid at coordinate c            */
+double i_get_cellarea_w(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c2 = window->m2d[c];
+    double v = window->cellarea[c2];
+    return v;
+}
+/* Wrapper for cell area                                             */
+double ginterface_getcellarea(void* hmodel, int c)
+{
+  return i_get_cellarea_w(hmodel, c);
+}
+/* Returns the cell area of the host grid at index b                 */
+double ginterface_cellarea(void* hmodel, int b)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c = i_get_c(hmodel, b);
+    return i_get_cellarea_w(hmodel, c);
+}
+
+/* Gets the e1 layer thicknesses for the column at c                 */
+void i_get_cellarea_e1(void* hmodel, int c, double *area)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c2 = window->m2d[c];
+  int cc = window->c2cc[c2];
+  int bot_k = window->s2k[window->bot_t[cc]];
+  int top_k = window->s2k[window->nsur_t[cc]];
+  int c3 = window->nsur_t[cc];
+  int k;
+  for(k = top_k; k >= bot_k; k--) {
+    /*
+     * Note that the dz used here is the dz at the end of the hydro
+     * timestep which could be different to the one at the start which
+     * was used to calculate u1flux3d. see vel3d for more details
+     */
+    area[k] = windat->dzu1[c3] * window->h2au1[c2];
+    c3 = window->zm1[c3];
+  }
+}
+
+/* Gets the e2 layer thicknesses for the column at c                 */
+void i_get_cellarea_e2(void* hmodel, int c, double *area)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c2 = window->m2d[c];
+  int cc = window->c2cc[c2];
+  int bot_k = window->s2k[window->bot_t[cc]];
+  int top_k = window->s2k[window->nsur_t[cc]];
+  int c3 = window->nsur_t[cc];
+  int k;
+  for(k = top_k; k >= bot_k; k--) {
+    /*
+     * Note that the dz used here is the dz at the end of the hydro
+     * timestep which could be different to the one at the start which
+     * was used to calculate u2flux3d. see vel3d for more details
+     */
+    area[k] = windat->dzu2[c3] * window->h1au2[c2];
+    c3 = window->zm1[c3];
+  }
+}
+
+/* Returns the depth referenced to msl at coordinate c               */
+double i_get_botz_wc(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon=window->wincon;
+    int c2 = window->m2d[c];
+    double v =  window->botz[c2] * wincon->Hn1[c2];
+    return v;
+}
+/* Wrapper for depth.                                                */
+/* If in hd model OZ is directed downward (ie. topz<botz) return (   */
+/* -1)*botz.                                                         */
+double ginterface_getbotz_wc(void* hmodel, int c)
+{
+  return  i_get_botz_wc(hmodel, c);
+}
+
+/* Returns the surface at coordinate c                               */
+double i_get_topz_wc(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    double v = windat->topz[c2];
+    /* no need to multiply by depth as it
+       is zero by definition if sigma grid is applied */
+    return v;
+}
+
+/* Returns cell centred depth for index b, layer k in the            */
+/* cells-to-process vector.                                          */
+double ginterface_getcellz(void *model, int b, int k)
+{
+  geometry_t *window = (geometry_t *)model;
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+  int cc = window->c2cc[c2];
+  int cs = window->nsur_t[cc];
+  int cb = window->bot_t[cc];
+  int kk = window->s2k[cb];
+  
+  /* Search for the correct level */
+  for (c = cb; c != cs; c = window->zp1[c])
+    if (k == kk++)
+      break;
+  
+  return(window->cellz[c]);
+}
+
+/* Returns the depth referenced to the surface at coordinate c       */
+double i_get_depth(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    double v = windat->eta[c2] - window->botz[c2];
+    return v;
+}
+
+/* Returns the sea surface height                                    */
+double i_get_eta(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    double v = windat->eta[c2];
+    return v;
+}
+/* Wrapper for surface height.                                       */
+/* If in hd model OZ is directed downward (ei. topz<botz) return     */
+/* (-1)*topz.                                                        */
+double ginterface_gettopz_wc(void* hmodel, int c)
+{
+  return i_get_eta(hmodel, c);
+}
+
+/* Gets the (i,j) index corresponding to index col. Only suitable    */
+/* for structured grids.                                             */
+void ginterface_get_ij(void* model, int col, int *ij)
+{
+  geometry_t *window = (geometry_t *)model;
+  int c = i_get_c(model, col);
+  int cs = window->m2d[c];
+
+  ij[0] = window->s2i[cs];
+  ij[1] = window->s2j[cs];
+
+}
+
+/* Returns the bottom stress magnitude for index b. Added for use by */
+/* benthic plants.                                                   */
+double ginterface_botstress(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+
+  if (windat->tau_bm != NULL) 
+    return windat->tau_bm[c2];
+  else
+    return 0.0;
+}
+
+/* Returns the wind speed magnitude for index b. Added to calculate  */
+/* gas exchange.                                                     */
+double ginterface_get_windspeed(void *model, int b)
+{
+   geometry_t *window = (geometry_t *)model;
+   int c = i_get_c(model, b);
+   int c2 = window->m2d[c];
+   return window->windat->windspeed[c2];
+}
+/* Wrapper for windspeed                                             */
+double ginterface_getwindspeed(void* hmodel, int c)
+{
+  return ginterface_get_windspeed(hmodel, c);
+}
+
+/* Returns the surface light for index b.                            */
+double ginterface_getlighttop(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+
+  if (windat->light != NULL) 
+    return windat->light[c2];
+  else
+    return 0.0;
+}
+
+/* Returns the porosity in sediment layers for index b.              */
+double *ginterface_getporosity(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  double por_def = 0.4;
+  double *por = wincon->sd1;
+  int nz = window->sednz;
+  int ntr = windat->nsed;
+  int c = i_get_c(model, b);
+  int c2=window->m2d[c];
+  int n, k;
+  for(k = 0; k < nz; k++)
+    por[k] = por_def;
+
+#if defined(HAVE_SEDIMENT_MODULE)
+  if (wincon->do_sed) {
+    for(n = 0; n < ntr; n++) {
+      // FR : This is to make sure we are backwards compatible
+      if( (strcmp(wincon->trinfo_sed[n].name,"por_sed") == 0) ||
+	  (strcmp(wincon->trinfo_sed[n].name,"porosity") == 0)) {
+        for(k = 0; k < nz; k++)
+          por[k] = windat->tr_sed[n][k][c2];
+	break; // end for loop
+      }
+    }
+  }
+#endif
+
+  return por;
+}
+
+/* Returns the erosion rate in sediment layers for index b.         */
+double ginterface_geterosionrate(void *model, int b) {
+}
+
+/* Returns the bottom wave stress for index b.                       */
+double ginterface_getustrcw(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+  return windat->ustrcw[c2];
+}
+
+/* Calculates the Zenith at index b using the library function       */
+double ginterface_calc_zenith(void *model, double t, int b)
+{
+  double lat;
+  double elev;
+  geometry_t *window = (geometry_t *)model;
+  int c = i_get_c(model, b);
+  int c2 = window->m2d[c];
+  double ang = 7.29e-5;    /* Earth's angular velocity (s-1)         */
+  char *tunit = window->wincon->timeunit;
+  char *ounit = master->params->output_tunit;
+
+  /* Latitude from Coriolis                                          */
+  lat = asin(window->wincon->coriolis[c2] / (2.0 * ang));
+
+  /* Call the library function to calculate the solar elevation      */
+  // xxx this needs fixing
+  elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
+
+  /* Zenith                                                          */
+  return ( (PI/2.0) - elev);
+}
+
+/* Returns the angle of the e1 normal vector                         */
+double i_get_thetau1(void *hmodel, int cc) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  int c = window->w2_t[cc];
+  double v = window->thetau1[c];
+  return v;
+}
+
+/* Returns the angle of the e2 normal vector                         */
+double i_get_thetau2(void *hmodel, int cc) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  int c = window->w2_t[cc];
+  double v = window->thetau2[c];
+  return v;
+}
+
+/* Gets an array of anges between e1 direction of the grid and W-E   */
+/* direction. Note: c index changes from 0 to ncol-1, the angle      */
+/* units are rad and e1 direction of the grid is cell centered.      */
+void ginterface_gettheta(void* hmodel, double *theta, int ncol)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon=window->wincon;
+    int c, cc;
+    if (window->b2_t > ncol)
+	hd_quit("Wrong number of columns in ginterface_gettheta");
+    for(cc=1; cc<=window->b2_t; cc++) {
+	c=window->w2_t[cc];
+	theta[cc-1] = wincon->d1[c];
+    }
+}
+
+/* Returns cell centered sin() of the angle of the e1 normal vector. */
+/* Structured meshes only.                                           */
+double i_get_sinthcell(void *hmodel, int cc) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  int c = window->w2_t[cc];
+  int xp1 = window->xp1[c];
+  int yp1 = window->xp1[c];
+  double v = (sin(window->thetau1[c]) +
+	      sin(window->thetau1[xp1]) +
+	      sin(window->thetau2[c]) +
+	      sin(window->thetau2[yp1])) / 4.0;
+  return v;
+}
+
+
+/* Returns cell centered cos() of the angle of the e2 normal vector. */
+/* Structured meshes only.                                           */
+double i_get_costhcell(void *hmodel, int cc) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  int c = window->w2_t[cc];
+  int xp1 = window->xp1[c];
+  int yp1 = window->xp1[c];
+  double v = (cos(window->thetau1[c]) +
+	      cos(window->thetau1[xp1]) +
+	      cos(window->thetau2[c]) +
+	      cos(window->thetau2[yp1])) / 4.0;
+  return v;
+}
+
+/* Reads initial thicknesses of the sediment grid layers from the    */
+/* parameter file.                                                   */
+/* prmfd is the pointer to the parameter file                        */
+/* sednzc is number of the sed layers                                */
+/* returns sednz - number of sediment layers                         */
+/* updates dz_sed[k] - a 1d array of sediment thicknesses            */
+/* Note:                                                             */
+/* k index changes from 0 to (sednz-1)                               */
+/* dz_sed[0] is thickness of the bottom layer                        */
+/* dz_sed[sednz-1] is the thickness of the top layer.                */
+int ginterface_getdzinit_sed(FILE* prmfd, double *dz_sed, int sednzc)
+{
+    int k;
+    int sednz=0;
+    double *tmp;
+    prm_read_darray(prmfd, "NSEDLAYERS", &dz_sed, &sednz);
+    /* change order of numbering in dz_sed[k] */
+    tmp = d_alloc_1d(sednz);
+    for (k = 0; k < sednz; k++)
+      tmp[k] = dz_sed[k];
+    for (k = 0; k < sednz; k++)
+      dz_sed[k] = tmp[sednz-1-k];
+    d_free_1d(tmp);
+    return sednz;
+}
+
+
+/* Returns the verbosity flag                                        */
+int ginterface_getverbosity(void *model)
+{
+  extern int debug;
+
+  return debug;
+}
+
+/* Gets a column of e1 volume fluxes at coordinate c                 */
+void i_get_fluxe1_wc(void* hmodel, int c, double *u1flux3d)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c2 = window->m2d[c];
+  int cc = window->c2cc[c2];
+  int bot_k = window->s2k[window->bot_t[cc]];
+  int top_k = window->s2k[window->nsur_t[cc]];
+  int c3 = window->nsur_t[cc];
+  int k;
+  for(k = top_k; k >= bot_k; k--) {
+    u1flux3d[k] = windat->u1flux3d[c3];
+    c3 = window->zm1[c3];
+  }
+}
+
+/* Gets a column of e2 volume fluxes at coordinate c                 */
+void i_get_fluxe2_wc(void* hmodel, int c, double *u2flux3d)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+      u2flux3d[k] = windat->u2flux3d[c3];
+      c3 = window->zm1[c3];
+    }
+}
+
+/* Gets a column of e1 velocities at coordinate c                    */
+void i_get_u1_wc(void* hmodel, int c, double *u1)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+      u1[k] = windat->u1[c3];
+      c3 = window->zm1[c3];
+    }
+}
+/* Get the water column horizontal velocities at coordinate c        */
+/* updates u1_wc[k] - u1 component of water velocity.                */
+/* Note:                                                             */
+/* k index changes from botk_wc to topk_wc, where botk_wc and        */
+/* topk_wc are numbers of the bottom and top cells, respectively,    */
+/* and botk_wc < topk_wc <= (nwclayers-1).                           */
+/* u1_wc[n][botk_wc] is velocity in the bottom cell                  */
+/* u1_wc[n][topk_wc] is velocity in the top cell                     */
+/* If in the hd model cell numbering increases downward              */
+/* (topk_wc_hd < botk_wc_hd), make sure that in u1_wc the cell       */
+/* numbering increases upward, starting from topk_wc_hd in the       */
+/* bottom cell and to  botk_wc_hd in the top cell.                   */
+/* u1 velocity must be copied to dummy array wincon->w4.             */
+void ginterface_getu1_wc(void* hmodel, int c, double *u1_wc)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon=window->wincon;
+    int c2=window->m2d[c];
+    int cc=window->c2cc[c2];
+    int bot_k= window->s2k[window->bot_t[cc]];
+    int top_k= window->s2k[window->nsur_t[cc]];
+    int c3=window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+    	u1_wc[k] = wincon->w4[c3];
+	//tmp 2013
+	//	if(fabs(u1_wc[k]) > 1e-9) fprintf(stderr, "ginterface_get_u1: u1=%lf \n", u1_wc[k]); 
+    	/*u1_wc[k] = windat->u1[c3];*/
+    	c3 = window->zm1[c3];
+    }
+}
+
+/* Gets a column of e2 velocities at coordinate c                    */
+void i_get_u2_wc(void* hmodel, int c, double *u2)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+      u2[k] = windat->u2[c3];
+      c3 = window->zm1[c3];
+    }
+}
+
+/* u2 velocity must be copied to dummy array wincon->w5.             */
+void ginterface_getu2_wc(void* hmodel, int c, double *u2_wc)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon=window->wincon;
+    int c2=window->m2d[c];
+    int cc=window->c2cc[c2];
+    int bot_k= window->s2k[window->bot_t[cc]];
+    int top_k= window->s2k[window->nsur_t[cc]];
+    int c3=window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+    	u2_wc[k] = wincon->w5[c3];
+    	/*u2_wc[k] = windat->u2[c3];*/
+    	c3 = window->zm1[c3];
+    }
+}
+
+/* Gets a column of vertical velocities at coordinate c              */
+void i_get_w_wc(void* hmodel, int c, double *w)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+      w[k] = windat->w[c3];
+      c3 = window->zm1[c3];
+    }
+}
+
+/* Read water column vertical diffusion coefficients at coordinate   */
+/* c. Updates Kz_wc[k] - vertical diffusion coefficient in water.    */
+/* Note:                                                             */
+/* k index changes from botk_wc to topk_wc+1, where botk_wc and      */
+/* topk_wc are numbers of the bottom and top cells, respectively,    */
+/* and botk_wc < topk_wc <= (nwclayers-1).                           */
+/* Kz_wc[n][botk_wc] is Kz in the bottom cell                        */
+/* Kz_wc[n][topk_wc] is Kz in the top cell                           */
+/* If in the hd model cell numbering increases downward              */
+/* (topk_wc_hd < botk_wc_hd), make sure that in Kz_wc the cell       */
+/* numbering increases upward, starting from topk_wc_hd in the       */
+/* bottom cell and to  (botk_wc_hd+1) in the top cell.               */
+void i_get_Kz_wc(void* hmodel, int c, double *Kz_wc)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+      Kz_wc[k] = windat->Kz[c3];
+      c3 = window->zm1[c3];
+    }
+    Kz_wc[top_k+1] = 0.;
+}
+/* Wrapper for vertical diffusion                                    */
+void ginterface_getkz_wc(void* hmodel, int c, double *Kz_wc)
+{
+  i_get_Kz_wc(hmodel, c, Kz_wc);
+}
+
+/* Gets a column of vertical viscosities at coordinate c             */
+void i_get_Vz_wc(void* hmodel, int c, double *Vz_wc)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c2 = window->m2d[c];
+    int cc = window->c2cc[c2];
+    int bot_k = window->s2k[window->bot_t[cc]];
+    int top_k = window->s2k[window->nsur_t[cc]];
+    int c3 = window->nsur_t[cc];
+    int k;
+    for(k = top_k; k >= bot_k; k--) {
+      Vz_wc[k] = windat->Vz[c3];
+      c3 = window->zm1[c3];
+    }
 }
 
 /** Verify if the current sparse index represents a  valid cartesian coordinate
@@ -818,52 +1958,7 @@ int i_in_window(void* hmodel, int col, int* i, int* j,int nn)
   return -1;
 }
 
-
-int i_tracername_exists(void* model, char*name)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn;
-
-  for(tn=0; tn<wincon->ntr; tn++) {
-    /* Water column */
-    if((tracer_find_index(name, wincon->ntr,
-              wincon->trinfo_3d) >= 0))
-      return 1;
-  }
-  return 0;
-}
-
-int i_tracername_exists_2d(void* model, char*name)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn;
-
-  for(tn=0; tn<wincon->ntrS; tn++) {
-    /* Water column */
-    if((tracer_find_index(name, wincon->ntrS,
-              wincon->trinfo_2d) >= 0))
-      return 1;
-  }
-  return 0;
-}
-
-int i_tracername_exists_sed(void* model, char*name)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn;
-
-  for(tn=0; tn<wincon->nsed; tn++) {
-    /* SEDIMENT */
-    if((tracer_find_index(name, wincon->nsed,
-              wincon->trinfo_sed) >= 0))
-      return 1;
-  }
-  return 0;
-}
-
+/* Returns the tracerstat step given a text input                    */
 int i_get_step(void* model, char* st)
 {
     if(strcmp(st,"PRE_DECAY") == 0)
@@ -892,7 +1987,6 @@ int i_get_step(void* model, char* st)
     return 0;
 }
 
-
 /** Retrieve the cartesian coordiantes ij and depth k for sparse index col
  *
  * @param hmodel - the reference to the host model
@@ -912,6 +2006,21 @@ int* i_get_ijk(void* hmodel, int col, int* ij)
   return ij;
 }
 
+/* Returns the i Cartesian coordinate corresponding to coordinate c. */
+/* For structured grids only.                                        */
+int ginterface_getcelli(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    return window->s2i[c];
+}
+
+/* Returns the j Cartesian coordinate corresponding to coordinate c. */
+/* For structured grids only.                                        */
+int ginterface_getcellj(void* hmodel, int c)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    return window->s2j[c];
+}
 
 /** Test the cartesian coordiantes ij and depth k to match sparse index col
  *
@@ -941,7 +2050,7 @@ int i_is_ijk(void* hmodel, int col, int* ij, int do_k)
   return 0;
 }
 
-
+/* Insert text into the error buffer                                 */
 void i_set_error(void* hmodel, int col, int errorf, char *text)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -952,7 +2061,7 @@ void i_set_error(void* hmodel, int col, int errorf, char *text)
     strcpy(wincon->gint_error[col], text);
 }
 
-
+/* Returns the error flag for coordinate col                         */
 int i_get_error(void* hmodel, int col)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -960,10 +2069,14 @@ int i_get_error(void* hmodel, int col)
   return(wincon->gint_errorf[col]);
 }
 
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Tracerstat functions                                              */
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
 
-/*UR in lack of a better place to put it ... */
-
-/* custom_function add and remove */
+/*UR in lack of a better place to put it ...                         */
+/* custom_function add and remove                                    */
 custom_function_t* custom_stack_remove(char* fnc)
 {
   /* this function uses the global structs master */
@@ -1051,7 +2164,6 @@ char* custom_stack_add(custom_function_t* fnc)
 #if defined(HAVE_TRACERSTATS_MODULE)
 /* generic domain-functions to add to allow runtime collection of data */
 #if defined(HAVE_MPI)
-// xxx should these be quits?
 void trstat_domain_function_init(hd_data_t* hdata, custom_function_t* fnc)
 {
 }
@@ -1068,9 +2180,6 @@ void trstat_domain_function_scatter2(custom_function_t* func, hd_data_t* hdata)
 {
 }
 
-void trstat_add_domain_function(char* name, int n,int scattertype, custom_create_data create , custom_function_do_gather gather, custom_function_do_scatter scatter)
-{
-}
 #else
 
 void trstat_domain_function_init(hd_data_t* hdata, custom_function_t* fnc)
@@ -1163,6 +2272,12 @@ void trstat_remove_domain_function(char* name)
 #if defined(HAVE_WAVE_MODULE)
 
 /*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Wave functions                                                    */
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
 /* Wave step                                                         */
 /*-------------------------------------------------------------------*/
 void wave_interface_step(geometry_t *window)
@@ -1186,10 +2301,6 @@ void wave_interface_step(geometry_t *window)
 	if (ANY(c, window->cwave, window->ncwave)) continue;
       wave_step(window, wincon->wave, c);
     }
-    if (wincon->waves & TAN_RAD)
-      set_lateral_BC_rad(window, windat, wincon);
-    else if (wincon->waves & WAVE_FOR)
-       set_lateral_BC_waf(window, windat, wincon);
   }
 #endif
 
@@ -1198,6 +2309,7 @@ void wave_interface_step(geometry_t *window)
 /* END wave_step()                                                   */
 /*-------------------------------------------------------------------*/
 
+/* Returns the wave time-step                                        */
 double w_get_dt(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -1205,14 +2317,18 @@ double w_get_dt(void *hmodel)
   double v = wincon->wavedt;
   return v;
 }
-double w_get_quad_bfc(void *hmodel) 
+
+/* Returns the bottom drag limit                                     */
+double i_get_quad_bfc(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
   double v = wincon->quad_bfc;
   return v;
 }
-double w_get_z0(void *hmodel, int c) 
+
+/* Returns the bottom roughness                                      */
+double i_get_z0(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1220,7 +2336,9 @@ double w_get_z0(void *hmodel, int c)
   double v = wincon->z0[c2];
   return v;
 }
-int w_check_orbital_file(void *hmodel) 
+
+/* Checks if orbital velocities are required to be computed          */
+int i_check_orbital_file(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1229,7 +2347,9 @@ int w_check_orbital_file(void *hmodel)
   else
     return(0);
 }
-int w_check_wave_period(void *hmodel) 
+
+/* Checks if the wave period vector is available                     */
+int i_check_wave_period(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1239,7 +2359,9 @@ int w_check_wave_period(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_period(void *hmodel, int c) 
+
+/* Returns the wave period at coordinate c                           */
+double i_get_wave_period(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1247,8 +2369,17 @@ double w_get_wave_period(void *hmodel, int c)
   double v = windat->wave_period[c2];
   return v;
 }
+/* Wrapper for wave period                                           */
+double ginterface_getwave_period(void* hmodel, int c)
+{
+  if (i_check_wave_period(hmodel))
+    return i_get_wave_period(hmodel, c) ;
+  else
+    return 1;
+}
 
-int w_check_wave_dir(void *hmodel) 
+/* Checks if the wave direction vector is available                  */
+int i_check_wave_dir(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1258,7 +2389,9 @@ int w_check_wave_dir(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_dir(void *hmodel, int c) 
+
+/* Returns the wave direction at coordinate c                        */
+double i_get_wave_dir(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1266,8 +2399,17 @@ double w_get_wave_dir(void *hmodel, int c)
   double v = windat->wave_dir[c2];
   return v;
 }
+/* Wrapper for wave direction                                        */
+double ginterface_getwave_dir(void* hmodel, int c)
+{
+  if (i_check_wave_dir(hmodel))
+    return i_get_wave_dir(hmodel, c) ;
+  else
+    return 0;
+}
 
-int w_check_wave_amp(void *hmodel) 
+/* Checks if the wave amplitude vector is available                  */
+int i_check_wave_amp(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1277,14 +2419,18 @@ int w_check_wave_amp(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_amp(void *hmodel, int c) 
+
+/* Returns the wave amplitude at coordinate c                        */
+double i_get_wave_amp(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
   int c2 = window->m2d[c];
   return NOTVALID;
 }
-int w_check_wave_ub(void *hmodel) 
+
+/* Checks if the bottom orbital velociity vector is available        */
+int i_check_wave_ub(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1294,7 +2440,9 @@ int w_check_wave_ub(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_ub(void *hmodel, int c) 
+
+/* Returns the bottom orbital velocity                               */
+double i_get_wave_ub(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1302,7 +2450,17 @@ double w_get_wave_ub(void *hmodel, int c)
   double v = windat->wave_ub[c2];
   return v;
 }
-int w_check_wave_Fx(void *hmodel) 
+/* Wrapper for orbital velocity                                      */
+double ginterface_getwave_ub(void* hmodel, int c)
+{
+  if (i_check_wave_ub(hmodel))
+    return i_get_wave_ub(hmodel, c);
+  else
+    return 0;
+}
+
+/* Checks if the e1 radiation stress vector is available             */
+int i_check_wave_Fx(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1312,7 +2470,9 @@ int w_check_wave_Fx(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_Fx(void *hmodel, int c) 
+
+/* Returns the e1 component of radiation stress at coordinate c      */
+double i_get_wave_Fx(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1320,7 +2480,9 @@ double w_get_wave_Fx(void *hmodel, int c)
   double v = windat->wave_Fx[c2];
   return v;
 }
-int w_check_wave_Fy(void *hmodel) 
+
+/* Checks if the e2 radiation stress vector is available             */
+int i_check_wave_Fy(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1330,7 +2492,9 @@ int w_check_wave_Fy(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_Fy(void *hmodel, int c) 
+
+/* Returns the e2 component of radiation stress at coordinate c      */
+double i_get_wave_Fy(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1338,7 +2502,9 @@ double w_get_wave_Fy(void *hmodel, int c)
   double v = windat->wave_Fy[c2];
   return v;
 }
-int w_check_wave_ste1(void *hmodel) 
+
+/* Checks if surface Stokes e1 velocities are available              */
+int i_check_wave_ste1(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1348,15 +2514,9 @@ int w_check_wave_ste1(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_ste1(void *hmodel, int c) 
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  int c2 = window->m2d[c];
-  double v = windat->wave_ste1[c2];
-  return v;
-}
-int w_check_wave_ste2(void *hmodel) 
+
+/* Checks if surface Stokes e2 velocities are available              */
+int i_check_wave_ste2(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1366,7 +2526,19 @@ int w_check_wave_ste2(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_ste2(void *hmodel, int c) 
+
+/* Returns the e1 component of surface Stokes drift at coordinate c  */
+double i_get_wave_ste1(void *hmodel, int c) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c2 = window->m2d[c];
+  double v = windat->wave_ste1[c2];
+  return v;
+}
+
+/* Returns the e2 component of surface Stokes drift at coordinate c  */
+double i_get_wave_ste2(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1375,7 +2547,8 @@ double w_get_wave_ste2(void *hmodel, int c)
   return v;
 }
 
-int w_check_wind(void *hmodel) 
+/* Checks the wind stress vectors are available                      */
+int i_check_wind(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1384,7 +2557,9 @@ int w_check_wind(void *hmodel)
   else
     return(1);
 }
-double w_get_wave_wind1(void *hmodel, int c) 
+
+/* Returns the e1 component of wind stress at coordinate c           */
+double i_get_wave_wind1(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1392,7 +2567,14 @@ double w_get_wave_wind1(void *hmodel, int c)
   double v = windat->wind1[c2];
   return v;
 }
-double w_get_wave_wind2(void *hmodel, int c) 
+/* Wrapper for e1 wind stress                                        */
+double ginterface_getwind1(void* hmodel, int c)
+{
+  return i_get_wave_wind1(hmodel, c);
+}
+
+/* Returns the e2 component of wind stress at coordinate c           */
+double i_get_wave_wind2(void *hmodel, int c) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
@@ -1400,7 +2582,14 @@ double w_get_wave_wind2(void *hmodel, int c)
   double v = windat->wind2[c2];
   return v;
 }
-double w_check_fetch(void *hmodel)
+/* Wrapper for e2 wind stress                                        */
+double ginterface_getwind2(void* hmodel, int c)
+{
+  return i_get_wave_wind2(hmodel, c);
+}
+
+/* Checks if fetch has been computed                                 */
+double i_check_fetch(void *hmodel)
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1409,7 +2598,9 @@ double w_check_fetch(void *hmodel)
   else
     return (0);
 }
-double w_get_fetch(void *hmodel, int cc, int n) 
+
+/* Returns the fetch for index cc                                    */
+double i_get_fetch(void *hmodel, int cc, int n) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
@@ -1417,45 +2608,10 @@ double w_get_fetch(void *hmodel, int cc, int n)
   double v = wincon->fetch[c][n];
   return v;
 }
-double w_get_thetau1(void *hmodel, int cc) 
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  int c = window->w2_t[cc];
-  double v = window->thetau1[c];
-  return v;
-}
-double w_get_thetau2(void *hmodel, int cc) 
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  int c = window->w2_t[cc];
-  double v = window->thetau2[c];
-  return v;
-}
-double w_get_sinthcell(void *hmodel, int cc) 
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  int c = window->w2_t[cc];
-  int xp1 = window->xp1[c];
-  int yp1 = window->xp1[c];
-  double v = (sin(window->thetau1[c]) +
-	      sin(window->thetau1[xp1]) +
-	      sin(window->thetau2[c]) +
-	      sin(window->thetau2[yp1])) / 4.0;
-  return v;
-}
-double w_get_costhcell(void *hmodel, int cc) 
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  int c = window->w2_t[cc];
-  int xp1 = window->xp1[c];
-  int yp1 = window->xp1[c];
-  double v = (cos(window->thetau1[c]) +
-	      cos(window->thetau1[xp1]) +
-	      cos(window->thetau2[c]) +
-	      cos(window->thetau2[yp1])) / 4.0;
-  return v;
-}
-void w_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
+
+/* Gets the edge normal and tangential volocities given the cell     */
+/* centered velocities.                                              */
+void i_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
 		   double *u1bot, double *u2bot, double *botz, int c)
 {
   geometry_t* window = (geometry_t*) hmodel;
@@ -1471,16 +2627,12 @@ void w_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
   *botz = window->gridz[window->zp1[cb]];
 }
 
-int w_get_winsize(void *hmodel)
-{
-  geometry_t* window = (geometry_t*) hmodel;
-  return (window->sgsizS);
-}
 void w_get_brsm(void *hmodel, int *brsm) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   int cc, c, lc;
-
+  return;
+  /*
   for (cc = window->nbe1S + 1; cc <= window->nbpte1S; cc++) {
     c = window->bpte1S[cc];
     lc = window->bine1S[cc];
@@ -1493,6 +2645,7 @@ void w_get_brsm(void *hmodel, int *brsm)
     if (lc == window->xm1[c]) brsm[lc] |= (U1BDRY|R_EDGE);
     if (lc == window->xp1[c]) brsm[lc] |= (U1BDRY|L_EDGE);
   }
+  */
 }
 
 #endif

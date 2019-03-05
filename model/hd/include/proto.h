@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 5876 2018-07-06 07:48:40Z riz008 $
+ *  $Id: proto.h 6157 2019-03-05 03:18:45Z riz008 $
  *
  */
 
@@ -25,8 +25,8 @@
 /* Version information                                              */
 /*------------------------------------------------------------------*/
 #define SHOC_MAJOR_VERSION 1
-#define SHOC_MINOR_VERSION 0
-#define SHOC_PATCH_VERSION 0
+#define SHOC_MINOR_VERSION 1
+#define SHOC_PATCH_VERSION 1
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -326,6 +326,8 @@ void master_fill(master_t *master, geometry_t **window, window_t **windat,
                  win_priv_t **wincon);
 void master_fill_ts(master_t *master, geometry_t **window, window_t **windat,
 		    win_priv_t **wincon);
+void master_fill_glider(master_t *master, geometry_t **window, window_t **windat,
+			win_priv_t **wincon, ts_point_t *ts, double t);
 void windat_fill(master_t *master, geometry_t *window, window_t *windat,
                  int nwindows, int mode);
 void build_transfer_maps(geometry_t *geom, geometry_t **window, int wn,
@@ -508,6 +510,7 @@ void total_mass(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void steric(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vorticity(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void diag_numbers(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void nor_vert_prof(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void ekman_pump_e1(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		   double *taus, double *taub);
 void ekman_pump_e2(geometry_t *window, window_t *windat, win_priv_t *wincon,
@@ -589,6 +592,7 @@ double decorr(geometry_t *window, double *a, int sz, int c, int mode, double sca
 void calc_decorr(geometry_t *window, double *a, double *dex, double *dey, 
 		 int sz, int mode, double scale);
 void calc_dhd(geometry_t *window, window_t *windat, win_priv_t *wincon);
+double buoyancy_frequency2_m(master_t * master, geometry_t *geom, double *dens, int c);
 
 /*------------------------------------------------------------------*/
 /* Forcing routines                                                 */
@@ -1202,6 +1206,7 @@ int dump_choose_by_time_p(parameters_t *params, int fid, double t);
 int dump_choose_by_time_m(master_t *master, int fid, double t);
 int dump_choose_by_time_s(int fid, double t);
 void read_grid_atts(parameters_t *params, int cdfid);
+void read_mean_atts(master_t *master, int fid);
 int dump_read(geometry_t *geom, parameters_t *params, master_t *master,
               int cdfid, int ti);
 int dump_re_read(master_t *master, 
@@ -1344,12 +1349,16 @@ double next_season(double time, char *unit, int *smon);
 double prev_season(double time, char *unit, int *season, int *smon);
 double next_month(double time, char *unit, int *smon);
 double prev_month(double time, char *unit, int *smon);
+double next_day(double time, char *unit, int *sday);
+double prev_day(double time, char *unit, int *sday);
+int yrday(int year, int mon, int day);
 void df_std_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_simple_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_parray_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_sp_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_mom_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 int ts_init(sched_event_t *event);
+int get_glider_loc(master_t *master, ts_point_t *tslist, timeseries_t *loc_ts, double t);
 
 /*------------------------------------------------------------------*/
 /* NetCDF convienience utilities                                    */

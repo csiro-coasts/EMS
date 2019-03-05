@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: regions.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: regions.c 5992 2018-10-17 04:54:39Z her127 $
  *
  */
 
@@ -1762,7 +1762,7 @@ void region_write(master_t *master, region_t *region)
     fprintf(region->fp, "## COLUMN1.name  Time\n");
     fprintf(region->fp, "## COLUMN1.long_name  Time\n");
     fprintf(region->fp,
-	    "## COLUMN1.units  days since 1990-01-01 00:00:00 +10\n");
+	    "## COLUMN1.units  %s\n", master->output_tunit);
     fprintf(region->fp, "## COLUMN1.missing_value -999\n");
     fprintf(region->fp, "##\n");
     n = 2;

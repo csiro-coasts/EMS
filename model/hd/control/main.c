@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 5871 2018-07-06 07:09:44Z riz008 $
+ *  $Id: main.c 6014 2018-11-03 05:19:44Z riz008 $
  *
  */
 
@@ -271,7 +271,7 @@ void process_args(int argc, char *argv[])
 
     } else if (strcmp(*argv, "-nrt") == 0) {
       /* Near real time option                                      */
-      if (autof == 0)
+      if (autof == 0 || autof == 8)
         nrt_restart = 1;
       else
         usage();

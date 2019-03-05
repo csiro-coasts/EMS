@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 5871 2018-07-06 07:09:44Z riz008 $
+ *  $Id: run_setup.c 5997 2018-10-22 22:46:49Z riz008 $
  *
  */
 
@@ -260,6 +260,8 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "PRE-V4201 compatibility: Define all netcdf files as netCDF classic\n");
   if (params->compatible & V5342)
     fprintf(fp, "PRE-V5342 compatibility: Turbulence closure quantities vertically diffused in both closure and vertical diffusion schemes.\n");
+  if (params->compatible & V5895)
+    fprintf(fp, "PRE-V5895 compatibility: Using original output timezone based solar angle calculation.\n");
 
   if (params->stab & NONE)
     fprintf(fp, "No stability compensation\n");

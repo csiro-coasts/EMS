@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: readdump.c 6147 2019-03-05 01:58:38Z her127 $
  *
  */
 
@@ -248,7 +248,7 @@ int dump_read(geometry_t *geom, /* Sparse global geometry structure */
     }
     d_free_3d(d1);
   }
-
+  read_mean_atts(master, cdfid);
   return (1);
 }
 
@@ -1343,6 +1343,7 @@ int dumpdata_read(geometry_t *geom, /* Sparse global geometry structure */
     i_free_3d(master->i1);
     i_free_3d(master->i2);
   }
+  read_mean_atts(master, cdfid);
   return (1);
 }
 

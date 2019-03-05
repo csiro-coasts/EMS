@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 5901 2018-08-28 02:10:22Z riz008 $
+ *  $Id: sparse.h 6090 2019-02-08 04:32:56Z her127 $
  *
  */
 
@@ -378,6 +378,7 @@ struct win_priv {
   int trsplit;                  /* Split advection using tratio */
   int means;                    /* Mean velocity diagnostic */
   int da;                       /* Data assimilation */
+  int nprof;                    /* Normalized profile flag */
   double means_dt;              /* Mean velocity averaging interval */
   double means_next;            /* Next time for zeroing means */
   double means_os;              /* Offset for restarts */
@@ -1182,6 +1183,7 @@ typedef struct {
   char ptinname[MAXSTRLEN];     /* Particle input file */
   int gint_errfcn;              /* Generic interface error handling flag */
   int riverflow;                /* Include river flow diagnostic tracer */
+  char nprof[MAXSTRLEN];        /* Normalized profile flag */
   /* DATA ASSIM */
   int da;                       /* Data assimilation */
   double da_dt;                 /* Data assimilation time step */
@@ -1702,6 +1704,8 @@ struct master {
   double *energy;               /* Total energy (Jm-2) */
   double *kenergy;              /* Kinetic energy (Jm-2) */
   double *obc_phase;            /* OBC phase speed (m/s) */
+  double *nprof;                /* Normalized profile */
+  int nprofn;                   /* Tracer to normalize */
   double *sound;                /* Speed of sound */
   double *schan;                /* Sound channel depth */
   double *sonic;                /* Sonic layer depth */
@@ -1738,6 +1742,7 @@ struct master {
   double *vcorr, *acorr;        /* Local transport fill corrections */
   double *Vi;                   /* Volume error */
   double *unit;                 /* Unit tracer */
+  double *glider;               /* Glider density */
   double *regionid;             /* Region ids */
   double *regres;               /* Region residence time */
   double *sederr;               /* Error percentage map for sediments */
@@ -2295,6 +2300,8 @@ struct master {
 		       window_t **windat, win_priv_t **wincon);
   void (*master_fill_ts) (master_t *master, geometry_t **window, 
 			  window_t **windat, win_priv_t **wincon);
+  void (*master_fill_glider) (master_t *master, geometry_t **window, 
+			      window_t **windat, win_priv_t **wincon, ts_point_t *ts, double t);
 };
 
 
@@ -2517,6 +2524,7 @@ struct window {
   double *energy;               /* Total energy (Jm-2) */
   double *kenergy;              /* Kinetic energy (Jm-2) */
   double *obc_phase;            /* OBC phase speed (m/s) */
+  double *nprof;                /* Normalized profile */
   double *sound;                /* Speed of sound */
   double *schan;                /* Sound channel depth */
   double *sonic;                /* Sonic layer depth */
@@ -2552,6 +2560,7 @@ struct window {
   double *vcorr, *acorr;        /* Local transport fill corrections */
   double *Vi;                   /* Volume error */
   double *unit;                 /* Unit tracer */
+  double *glider;               /* Glider density */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
   int *totid;                   /* Tracer numbers for 3D totals */
@@ -2731,8 +2740,12 @@ struct ts_point{
   int *ddim;                  /* 0=2D, 1=3D                           */
   int metric;                 /* Type of metric                       */
   int kernal;                 /* Kernal size                          */
+  int last;                   /* Last location in grid                */
   double *val;                /* Data-model comparison value          */
   double *obs;                /* Observation value                    */
+  double *minv;               /* Minimum value                        */
+  double *maxv;               /* Maximum value                        */
+  double *nvals;              /* Number of values read                */
   double **thresh;            /* Threshold value                      */
 };
 

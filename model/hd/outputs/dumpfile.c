@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 5871 2018-07-06 07:09:44Z riz008 $
+ *  $Id: dumpfile.c 6013 2018-11-01 02:10:37Z riz008 $
  *
  */
 
@@ -259,6 +259,8 @@ double dump_event(sched_event_t *event, double t)
       dumpdata->dumplist[i].tinc = next_season(t, master->timeunit, &mon);
     if (dumpdata->dumplist[i].incf == MONTHLY)
       dumpdata->dumplist[i].tinc = next_month(t, master->timeunit, &mon);
+    if (dumpdata->dumplist[i].incf == DAILY)
+      dumpdata->dumplist[i].tinc = next_day(t, master->timeunit, &mon);
 
     /* Skip dump if the DA flag doesn't match for this dumpfile */
     if (master->da && !(dumpdata->dumplist[i].da_cycle & master->da)) continue;
@@ -926,7 +928,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   int i, mapIndex = 0;
 
   list->flag = 0;
-  list->append = forced_restart;
+  list->append = forced_restart || nrt_restart;
 
   /* Get file name */
   sprintf(key, "file%d.name", f);
@@ -988,6 +990,9 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
       } else if (contains_token(buf, "MONTHLY")) {
 	list->incf = MONTHLY;
 	list->tinc = 30.0;
+      } else if (contains_token(buf, "DAILY")) {
+	list->incf = DAILY;
+	list->tinc = 1.0;
       } else
 	hd_quit("dumpfile_init: Can't read file %d time increment\n", f);
     }
@@ -2000,19 +2005,36 @@ static void *df_std_create(dump_data_t *dumpdata, dump_file_t *df)
   dims[0] = recdimid;
   nc_def_var(cdfid, "t", NC_DOUBLE, 1, dims, &vid);
 
-  if (dumpdata->sednz > 0) {
-    dims[0] = recdimid;
-    dims[1] = kgridid_sed;
-    dims[2] = jcentreid;
-    dims[3] = icentreid;
-    nc_def_var(cdfid, "z_grid_sed", NC_DOUBLE, 4, dims, &vid);
-
-    dims[1] = kcentreid_sed;
-    nc_def_var(cdfid, "z_centre_sed", NC_DOUBLE, 4, dims, &vid);
-  }
-
+  /* Moved this up here ahead of the sediment grid logic below */
   df_std_init_data(dumpdata, df, cdfid);
   data = (df_std_data_t *)df->private_data;
+  
+  if (dumpdata->sednz > 0) {
+    /*
+     * Only write this variable if needed
+     */
+    for (n = 0; n < df->nvars; n++) {
+      char *vname = df->vars[n];
+      int   vLen  = strlen(vname);
+      if (vLen > 4 && strcmp(&vname[vLen-4], "_sed") == 0) {
+	dims[0] = recdimid;
+	dims[1] = kgridid_sed;
+	dims[2] = jcentreid;
+	dims[3] = icentreid;
+	nc_def_var(cdfid, "z_grid_sed", NC_DOUBLE, 4, dims, &vid);
+	
+	dims[1] = kcentreid_sed;
+	nc_def_var(cdfid, "z_centre_sed", NC_DOUBLE, 4, dims, &vid);
+
+	/* This is used in df_std_write */
+	df->flag |= DF_WRITESED;
+	
+	/* do only once */
+	break;
+      }
+    }
+  }
+  
   for (n = 0; n < df->nvars; n++) {
     if (data->vars[n].ndims == 2) {
       df_std_get_dimids(cdfid, data->vars[n], &dims[2], &dims[1], NULL);
@@ -2152,7 +2174,7 @@ static void df_std_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   }
   nc_put_vara_double(fid, ncw_var_id(fid, "t"), start, count, &newt);
 
-  if (dumpdata->sednz > 0) {
+  if (dumpdata->sednz > 0 && (df->flag & DF_WRITESED)) {
     count[1] = dumpdata->sednz;
     count[2] = dumpdata->nce2;
     count[3] = dumpdata->nce1;
@@ -6278,6 +6300,60 @@ double prev_month(double time, char *unit, int *smon)
   }
   *smon = mon;
   sprintf(buf, "%d-%d-01 00:00:00", yr, mon);
+  prev = tm_datestr_to_julsecs(buf, unit);
+  return(prev);
+}
+
+
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Finds the time corresponding to the next day                     */
+/*------------------------------------------------------------------*/
+double next_day(double time, char *unit, int *sday)
+{
+  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char *date;
+  double next;
+  int yr, mon, day;
+
+  date = tm_time_to_datestr(time, unit);
+  sscanf(date, "%d-%d-%d %s\n",&yr, &mon, &day, buf);
+  *sday = yrday(yr, mon, day);
+  if (mon == 12 && day == 31) {
+    day = 1;
+    mon = 1;
+    yr++;
+  } else
+    day++;
+  sprintf(buf, "%d-%d-%d 00:00:00", yr, mon, day);
+  next = tm_datestr_to_julsecs(buf, unit);
+  return(next-time);
+}
+
+/*------------------------------------------------------------------*/
+/* Finds the time corresponding to the end of the equivalent day    */
+/* in the previous year.                                            */
+/*------------------------------------------------------------------*/
+double prev_day(double time, char *unit, int *sday)
+{
+  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char *date;
+  double prev;
+  int yr, mon, day;
+
+  date = tm_time_to_datestr(time, unit);
+  sscanf(date, "%d-%d-%d %s\n",&yr, &mon, &day, buf);
+  if (mon == 12 && day == 31) {
+    mon = 1;
+    day = 1;
+  } else {
+    day++;
+    yr--;
+  }
+  *sday = yrday(yr, mon, day);
+  sprintf(buf, "%d-%d-%d 00:00:00", yr, mon, day);
   prev = tm_datestr_to_julsecs(buf, unit);
   return(prev);
 }

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_tracer_defaults.c 5907 2018-08-29 03:29:00Z bai155 $
+ *  $Id: ecology_tracer_defaults.c 6054 2019-01-23 05:44:18Z bai155 $
  *
  */
 
@@ -185,7 +185,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
   /* d - 1: for diagnostic fluxes so divided by time step.
      d - 2: for diagnostic states. */
   
-  /* for flags ECO_NORESET : 1 */
+  /* flags for last column (f) ECO_NORESET is 1 */
 
   /* All tracers */
   eco_def_t eco_def[] = {
@@ -227,7 +227,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"EpiPAR",  "mol photon m-2 s-1", 0.0, 0.0, 2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"EpiPAR_sg",  "mol photon m-2 d-1", 0.0, 0.0, 2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"Epilightatt","m-1 ",       0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
-    {"TN",        "mg N m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"TN",        "mg N m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"TP",        "mg P m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"TC",        "mg C m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"DIN",       "mg N m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
@@ -336,7 +336,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"Coral_ON_up","mg N m-2 s-1", 0.0,   0.0, 1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Gnet",   "mg C m-2 s-1", 0.0,   0.0,      1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"mucus",   "mg N m-2 s-1", 0.0,   0.0,     1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"dens",   "kg m-3", 1000.0,  1100.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"dens",   "kg m-3", 1000.0,  1100.0,       0, 0, 0, 5, 0, 0, 0, 0, 1, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"alk",       "mmol m-3", 2398.2,  2398.2,  0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"omega_ar",  "nil", 3.0,  3.0,             2, 0, 0, 5, 1, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"omega_ca",  "nil", 3.0,  3.0,             2, 0, 0, 5, 1, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
@@ -348,7 +348,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"SGH_shear_mort",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SGP_shear_mort",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SGD_shear_mort",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"CS_bleach",  "mg N cell-1 s-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"CS_bleach",  "d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"CS_tempfunc",   "-",0.0,0.0,                2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"temp_clim",   "deg C",0.0 ,26.0,            0, 0, 0, 5, 0, 0, 0, 0, 1, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"OC3M",  "mg Chla m-3", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
@@ -388,8 +388,13 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"Secchi", "m", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Zenith2D", "rad", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SWR_bot_abs", "-", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Oxygen_sedflux", "mg O2 m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"DIC_sedflux", "mg C m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"NH4_sedflux", "mg N m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"NO3_sedflux", "mg N m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"DIP_sedflux", "mg P m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"NULL",      "NULL",     0.0,   0.0,       0, 0, 0, 0, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"xco2_in_air", "ppmv",  390.0,    390.0,      0, 0, 0, 2, 0, 0, 1, 1, 0, FILEIN, ECOLOGY|DIAGNOSTIC},
+    {"xco2_in_air", "ppmv",  390.0,    390.0,      0, 0, 0, 2, 0, 0, 1, 1, 0, FILEIN, ECOLOGY|DIAGNOSTIC}, 
   };
   
 /* diagn, advect, diff, type, diss, part, in water, in sed, flag, obc, type */

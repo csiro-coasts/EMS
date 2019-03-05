@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 5907 2018-08-29 03:29:00Z bai155 $
+ *  $Id: ecology.c 6115 2019-02-26 04:26:02Z her127 $
  *
  */
 
@@ -192,7 +192,7 @@ const char *ECONAME2D[][2] = {
   {"SGH_shear_mort","Halophila shear stress mort"},
   {"SGP_shear_mort","Posidonia shear stress mort"},
   {"SGD_shear_mort","Deep seagrass shear stress mort"},
-  {"CS_bleach",      "Coral sym. expulsion rate of N per cell"},
+  {"CS_bleach",      "Coral sym. expulsion rate"},
   {"CS_tempfunc", "Bleach T function"},
   {"OC3M","Modis-OC3M"},
   {"OC4Me","MERIS-OC4Me"},
@@ -231,6 +231,11 @@ const char *ECONAME2D[][2] = {
   {"Secchi","Secchi depth"},
   {"Zenith2D","Solar zenith"},
   {"SWR_bot_abs","SWR bottom abs. (PAR)"},
+  {"Oxygen_sedflux","Sediment-water oxygen flux"},
+  {"DIC_sedflux","Sediment-water DIC flux"},
+  {"NH4_sedflux","Sediment-water NH4 flux"},
+  {"NO3_sedflux","Sediment-water NO3 flux"},
+  {"DIP_sedflux","Sediment-water DIP flux"},
 };
 const int NUM_ECO_VARS_2D = ((int)(sizeof(ECONAME2D)/(2*sizeof(char*))));
 
@@ -248,7 +253,6 @@ const eco_def_trstat_t eco_def_trstat[] = {
                                  "exposure(omega_ar:-3:omega_ar_expose_time)", "30 days"},
   {"NULL", "", ""}
 };
-  
 
 static void *private_data_copy_eco(void *src);
 
@@ -264,6 +268,276 @@ extern int i_tracername_exists_sed(void* model, char*name);
 
 static int get_eco_flag_num(char *flags);
 static char *eco_flag_str(int flag);
+
+/*-------------------------------------------------------------------*/
+/* Ecology specific interface routines
+void einterface_ecologyinit(void *model, void *_e)
+static void einterface_tracermap(void* model, ecology *e, int ntr)
+static void einterface_epimap(void* model, ecology *e, int ntr)
+int einterface_get_eco_flag(void* model, char* name)
+double einterface_gettracersvel(void* model, char* name)
+quitfntype einterface_getquitfn(void)
+void einterface_log_error(ecology *e, void *model, int b)
+void einterface_check_default_tracers(void)
+*/
+
+/*-------------------------------------------------------------------*/
+/* Generic interface routines                                        *
+/*-------------------------------------------------------------------*/
+extern int ginterface_get_num_rsr_tracers(void* model);
+extern void ginterface_get_rsr_tracers(void* model, int *rtns);
+extern int ginterface_getntracers(void* model);
+extern int ginterface_gettracerdiagnflag(void* model, char* name);
+extern int ginterface_gettracerparticflag(void* model, char* name);
+extern char* ginterface_gettracername(void* model, int i);
+extern char* ginterface_get2Dtracername(void* model, int i);
+extern int ginterface_tracername_exists(void* model, char*name);
+extern int ginterface_tracername_exists_epi(void* model, char*name);
+extern void ginterface_get_ij(void* model, int col, int *ij);
+extern int ginterface_getnepis(void* model);
+extern char* ginterface_getepiname(void* model, int i);
+extern int ginterface_getepidiagnflag(void* model, char* name);
+extern tracer_info_t* ginterface_getepiinfo(void* model, int* n);
+extern double ginterface_getmodeltime(void* model);
+extern int ginterface_getnumberwclayers(void* model);
+extern int ginterface_getnumbersedlayers(void* model);
+extern int ginterface_getnumbercolumns_e(void* model);
+extern int ginterface_get_max_numbercolumns(void* model);
+extern int ginterface_getwctopk(void *model, int b);
+extern int ginterface_getwcbotk(void *model, int b);
+extern double ginterface_getcellz(void *model, int b, int k);
+extern int ginterface_isboundarycolumn(void *model, int b);
+extern int ginterface_getsedtopk(void *model, int b);
+extern int ginterface_getsedbotk(void *model, int b);
+extern double *ginterface_getwccellthicknesses(void *model, int b);
+extern double *ginterface_getsedcellthicknesses(void *model, int b);
+extern double ginterface_botstress(void *model, int b);
+extern double ginterface_get_windspeed(void *model, int b);
+extern double ginterface_getlighttop(void *model, int b);
+extern double *ginterface_getporosity(void *model, int b);
+extern double ginterface_geterosionrate(void *model, int b);
+extern double ginterface_getustrcw(void *model, int b);
+extern double** ginterface_getwctracers(void* model, int b);
+extern double** ginterface_getsedtracers(void* model, int b);
+extern double **ginterface_getepivars(void *model, int b);
+extern double ginterface_cellarea(void* hmodel, int b);
+extern int ginterface_getverbosity(void *model);
+extern char *ginterface_gettimeunits(void *model);
+extern int ginterface_transport_mode(void);
+extern char * ginterface_get_output_path(void);
+extern double ginterface_calc_zenith(void *model, double t, int b);
+extern int ginterface_get_win_num(void *model);
+
+/*-------------------------------------------------------------------*/
+/* Re-directed interface routines. These should be replaced with     */
+/* direct calls to the generic interface routines, bypassing         */
+/* wrappers where possible.                                          */
+/*-------------------------------------------------------------------*/
+
+int einterface_get_num_rsr_tracers(void* model) {
+  return ginterface_get_num_rsr_tracers(model);
+}
+void einterface_get_rsr_tracers(void* model, int *rtns) {
+  ginterface_get_rsr_tracers(model, rtns);
+}
+int einterface_getntracers(void* model) {
+  return ginterface_getntracers(model);
+}
+int einterface_gettracerdiagnflag(void* model, char* name) {
+  return ginterface_gettracerdiagnflag(model, name);
+}
+int einterface_gettracerparticflag(void* model, char* name) {
+  return ginterface_gettracerparticflag(model, name);
+}
+char* einterface_gettracername(void* model, int i) {
+  return ginterface_gettracername(model, i);
+}
+char* einterface_get2Dtracername(void* model, int i) {
+  return ginterface_get2Dtracername(model, i);
+}
+int einterface_tracername_exists(void* model, char*name) {
+  return ginterface_tracername_exists(model, name);
+}
+int einterface_tracername_exists_epi(void* model, char*name) {
+  return ginterface_tracername_exists_epi(model, name);
+}
+void einterface_get_ij(void* model, int col, int *ij) {
+  ginterface_get_ij(model, col, ij);
+}
+int einterface_getnepis(void* model) {
+  return ginterface_getnepis(model);
+}
+char* einterface_getepiname(void* model, int i) {
+  return ginterface_getepiname(model, i);
+}
+int einterface_getepidiagnflag(void* model, char* name) {
+  return ginterface_getepidiagnflag(model, name);
+}
+tracer_info_t* einterface_getepiinfo(void* model, int* n) {
+  return ginterface_getepiinfo(model, n);
+}
+double einterface_getmodeltime(void* model) {
+  return ginterface_getmodeltime(model);
+}
+int  einterface_getnumberwclayers(void* model) {
+  return ginterface_getnumberwclayers(model);
+}
+int  einterface_getnumbersedlayers(void* model) {
+  return ginterface_getnumbersedlayers(model);
+}
+int  einterface_getnumbercolumns(void* model) {
+  return ginterface_getnumbercolumns_e(model);
+}
+int  einterface_get_max_numbercolumns(void* model) {
+  return ginterface_get_max_numbercolumns(model);
+}
+int einterface_getwctopk(void *model, int b) {
+  return ginterface_getwctopk(model, b);
+}
+int einterface_getwcbotk(void *model, int b) {
+  return ginterface_getwcbotk(model, b);
+}
+double einterface_getcellz(void *model, int b, int k) {
+  return ginterface_getcellz(model, b, k);
+}
+int einterface_isboundarycolumn(void *model, int b) {
+  return ginterface_isboundarycolumn(model, b);
+}
+int einterface_getsedtopk(void *model, int b) {
+  return ginterface_getsedtopk(model, b);
+}
+int einterface_getsedbotk(void *model, int b) {
+  return ginterface_getsedbotk(model, b);
+}
+double *einterface_getwccellthicknesses(void *model, int b) {
+  return ginterface_getwccellthicknesses(model, b);
+}
+double *einterface_getsedcellthicknesses(void *model, int b) {
+  return ginterface_getsedcellthicknesses(model, b);
+}
+double einterface_botstress(void *model, int b) {
+  return ginterface_botstress(model, b);
+}
+double einterface_get_windspeed(void *model, int b) {
+  return ginterface_get_windspeed(model, b);
+}
+double einterface_getlighttop(void *model, int b) {
+  return ginterface_getlighttop(model, b);
+}
+double *einterface_getporosity(void *model, int b) {
+  return ginterface_getporosity(model, b);
+}
+double einterface_geterosionrate(void *model, int b) {
+  return ginterface_geterosionrate(model, b);
+}
+double einterface_getustrcw(void *model, int b) {
+  return ginterface_getustrcw(model, b);
+}
+/* Issues with returning pointers; duplacte einterface_ routines for now.
+double**  einterface_getwctracers(void* model, int b) {
+  return ginterface_getwctracers(model, b);
+}
+double** einterface_getsedtracers(void* model, int b) {
+  return ginterface_getsedtracers(model, b);
+}
+double **einterface_getepivars(void *model, int b) {
+  return ginterface_getepivars(model, b);
+}
+*/
+double einterface_cellarea(void* hmodel, int b) {
+  return ginterface_cellarea(hmodel, b);
+}
+int einterface_getverbosity(void *model) {
+  return ginterface_getverbosity(model);
+}
+char *einterface_gettimeunits(void *model) {
+  return ginterface_gettimeunits(model);
+}
+int einterface_transport_mode(void) {
+  return ginterface_transport_mode();
+}
+char * einterface_get_output_path(void) {
+  ginterface_get_output_path();
+}
+int einterface_get_win_num(void *model) {
+  return ginterface_get_win_num(model);
+}
+double einterface_calc_zenith(void *model, double t, int b) {
+  return ginterface_calc_zenith(model, t, b);
+}
+
+/*-------------------------------------------------------------------*/
+
+
+double**  einterface_getwctracers(void* model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int nz = window->nz;
+  int ntr = e_ntr;
+  double **wctr = (double **)calloc(ntr * nz, sizeof(double*));
+  int cs2 = window->wincon->s2[b+1];
+  int c2 = window->m2d[cs2];
+  int cc = window->c2cc[c2];
+  int cs = window->nsur_t[cc];
+  int cb = window->bot_t[cc];
+  int c, k = window->s2k[cb], n;
+
+  /*
+   * Loop from the bottom cell up
+   */
+  for (c = cb; c != cs; c = window->zp1[c]) {
+    for (n = 0; n < ntr; ++n) {
+      wctr[k * ntr + n] = &windat->tr_wc[tr_map[n]][c];
+    }
+    k++;
+  }
+  // The surface cell
+  for (n = 0; n < ntr; ++n) {
+    wctr[k * ntr + n] = &windat->tr_wc[tr_map[n]][c];
+  }
+
+  return wctr;
+}
+
+double** einterface_getsedtracers(void* model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int nz = window->sednz;
+  int ntr = e_ntr;
+  double **sedtr = (double **)calloc(ntr * nz, sizeof(double*));
+  int c = window->wincon->s2[b + 1];
+  int c2=window->m2d[c];
+  int k, n;
+
+  for (k = 0; k < nz; ++k)
+    for (n = 0; n < ntr; ++n) {
+      sedtr[k * ntr + n] = &windat->tr_sed[sed_map[n]][k][c2];
+    }
+  return sedtr;
+}
+
+
+double **einterface_getepivars(void *model, int b)
+{
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  int nepi = e_nepi;
+  double **epivar = (double **)calloc(nepi, sizeof(double*));
+  int c = window->wincon->s2[b + 1];
+  int c2 = window->m2d[c];
+  int n;
+
+  for (n = 0; n < nepi; ++n) {
+    epivar[n] = &windat->tr_wcS[epi_map[n]][c2];
+  }
+  return epivar;
+}
+
+
+
+/*-------------------------------------------------------------------*/
 
 static void einterface_tracermap(void* model, ecology *e, int ntr)
 {
@@ -311,40 +585,6 @@ static void einterface_epimap(void* model, ecology *e, int ntr)
   }
 }
 
-int einterface_get_num_rsr_tracers(void* model)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn,n;
-
-  n = 0;
-  for(tn=0; tn<wincon->ntrS; tn++) {
-    char *trname = wincon->trinfo_2d[tn].name;
-    if (strncmp(trname, "R_", 2) == 0)
-      n++;
-  }
-  return(n);
-}
-
-void einterface_get_rsr_tracers(void* model, int *rtns)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int tn,n;
-
-  n = 0;
-  for(tn=0; tn<wincon->ntrS; tn++) {
-    char *trname = wincon->trinfo_2d[tn].name;
-    if (strncmp(trname, "R_", 2) == 0)
-      rtns[n++] = tn;
-  }
-}
-
-int einterface_getntracers(void* model)
-{
-    return 0;
-}
-
 int einterface_get_eco_flag(void* model, char* name)
 {
   geometry_t *window = (geometry_t *)model;
@@ -359,21 +599,6 @@ int einterface_get_eco_flag(void* model, char* name)
   return flag;
 }
 
-int einterface_gettracerdiagnflag(void* model, char* name)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int index = tracer_find_index(name, wincon->ntr, wincon->trinfo_3d);
-  return wincon->trinfo_3d[index].diagn;
-}
-
-int einterface_gettracerparticflag(void* model, char* name)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int index = tracer_find_index(name, wincon->ntr, wincon->trinfo_3d);
-  return wincon->trinfo_3d[index].partic;
-}
 
 double einterface_gettracersvel(void* model, char* name)
 {
@@ -381,404 +606,10 @@ double einterface_gettracersvel(void* model, char* name)
 
 }
 
-char* einterface_gettracername(void* model, int i)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  if(i >= 0 && i < wincon->ntr)
-    return wincon->trinfo_3d[i].name;
-
-  return NULL;
-}
-
-char* einterface_get2Dtracername(void* model, int i)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  if(i >= 0 && i < wincon->ntrS)
-    return wincon->trinfo_2d[i].name;
-
-  return NULL;
-}
-
-
-int einterface_tracername_exists(void* model, char*name)
-{
-	/* use the generic function in ginterface */
-	return i_tracername_exists(model, name);
-}
-
-
-int einterface_tracername_exists_epi(void* model, char*name)
-{
-	/* use the generic function in ginterface */
-	return i_tracername_exists_2d(model, name);
-}
-
-void einterface_get_ij(void* model, int col, int *ij)
-{
-  geometry_t *window = (geometry_t *)model;
-  /* Convert column number to 2D sparse coord in host */
-  int c  = window->wincon->s2[col+1];
-  int cs = window->m2d[c];
-
-  ij[0] = window->s2i[cs];
-  ij[1] = window->s2j[cs];
-
-}
-
-
-int einterface_getnepis(void* model)
-{
-    return 0;
-}
-
-
-char* einterface_getepiname(void* model, int i)
-{
-  return einterface_gettracername(model,i);
-  /*  return NULL; */
-}
-
-
-int einterface_getepidiagnflag(void* model, char* name)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int index = tracer_find_index(name, wincon->ntrS, wincon->trinfo_2d);
-  return wincon->trinfo_2d[index].diagn;
-}
-
-
-tracer_info_t* einterface_getepiinfo(void* model, int* n)
-{
-    return NULL;
-}
-
-
-double einterface_getmodeltime(void* model)
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  return windat->t;
-}
-
-
-int  einterface_getnumberwclayers(void* model)
-{
-  return ((geometry_t*) model)->nz;
-}
-
-
-int  einterface_getnumbersedlayers(void* model)
-{
-  return ((geometry_t*) model)->sednz;
-}
-
-/*
- * Beware this has to be called after setup is complete
- * Use the max_columns function if you need to pre-allocate stuff
- */
-int  einterface_getnumbercolumns(void* model)
-{
-  geometry_t *window = (geometry_t *)model;
-  process_cell_mask(window, window->cbgc, window->ncbgc);
-  return window->wincon->vcs2;
-}
-
-int  einterface_get_max_numbercolumns(void* model)
-{
-  geometry_t *window = (geometry_t *)model;
-  return window->b2_t;
-}
-
-int einterface_getwctopk(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  int c  = window->wincon->s2[b+1];
-  int c2 = window->m2d[c];
-  int cc = window->c2cc[c2];
-  return window->s2k[window->nsur_t[cc]];
-}
-
-int einterface_getwcbotk(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  int c  = window->wincon->s2[b+1];
-  int c2 = window->m2d[c];
-  int cc = window->c2cc[c2];
-  return window->s2k[window->bot_t[cc]];
-}
-
-/* Returns cell centred depth */
-double einterface_getcellz(void *model, int b, int k)
-{
-  geometry_t *window = (geometry_t *)model;
-  int c  = window->wincon->s2[b+1];
-  int c2 = window->m2d[c];
-  int cc = window->c2cc[c2];
-  int cs = window->nsur_t[cc];
-  int cb = window->bot_t[cc];
-  int kk = window->s2k[cb];
-  
-  /* Search for the correct level */
-  for (c = cb; c != cs; c = window->zp1[c])
-    if (k == kk++)
-      break;
-  
-  return(window->cellz[c]);
-}
-
-
-int einterface_isboundarycolumn(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  int c = window->wincon->s2[b+1];
-  
-  /* Exclude process points if required */
-  if (window->wincon->c2[window->m2d[c]]) return 1;
-
-  /* Do ecology on boundary cells */
-  // FR (11/09) : By definition now that we've changed over to vcs2,
-  //              we wont ever have boundary or dry columns
-  // FR (22/03) : Changed to vcs2 to include boundaries and we do want
-  //              to run ecology at the boundary cells
-  return 0;
-  /* Don't do ecology on boundary cells */
-  /*return b + 1 > window->v2_t ? 1 : 0;*/
-}
-
-
-int einterface_getsedtopk(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  if (window != NULL)
-    return window->sednz - 1;
-  else {
-    // This happens for ecology_pre_build
-    return 0;
-  }
-}
-
-
-int einterface_getsedbotk(void *model, int b)
-{
-  return 0;
-}
-
-
-double *einterface_getwccellthicknesses(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  int cs2  = window->wincon->s2[b+1];
-  int c2 = window->m2d[cs2];
-  int cc = window->c2cc[c2];
-  int cs = window->nsur_t[cc];
-  int cb = window->bot_t[cc];
-  double *dz = calloc(window->nz, sizeof(double));
-  int c, k = window->s2k[cb];
-  assert(window->nz > 0);
-
-  for (c = cb; c != cs; c = window->zp1[c]) {
-    dz[k] = wincon->dz[c];
-    k++;
-  }
-  dz[k] = wincon->dz[c];
-  return dz;
-}
-
-
-double *einterface_getsedcellthicknesses(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  int nz = window->sednz;
-  double *dz = calloc(nz, sizeof(double));
-  int c = window->wincon->s2[b + 1];
-  int c2 = window->m2d[c];
-  int k;
-  assert(nz > 0);
-
-  for (k = 0; k < nz; ++k) {
-    dz[k] = window->gridz_sed[k + 1][c2] - window->gridz_sed[k][c2];
-  }
-  return dz;
-}
-
-double einterface_botstress(void *model, int b)
-
-/* Added for use by benthic plants */
-
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  int c  = window->wincon->s2[b + 1];
-  int c2 = window->m2d[c];
-
-  if (windat->tau_bm != NULL) 
-    return windat->tau_bm[c2];
-  else
-    return 0.0;
-}
-
-double einterface_get_windspeed(void *model, int b)
-
-/* Added to calculate gas exchange */
-
-{
-   geometry_t *window = (geometry_t *)model;
-   int c  = window->wincon->s2[b+1];
-   int c2 = window->m2d[c];
-   return window->windat->windspeed[c2];
-}
-
-double einterface_getlighttop(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  int c  = window->wincon->s2[b + 1];
-  int c2 = window->m2d[c];
-
-  if (windat->light != NULL) 
-    return windat->light[c2];
-  else
-    return 0.0;
-}
-
-double *einterface_getporosity(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  window_t *windat = window->windat;
-  double por_def = 0.4;
-  double *por = wincon->sd1;
-  int nz = window->sednz;
-  int ntr = windat->nsed;
-  int c = wincon->s2[b+1];
-  int c2=window->m2d[c];
-  int n, k;
-  for(k = 0; k < nz; k++)
-    por[k] = por_def;
-
-#if defined(HAVE_SEDIMENT_MODULE)
-  if (wincon->do_sed) {
-    for(n = 0; n < ntr; n++) {
-      // FR : This is to make sure we are backwards compatible
-      if( (strcmp(wincon->trinfo_sed[n].name,"por_sed") == 0) ||
-	  (strcmp(wincon->trinfo_sed[n].name,"porosity") == 0)) {
-        for(k = 0; k < nz; k++)
-          por[k] = windat->tr_sed[n][k][c2];
-	break; // end for loop
-      }
-    }
-  }
-#endif
-
-  return por;
-}
-
-
-double einterface_geterosionrate(void *model, int b);
-
-double einterface_getustrcw(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  int c = window->wincon->s2[b + 1];
-  int c2 = window->m2d[c];
-  return windat->ustrcw[c2];
-}
-
-
-double**  einterface_getwctracers(void* model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  int nz = window->nz;
-  int ntr = e_ntr;
-  double **wctr = (double **)calloc(ntr * nz, sizeof(double*));
-  int cs2 = window->wincon->s2[b+1];
-  int c2 = window->m2d[cs2];
-  int cc = window->c2cc[c2];
-  int cs = window->nsur_t[cc];
-  int cb = window->bot_t[cc];
-  int c, k = window->s2k[cb], n;
-
-  /*
-   * Loop from the bottom cell up
-   */
-  for (c = cb; c != cs; c = window->zp1[c]) {
-    for (n = 0; n < ntr; ++n) {
-      wctr[k * ntr + n] = &windat->tr_wc[tr_map[n]][c];
-    }
-    k++;
-  }
-  // The surface cell
-  for (n = 0; n < ntr; ++n) {
-    wctr[k * ntr + n] = &windat->tr_wc[tr_map[n]][c];
-  }
-
-  return wctr;
-}
-
-
-double** einterface_getsedtracers(void* model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  int nz = window->sednz;
-  int ntr = e_ntr;
-  double **sedtr = (double **)calloc(ntr * nz, sizeof(double*));
-  int c = window->wincon->s2[b + 1];
-  int c2=window->m2d[c];
-  int k, n;
-
-  for (k = 0; k < nz; ++k)
-    for (n = 0; n < ntr; ++n) {
-      sedtr[k * ntr + n] = &windat->tr_sed[sed_map[n]][k][c2];
-    }
-  return sedtr;
-}
-
-
-double **einterface_getepivars(void *model, int b)
-{
-  geometry_t *window = (geometry_t *)model;
-  window_t *windat = window->windat;
-  int nepi = e_nepi;
-  double **epivar = (double **)calloc(nepi, sizeof(double*));
-  int c = window->wincon->s2[b + 1];
-  int c2 = window->m2d[c];
-  int n;
-
-  for (n = 0; n < nepi; ++n) {
-    epivar[n] = &windat->tr_wcS[epi_map[n]][c2];
-  }
-  return epivar;
-}
-
 
 quitfntype einterface_getquitfn(void)
 {
   return (quitfntype) hd_quit_and_dump;
-}
-
-
-/*UR added 2/2006 */
-/**
- * retrieve the cell area for this column
- *
- * @parma hmodel - the hydrodynamic host model
- * @param b - the column index
- * @return the cell area in m2
- */
-double einterface_cellarea(void* hmodel, int b)
-{
-    geometry_t* window = (geometry_t*) hmodel;
-    int c  = window->wincon->s2[b+1];
-    int c2 = window->m2d[c];
-    double v = window->cellarea[c2];
-    return v;
 }
 
 
@@ -825,61 +656,6 @@ void einterface_ecologyinit(void *model, void *_e)
 }
 
 
-int einterface_getverbosity(void *model)
-{
-  extern int debug;
-
-  return debug;
-}
-
-
-char *einterface_gettimeunits(void *model)
-{
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  return wincon->timeunit;
-}
-
-int einterface_transport_mode(void)
-{
-  return(master->runmode & TRANS);
-}
-
-/*
- * Calculates the Zenith using the library function
- */
-double einterface_calc_zenith(void *model, double t, int b)
-{
-  double lat;
-  double elev;
-  geometry_t *window = (geometry_t *)model;
-  int c  = window->wincon->s2[b+1];
-  int c2 = window->m2d[c];
-  double ang = 7.29e-5;  /* Earth's angular velocity (s-1) */
-  char *tunit = window->wincon->timeunit;
-  char *ounit = master->params->output_tunit;
-
-  /* the master coriolis index was wrong in the earlier version */
-  lat = asin(window->wincon->coriolis[c2] / (2.0 * ang));
-
-  /* Call the library function to calculate the solar elevation */
-  if (window->is_geog)
-    elev = calc_solar_elevation(NULL, tunit, t, lat, NULL, &window->cellx[c2]);
-  else
-    elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
-  
-  /* zenith */
-  return ( (PI/2.0) - elev);
-}
-
-/*
- * Returns the window number
- */
-int einterface_get_win_num(void *model)
-{
-  return(((geometry_t *)model)->wn);
-}
-
 /*
  * Logs the ecology error and optionally quits if error function is
  * set to none
@@ -904,6 +680,7 @@ void einterface_log_error(ecology *e, void *model, int b)
     hd_quit(wincon->gint_error[b]);
 }
 
+
 /*
  * Sanity check (called from ecology_pre_build) to check for
  * duplicates in the tracer default list. The stringtable_add will
@@ -924,6 +701,7 @@ void einterface_check_default_tracers(void)
     stringtable_add(tbl, (char*)ECONAME2D[i][0], i);
   stringtable_destroy(tbl);
 }
+
 
 /*-------------------------------------------------------------------*/
 /* Ecology step                                                      */
@@ -1000,8 +778,6 @@ void eco_set_tracer_defaults(tracer_info_t *tracer, char *trname,
   }
 }
 
-/* END set_eco_defaults()                                            */
-/*-------------------------------------------------------------------*/
 
 /*-------------------------------------------------------------------*/
 /* Initialised ecology private data                                  */
@@ -1076,6 +852,7 @@ int get_eco_var_type(char *trname, char *eco_defs)
 
   return(tr.type);
 }
+
 
 /*-------------------------------------------------------------------*/
 /* Checks if a trcer is a valid ecology tracer                       */
@@ -1266,6 +1043,7 @@ static int eco_set_autotracer(FILE *fp,
   return(tn);
 }
 
+
 /*-------------------------------------------------------------------*/
 /* Routine to initialise the 2D tracers in the master                */
 /*-------------------------------------------------------------------*/
@@ -1392,8 +1170,9 @@ int ecology_autotracer_write(master_t *master, FILE *op, int tn)
   return(n);
 }
 
-/* END ecology_autotracer_write()                                   */
+/* END ecology_autotracer_write()                                    */
 /*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Eco flag number to string                                         */
@@ -1426,6 +1205,7 @@ static int eco_flag_num(char *flag)
 }
 /* END eco_flag_num                                                  */
 /*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Returns number for all the matching flags                         */

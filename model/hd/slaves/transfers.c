@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: transfers.c 6002 2018-10-23 02:11:40Z her127 $
  *
  */
 
@@ -1687,6 +1687,75 @@ void master_fill_ts(master_t *master,     /* Master data             */
 }
 
 /* END master_fill_ts()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Transfers columns corresponding to a stencil surrounding the a    */
+/* glider location at time t for variables to be compared to glider  */
+/* observations.                                                     */
+/*-------------------------------------------------------------------*/
+void master_fill_glider(master_t *master,     /* Master data         */
+			geometry_t **window,  /* Window geometry     */
+			window_t **windat,    /* Window data         */
+			win_priv_t **wincon,  /* Window constants    */
+			ts_point_t *ts,
+			double t
+			)
+{
+  geometry_t *geom = master->geom;
+  int wn, tn, cg, c, cs, lc;
+  int m, i, found;
+  int *st = NULL, ssize;    
+
+  /* Get the cell the glider resides in                              */
+  cg = get_glider_loc(master, ts, &ts->ts, t);
+
+  /* Get a neighbourhood around the glider cell                      */
+  ssize = ts->kernal;
+  st = stencil(geom, cg, &ssize, 0);
+
+  /* Transfer data to the master within the neighbourhood            */
+  for (m = 0; m < ssize; m++) {
+    c = st[m];                    /* Stencil coordinate              */
+    cs = geom->m2d[c];            /* Surface coordinate              */
+    for (wn = 1; wn <= master->nwindows; wn++) {
+      if (geom->fm[c].wn == wn) { /* Check if c lies in window wn    */
+	lc = geom->fm[c].sc;      /* Local coordinate                */
+
+	c = cs;
+	/* Loop down the water column                                */
+	while (c != geom->zm1[c]) {
+	  /* Loop over variables to be compared to glider obs        */
+	  for (tn = 0; tn < ts->dnvars; tn++) {
+	    if (strcmp(ts->dvars[tn], "N2") == 0) {
+	      ts->data[tn][c] = windat[wn]->dens[lc];
+	    } else {
+	      found = 0;
+	      for (i = 0; i < master->ntr; i++) {
+		if (strcmp(ts->dvars[tn], master->trinfo_3d[i].name) == 0) {
+		  ts->data[tn][c] = windat[wn]->tr_wc[i][c];
+		  found = 1;
+		}
+	      }
+	      if (found == 0) {
+		for (i = 0; i < master->ntrS; i++) {
+		  if (strcmp(ts->dvars[tn], master->trinfo_2d[i].name) == 0) {
+		    ts->data[tn][geom->m2d[c]] = windat[wn]->tr_wcS[i][window[wn]->m2d[lc]];
+		    found = 1;
+		  }
+		}
+	      }
+	    }
+	  }
+	  c = geom->zm1[c];
+	}
+      }
+    }
+  }
+}
+
+/* END master_fill_glider()                                          */
 /*-------------------------------------------------------------------*/
 
 

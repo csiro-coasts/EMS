@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sourcesink.c 5879 2018-07-17 05:46:09Z her127 $
+ *  $Id: sourcesink.c 5985 2018-10-17 04:42:47Z her127 $
  *
  */
 
@@ -37,6 +37,7 @@ int hd_pss_region_m(void *data, char *dname, pss_t *pss);
 int pss_init_region_m(master_t *master, char *dname, pss_t *pss);
 int hd_pss_region_w(void *data, char *dname, pss_t *pss);
 int pss_init_region_w(geometry_t *window, char *dname, pss_t *pss);
+void write_auto_pss(char *key, char *t_units);
 void hd_pss_read(char *name, char *t_units, pss_t **pss,
 		 int *np, void *data,
 		 int (*xyzijk) (void *, double, double, double, int *, int *,
@@ -867,13 +868,16 @@ void hd_pss_read(char *name,       /* File name */
   int i, j;
   int n;
   int t, id_counter;
+  int autof = 0;
   char buf[MAXLINELEN];
+  char loc[MAXLINELEN];
   char key[MAXLINELEN];
+  char *files[MAXSTRLEN * MAXNUMARGS];
 
   /* Open the file */
   if ((fp = fopen(name, "r")) == NULL)
     hd_quit("pss_read: Can't open %s\n", name);
-  if(!prm_read_char(fp, "npointss", buf)) {
+  if(!prm_read_char(fp, "npointss", buf)  && !prm_read_char(fp, "pss", buf)) {
     if(prm_read_char(fp, "pointssfile", buf)) {
       fclose(fp);
       if ((fpp = fopen(buf, "r")) == NULL)
@@ -888,7 +892,13 @@ void hd_pss_read(char *name,       /* File name */
     fpp = fp;
 
   /* Get the number of point inputs */
-  prm_read_int(fpp, "npointss", &npss);
+  /* Auto pss specification                                          */
+  if (prm_read_char(fpp, "pss", loc)) {
+    n = parseline(loc, files, MAXNUMARGS);
+    npss = n / 4;
+    autof = 1;
+  } else 
+    prm_read_int(fpp, "npointss", &npss);
 
   /* Allocate memory for list of point inputs */
   if (npss > 0 && ((p = (pss_t *)malloc(npss * sizeof(pss_t))) == NULL))
@@ -905,12 +915,20 @@ void hd_pss_read(char *name,       /* File name */
     p[j].model_data = model_data;
 
     /* Name */
-    sprintf(key, "pss%d.name", i);
-    prm_read_char(fpp, key, p[j].name);
+    if (autof)
+      sprintf(p[j].name, "pss%d", j);
+    else {
+      sprintf(key, "pss%d.name", i);
+      prm_read_char(fpp, key, p[j].name);
+    }
 
     /* Location */
-    sprintf(key, "pss%d.location", i);
-    prm_read_char(fpp, key, buf);
+    if (autof) {
+      sprintf(buf, "%s %s %s %s", files[i*4], files[i*4+1], files[i*4+2], files[i*4+3]);
+    } else {
+      sprintf(key, "pss%d.location", i);
+      prm_read_char(fpp, key, buf);
+    }
     if (!parse_ss_location(&p[j], buf))
       continue;
 
@@ -930,8 +948,13 @@ void hd_pss_read(char *name,       /* File name */
     }
 
     /* Data */
-    sprintf(key, "pss%d.data", i);
-    prm_read_char(fpp, key, buf);
+    if (autof) {
+      sprintf(buf, "source%d.ts", j);
+      write_auto_pss(buf, t_units);
+    } else {
+      sprintf(key, "pss%d.data", i);
+      prm_read_char(fpp, key, buf);
+    }
     p[j].ntsfiles = ts_multifile_read(buf, p[j].ts);
 
     /* Check data time units */
@@ -1491,4 +1514,35 @@ int pss_init_region_w(geometry_t *window, char *dname, pss_t *pss)
 }
 
 /* END pss_init_regions_w()                                          */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Writes a time series file for auto pss. This is for a flux of 1   */
+/* kgs-1 to be input into tracer 'passive'.                          */
+/*-------------------------------------------------------------------*/
+void write_auto_pss(char *key, char *t_units)
+{
+  FILE *fp;
+
+  fp = fopen(key, "w");
+
+  fprintf(fp, "## COLUMNS 2\n");
+  fprintf(fp, "##\n");
+  fprintf(fp, "## COLUMN1.name  Time\n");
+  fprintf(fp, "## COLUMN1.long_name  Time\n");
+  fprintf(fp, "## COLUMN1.units  %s\n", t_units);
+  fprintf(fp, "## COLUMN1.missing_value -999\n");
+  fprintf(fp, "##\n");
+  fprintf(fp, "## COLUMN2.name  passive\n");
+  fprintf(fp, "## COLUMN2.long_name  Passive tracer flux\n");
+  fprintf(fp, "## COLUMN2.units  kgs-1\n");
+  fprintf(fp, "## COLUMN2.missing_value  0.000000\n");
+  fprintf(fp, "##\n");
+  fprintf(fp, "0.0 1.0\n");
+  fprintf(fp, "1.0 1.0\n");
+  fclose(fp);
+}
+
+/* END write_auto_pss()                                              */
 /*-------------------------------------------------------------------*/

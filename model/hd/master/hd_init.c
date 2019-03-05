@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: hd_init.c 6148 2019-03-05 01:58:55Z her127 $
  *
  */
 
@@ -648,6 +648,10 @@ void compute_constants(parameters_t *params,  /* Input parameter data
       strcpy(master->totname[tn], params->totname[tn]);
     }
   }
+  master->nprofn = -1;
+  if (strlen(params->nprof))
+    master->nprofn = tracer_find_index(params->nprof, master->ntr, master->trinfo_3d);
+
   master->trtend = -1;
   if (strlen(params->trtend)) {
     tn = tracer_find_index(params->trtend, master->ntr, master->trinfo_3d);
@@ -689,12 +693,22 @@ void compute_constants(parameters_t *params,  /* Input parameter data
       master->means_next = master->t + next_year(master->t, master->timeunit);
     } else if (contains_token(params->means_dt, "SEASONAL")) {
       master->means_dt = SEASONAL;
+      master->meancs = d_alloc_1d(13);
+      memset(master->meancs, 0, 13 * sizeof(double));
       master->means_next = master->t + next_season(master->t, 
 						   master->timeunit, &c);
     } else if (contains_token(params->means_dt, "MONTHLY")) {
       master->means_dt = MONTHLY;
+      master->meancs = d_alloc_1d(13);
+      memset(master->meancs, 0, 13 * sizeof(double));
       master->means_next = master->t + next_month(master->t, 
 						  master->timeunit, &c);
+    } else if (contains_token(params->means_dt, "DAILY")) {
+      master->means_dt = DAILY;
+      master->meancs = d_alloc_1d(366);
+      memset(master->meancs, 0, 366 * sizeof(double));
+      master->means_next = master->t + next_day(master->t, 
+						master->timeunit, &c);
     } else
       master->means_dt = 0.0;
     if (strlen(params->means_os)) {
@@ -730,7 +744,10 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   if (master->means & VOLFLUX) master->ntm_3d += 2;
   if (master->means & MTRA3D) {
     master->ntm_3d += 1;
-    master->means_tra = tracer_find_index(params->means_tra, master->ntr, master->trinfo_3d);
+    if ((master->means_tra = tracer_find_index(params->means_tra, master->ntr, master->trinfo_3d)) < 0) {
+      hd_warn("compute_constants: Can't find 3D tracer %s for MEAN tracer.\n", params->means_tra);
+      master->means &= ~MTRA3D;
+    }
   }
   if (master->ntm_3d) {
     master->tm_3d = i_alloc_1d(master->ntm_3d);
@@ -751,7 +768,10 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   if (master->means & WIND) master->ntm_2d += 2;
   if (master->means & MTRA2D) {
     master->ntm_2d += 1;
-    master->means_tra = tracer_find_index(params->means_tra, master->ntrS, master->trinfo_2d);
+    if ((master->means_tra = tracer_find_index(params->means_tra, master->ntrS, master->trinfo_2d)) < 0) {
+      hd_warn("compute_constants: Can't find 2D tracer %s for MEAN tracer.\n", params->means_tra);
+      master->means &= ~MTRA2D;
+    }
   }
   if (master->ntm_2d) {
     master->tm_2d = i_alloc_1d(master->ntm_2d);
@@ -1777,6 +1797,14 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
 
   /* Set the 3D tracer pointers */
   init_tracer_3d(params, master);
+  /* Set the mean tracer to 3D auto tracers if required              */
+  if (params->means & MTRA3D) {
+    for (tn = 0; tn < master->ntr; tn++) {
+      if (contains_token(params->means_tra, master->trinfo_3d[tn].name) != NULL) {
+	strcpy(params->means_tra, master->trinfo_3d[tn].name);
+      }
+    }
+  }
 
   /* 2D Tracer constants and variables */
   if (master->ntrS) {
@@ -1789,6 +1817,14 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
       strcpy(master->trinfo_2d[tn].name, params->trinfo_2d[tn].name);
     }
     init_tracer_2d(params, master);
+    /* Set the mean tracer to 2D auto tracers if required            */
+    if (params->means & MTRA2D) {
+      for (tn = 0; tn < master->ntrS; tn++) {
+	if (contains_token(params->means_tra, master->trinfo_2d[tn].name) != NULL) {
+	  strcpy(params->means_tra, master->trinfo_2d[tn].name);
+	}
+      }
+    }
   }
 
   /* Sediment tracer constants and variables */
@@ -1964,9 +2000,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   }
   if (!(params->means & NONE)) {
     master->meanc = d_alloc_1d(geom->sgsizS);
-    master->meancs = d_alloc_1d(12);
     memset(master->meanc, 0, geom->sgsizS * sizeof(double));
-    memset(master->meancs, 0, 12 * sizeof(double));
     if (params->means & TIDAL) {
       master->odeta = d_alloc_1d(geom->sgsizS);
       memset(master->odeta, 0, geom->sgsizS * sizeof(double));

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 5901 2018-08-28 02:10:22Z riz008 $
+ *  $Id: windows.c 6110 2019-02-15 05:43:04Z her127 $
  *
  */
 
@@ -63,6 +63,7 @@ void local_map_build_d(int c, int cc, int wn, int *e1map, int *e2map, int *nmap,
 void get_local_obc_a(int *vec, int nvec, int nvec2D, geometry_t **window, int nwindows); 		     
 void set_reef_frac(master_t *master, geometry_t **window, window_t **windat, 
 		     win_priv_t **wincon);
+void window_cells_check(geometry_t *geom, int nwindows, int **ws2, int *wsizeS);
 
 int zmode = 1;                /* zmode=0 : only zoom centers in zone */
                               /* zmode=1 : centers & faces in zone */
@@ -271,6 +272,7 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 	else
 	  window_cells_linear_e1(geom, nwindows, ws2, wsz2D);
       }
+      window_cells_check(geom, nwindows, ws2, wsz2D);
 
       /* Get the global to local maps                                */
       get_gl_maps(geom, nwindows, ws2, wsz2D);
@@ -1424,6 +1426,71 @@ void window_cells_zoom(geometry_t *geom,     /* Global geometery     */
 }
 
 /* END window_cells_zoom()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+void window_cells_check(geometry_t *geom, /* Global geometery        */
+			int nwindows, /* Number of windows           */
+			int **ws2,    /* 2D wet cells in window wn   */
+			int *wsizeS   /* Number of 2D wet cells      */
+			)
+{
+  int wn, n, m, c, ci, co, cc;
+  int *wmap, *cmap, *mask;
+  int **ws, *wsz;
+
+  wmap = i_alloc_1d(geom->enonS + 1);
+  cmap = i_alloc_1d(geom->enonS + 1);
+  ws = i_alloc_2d(geom->sgsizS, nwindows + 1);
+  wsz = i_alloc_1d(nwindows + 1);
+
+  for (n = 1; n <= nwindows; n++) {
+    wsz[n] = wsizeS[n];
+    for (cc = 1; cc <= wsizeS[n]; cc++) {
+      c = ws2[n][cc];
+      wmap[c] = n;
+      cmap[c] = cc;
+      ws[n][cc] = ws2[n][cc];
+    }
+    wsizeS[n] = 0.0;
+  }
+
+  /* Set cells interior and exterior to OBCs to be in the same       */
+  /* window.                                                         */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = open->obc_t[cc];
+      ci = open->oi1_t[cc];
+      wn = wmap[c];
+      if (wmap[c] != wmap[ci]) wmap[ci] = wn;
+    }
+  }
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = open->obc_t[cc];
+      co = open->omap[c];
+      wn = wmap[c];
+      if (wmap[c] != wmap[co]) wmap[co] = wn;
+    }
+  }
+
+  /* Count the cells in each window and re-assign the coordinate     */
+  for (cc = 1; cc <= geom->a2_t; cc++) {
+    c = geom->wsa[cc];
+    n = wmap[c];
+    wsizeS[n]++;
+    ws2[n][wsizeS[n]] = c;
+  }
+
+  i_free_1d(wmap);
+  i_free_1d(cmap);
+}
+
+/* END window_cells_check()                                          */
 /*-------------------------------------------------------------------*/
 
 
@@ -3431,8 +3498,9 @@ void OBC_build(open_bdrys_t **open, /* Global open boundary structure */
       nn = geom->fm[c].wn;
       if (!(geom->zoomc[geom->m2d[c]] & ZE2B)) continue;
       window[nn]->open[geom->owc[n][nn]]->no3_e2++;
-      if (geom->zp1[c] == c)
+      if (geom->zp1[c] == c) {
         window[nn]->open[geom->owc[n][nn]]->no2_e2++;
+      }
     }
     for (cc = open[n]->no3_e2 + 1; cc <= open[n]->to3_e2; cc++) {
       c = open[n]->obc_e2[cc];
@@ -5041,6 +5109,12 @@ window_t **win_data_build(master_t *master, /* Model data structure */
         windat[n]->fltr = windat[n]->tr_wc[tn];
       } else if (strcmp("age", master->trname[tn]) == 0) {
         windat[n]->agetr = windat[n]->tr_wc[tn];
+      } else if (strcmp("glider", master->trname[tn]) == 0) {
+        windat[n]->glider = windat[n]->tr_wc[tn];
+      } else if (strcmp("nprof", master->trname[tn]) == 0) {
+        windat[n]->nprof = windat[n]->tr_wc[tn];
+      } else if (strcmp("unit", master->trname[tn]) == 0) {
+        windat[n]->unit = windat[n]->tr_wc[tn];
       } else if (strcmp("decorr_e1", master->trname[tn]) == 0) {
         windat[n]->decv1 = windat[n]->tr_wc[tn];
       } else if (strcmp("decorr_e2", master->trname[tn]) == 0) {
@@ -5100,6 +5174,7 @@ window_t **win_data_build(master_t *master, /* Model data structure */
         windat[n]->wind2[cc] = master->wind2[c];
         windat[n]->windspeed[cc] = master->windspeed[c];
         windat[n]->winddir[cc] = master->winddir[c];
+	if (master->meanc) windat[n]->meanc[cc] = master->meanc[c];
 
         if (master->ntrS) {
 	  for (tn = 0; tn < windat[n]->ntrS; tn++) {
@@ -6147,6 +6222,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->cfl = master->cfl;
     wincon[n]->cfl_dt = master->cfl_dt;
     wincon[n]->lnm = master->lnm;
+    wincon[n]->nprof = master->nprofn;
     wincon[n]->vorticity = master->vorticity;
     wincon[n]->numbers = master->numbers;
     wincon[n]->compatible = master->compatible;

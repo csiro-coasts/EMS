@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 5901 2018-08-28 02:10:22Z riz008 $
+ *  $Id: hd_params.h 6012 2018-10-31 22:43:43Z riz008 $
  *
  */
 
@@ -433,6 +433,8 @@
 #define BOTSTRESS    0x1000000
 #define UNIT         0x2000000
 #define EKPUMP       0x4000000
+#define GLIDER       0x8000000
+#define PASS         0x10000000
 
 /* Wind input */
 #define SPEED         2
@@ -645,6 +647,7 @@
 #define DF_V2D            0x0002
 #define DF_MPK            0x0004
 #define DF_BARO           0x0008
+#define DF_WRITESED       0x0010
 
 /* DA flags */
 #define NO_DA             1
@@ -764,6 +767,7 @@
 #define VINIT_GEO  2
 
 /* Time series comparison metrics */
+#define TS_NONE    0x0000
 #define TS_DIFF    0x0001
 #define TS_MEAN    0x0002
 #define TS_RMSE    0x0004
@@ -774,6 +778,7 @@
 #define TS_F       0x0080
 #define TS_CLOS    0x0100
 #define TS_PRED    0x0200
+#define TS_GLIDER  0x0400
 
 /* Degree heating diagnostic */
 #define DHW_NOAA   1

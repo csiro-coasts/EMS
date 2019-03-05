@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 5870 2018-07-06 06:25:35Z riz008 $
+ *  $Id: load_tracer.c 6096 2019-02-08 04:43:29Z her127 $
  *
  */
 
@@ -1825,7 +1825,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
   master->u1vm = master->u2vm = master->temp_tc = master->salt_tc = master->unit = NULL;
   master->wave_stke1 = master->wave_stke2 = NULL;
   if (params->swr_type & SWR_3D) master->swr_attn = NULL;
-  master->dhw = master->dhd = master->dhwc = NULL;
+  master->dhw = master->dhd = master->dhwc = master->glider = master->nprof = NULL;
 
   /*-----------------------------------------------------------------*/
   /* Assign the water column tracer pointers to any tracers defined */
@@ -1984,6 +1984,10 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->dhd = master->tr_wc[tn];
     else if (strcmp("dhwc", master->trinfo_3d[tn].name) == 0)
       master->dhwc = master->tr_wc[tn];
+    else if (strcmp("glider", master->trinfo_3d[tn].name) == 0)
+      master->glider = master->tr_wc[tn];
+    else if (strcmp("nprof", master->trinfo_3d[tn].name) == 0)
+      master->nprof = master->tr_wc[tn];
     else if (params->swr_type & SWR_3D && strcmp("swr_attenuation", master->trinfo_3d[tn].name) == 0)
       master->swr_attn = master->tr_wc[tn];
   }
@@ -3581,6 +3585,65 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].insed = 0;
       master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
       master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (params->numbers & PASS) {
+    if (tracer_find_index("passive", master->ntr, master->trinfo_3d) == -1) {
+      strcpy(master->trinfo_3d[tn].name, "passive");
+      strcpy(master->trinfo_3d[tn].long_name, "Passive tracer");
+      strcpy(master->trinfo_3d[tn].units, "kgm-3");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 1;
+      master->trinfo_3d[tn].diffuse = 1;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
+      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (params->numbers & GLIDER) {
+    if (tracer_find_index("glider", master->ntr, master->trinfo_3d) == -1) {
+      master->glider = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, "glider");
+      strcpy(master->trinfo_3d[tn].long_name, "Glider density");
+      strcpy(master->trinfo_3d[tn].units, "kgm-3");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 0;
+      master->trinfo_3d[tn].diffuse = 0;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = 0;
+      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (strlen(params->nprof)) {
+    if (tracer_find_index("nprof", master->ntr, master->trinfo_3d) == -1) {
+      master->nprof = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, "nprof");
+      sprintf(master->trinfo_3d[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
+      strcpy(master->trinfo_3d[tn].units, "");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 0;
+      master->trinfo_3d[tn].diffuse = 0;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = 0;
+      master->trinfo_3d[tn].valid_range_wc[1] = 100;
       master->trinfo_3d[tn].m = -1;
       master->trinfo_3d[tn].n = tn;
       tn++;
@@ -5394,6 +5457,54 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].m = tn;
     tn++;
   }
+  if (params->numbers & PASS) {
+    strcpy(trinfo[tn].name, "passive");
+    strcpy(trinfo[tn].long_name, "Passive tracer");
+    strcpy(trinfo[tn].units, "kgm-3");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 1;
+    trinfo[tn].diffuse = 1;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = -1e10;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    trinfo[tn].m = tn;
+    tn++;
+  }
+  if (params->numbers & GLIDER) {
+    strcpy(trinfo[tn].name, "glider");
+    strcpy(trinfo[tn].long_name, "Glider density");
+    strcpy(trinfo[tn].units, "kgm-3");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = 0;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    trinfo[tn].m = tn;
+    tn++;
+  }
+  if (strlen(params->nprof)) {
+    strcpy(trinfo[tn].name, "nprof");
+    sprintf(trinfo[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
+    strcpy(trinfo[tn].units, "");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = 0;
+    trinfo[tn].valid_range_wc[1] = 100;
+    trinfo[tn].m = tn;
+    tn++;
+  }
   if (params->dhwf) {
     strcpy(trinfo[tn].name, "dhw");
     strcpy(trinfo[tn].long_name, "Degree heating week");
@@ -5491,7 +5602,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].n = tn;
     tn++;
   }
-  if (params->trasc & LAGRANGE) {
+  if (params->trasc & LAGRANGE && params->runmode & TRANS) {
     strcpy(trinfo[tn].name, "Vi");
     strcpy(trinfo[tn].long_name, "Volume error");
     strcpy(trinfo[tn].units, "m^3");
