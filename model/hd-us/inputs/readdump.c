@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: readdump.c 6133 2019-03-04 00:59:12Z her127 $
  *
  */
 
@@ -27,6 +27,8 @@ int dumpdata_read_2d_us(dump_data_t *dumpdata, int id, char *name,
 			double *p, int dump, int ni, int oset);
 int dumpdata_read_3d_us(dump_data_t *dumpdata, int id, char *name, double *p, 
 			double **d, int dump, int ni, int ni3, int *map, int **rmap, int oset);
+int dumpdata_read_3d_sed(dump_data_t *dumpdata, int id, char *name,
+			 double **p, int dump, int nz, int ni, int oset);
 int dumpdata_read_2d0_us(dump_data_t *dumpdata, int id, char *name,
 			 double *p, int ni, int oset);
 int netCDF_grid_us(parameters_t *params, int cdfid, int *c2cc);
@@ -621,40 +623,26 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
   /* Sediment tracers                                                */
   if (dumpdata->sednz > 0) {
     int flg = 0;
-    /*
-    if (dumpdata_read_3d(dumpdata, cdfid, "z_grid_sed", dumpdata->gridz_sed,
-			 ti, dumpdata->sednz + 1, dumpdata->nce2,
-			 dumpdata->nce1)) flg = 1;
-    for (k = 0; k < params->sednz + 1; k++) {
-      c2s_2d(geom, geom->gridz_sed[k], dumpdata->gridz_sed[k], geom->nce1,
-             geom->nce2);
-    }
-    if (dumpdata_read_3d(dumpdata, cdfid, "z_centre_sed", dumpdata->cellz_sed,
-			 ti, dumpdata->sednz, dumpdata->nce2, dumpdata->nce1))
-      flg = 1;
-    for (k = 0; k < params->sednz; k++) {
-      c2s_2d(geom, geom->cellz_sed[k], dumpdata->cellz_sed[k], geom->nce1,
-             geom->nce2);
-    }
-    */
+
+    if (dumpdata_read_3d_sed(dumpdata, cdfid, "Mesh2_layerfaces_sed", geom->gridz_sed,
+			     ti, dumpdata->sednz + 1, nMesh2_face, oset)) flg = 1;
+
+    if (dumpdata_read_3d_sed(dumpdata, cdfid, "Mesh2_layers_sed", geom->cellz_sed,
+			     ti, dumpdata->sednz, nMesh2_face, oset)) flg = 1;
+
     /* If sediment structure does not exist in the input file, then  */
     /* use the structure defined in the parameter file.              */
     if (flg) read_sed_layers(geom, params, master, dumpdata);
-    /*
+
     for (n = 0; n < dumpdata->nsed; n++) {
       char name[MAXSTRLEN];
       strcpy(name, dumpdata->trinfo_sed[n].name);
       strcat(name, "_sed");
-      if (dumpdata_read_3d(dumpdata, cdfid, name, dumpdata->tr_sed[n], ti,
-			   dumpdata->sednz, dumpdata->nce2, dumpdata->nce1)) {
+      if (dumpdata_read_3d_sed(dumpdata, cdfid, name, master->tr_sed[n], ti,
+			       dumpdata->sednz, nMesh2_face, oset)) {
 	load_wc_tracer_name(master, params->prmfd, dumpdata->trinfo_sed[n].name, SEDIM);
-      } else {
-	for (k = 0; k < params->sednz; k++)
-	  c2s_2d(geom, master->tr_sed[n][k], dumpdata->tr_sed[n][k],
-		 geom->nce1, geom->nce2);
       }
     }
-    */
   }
 
   master->t = params->t;  /* Required to initialize dumpdata->t     */
@@ -666,9 +654,10 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
   /* function xytoij.                                               */
   if (params->us_type & US_IJ) {
     int sfid;
-    char name[MAXSTRLEN];
+    char name[MAXSTRLEN], iname[MAXSTRLEN];
 
-    sprintf(name, "s_%s", params->idumpname);
+    prm_read_char(params->prmfd, "INPUT_FILE", iname);
+    sprintf(name, "s_%s", iname);
     if ((ncerr = nc_open(name, NC_NOWRITE, &sfid)) != NC_NOERR) {
       printf("Can't find structured input file %s\n", name);
       hd_quit((char *)nc_strerror(ncerr));
@@ -684,6 +673,9 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
 
   i_free_2d(k2c);
   i_free_2d(k2e);
+
+  read_mean_atts(master, cdfid);
+
   return (1);
 }
 
@@ -818,10 +810,8 @@ int dump_re_read(master_t *master, /* Master data structure */
       char name[MAXSTRLEN];
       strcpy(name, dumpdata->trinfo_sed[n].name);
       strcat(name, "_sed");
-      /*
-      dumpdata_read_3d_us(dumpdata, cdfid, name, d1, ti,
-			  dumpdata->sednz, dumpdata->nce2, dumpdata->nce1);
-      */
+      dumpdata_read_3d_sed(dumpdata, cdfid, name, master->tr_sed[n], ti,
+			   dumpdata->sednz, nMesh2_face, oset);
     }
     d_free_3d(d1);
   }
@@ -1079,6 +1069,53 @@ int dumpdata_read_3d_us(dump_data_t *dumpdata, int id, char *name,
 
 
 /*-------------------------------------------------------------------*/
+/* Read an unstructured double array from id for sediments           */
+/*-------------------------------------------------------------------*/
+int dumpdata_read_3d_sed(dump_data_t *dumpdata, int id, char *name,
+			 double **p, int dump, int nz, int ni, int oset)
+{
+  size_t start[4];
+  size_t count[4];
+  int vid;
+  int k, cc, c;
+  double **in = d_alloc_2d(ni, nz);
+  int istart = (oset) ? 0 : 1;
+
+  start[0] = dump;
+  start[0] = 0L;
+  start[1] = 0L;
+  start[2] = 0L;
+  start[3] = 0L;
+  count[0] = 1L;
+  count[1] = nz;
+  count[2] = ni;
+  count[3] = 0;
+  
+  vid = ncw_var_id(id, name);
+  if (vid < 0) {
+    for (k = 0; k < nz; k++)
+      for (cc = 0; cc < ni; cc++)
+	p[k][cc] = 0.0;
+    return(1);
+  }
+
+  nc_get_vara_double(id, vid, start, count, in[0]);
+
+  for (k = 0; k < nz; k++) {
+    for (cc = istart; cc < ni; cc++) {
+      c = cc + params->oset;
+      p[k][c] = in[k][cc];
+    }
+  }
+  d_free_2d(in);
+  return(0);
+}
+
+/* END dumpdata_read_3d_sed()                                        */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Read an unstructured integer array from id                        */
 /*-------------------------------------------------------------------*/
 int dumpdata_read_2d0_us(dump_data_t *dumpdata, int id, char *name,
@@ -1192,7 +1229,6 @@ void set_bathy_us(parameters_t *params)
   }
   memcpy(bathy, params->bathy, ns2 * sizeof(double));
 
-
   /*-----------------------------------------------------------------*/
   /* Adjust for limits                                               */
   for (cc = 1; cc <= mesh->ns2; cc++) {
@@ -1282,7 +1318,6 @@ void set_bathy_us(parameters_t *params)
   if (maskf) {
     int *bmi, *bmj;
     int mode = read_blocks(params->prmfd, "BATHY_MASK", &n, &bmi, &bmj);
-
     if (mode & (B_LISTC|B_BLOCKC)) {
       for (k = 1; k <= n; k++) {
 	cc = bmi[k];
@@ -1543,6 +1578,7 @@ void set_bathy_us(parameters_t *params)
     }
   }
   memcpy(params->bathy, bathy, ns2 * sizeof(double));
+
   d_free_1d(bathy);
 }
 
@@ -2788,11 +2824,11 @@ void read_sed_layers(geometry_t *geom,      /* Global geometry       */
 		     )
 {
   FILE *fp = params->prmfd;
-  int i, j, k, m;
-
+  int cc, i, j, k, m;
+  double d1;
   /*-----------------------------------------------------------------*/
   /* Read the sediment layer structure from file                     */
-  /* Already read in in read_params()
+  /*
   if (params->gridz_sed) d_free_1d(params->gridz_sed);
   if (prm_read_darray(fp, "LAYERFACES_SED", &params->gridz_sed,
                       &params->sednz)) {
@@ -2820,25 +2856,27 @@ void read_sed_layers(geometry_t *geom,      /* Global geometry       */
 
   /*-----------------------------------------------------------------*/
   /* Transfer to the dumpdata variables                              */
-  for (j = 0; j < geom->nce2; j++)
-    for (i = 0; i < geom->nce1; i++) {
+  /*
+  if (params->us_type & US_IJ) {
+    for (j = 0; j < geom->nce2; j++)
+      for (i = 0; i < geom->nce1; i++) {
         for (k = 0; k < params->sednz; k++) {
 	  dumpdata->gridz_sed[k][j][i] = params->gridz_sed[k];
 	  dumpdata->cellz_sed[k][j][i] = 0.5 * (params->gridz_sed[k] +
 						params->gridz_sed[k + 1]);
 	}
 	dumpdata->gridz_sed[params->sednz][j][i] = params->gridz_sed[params->sednz];
-    }
-
+      }
+  }
+  */
   /*-----------------------------------------------------------------*/
   /* Transfer to the window geometry variables                       */
-  for (k = 0; k < params->sednz + 1; k++) {
-    c2s_2d(geom, geom->gridz_sed[k], dumpdata->gridz_sed[k], geom->nce1,
-	   geom->nce2);
-  }
-  for (k = 0; k < params->sednz; k++) {
-    c2s_2d(geom, geom->cellz_sed[k], dumpdata->cellz_sed[k], geom->nce1,
-	   geom->nce2);
+  for (cc = 0; cc < geom->szcS; cc++) {
+    for (k = 0; k < params->sednz + 1; k++)
+      geom->gridz_sed[k][cc] = params->gridz_sed[k];
+    for (k = 0; k < params->sednz; k++)
+      geom->cellz_sed[k][cc] = 0.5 * (params->gridz_sed[k] +
+				      params->gridz_sed[k + 1]);
   }
 }
 

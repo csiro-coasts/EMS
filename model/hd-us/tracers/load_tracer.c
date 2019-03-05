@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: load_tracer.c 6141 2019-03-04 01:04:56Z her127 $
  *
  */
 
@@ -473,6 +473,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
   master->wave_Fx = master->wave_Fy = NULL;
   master->wave_ste1 = master->wave_ste2 = NULL;
   master->tau_w1 = master->tau_w2 = master->tau_diss1 = master->tau_diss2 = NULL;
+  master->sep = master->bep = master->tfront = NULL;
 
   /* SWR */
   master->swr_attn1 = master->swr_tran = NULL;
@@ -1398,6 +1399,40 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     master->trinfo_2d[tn].n = tn;
     tn++;
   }
+  if (params->numbers & EKPUMP) {
+    master->sep = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "sep");
+    strcpy(master->trinfo_2d[tn].long_name, "Surface Ekman pumping");
+    strcpy(master->trinfo_2d[tn].units, "ms-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->bep = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "bep");
+    strcpy(master->trinfo_2d[tn].long_name, "Bottom Ekman pumping");
+    strcpy(master->trinfo_2d[tn].units, "ms-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (params->numbers & TIDEFR) {
+    master->tfront = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tide_front");
+    strcpy(master->trinfo_2d[tn].long_name, "Tide front");
+    strcpy(master->trinfo_2d[tn].units, "");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
   if (params->numbers & WET_CELLS) {
     master->wetcell = master->tr_wcS[tn];
     strcpy(master->trinfo_2d[tn].name, "wet_cells");
@@ -1693,6 +1728,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
   master->temp_tc = master->salt_tc = master->unit = NULL;
   master->wave_stke1 = master->wave_stke2 = NULL;
   if (params->swr_type & SWR_3D) master->swr_attn = NULL;
+  master->dhw = master->dhd = master->dhwc = master->glider = master->nprof = master->u1vhc = NULL;
 
   /*-----------------------------------------------------------------*/
   /* Assign the water column tracer pointers to any tracers defined */
@@ -1837,6 +1873,18 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->wave_stke1 = master->tr_wc[tn];
     else if (strcmp("wave_stke2", master->trinfo_3d[tn].name) == 0)
       master->wave_stke2 = master->tr_wc[tn];
+    else if (strcmp("dhw", master->trinfo_3d[tn].name) == 0)
+      master->dhw = master->tr_wc[tn];
+    else if (strcmp("dhd", master->trinfo_3d[tn].name) == 0)
+      master->dhd = master->tr_wc[tn];
+    else if (strcmp("dhwc", master->trinfo_3d[tn].name) == 0)
+      master->dhwc = master->tr_wc[tn];
+    else if (strcmp("glider", master->trinfo_3d[tn].name) == 0)
+      master->glider = master->tr_wc[tn];
+    else if (strcmp("u1vhc", master->trinfo_3d[tn].name) == 0)
+      master->u1vhc = master->tr_wc[tn];
+    else if (strcmp("nprof", master->trinfo_3d[tn].name) == 0)
+      master->nprof = master->tr_wc[tn];
     else if (params->swr_type & SWR_3D && strcmp("swr_attenuation", master->trinfo_3d[tn].name) == 0)
       master->swr_attn = master->tr_wc[tn];
   }
@@ -3406,11 +3454,91 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       tn++;
     }
   }
-  if (strlen(params->dhw)) {
+  if (params->numbers & PASS) {
+    if (tracer_find_index("passive", master->ntr, master->trinfo_3d) == -1) {
+      strcpy(master->trinfo_3d[tn].name, "passive");
+      strcpy(master->trinfo_3d[tn].long_name, "Passive tracer");
+      strcpy(master->trinfo_3d[tn].units, "kgm-3");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 1;
+      master->trinfo_3d[tn].diffuse = 1;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
+      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (params->numbers & GLIDER) {
+    if (tracer_find_index("glider", master->ntr, master->trinfo_3d) == -1) {
+      master->glider = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, "glider");
+      strcpy(master->trinfo_3d[tn].long_name, "Glider density");
+      strcpy(master->trinfo_3d[tn].units, "kgm-3");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 0;
+      master->trinfo_3d[tn].diffuse = 0;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = 0;
+      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (params->numbers1 & U1VHC) {
+    if (tracer_find_index("u1vhc", master->ntr, master->trinfo_3d) == -1) {
+      master->u1vhc = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, "u1vhc");
+      strcpy(master->trinfo_3d[tn].long_name, "Horizontal viscosity cell centered");
+      strcpy(master->trinfo_3d[tn].units, "m2s-1");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 0;
+      master->trinfo_3d[tn].diffuse = 0;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = 0;
+      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (strlen(params->nprof)) {
+    if (tracer_find_index("nprof", master->ntr, master->trinfo_3d) == -1) {
+      master->nprof = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, "nprof");
+      sprintf(master->trinfo_3d[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
+      strcpy(master->trinfo_3d[tn].units, "");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 0;
+      master->trinfo_3d[tn].diffuse = 0;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = 0;
+      master->trinfo_3d[tn].valid_range_wc[1] = 100;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
+  if (params->dhwf) {
     if (tracer_find_index("dhw", master->ntr, master->trinfo_3d) == -1) {
+      master->dhw = master->tr_wc[tn];
       strcpy(master->trinfo_3d[tn].name, "dhw");
       strcpy(master->trinfo_3d[tn].long_name, "Degree heating week");
-      strcpy(master->trinfo_3d[tn].units, "week");
+      strcpy(master->trinfo_3d[tn].units, "DegC-week");
       master->trinfo_3d[tn].fill_value_wc = 0.0;
       master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
       master->trinfo_3d[tn].diagn = 0;
@@ -3420,15 +3548,33 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].insed = 0;
       master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
       master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      strcpy(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc:dhwt)");
+      if (params->dhwf & DHW_RT)
+	strcpy(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc:dhwt)");
       master->trinfo_3d[tn].m = -1;
       master->trinfo_3d[tn].n = tn;
       tn++;
     }
-    if (tracer_find_index("dhwt", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "dhwt");
-      strcpy(master->trinfo_3d[tn].long_name, "Degree heating exposure time");
-      strcpy(master->trinfo_3d[tn].units, "week");
+    if (params->dhwf & DHW_RT)
+      strcpy(buf, "dhwt");
+    if (params->dhwf & DHW_NOAA)
+      strcpy(buf, "dhd");
+    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
+
+      master->dhd = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, buf);
+
+      if (params->dhwf & DHW_RT)
+	strcpy(buf, "Degree heating exposure time");
+      if (params->dhwf & DHW_NOAA)
+	strcpy(buf, "Degree heating day");
+      strcpy(master->trinfo_3d[tn].long_name, buf);
+
+      if (params->dhwf & DHW_RT)
+	strcpy(buf, "week");
+      if (params->dhwf & DHW_NOAA)
+	strcpy(buf, "DegCday");
+      strcpy(master->trinfo_3d[tn].units, buf);
+
       master->trinfo_3d[tn].fill_value_wc = 0.0;
       master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
       master->trinfo_3d[tn].diagn = 0;
@@ -3443,6 +3589,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       tn++;
     }
     if (tracer_find_index("dhwc", master->ntr, master->trinfo_3d) == -1) {
+      master->dhwc = master->tr_wc[tn];
       strcpy(master->trinfo_3d[tn].name, "dhwc");
       strcpy(master->trinfo_3d[tn].long_name, "Degree heating threshold");
       strcpy(master->trinfo_3d[tn].units, "Degrees C");
@@ -5184,10 +5331,74 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].m = tn;
     tn++;
   }
-  if (strlen(params->dhw)) {
+  if (params->numbers & PASS) {
+    strcpy(trinfo[tn].name, "passive");
+    strcpy(trinfo[tn].long_name, "Passive tracer");
+    strcpy(trinfo[tn].units, "kgm-3");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 1;
+    trinfo[tn].diffuse = 1;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = -1e10;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    trinfo[tn].m = tn;
+    tn++;
+  }
+  if (params->numbers & GLIDER) {
+    strcpy(trinfo[tn].name, "glider");
+    strcpy(trinfo[tn].long_name, "Glider density");
+    strcpy(trinfo[tn].units, "kgm-3");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = 0;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    trinfo[tn].m = tn;
+    tn++;
+  }
+  if (params->numbers1 & U1VHC) {
+    strcpy(trinfo[tn].name, "u1vhc");
+    strcpy(trinfo[tn].long_name, "Horizontal viscosity cell centered");
+    strcpy(trinfo[tn].units, "m2s-1");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = 0;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    trinfo[tn].m = tn;
+    tn++;
+  }
+  if (strlen(params->nprof)) {
+    strcpy(trinfo[tn].name, "nprof");
+    sprintf(trinfo[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
+    strcpy(trinfo[tn].units, "");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = 0;
+    trinfo[tn].valid_range_wc[1] = 100;
+    trinfo[tn].m = tn;
+    tn++;
+  }
+  if (params->dhwf) {
     strcpy(trinfo[tn].name, "dhw");
     strcpy(trinfo[tn].long_name, "Degree heating week");
-    strcpy(trinfo[tn].units, "week");
+    strcpy(trinfo[tn].units, "DegC-week");
     trinfo[tn].fill_value_wc = 0.0;
     trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
     trinfo[tn].diagn = 0;
@@ -5197,14 +5408,27 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].insed = 0;
     trinfo[tn].valid_range_wc[0] = -1e10;
     trinfo[tn].valid_range_wc[1] = 1e10;
-    strcpy(trinfo[tn].tracerstat, "exposure(temp:dhdc:dhdt)");
+    if (params->dhwf & DHW_RT)
+      strcpy(trinfo[tn].tracerstat, "exposure(temp:dhwc:dhwt)");
     trinfo[tn].m = -1;
     trinfo[tn].n = tn;
     tn++;
 
-    strcpy(trinfo[tn].name, "dhwt");
-    strcpy(trinfo[tn].long_name, "Degree heating exposure time");
-    strcpy(trinfo[tn].units, "week");
+    if (params->dhwf & DHW_RT)
+      strcpy(buf, "dhwt");
+    if (params->dhwf & DHW_NOAA)
+      strcpy(buf, "dhd");
+    strcpy(trinfo[tn].name, buf);
+    if (params->dhwf & DHW_RT)
+      strcpy(buf, "Degree heating exposure time");
+    if (params->dhwf & DHW_NOAA)
+      strcpy(buf, "Degree heating day");
+    strcpy(trinfo[tn].long_name, buf);
+    if (params->dhwf & DHW_RT)
+      strcpy(buf, "week");
+    if (params->dhwf & DHW_NOAA)
+      strcpy(buf, "DegCday");
+    strcpy(trinfo[tn].units, buf);
     trinfo[tn].fill_value_wc = 0.0;
     trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
     trinfo[tn].diagn = 0;
@@ -7463,9 +7687,8 @@ void value_init_2d(master_t *master,     /* Master data              */
   /* Check if it is a list of values in the parameter file           */
   if (sscanf(fname, "%lf", &val) == 1) {
     val = atof(fname);
-
     /* Check if it is a list of values in the parameter file         */
-    if (params->us_type && US_IJ && (int)val == nce1 * nce2) {
+    if (params->us_type & US_IJ && (int)val == nce1 * nce2) {
       if (prm_read_darray(fp, tag, &d1, &nvals) > 0) {
 	if (nvals == nce1 * nce2) {
 	  d2 = d_alloc_2d(nce1, nce2);

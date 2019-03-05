@@ -2,7 +2,7 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/hd-us/ecology/ecology_tracer_defaults.h
+ *  File: model/hd/ecology/ecology_tracer_defaults.h
  *  
  *  Description:
  *  Tracer defaults header file
@@ -13,12 +13,11 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_tracer_defaults.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: ecology_tracer_defaults.h 6064 2019-02-08 04:07:50Z her127 $
  *
  */
 
 #if !defined(_ECOLOGY_TRACER_DEFAULTS_H)
-
 #include "ems.h"
 /*
  * Ecology tracers are defined using the following fields 
@@ -52,6 +51,17 @@ typedef struct {
   double f_conc;
   double svel;
 } eco_def_partic_t;
+
+/*
+ * Ecology tracerstat tracer definition
+ */
+typedef struct {
+  char   *name;
+  char   *long_name;
+  char   *trname;
+  char   *trstat;
+  char   *trdt;
+} eco_def_trstat_t;
 
 /* Ecology tracer attribute private dtat structure */
 typedef struct {

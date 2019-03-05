@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: heatflux.c 5902 2018-08-28 02:10:34Z riz008 $
+ *  $Id: heatflux.c 5996 2018-10-17 04:57:10Z her127 $
  *
  */
 
@@ -903,8 +903,8 @@ void comp_heat_inv(geometry_t *window,
     sal = windat->sal[c];
     at = (windat->airtemp) ? windat->airtemp[c] : 20.0;
     pres = windat->patm[c] / 100.0; /* Convert pressure to HPa */
-    wspd = windat->windspeed[c];
-    wdir = windat->winddir[c];
+    wspd = edge_mean(window, windat->windspeed, c);
+    wdir = edge_mean(window, windat->winddir, c);
 
     /* Get the wet bulb temperature (not currently used). */
     if (windat->rh) {
@@ -1019,8 +1019,8 @@ void surf_heat_flux(geometry_t *window,
     at = windat->airtemp[c];
     tcld = min(max((windat->cloud) ? windat->cloud[c] : 0.0, 0.0), 1.0);
     pres = windat->patm[c] / 100.0; /* Convert pressure to HPa */
-    wspd = windat->windspeed[c];
-    wdir = windat->winddir[c];
+    wspd = edge_mean(window, windat->windspeed, c);
+    wdir = edge_mean(window, windat->winddir, c);
 
     /* Get the vapour pressures */
     dtw = get_vapour_press(windat, wincon, c, at, pres, sal, &es, &esat, &rh);
@@ -2598,8 +2598,8 @@ double get_cloud(master_t *master,  /* Master data structure */
   double sal = master->sal[c];
   double at = (master->airtemp) ? master->airtemp[c] : 20.0;
   double pres = master->patm[c] / 100.0; /* Convert pressure to HPa */
-  double wspd = master->windspeed[c];
-  double wdir = master->winddir[c];
+  double wspd = edge_mean(geom, master->windspeed, c);
+  double wdir = edge_mean(geom, master->winddir, c);
   double ang = 7.29e-5;         /* Earth's angular velocity (s-1) */
   double lat = asin(master->coriolis[c] / (2.0 * ang));
   double dtw;

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: readparam_t.c 6072 2019-02-08 04:10:40Z her127 $
  *
  */
 
@@ -184,11 +184,15 @@ FILE *fp;
       params->osl = L_CUBIC;
     else if (strcmp(buf, "QUADRATIC") == 0)
       params->osl = L_LSQUAD;
+    else if (strcmp(buf, "LINEARLSQ") == 0)
+      params->osl = L_LSLIN;
     else if (strcmp(buf, "BILINEAR") == 0)
       params->osl = L_BILIN;
     else if (strcmp(buf, "BAYCENTRIC") == 0)
       params->osl = L_BAYLIN;
   }
+  if (params->trasc & FFSL && params->osl & (L_BILIN|L_BAYLIN))
+    hd_quit("Cannot use FFSL advection with bilinear or baycentric interpolation, due to streamline tracking from edges.\n");
 
   /* Sub-stepping method */
   sprintf(keyword, "STABILITY");
@@ -311,6 +315,11 @@ FILE *fp;
   prm_read_double(fp, keyword, &params->lnm);
   if (params->lnm != 0.0)
     params->ntrS++;
+  sprintf(keyword, "PROFILE");
+  if (prm_read_char(fp, keyword, buf)) {
+    strcpy(params->nprof, buf);
+    params->ntr += 1;
+  }
   read_debug(params, fp);
   /* Totals diagnostics */
   read_totals(params, fp);

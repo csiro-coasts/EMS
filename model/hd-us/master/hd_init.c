@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 5915 2018-09-05 03:30:40Z riz008 $
+ *  $Id: hd_init.c 6135 2019-03-04 01:00:34Z her127 $
  *
  */
 
@@ -216,6 +216,9 @@ hd_data_t *hd_init(FILE * prmfd)
   /* Initialise the tracer resetting.  */
   tracer_reset_init(master);
   tracer_reset2d_init(master);
+
+  /* Initialise the DHW diagnostic.  */
+  tracer_dhw_init(master);
 
   /* Initialise the geometric arrays in the windows with master */
   /* geometry data.  */
@@ -528,6 +531,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   int n = 0;                    /* Mean grid spacing counter         */
   int tn;                       /* Tracer counter                    */
   int ns;                       /* Number of smoothing passes        */
+  double *bfc;                  /* Bottom friction coefficient       */
   double *w1;                   /* Dummy                             */
 
   /* Set the master parameters from the parameter data structure     */
@@ -664,6 +668,10 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       strcpy(master->totname[tn], params->totname[tn]);
     }
   }
+  master->nprofn = -1;
+  if (strlen(params->nprof))
+    master->nprofn = tracer_find_index(params->nprof, master->ntr, master->trinfo_3d);
+
   master->trtend = -1;
   if (strlen(params->trtend)) {
     tn = tracer_find_index(params->trtend, master->ntr, master->trinfo_3d);
@@ -717,14 +725,14 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       master->means_next = master->t + next_year(master->t, master->timeunit);
     } else if (contains_token(params->means_dt, "SEASONAL")) {
       master->means_dt = SEASONAL;
-      master->meancs = d_alloc_1d(12);
-      memset(master->meancs, 0, 12 * sizeof(double));
+      master->meancs = d_alloc_1d(13);
+      memset(master->meancs, 0, 13 * sizeof(double));
       master->means_next = master->t + next_season(master->t, 
 						   master->timeunit, &c);
     } else if (contains_token(params->means_dt, "MONTHLY")) {
       master->means_dt = MONTHLY;
-      master->meancs = d_alloc_1d(12);
-      memset(master->meancs, 0, 12 * sizeof(double));
+      master->meancs = d_alloc_1d(13);
+      memset(master->meancs, 0, 13 * sizeof(double));
       master->means_next = master->t + next_month(master->t, 
 						  master->timeunit, &c);
     } else if (contains_token(params->means_dt, "DAILY")) {
@@ -768,7 +776,10 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   /*if (master->means & VOLFLUX) master->ntm_3d += 2;*/
   if (master->means & MTRA3D) {
     master->ntm_3d += 1;
-    master->means_tra = tracer_find_index(params->means_tra, master->ntr, master->trinfo_3d);
+    if ((master->means_tra = tracer_find_index(params->means_tra, master->ntr, master->trinfo_3d)) < 0) {
+      hd_warn("compute_constants: Can't find 3D tracer %s for MEAN tracer.\n", params->means_tra);
+      master->means &= ~MTRA3D;
+    }
   }
   if (master->ntm_3d) {
     master->tm_3d = i_alloc_1d(master->ntm_3d);
@@ -789,7 +800,10 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   if (master->means & WIND) master->ntm_2d += 2;
   if (master->means & MTRA2D) {
     master->ntm_2d += 1;
-    master->means_tra = tracer_find_index(params->means_tra, master->ntrS, master->trinfo_2d);
+    if ((master->means_tra = tracer_find_index(params->means_tra, master->ntrS, master->trinfo_2d)) < 0) {
+      hd_warn("compute_constants: Can't find 2D tracer %s for MEAN tracer.\n", params->means_tra);
+      master->means &= ~MTRA2D;
+    }
   }
   if (master->ntm_2d) {
     master->tm_2d = i_alloc_1d(master->ntm_2d);
@@ -842,7 +856,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->ambpress = params->ambpress;
   master->hmin = params->hmin;
   master->uf = params->uf;
-  master->quad_bfc = params->quad_bfc;
+  /*master->quad_bfc = params->quad_bfc;*/
   master->etamax = params->etamax;
   master->velmax = params->velmax;
   master->velmax2d = params->velmax2d;
@@ -1184,20 +1198,40 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 
   /*-----------------------------------------------------------------*/
   /* Set the drag coefficient                                        */
-  for (cc = 1; cc < geom->n2_t; cc++) {
+  bfc = d_alloc_1d(geom->szcS);
+  d1 = 0.003;
+  if (sscanf(params->quad_bfc, "%lf", &dh) == 1)
+    d1 = atof(params->quad_bfc);
+  value_init_2d(master, bfc, params->prmfd, params->quad_bfc,
+		  "Cd", "QBFC", d1, "linear"); 
+
+  master->quad_bfc = 0.0;
+  for (cc = 1; cc < geom->b2_t; cc++) {
     c = geom->w2_t[cc];
-    master->Cd[c] = master->quad_bfc;
+    master->Cd[c] = bfc[c];
+    master->quad_bfc += bfc[c];
   }
+  master->quad_bfc /= (double)geom->b2_t;
+
   for (cc = 1; cc <= geom->b2_t; cc++) {
     c = geom->w2_t[cc];
     c2 = geom->m2d[c];
     cb = geom->bot_t[cc];
     dh = max(0.5 * master->dz[cb] * master->Ds[c2], master->hmin);
     d1 = log((dh + master->z0[c2]) / master->z0[c2]) / VON_KAR;
-    if (master->quad_bfc < 0.0)
-      master->Cd[c2] = -master->quad_bfc;
-    else
-      master->Cd[c2] = max(master->quad_bfc, 1.0 / (d1 * d1));
+    if (master->quad_bfc < 0.0) {
+      if (master->mode2d) {
+	/* Assume quad_bfc is the Manning coefficient, n[s.m^(-1/3)] */
+	/* , where Cd = g.n^2.D^(-1/3), e.g. see:                    */
+	/* http://www.marinespecies.org/introduced/wiki/Bed_roughness_and_friction_factors_in_estuaries */
+	/* This makes the bottom drag depth dependent.               */
+	dh = master->eta[c2] - geom->botz[c2];
+	d1 = -1.0 / 3.0;
+	master->Cd[c2] = master->g * bfc[c] * bfc[c] * pow(dh, d1);
+      } else
+	master->Cd[c2] = fabs(bfc[c]);
+    } else
+      master->Cd[c2] = max(bfc[c2], 1.0 / (d1 * d1));
   }
 
   ns = get_smoothing(params->smooth_v, "CD");
@@ -1250,14 +1284,15 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     c = geom->w3_t[cc];
     c2 = geom->m2d[c];
     if (params->u1kh > 0.0) {
-      if (params->diff_scale == LINEAR) {
-	master->u1kh[c] = fabs(params->u1kh * geom->cellarea[c2] /
-			       master->amean);
+      if (params->diff_scale & NONE)
+	master->u1kh[c] = fabs(params->u1kh);
+      if (params->diff_scale & LINEAR) {
+	master->u1kh[c] = fabs(params->u1kh * sqrt(geom->cellarea[c2]) /
+			       sqrt(master->amean));
       }
-      if (params->diff_scale == NONLIN)
+      if (params->diff_scale & (NONLIN|CUBIC))
 	master->u1kh[c] = fabs(params->u1kh * 
-			       geom->cellarea[c2] * geom->cellarea[c2] /
-			       (master->amean * master->amean));
+			       geom->cellarea[c2] / master->amean);
     }
   }
 
@@ -1328,14 +1363,93 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     for (ee = 1; ee <= geom->n3_e1; ee++) {
       e = geom->w3_e1[ee];
       es = geom->m2de[e];
+      c1 = geom->e2c[e][0];
+      c2 = geom->e2c[e][1];
       d1 = geom->h1au1[es];
-      if (params->diff_scale == NONE)
+      d1 = 0.5 * (sqrt(geom->cellarea[geom->m2d[c1]]) + 
+		  sqrt(geom->cellarea[geom->m2d[c2]]));
+      dh = sqrt(master->amean);
+      if (params->diff_scale & NONE)
 	master->u1vh[e] = fabs(vh);
       /* Note : horizontal diffusion coeffients are scaled to the grid */
-      if (params->diff_scale == LINEAR)
+      if (params->diff_scale & LINEAR)
 	master->u1vh[e] = fabs(vh * d1 / master->hmean1);
-      if (params->diff_scale == NONLIN)
+      if (params->diff_scale & NONLIN)
 	master->u1vh[e] = fabs(vh * d1 * d1 / (master->hmean1 * master->hmean1));
+      if (params->diff_scale & CUBIC)
+	master->u1vh[e] = fabs(vh * d1 * d1 * d1 / (dh * dh * dh));
+
+      /* Scale the Laplacian viscosity to a biharmonic value, see    */
+      /* Griffies and Hallberg (2000) Mon. Wea. Rev. 128. Section 2a */
+      /* where we use h1au1^2 for del^2.                             */
+      if (params->diff_scale & SCALEBI)
+	master->u1vh[e] *= (0.125 * d1 * d1);
+    }
+
+    /* Smoothing                                                     */
+    if (params->diff_scale & CUBIC) {
+      int cs, j, eoe;
+      double *u1vh = d_alloc_1d(geom->sze);
+      double a1, a2;
+
+      for (cc = 1; cc <= geom->b3_t; cc++) {
+	c = geom->w3_t[cc];
+	cs = geom->m2d[c];
+	d1 = sqrt(geom->cellarea[cs]);
+	dh = sqrt(master->amean);
+	u1vh[c] = fabs(vh * d1 * d1 / (dh * dh));
+	if (params->diff_scale & SCALEBI)
+	  u1vh[c] *= (0.125 * d1 * d1);
+      }
+
+      for (m = 0; m < 6; m++)
+	smooth3(master, u1vh, geom->w3_t, geom->b3_t, geom->szc, 0);
+      /*
+      for (cc = 1; cc <= geom->b3_t; cc++) {
+	c = geom->w3_t[cc];
+	cs = geom->m2d[c];
+	master->u1kh[c] = u1vh[c] / (0.125 * geom->cellarea[cs]);
+	if(c==1525) printf("b %f\n",u1vh[c]);
+	master->u1kh[c] = u1vh[c];
+      }
+      */
+      for (ee = 1; ee <= geom->n3_e1; ee++) {
+	e = geom->w3_e1[ee];
+	c1 = geom->wgst[geom->e2c[e][0]] ? geom->e2c[e][1] : geom->e2c[e][0];
+	c2 = geom->wgst[geom->e2c[e][1]] ? geom->e2c[e][0] : geom->e2c[e][1];
+	master->u1vh[e] = 0.5 * (u1vh[c1] + u1vh[c2]);
+      }
+
+      for (m = 0; m < 6; m++) {
+	memcpy(u1vh, master->u1vh, geom->sze * sizeof(double));
+	memset(master->u1vh, 0, geom->sze * sizeof(double));
+	for (ee = 1; ee <= geom->b3_e1; ee++) {
+	  e = geom->w3_e1[ee];
+	  es = geom->m2de[e];
+	  d1 = 0.0;
+	  for (j = 1; j <= geom->nee[es]; j++) {
+	    eoe = geom->eSe[j][e];
+	    if (eoe) {
+	      master->u1vh[e] += u1vh[eoe];
+	      d1 += 1.0;
+	    }
+	  }
+	  master->u1vh[e] /= d1;
+	}
+      }
+      d_free_1d(u1vh);
+
+      memset(master->dum1, 0, geom->szc * sizeof(double));
+      for (cc = 1; cc <= geom->b3_t; cc++) {
+	c = geom->w3_t[cc];
+	cs = geom->m2d[c];
+	for (ee = 1; ee <= geom->npe[cs]; ee++) {
+	  e = geom->c2e[ee][c];
+	  master->dum1[c] += master->u1vh[e] / ((double)geom->npe[cs]);
+
+	}
+      }
+
     }
   }
 
@@ -1349,7 +1463,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 
   /*-----------------------------------------------------------------*/
   /* Optimised horizontal mixing                                     */
-  if(params->diff_scale == AUTO) {
+  if(params->diff_scale & AUTO) {
     double hf = 0.05;             /* Factor for horizontal diffusion */
     double step = 1;              /* Integral step of diffusion > 1  */
     double hmax = 1e10;
@@ -1634,8 +1748,17 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   master->trfilter = params->trfilter;
 
   /* Set the 3D tracer pointers                                      */
-  if (master->ntr)
+  if (master->ntr) {
     init_tracer_3d(params, master);
+    /* Set the mean tracer to 3D auto tracers if required            */
+    if (params->means & MTRA3D) {
+      for (tn = 0; tn < master->ntr; tn++) {
+	if (contains_token(params->means_tra, master->trinfo_3d[tn].name) != NULL) {
+	  strcpy(params->means_tra, master->trinfo_3d[tn].name);
+	}
+      }
+    }
+  }
 
   /* 2D Tracer constants and variables                               */
   if (master->ntrS) {
@@ -1648,6 +1771,14 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
       strcpy(master->trinfo_2d[tn].name, params->trinfo_2d[tn].name);
     }
     init_tracer_2d(params, master);
+    /* Set the mean tracer to 2D auto tracers if required            */
+    if (params->means & MTRA2D) {
+      for (tn = 0; tn < master->ntrS; tn++) {
+	if (contains_token(params->means_tra, master->trinfo_2d[tn].name) != NULL) {
+	  strcpy(params->means_tra, master->trinfo_2d[tn].name);
+	}
+      }
+    }
   }
 
   /* Sediment tracer constants and variables                         */

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: crash.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: crash.c 6017 2018-11-07 02:29:15Z her127 $
  *
  */
 
@@ -142,7 +142,7 @@ double crash_event(sched_event_t *event, double t)
       crash_restart = 0;
       hd_quit("Can't recover from instability: %d attempts at %5.1f days\n", crash->ncr, master->days);
     }
-    reset_hor_diff(master, 0.0, 0.0, master->diff_scale);
+    reset_hor_diff(master, 0.0, master->diff_scale);
     crash->ncr++;
     hd_warn("CRASHED: Recovery #%d; restarting at %5.1f days, timestep = %5.2f\n", crash->ncr, newt, master->grid_dt);
 
@@ -162,7 +162,7 @@ double crash_event(sched_event_t *event, double t)
 
     /* Reset the timestep and friction                                */
     master->grid_dt = crash->odt;
-    reset_hor_diff(master, master->u1vh0, master->u2vh0, master->diff_scale);
+    reset_hor_diff(master, master->u1vh0, master->diff_scale);
     master->crf = crash->flag = (NONE|RS_RESET);
     crash->ncr = 0;
     crash->tnext = crash->stop;

@@ -2,7 +2,7 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/hd-us/ecology/ecology_tracer_defaults.c
+ *  File: model/hd/ecology/ecology_tracer_defaults.c
  *  
  *  Description:
  *  Parameter defaults
@@ -13,11 +13,10 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_tracer_defaults.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: ecology_tracer_defaults.c 6063 2019-02-08 04:07:17Z her127 $
  *
  */
 
-#include "ems.h"
 #include "hd.h"
 
 /* This is defined in model/hd/ecology.c */
@@ -66,6 +65,10 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
   double SGROOT_N;
   double SGH_N;
   double SGHROOT_N;
+  double SGP_N;
+  double SGPROOT_N;
+  double SGD_N;
+  double SGDROOT_N;
   double MA_N;
   double CH_N;
   double CS_N;
@@ -114,6 +117,13 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     SGHROOT_N  = SGH_N * get_parameter_value(e,"SGHfrac");
     MA_N = cover / get_parameter_value(e,"MAleafden");
     CH_N = cover / get_parameter_value(e,"CHpolypden");
+
+    /* Temporary adjustment for Posidonia and Deep. */
+
+    SGP_N = 10.0 * cover / get_parameter_value(e,"SGleafden");
+    SGPROOT_N  = SGP_N * get_parameter_value(e,"SGfrac");
+    SGD_N = 0.1 * cover / get_parameter_value(e,"SGHleafden");
+    SGDROOT_N  = SGD_N * get_parameter_value(e,"SGHfrac");
 
     /* make symbionts cover 0.1 of the surface area of the corals */
     
@@ -175,45 +185,47 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
   /* d - 1: for diagnostic fluxes so divided by time step.
      d - 2: for diagnostic states. */
   
+  /* for flags ECO_NORESET : 1 */
 
   /* All tracers */
   eco_def_t eco_def[] = {
     /* name         unit      fillw, fills      d  a  d  t  d  p  iw is f  obc     extended type */ 
-    {"Age",       "d",        0.0,    0.0,      0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Age",       "d",        0.0,    0.0,      0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"source",    "-",        0.0,    0.0,      2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"PhyL_N",    "mg N m-3", Mic_N,  0.0,      0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyS_N",    "mg N m-3", Mic_N,  0.0,      0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"MPB_N",     "mg N m-3", Mic_N, Mic_N_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"ZooL_N",    "mg N m-3", ZL_N,  0.0,       0, 1, 1, 5, 0, 1, 1, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"ZooS_N",    "mg N m-3", ZS_N,  0.0,       0, 1, 1, 5, 0, 1, 1, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyD_N",    "mg N m-3", Mic_N,  0.0,      0, 1, 1, 5, 0, 1, 1, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyD_C",    "mg C m-3", Mic_N*6.625, 0.0, 0, 1, 1, 5, 0, 1, 1, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"Phy_L_N2",  "mg N m-3", 0.01,  0.01,      0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"NH4",       "mg N m-3", 0.2,   200.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"NO3",       "mg N m-3", 0.1,   500.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DIP",       "mg P m-3", 0.5,   100.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PIP",       "mg P m-3", 0.1,   100.0,     0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyL_N",    "mg N m-3", Mic_N,  0.0,      0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyS_N",    "mg N m-3", Mic_N,  0.0,      0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"MPB_N",     "mg N m-3", Mic_N, Mic_N_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"ZooL_N",    "mg N m-3", ZL_N,  0.0,       0, 1, 1, 5, 0, 1, 1, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"ZooS_N",    "mg N m-3", ZS_N,  0.0,       0, 1, 1, 5, 0, 1, 1, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyD_N",    "mg N m-3", Mic_N,  0.0,      0, 1, 1, 5, 0, 1, 1, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyD_C",    "mg C m-3", Mic_N*6.625, 0.0, 0, 1, 1, 5, 0, 1, 1, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Phy_L_N2",  "mg N m-3", 0.01,  0.01,      0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"NH4",       "mg N m-3", 0.2,   200.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"NO3",       "mg N m-3", 0.1,   500.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DIP",       "mg P m-3", 0.5,   100.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PIP",       "mg P m-3", 0.1,   100.0,     0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"PIPF",      "mg P m-3", 0.0,   100.0,     0, 1, 1, 5, 0, 1, 1, 1, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
-    {"PIPI",      "mg P m-3", 0.01,   0.01,     0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DIC",       "mg C m-3", 24758.61,24758.61,0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DOR_C",     "mg C m-3", 0.01, DOR_C_sed,  0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DOR_N",     "mg N m-3", 0.01, DOR_N_sed,  0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DOR_P",     "mg P m-3", 0.01, DOR_P_sed,  0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DetR_C",    "mg C m-3", 0.01, DetR_C_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DetR_N",    "mg N m-3", 0.01, DetR_N_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DetR_P",    "mg P m-3", 0.01, DetR_P_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DetPL_N",   "mg N m-3", 0.01, DetPL_N_sed,0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"DetBL_N",   "mg N m-3", 0.0,  DetBL_N_sed,0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"Oxygen",    "mg O m-3", 6505.0,6505.0,    0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PIPI",      "mg P m-3", 0.01,   0.01,     0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DIC",       "mg C m-3", 24758.61,24758.61,0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DOR_C",     "mg C m-3", 0.01, DOR_C_sed,  0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DOR_N",     "mg N m-3", 0.01, DOR_N_sed,  0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DOR_P",     "mg P m-3", 0.01, DOR_P_sed,  0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DetR_C",    "mg C m-3", 0.01, DetR_C_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DetR_N",    "mg N m-3", 0.01, DetR_N_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DetR_P",    "mg P m-3", 0.01, DetR_P_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DetPL_N",   "mg N m-3", 0.01, DetPL_N_sed,0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"DetBL_N",   "mg N m-3", 0.0,  DetBL_N_sed,0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Oxygen",    "mg O m-3", 6505.0,6505.0,    0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"COD",       "mg O m-3",     0.0,   0.0,   0, 1, 1, 5, 1, 0, 1, 1, 0, STATIS, ECOLOGY|PROGNOSTIC},
     {"Oxy_sat",   "%",        100.0, 100.0,     2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Light",     "W m-2",    0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"PAR",     "mol photon m-2 s-1", 0.0,0.0,  2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"PAR_z","mol photon m-2 s-1", 0.0,0.0,  2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"K_heat",     "m-1",    0.0,   0.0,        2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Kd",        "m-1",      0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"Epilight",  "W m-2",    0.0,   0.0,       2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"EpiPAR",  "mol photon m-2 s-1", 0.0, 0.0, 2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
-    {"EpiPAR_sg",  "mol photon m-2 s-1", 0.0, 0.0, 2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"EpiPAR_sg",  "mol photon m-2 d-1", 0.0, 0.0, 2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"Epilightatt","m-1 ",       0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"TN",        "mg N m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"TP",        "mg P m-3", 0.0,   0.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
@@ -246,45 +258,62 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"SGH_N",     "g N m-2",  SGH_N,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"SGROOT_N",  "g N m-2",  SGROOT_N, 0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"SGHROOT_N", "g N m-2",  SGHROOT_N,0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"SGP_N",     "g N m-2",  SGP_N,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"SGD_N",     "g N m-2",  SGD_N,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"SGPROOT_N", "g N m-2", SGPROOT_N, 0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"SGDROOT_N", "g N m-2", SGDROOT_N,0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"MA_N",      "g N m-2",  MA_N,     0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
-    {"CS_N",      "mg N m-2",  CS_N,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_N",      "mg N m-2",  CS_N,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC}, 
+    {"CS_NR",      "mg N m-2",  0.0,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_PR",      "mg P m-2",  0.0,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_I",      "mmol photon m-2",  0.0,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"CS_Chl",    "mg Chl m-2",CS_Chl,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_Xh",    "mg Xan m-2",0.0,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_Xp",    "mg Xan m-2",0.0,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_Qred",   "umol RCII m-2",0.0*CS_Chl/3.0,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_Qox",    "umol RCII m-2",0.0*CS_Chl/3.0,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_Qi",    "umol RCII m-2",0.0*CS_Chl/3.0,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"CS_RO",    "umol ROS m-2",0.0*CS_Chl/3.0,  0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"CH_N",      "g N m-2",  CH_N,     0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"EpiTN",     "mg N m-2", 0.0,   0.0,       2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"EpiTP",     "mg P m-2", 0.0,   0.0,       2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"EpiTC",     "mg C m-2", 0.0,   0.0,       2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SG_N_pr",   "g N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SGH_N_pr",  "g N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGP_N_pr",   "g N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGD_N_pr",  "g N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"MA_N_pr",   "g N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SG_N_gr",   "d-1",0.0,0.0,                1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"SGH_N_gr",  "d-1",0.0,0.0,                1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGP_N_gr",  "d-1",0.0,0.0,                1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGD_N_gr",  "d-1",0.0,0.0,                1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"MA_N_gr",   "d-1",0.0,0.0,                1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"EpiOxy_pr", "mg O m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"Tricho_N",  "mg N m-3", Tricho_N,  0.0,   0, 1, 1, 5, 0, 1, 1, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Tricho_N",  "mg N m-3", Tricho_N,  0.0,   0, 1, 1, 5, 0, 1, 1, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"Tricho_N_gr","d-1",        0.0,   0.0,    1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
     {"Tricho_N_pr","mg C m-3 d-1",0.0,   0.0,   1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
     {"Zenith",    "rad",          0.0,   0.0,   2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
-    {"PhyL_I",   "mmol photon m-3", Mic_I,0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyL_NR",  "mg N m-3",     Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyL_PR",  "mg P m-3",     Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyL_Chl", "mg Chl m-3 ",  Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 0, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyL_I",   "mmol photon m-3", Mic_I,0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyL_NR",  "mg N m-3",     Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyL_PR",  "mg P m-3",     Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyL_Chl", "mg Chl m-3 ",  Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 0, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"PhyL_sv",  "m s-1 ",    -0.0001157, 0.0,  2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
-    {"PhyS_I",   "mmol photon m-3",Mic_I, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyS_NR",   "mg N m-3",    Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyS_PR",   "mg P m-3",    Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyS_Chl",  "mg Chl m-3 ", Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 0, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"MPB_NR",    "mg N m-3",Mic_NR,Mic_NR_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"MPB_PR",    "mg P m-3",Mic_PR,Mic_PR_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"MPB_I", "mmol photon m-3",Mic_I,Mic_I_sed,0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"MPB_Chl","mg Chl m-3 ",Mic_Chl,Mic_Chl_sed,0, 1, 1, 5, 0, 1, 0, 0, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyD_NR",   "mg N m-3",    Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyD_PR",   "mg P m-3",    Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyD_Chl",  "mg Chl m-3",  Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"PhyD_I",   "mmol photon m-3", Mic_I,0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"Tricho_NR", "mg N m-3",    Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"Tricho_PR", "mg P m-3",    Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"Tricho_I","mmol photon m-3", Mic_I, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
-    {"Tricho_Chl","mg Chl m-3",  Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyS_I",   "mmol photon m-3",Mic_I, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyS_NR",   "mg N m-3",    Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyS_PR",   "mg P m-3",    Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyS_Chl",  "mg Chl m-3 ", Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 0, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"MPB_NR",    "mg N m-3",Mic_NR,Mic_NR_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"MPB_PR",    "mg P m-3",Mic_PR,Mic_PR_sed, 0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"MPB_I", "mmol photon m-3",Mic_I,Mic_I_sed,0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"MPB_Chl","mg Chl m-3 ",Mic_Chl,Mic_Chl_sed,0, 1, 1, 5, 0, 1, 0, 0, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyD_NR",   "mg N m-3",    Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyD_PR",   "mg P m-3",    Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyD_Chl",  "mg Chl m-3",  Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PhyD_I",   "mmol photon m-3", Mic_I,0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Tricho_NR", "mg N m-3",    Mic_NR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Tricho_PR", "mg P m-3",    Mic_PR,  0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Tricho_I","mmol photon m-3", Mic_I, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Tricho_Chl","mg Chl m-3",  Mic_Chl, 0.0,  0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"Tricho_sv", "m s-1"      ,   0.003, 0.0,  2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"ZooL_sv",   "m s-1"      ,   0.003, 0.0,  2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"PH",           "log(mM)", 8.0,   8.2,     0, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
@@ -300,19 +329,68 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"at_440",    "m-1",        0,     0,       2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"bt_550",    "m-1",        0,     0,       2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Kd_490",    "m-1",        0,     0,       2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"ap_670",    "m-1",        0,     0,       2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Turbidity", "NTU",        0,     0,       2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Fluorescence", "mg chla m-3",        0,     0,       2, 0, 0, 5, 0, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Coral_IN_up","mg N m-2 s-1", 0.0,   0.0, 1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Coral_ON_up","mg N m-2 s-1", 0.0,   0.0, 1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Gnet",   "mg C m-2 s-1", 0.0,   0.0,      1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"mucus",   "mg N m-2 s-1", 0.0,   0.0,     1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"dens",   "kg m-3", 1000.0,  1100.0,       2, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"alk",       "mmol m-3", 2398.2,  2398.2,  0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"alk",       "mmol m-3", 2398.2,  2398.2,  0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"omega_ar",  "nil", 3.0,  3.0,             2, 0, 0, 5, 1, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"omega_ca",  "nil", 3.0,  3.0,             2, 0, 0, 5, 1, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"Age",       "d", 0.0, 0.0,                0, 1, 1, 5, 1, 0, 1, 1, 0, UPSTRM|FILEIN, ECOLOGY|PROGNOSTIC},
+    {"Age",       "d", 0.0, 0.0,                0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"source",  "nil", 0.0, 0.0,                0, 0, 0, 5, 1, 0, 1, 1, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"CS_N_pr",   "mg N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"CH_N_pr",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SG_shear_mort",   "g N m-2 d-1", 0.0,   0.0,   1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGH_shear_mort",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGP_shear_mort",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SGD_shear_mort",  "g N m-2 d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"CS_bleach",  "d-1", 0.0,   0.0,    1, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"CS_tempfunc",   "-",0.0,0.0,                2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"temp_clim",   "deg C",0.0 ,26.0,            0, 0, 0, 5, 0, 0, 0, 0, 1, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"OC3M",  "mg Chla m-3", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"OC4Me",  "mg Chla m-3", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"OC3V",  "mg Chla m-3", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"TSSM",  "g TSS m-3", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"KD490M",  "m-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_412",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_443",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_488",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_531",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_547",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_667",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_678",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_748",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_470",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_555",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_645",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_590",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_410",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_486",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_551",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_671",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_745",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_510",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_640",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_400",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_560",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_620",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_665",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_681",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_710",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_753",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_482",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_655",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"nFLH",  "mW cm-2 um-1 sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Secchi", "m", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Zenith2D", "rad", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"SWR_bot_abs", "-", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Oxygen_sedflux", "mg O2 m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},    
     {"NULL",      "NULL",     0.0,   0.0,       0, 0, 0, 0, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"xco2_in_air", "ppmv",  390.0,    390.0,      0, 0, 0, 2, 0, 0, 1, 1, 0, FILEIN, ECOLOGY|DIAGNOSTIC}, 
   };
   
 /* diagn, advect, diff, type, diss, part, in water, in sed, flag, obc, type */

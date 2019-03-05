@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: regulate.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: regulate.c 6018 2018-11-07 02:29:26Z her127 $
  *
  */
 
@@ -190,7 +190,7 @@ double regulate_event(sched_event_t *event, double t)
 	} else if (strcmp(files[0], "DT_REINIT") == 0 &&
 		   strcmp(cmnd, regulate->cmnd) != 0) {
 	  reset_dt(params, master, fp);
-	  reset_hor_diff(master, 0.0, 0.0, master->diff_scale);
+	  reset_hor_diff(master, 0.0, master->diff_scale);
 	  master->regf |= RS_RESET;
 	  hd_warn("regulate: User requested timestep = %.2f at %.2f days\n", 
 		  master->grid_dt, master->days);
@@ -199,7 +199,7 @@ double regulate_event(sched_event_t *event, double t)
 	} else if (strcmp(files[0], "HVISC_REINIT") == 0 &&
 		   strcmp(cmnd, regulate->cmnd) != 0) {
 	  read_hdiff(params, fp, 0);
-	  reset_hor_diff(master, params->u1vh, params->u2vh, params->diff_scale);
+	  reset_hor_diff(master, params->u1vh, params->diff_scale);
 	  master->regf |= RS_RESET;
 	  hd_warn("regulate: User requested horizontal mixing reconfiguration at %.2f days\n", 
 		  master->days);

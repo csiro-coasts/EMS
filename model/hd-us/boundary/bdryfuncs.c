@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryfuncs.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: bdryfuncs.c 6127 2019-03-04 00:57:12Z her127 $
  *
  */
 
@@ -132,7 +132,7 @@ void bf_hdstd_to_u1_m(geometry_t *geom, master_t *master,
                      geom->cellz[c], tsf->ntsfiles, tsf->tsfiles,
                      tsf->filenames, &u, &v);
     open->transfer_u1[ee] = cos(thetau1) * u + sin(thetau1) * v;
- }
+  }
   /* If a block of data is read, then read the rest */
   if (zone) {
     for (ee = sb; ee <= eb; ee++) {
@@ -531,10 +531,12 @@ void getuv_from_hdstd(double t, double x, double y, double z,
                                           "u2", t, x, y, z);
   double thetau1 = hd_ts_multifile_eval_xyz_by_name(nts, ts, filenames,
                                             "thetau1", t, x, y, z);
-  double sinth = sin(thetau1);
-  double costh = cos(thetau1);
-  *u = u1val * costh + u2val * costh;
-  *v = u1val * sinth + u2val * sinth;
+  double thetau2 = hd_ts_multifile_eval_xyz_by_name(nts, ts, filenames,
+                                            "thetau2", t, x, y, z);
+  double sinth = (sin(thetau1) + sin(thetau2)) / 2;
+  double costh = (cos(thetau1) + cos(thetau2)) / 2;
+  *u = u1val * costh - u2val * sinth;
+  *v = u1val * sinth + u2val * costh;
 }
 
 

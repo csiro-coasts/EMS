@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: advect.c 6075 2019-02-08 04:11:42Z her127 $
  *
  */
 
@@ -251,7 +251,9 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 	for (n = 1; n <= window->nee[es]; n++) {
 	  eoe = window->eSe[n][e];
 	  if (!eoe) continue;
-	  d3 = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);
+	  /* Ringler et, al. (2010) Eq. 49                           */
+	  /*d3 = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);*/
+	  d3 = wincon->pv_calc(windat, e, eoe, window->e2v[e][0], window->e2v[e][1]);
 	  d2 += window->wAe[n][e] * vel[eoe] * d3 * windat->dzu1[eoe];
 	}
 	d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;
@@ -282,6 +284,67 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 }
 
 /* END nonlin_coriolis_3d()                                          */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Energetically neutral formulation of nonlinear Coriolis force:    */
+/* Ringler et al, (2010) Eq.49.                                      */
+/*-------------------------------------------------------------------*/
+double pv_energy_neutral(window_t *windat,    /* Window data         */
+			 int e,               /* Edge coordinate     */
+			 int eoe,             /* Edge coordinate     */
+			 int v1,              /* Vertex coordinate   */
+			 int v2               /* Vertex coordinate   */
+			 )
+{
+  double v;
+  v = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);
+  return(v);
+}
+
+/* END pv_energy_neutral()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Potential enstrophy conserving formulation of nonlinear Coriolis  */
+/* force: Ringler et al, (2010) Eq.71.                               */
+/*-------------------------------------------------------------------*/
+double pv_enstrophy_conserve(window_t *windat, /* Window data        */
+			     int e,            /* Edge coordinate    */
+			     int eoe,          /* Edge coordinate    */
+			     int v1,           /* Vertex coordinate  */
+			     int v2            /* Vertex coordinate  */
+			     )
+{
+
+  return(windat->nrvore[e] + windat->npvore[e]);
+}
+
+/* END pv_enstrophy_conserve()                                       */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Potential enstrophy dissapating formulation of nonlinear Coriolis */
+/* force: Ringler et al, (2010) Eq.73.                               */
+/*-------------------------------------------------------------------*/
+double pv_enstrophy_dissipate(window_t *windat, /* Window data       */
+			      int e,            /* Edge coordinate   */
+			      int eoe,          /* Edge coordinate   */
+			      int v1,           /* Vertex coordinate */
+			      int v2            /* Vertex coordinate */
+			      )
+{
+  double ret;
+
+  ret = (windat->u2[e] >=0) ? (windat->nrvor[v2] + windat->npvor[v2]) :
+    (windat->nrvor[v1] + windat->npvor[v1]);
+  return(ret);
+}
+
+/* END pv_enstrophy_dissipate()                                      */
 /*-------------------------------------------------------------------*/
 
 
@@ -1132,7 +1195,8 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
 	for (n = 1; n <= window->nee[es]; n++) {
 	  eoe = window->eSe[n][e];
 	  if (!eoe) continue;
-	  d3 = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);
+	  /*d3 = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);*/
+	  d3 = wincon->pv_calc(windat, e, eoe, window->e2v[e][0], window->e2v[e][1]);
 	  d2 += window->wAe[n][e] * windat->u1av[eoe] * d3 * windat->depth_e1[eoe];
 	}
 	d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;

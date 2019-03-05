@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: tracers.c 6142 2019-03-04 01:05:12Z her127 $
  *
  */
 
@@ -98,7 +98,9 @@ void fct_limit(geometry_t *window, window_t *windat, win_priv_t *wincon, double 
 	       int ksf, int kef, int kefs, double dtu, double *osubeta, double *subeta);
 double get_deriv2(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		  double *tr, int e, int j);
-
+void add_cells_to_lsq(geometry_t *window, window_t *windat, win_priv_t *wincon, int ncells,
+		      int *cells, int co);
+void linear_limit_a(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr);
 
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
@@ -415,6 +417,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   char vt[4];                   /* Name of sub-step velocity component */
   double *u1, *w;
   double kzlim;
+  int cdb = 0;
 
   /*-----------------------------------------------------------------*/
   /* Assignment of work arrays                                       */
@@ -537,6 +540,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	  d4 = max(fabs(window->eSc[j][c2] * u1[e1] +
 			window->eSc[j1][c2] * u1[e2]), 
 		   wincon->u1kh[c]/ (2.0 * window->hacell[j][c2]));
+
 	if (fabs(d4) < minval)
 	  d4 = minval;
 	d1 = sf * fabs(2.0 * window->hacell[j][c2] / d4);
@@ -866,13 +870,17 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
           c = window->w3_t[cc];
 	  c2 = window->m2d[c];
 	  dtracer[c] = 0.0;
+	  if(c==cdb)printf("tr %f : xm1=%f c=%f xp1=%f zm1=%f zp1=%f\n",windat->days, tr[window->c2c[1][c]],tr[c], tr[window->c2c[3][c]], tr[window->zm1[c]],tr[window->zp1[c]]);
 	  for (j = 1; j <= window->npe[c2]; j++) {
 	    e = window->c2e[j][c];
 	    dtracer[c] += (window->eSc[j][c2] * Fx[e] * dtu);
-	    /*
-	    if(tr==windat->temp&&window->wn==1&&c==9318)printf("%d %d %d %d %d %f %f\n",window->s2k[c],window->wsa[c2],window->wsa[c],j,e,window->u1x[window->m2de[e]],window->u1y[window->m2de[e]]);
-	    */
+
+	    if(c==cdb)printf("dtracer %d %d %d : %f %f %f %f : %f\n",c,j,e,windat->u1[e],windat->u1flux3d[e],Fx[e]/windat->u1flux3d[e],Fx[e]*dtu, dtracer[c]);
 	  }
+	  if(c==cdb) {
+	    printf("Fz %f %f %f %f\n",windat->w[c],windat->w[c] * window->cellarea[c2], Fz[c] / (windat->w[c] * dtu), Fz[c] * window->cellarea[c2]);
+	  }
+	  if(c==cdb&&c!=window->zp1[c])printf("Fzp %f %f %f %f\n",windat->w[window->zp1[c]],windat->w[window->zp1[c]] * window->cellarea[c2], Fz[window->zp1[c]] / (windat->w[window->zp1[c]] * dtu), Fz[window->zp1[c]] * window->cellarea[c2]); 
         }
 
         /*-----------------------------------------------------------*/
@@ -987,9 +995,11 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	/* Reset boundary tracer values if required                  */
 	if (bgzf) save_OBC_tr(window, windat, wincon, Fx, tr, n, 2);
 
+	if (cdb) printf("end %f\n",tr[cdb]);
 	/* Clip the tracer for FFSL schemes                          */
-	if (wincon->trasc & FFSL)
+	if (wincon->trasc & (FFSL))
 	  clip_ffsl(window, windat, wincon, tr);
+
       }                         /* Tracer loop end                   */
       TIMING_DUMP(2, "    t-loop");
 
@@ -2089,6 +2099,7 @@ void van_leer(geometry_t *window,             /* Window geometry     */
     }
 
     van_leer_tr(Fx, tr, windat->u1, wincon->w6, e, tr[c1], trp, tr[c2], trm);
+
     /*van_leer_do(Fx, tr, windat->u1, wincon->w6, e, c1, cp, c2, cm);*/
   }
 
@@ -3039,71 +3050,6 @@ void build_advect_weights(geometry_t *window,  /* Processing window  */
 
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
-/* Builds the weights to get the second derivative for advection.    */
-/*-------------------------------------------------------------------*/
-void build_quadratic_weights(geometry_t *window, /* Processing window*/
-			     window_t *windat,   /* Window data      */
-			     win_priv_t *wincon  /* Window constants */
-			     )
-{
-  int ee, e, es, c;
-  int n, m, eoe, sb, msb;
-  int *mask = wincon->s1;
-  int nuc = 3;    /* Number of polynomial coefficients to use        */
-
-  if (wincon->Bcell == NULL && wincon->nBcell == NULL) {
-    msb = 0;
-    /* Count the cell centres associated with each edge              */
-    for (ee = 1; ee <= window->n3_e1; ee++) {
-      e = window->w3_e1[ee];
-      es = window->m2de[e];
-      sb = 0;
-      memset(mask, 0, window->szc * sizeof(int));
-      for (n = 1; n <= window->nee[es]; n++) {
-	eoe = window->eSe[n][e];
-	if (!eoe) continue;
-	for (m = 0; m <= 1; m++) {
-	  c = window->e2c[eoe][m];
-	  if (!mask[c]) {
-	    mask[c] = 1;
-	    sb++;
-	  }
-	}
-      }
-      msb = max(msb, sb);
-    }
-
-    /* Assign the cell centres                                       */
-    wincon->Bcell = i_alloc_2d(msb, window->sze);
-    wincon->nBcell = i_alloc_1d(window->sze);
-    wincon->B = d_alloc_3d(nuc, msb, window->sze);
-    memset(wincon->nBcell, 0, window->sze * sizeof(int));
-    for (ee = 1; ee <= window->n3_e1; ee++) {
-      e = window->w3_e1[ee];
-      es = window->m2de[e];
-      memset(mask, 0, window->szc * sizeof(int));
-      for (n = 1; n <= window->nee[es]; n++) {
-	eoe = window->eSe[n][e];
-	if (!eoe) continue;
-	for (m = 0; m <= 1; m++) {
-	  c = window->e2c[eoe][m];
-	  if (!mask[c]) {
-	    mask[c] = 1;
-	    wincon->Bcell[e][wincon->nBcell[e]++] = c;
-	  }
-	}
-      }
-      get_quadratic_metrics(window, windat, wincon, e);
-    }
-  }
-}
-
-/* END build_quadratic_weights()                                     */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/*-------------------------------------------------------------------*/
 /* Gets the metrics of cells surrounding cell c using least squares  */
 /* fitting, where the solution to npe equations of a polynomial of   */
 /* degree nop is obtained via singular value decomposition.          */
@@ -3123,7 +3069,7 @@ void get_advect_metrics(geometry_t *window,   /* Processing window   */
   int n, cc, c, cn, i, j, jj;
   int en, vn;
   double theta, thb, thc, a, h, npe;
-  int nop = 6;    /* Number of polynomial coefficients               */
+  /*int nop = 6;*/    /* Number of polynomial coefficients               */
   int nos = 3;    /* Coefficient number corresponding to x * x       */
   int ef = 1;     /* Include vertex values in least squares          */
   int dotest = 0; /* Perform testing on regression and weights       */
@@ -3242,6 +3188,73 @@ void get_advect_metrics(geometry_t *window,   /* Processing window   */
 #define GEODESIC(x1, y1, x2, y2) (geod_inv_geod_fwd_sodanos(DEG2RAD(x1), DEG2RAD(y1),\
                                  DEG2RAD(x2), DEG2RAD(y2),\
                                  RADIUS, ECC))
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Builds the weights to get the second derivative for advection.    */
+/*-------------------------------------------------------------------*/
+void build_quadratic_weights(geometry_t *window, /* Processing window*/
+			     window_t *windat,   /* Window data      */
+			     win_priv_t *wincon  /* Window constants */
+			     )
+{
+  int ee, e, es, c;
+  int n, m, eoe, sb, msb;
+  int *mask = wincon->s1;
+  int nuc = 3;    /* Number of polynomial coefficients to use        */
+
+  if (wincon->Bcell == NULL && wincon->nBcell == NULL) {
+    msb = 0;
+    /* Count the cell centres associated with each edge              */
+    for (ee = 1; ee <= window->n3_e1; ee++) {
+      e = window->w3_e1[ee];
+      es = window->m2de[e];
+      sb = 0;
+      memset(mask, 0, window->szc * sizeof(int));
+      for (n = 1; n <= window->nee[es]; n++) {
+	eoe = window->eSe[n][e];
+	if (!eoe) continue;
+	for (m = 0; m <= 1; m++) {
+	  c = window->e2c[eoe][m];
+	  if (!mask[c]) {
+	    mask[c] = 1;
+	    sb++;
+	  }
+	}
+      }
+      msb = max(msb, sb);
+    }
+
+    /* Assign the cell centres                                       */
+    wincon->Bcell = i_alloc_2d(msb, window->sze);
+    wincon->nBcell = i_alloc_1d(window->sze);
+    wincon->B = d_alloc_3d(nuc, msb, window->sze);
+    memset(wincon->nBcell, 0, window->sze * sizeof(int));
+    for (ee = 1; ee <= window->n3_e1; ee++) {
+      e = window->w3_e1[ee];
+      es = window->m2de[e];
+      memset(mask, 0, window->szc * sizeof(int));
+      for (n = 1; n <= window->nee[es]; n++) {
+	eoe = window->eSe[n][e];
+	if (!eoe) continue;
+	for (m = 0; m <= 1; m++) {
+	  c = window->e2c[eoe][m];
+	  if (!mask[c]) {
+	    mask[c] = 1;
+	    wincon->Bcell[e][wincon->nBcell[e]++] = c;
+	  }
+	}
+      }
+      get_quadratic_metrics(window, windat, wincon, e);
+    }
+  }
+}
+
+/* END build_quadratic_weights()                                     */
+/*-------------------------------------------------------------------*/
+
+
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
 /* Gets the metrics of cells surrounding edge e using least squares  */
@@ -3262,7 +3275,7 @@ void get_quadratic_metrics(geometry_t *window, /* Processing window  */
   int n, m, cc, c, cs, cn, i, j, jj;
   int eoe, en, vn;
   double theta, thb, thc, a, h;
-  int nop = 6;    /* Number of polynomial coefficients               */
+  /*int nop = 6;*/    /* Number of polynomial coefficients               */
   int nuc = 3;    /* Number of polynomial coefficients to use        */
   int uc[3] = { 0, 1, 3 };  /* Polynomial coefficients to use        */
   int sodanos = 0; /* Compute distances using sodanos' algorithm     */
@@ -3411,6 +3424,562 @@ double get_quadratic_value(geometry_t *window, /* Processing window  */
 }
 
 /* END get_quadratic_value()                                         */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Builds the weights to get linear least squares interpolation.     */
+/* This is an interpolation within a volumetric cell using a linear  */
+/* squares interpolation with slope limiter to be conservative. The  */
+/* polynomial function is:                                           */
+/* v = co + c1.x + c2.y + c3.z                                       */
+/* where (x,y,z) is the 3D position in the cell. Tracer values used  */
+/* in the least squares fit are from one 'ring' around the cell in   */
+/* the layer of the cell, the layer above and below the cell.        */
+/* No-gradient functions are imposed at the top and bottom layers.   */
+/*-------------------------------------------------------------------*/
+void build_linear_weights(geometry_t *window, /* Processing window   */
+			  window_t *windat,   /* Window data         */
+			  win_priv_t *wincon  /* Window constants    */
+			  )
+{
+  qweights *lw;
+  int cc, c, cs, c2, ci, zp1, zm1, ee;
+  int n, m, eoe, sb;
+  int *mask = wincon->s1;
+  int *st = NULL, sz, szc, szm;
+  int i, cn, cns, cg, cgs;
+  double dz, **xc, **yc, **zc;
+  int nuc = 4;    /* Number of polynomial coefficients               */
+  int size = 3;   /* One row surrounding the centre                  */
+
+  if (wincon->lw == NULL) {
+
+    /* Note: allocate qweights (model/lib/grid/include/lsqq.h)       */
+    /* rather than lweights (model/lib/grid/include/lsql.h) as       */
+    /* qweights contains 6 weights rather than 3 in lweights, and we */
+    /* require 4 for this lsq function.                              */
+    wincon->lw = malloc(window->szc * sizeof(qweights));
+
+    /*---------------------------------------------------------------*/
+    /* Get the number of points surrounding each centre              */
+    szm = 0;
+    for(cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      c2 = window->m2d[c];
+      zp1 = window->zp1[c];
+      zm1 = window->zm1[c];
+      lw = &wincon->lw[c];
+
+      /* Get the stencil at location c                               */
+      sz = size;
+      st = stencil(geom, c, &sz, ST_SIZED, 0);
+      szc = sz;
+      lw->ncells = 0;
+      /* Ghost cells to include                                      */
+      add_cells_to_lsq(window, windat, wincon, sz, st, c);
+
+      /* Get the stencil at location in the layer above c            */
+      if (c != zp1) {
+	sz = size;
+	st = stencil(geom, zp1, &sz, ST_SIZED, 0);
+      }
+      add_cells_to_lsq(window, windat, wincon, sz, st, c);
+
+      /* Get the stencil at location in the layer below c            */
+      sz = szc;
+      if (zm1 != window->zm1[zm1]) {
+	sz = size;
+	st = stencil(geom, zm1, &sz, ST_SIZED, 0);
+      }
+      add_cells_to_lsq(window, windat, wincon, sz, st, c);
+      szm = max(szm, lw->ncells);
+    }
+
+    /* OBC ghosts cells                                              */
+    for (n = 0; n < window->nobc; n++) {
+      open_bdrys_t *open = window->open[n];
+      int ee;
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	c = open->ogc_t[ee];
+	lw = &wincon->lw[c];
+	zp1 = window->zp1[c];
+	zm1 = window->zm1[c];
+	for (i = 0; i < open->bgz; i++) {
+	  sz = size;
+	  st = stencil(geom, c, &sz, ST_SIZED, 0);
+	  lw->ncells = szc = sz;
+
+	  if (c != zp1) {
+	    sz = size;
+	    st = stencil(geom, zp1, &sz, ST_SIZED, 0);
+	  }
+	  lw->ncells += sz;
+	  sz = szc;
+	  if (zm1 != window->zm1[zm1]) {
+	    sz = size;
+	    st = stencil(geom, zm1, &sz, ST_SIZED, 0);
+	  }
+	  lw->ncells += sz;
+	  szm = max(szm, lw->ncells);
+	  c = open->omape[ee][c];
+	}
+      }
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Allocate                                                      */
+    xc = d_alloc_2d(szm, window->szc);
+    yc = d_alloc_2d(szm, window->szc);
+    zc = d_alloc_2d(szm, window->szc);
+
+    for(cc = 1; cc <= window->b2_t; cc++) {
+      c = window->w2_t[cc];
+      window->cellz[c] = 0.5 * window->gridz[c];
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Get the points surrounding each centre                        */
+    for(cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      c2 = window->m2d[c];
+      zp1 = window->zp1[c];
+      zm1 = window->zm1[c];
+      lw = &wincon->lw[c];
+      lw->cells = i_alloc_1d(szm);
+      lw->B = d_alloc_2d(nuc, szm);
+
+      /* Get the stencil at location c                               */
+      m = 0;
+      sz = size;
+      st = stencil(geom, c, &sz, ST_SIZED, 0);
+      szc = sz;
+
+      /* Ghost cells to include                                      */
+      for (i = 0; i < sz; i++) {
+	lw->cells[m] = cn = st[i];
+	cns = window->m2d[cn];
+	xc[c][m] = window->cellx[cns];
+	yc[c][m] = window->celly[cns];
+	zc[c][m] = window->cellz[cn];
+	m++;
+	for(n = 1; n <= window->npe[cns]; n++) {
+	  cg = window->c2c[n][cn];
+	  cgs = window->m2d[cg];
+	  if (window->wgst[cg]) {
+	    lw->cells[m] = cg;
+	    xc[c][m] = window->cellx[cgs];
+	    yc[c][m] = window->celly[cgs];
+	    zc[c][m] = window->cellz[cn];
+	    m++;
+	  }
+	}
+      }
+
+      /* Get the stencil at location in the layer above c            */
+      if (c != zp1) {
+	sz = size;
+	st = stencil(geom, zp1, &sz, ST_SIZED, 0);
+      }
+      /* Ghost cells to include                                      */
+      for (i = 0; i < sz; i++) {
+	lw->cells[m] = cn = st[i];
+	cns = window->m2d[cn];
+	xc[c][m] = window->cellx[cns];
+	yc[c][m] = window->celly[cns];
+	dz = 2.0 * (window->cellz[cn] - window->gridz[cn]);
+	zc[c][m] = (c == zp1) ? window->cellz[cn] + dz : window->cellz[cn];
+	m++;
+	for(n = 1; n <= window->npe[cns]; n++) {
+	  cg = window->c2c[n][cn];
+	  cgs = window->m2d[cg];
+	  if (window->wgst[cg]) {
+	    lw->cells[m] = cg;
+	    xc[c][m] = window->cellx[cgs];
+	    yc[c][m] = window->celly[cgs];
+	    zc[c][m] = (c == zp1) ? window->cellz[cn] + dz : window->cellz[cn];
+	    m++;
+	  }
+	}
+      }
+
+      /* Get the stencil at location in the layer below c            */
+      sz = szc;
+      if (zm1 != window->zm1[zm1]) {
+	sz = size;
+	st = stencil(geom, zm1, &sz, ST_SIZED, 0);
+      } else {
+	sz = size;
+	st = stencil(geom, c, &sz, ST_SIZED, 0);
+      }
+      /* Ghost cells to include                                      */
+      for (i = 0; i < sz; i++) {
+	lw->cells[m] = cn = st[i];
+	cns = window->m2d[cn];
+	xc[c][m] = window->cellx[cns];
+	yc[c][m] = window->celly[cns];
+	dz = 2.0 * (window->cellz[cn] - max(window->gridz[cn], window->botz[cns]));
+	zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[cn] - dz : window->cellz[cn];
+	m++;
+	for(n = 1; n <= window->npe[cns]; n++) {
+	  cg = window->c2c[n][cn];
+	  cgs = window->m2d[cg];
+	  if (window->wgst[cg]) {
+	    lw->cells[m] = cg;
+	    xc[c][m] = window->cellx[cgs];
+	    yc[c][m] = window->celly[cgs];
+	    zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[cn] - dz : window->cellz[cn];
+	    m++;
+	  }
+	}
+      }
+    }
+
+    /* OBC ghosts                                                    */
+    for (n = 0; n < window->nobc; n++) {
+      open_bdrys_t *open = window->open[n];
+      int ee;
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	c = open->ogc_t[ee];
+	ci = open->obc_e2[ee];
+	zp1 = window->zp1[c];
+	zm1 = window->zm1[c];
+	lw = &wincon->lw[c];
+	lw->cells = i_alloc_1d(szm);
+	lw->B = d_alloc_2d(nuc, szm);
+	for (i = 0; i < open->bgz; i++) {
+	  m = 0;
+	  sz = size;
+	  st = stencil(geom, c, &sz, ST_SIZED, 0);
+	  szc = sz;
+	  for (i = 0; i < sz; i++) {
+	    lw->cells[m] = cn = st[i];
+	    cns = window->m2d[cn];
+	    xc[c][m] = window->cellx[cns];
+	    yc[c][m] = window->celly[cns];
+	    zc[c][m] = window->cellz[ci];
+	    m++;
+	  }
+	  if (c != zp1) {
+	    sz = size;
+	    st = stencil(geom, zp1, &sz, ST_SIZED, 0);
+	  }
+	  for (i = 0; i < sz; i++) {
+	    lw->cells[m] = cn = st[i];
+	    cns = window->m2d[cn];
+	    xc[c][m] = window->cellx[cns];
+	    yc[c][m] = window->celly[cns];
+	    dz = 2.0 * (window->cellz[ci] - window->gridz[ci]);
+	    zc[c][m] = (c == zp1) ? window->cellz[ci] + dz : window->cellz[ci];
+	    m++;
+	  }
+	  sz = szc;
+	  if (zm1 != window->zm1[zm1]) {
+	    sz = size;
+	    st = stencil(geom, zm1, &sz, ST_SIZED, 0);
+	  }
+	  for (i = 0; i < sz; i++) {
+	    lw->cells[m] = cn = st[i];
+	    cns = window->m2d[cn];
+	    xc[c][m] = window->cellx[cns];
+	    yc[c][m] = window->celly[cns];
+	    dz = 2.0 * (window->cellz[ci] - max(window->gridz[ci], window->botz[window->m2d[ci]]));
+	    zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[ci] - dz : window->cellz[ci];
+	    m++;
+	  }
+	  c = open->omape[ee][c];
+	}
+      }
+    }
+
+    /* Get the SVD and weights                                       */
+    for(cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      get_linear_metrics(window, windat, wincon, c, xc, yc, zc);
+    }
+  }
+}
+
+/* END build_linear_weights()                                        */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Increments the number of cells to use in the least squares fit.   */
+/*-------------------------------------------------------------------*/
+void add_cells_to_lsq(geometry_t *window,     /* Processing window   */
+		      window_t *windat,       /* Window data         */
+		      win_priv_t *wincon,     /* Window constants    */
+		      int ncells,             /* # cells in stencil  */
+		      int *cells,             /* Stencil cells       */
+		      int co                  /* Centre cell         */
+		      )
+{
+  int cc, c, cs, j;
+  int cn, cns;
+  qweights *lw = &wincon->lw[co];
+
+  /* Wet cells to include                                            */
+  lw->ncells += ncells;
+
+  /* Ghost cells to include                                          */
+  for (cc = 0; cc < ncells; cc++) {
+    c = cells[cc];
+    cs = window->m2d[c];
+    for(j = 1; j <= window->npe[cs]; j++) {
+      cn = window->c2c[j][c];
+      cns = window->m2d[cn];
+      if (window->wgst[cn])
+	lw->ncells++;
+    }
+  }
+}
+
+/* END add_cells_to_lsq()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Gets the metrics of cells surrounding centre c using least        */
+/* squares fitting, where the solution to npe equations of a         */
+/* polynomial of degree nuc is obtained via singular value           */
+/* decomposition.                                                    */
+/* The least squares fit uses cell centred values of cells           */
+/* surrounding a given location, c.                                  */
+/* The polynomial used is:                                           */
+/* v = co + c1.x + c2.y + c3.z                                       */
+/*-------------------------------------------------------------------*/
+void get_linear_metrics(geometry_t *window,    /* Processing window  */
+			window_t *windat,      /* Window data        */
+			win_priv_t *wincon,    /* Window constants   */
+			int co,                /* Centre index       */
+			double **xc,
+			double **yc,
+			double **zc
+			)
+{
+  qweights *lw = &wincon->lw[co];
+  int n, m, cc, c, cn, i, j, jj;
+  int nuc = 4;    /* Number of polynomial coefficients               */
+  double x, y, z, **p, **b;
+  double *f, *s, *w, *std;
+  double **coeff;
+  int npem = lw->ncells;
+  int *cells = lw->cells;
+  int cs = window->m2d[co];
+
+  p = d_alloc_2d(nuc, npem);
+  b = d_alloc_2d(nuc, npem);
+  f = d_alloc_1d(nuc);
+  w = d_alloc_1d(nuc);
+  s = d_alloc_1d(npem);
+  std = d_alloc_1d(npem);
+
+  /* Get the metrics at the surrounding cell centres                 */
+  jj = 0;
+  for (n = 0; n < npem; n++) {
+    c = cells[n];
+    x = window->cellx[cs] - xc[co][n];
+    y = window->celly[cs] - yc[co][n];
+    z = window->cellz[co] - zc[co][n];
+
+    p[jj][0] = 1.0;
+    p[jj][1] = x;
+    p[jj][2] = y;
+    p[jj][3] = z;
+    s[jj] = 1.0;
+    std[jj] = 0.0;
+    jj++;
+  }
+
+  /* Least squares fitting via singular value decomposition, where   */
+  /* p = U * W * V^T, then f = B *s where b = V * W^-1 * U^T.        */
+  /* Note: these weights are computed using a scalar field (s) of 1. */
+  svd_lsq_B(p, nuc, npem, s, NULL, b, f);
+
+  /* Save the coefficients                                           */
+  for (jj = 0; jj < nuc; jj++) {
+    for (j = 0; j < npem; j++) {
+      lw->B[j][jj] = b[j][jj];
+    }
+  }
+
+  /* Set the weights. These are over-written later for each tracer.  */
+  memset(lw->w, 0, nuc * sizeof(double));
+  for (jj = 0; jj < nuc; jj++) {
+    for (j = 0; j < npem; j++) {
+      lw->w[jj] += s[jj] * lw->B[j][jj];
+    }
+  }
+
+  d_free_2d(p);
+  d_free_2d(b);
+  d_free_1d(f);
+  d_free_1d(w);
+  d_free_1d(s);
+}
+
+/* END get_linear_metrics()                                          */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Returns an interpolation from a least squares linear function.    */
+/*-------------------------------------------------------------------*/
+double get_linear_value(geometry_t *window, /* Processing window     */
+			window_t *windat,   /* Window data           */
+			win_priv_t *wincon, /* Window constants      */
+			double *tr,         /* Tracer array          */
+			int co,             /* Centre index          */
+			double xi,          /* x location to         */
+			double yi,          /* y location to         */
+			double zi           /* z location to         */
+			)
+{
+  qweights *lw = &wincon->lw[co];
+  int cs = window->m2d[co];
+  double val, x, y, z;
+
+  /* Get the value                                                   */
+  x = window->cellx[cs] - xi;
+  y = window->celly[cs] - yi;
+  z = window->cellz[co] - zi;
+
+  val = lw->w[0] + lw->beta * (lw->w[1] * x + lw->w[2] * y + lw->w[3] * z);
+
+  return(val);
+}
+
+/* END get_linear_value()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Applies a slope limiter to a linear least squares polynomial to   */
+/* ensure monotinicity.                                              */
+/*-------------------------------------------------------------------*/
+void get_linear_limit(geometry_t *window,   /* Processing window     */
+		      window_t *windat,     /* Window data           */
+		      win_priv_t *wincon,   /* Window constants      */
+		      double *tr            /* Tracer array          */
+		      )
+{
+  qweights *lw;
+  int nuc = 4;    /* Number of polynomial coefficients to use        */
+  int cc, c, cn, cs, c1, zp1, zm1;
+  int j, jj, v, vp1, vm1, vs;
+  double vmin, vmax, cmax, cmin, beta;
+  double x, y, z, d, val;
+
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    cs = window->m2d[c];
+    zp1 = window->zp1[c];
+    zm1 = window->zm1[c];
+
+    lw = &wincon->lw[c];
+    lw->beta = beta = 1.0;
+    lw->tmx = -HUGE;
+    lw->tmn = HUGE;
+
+    /*---------------------------------------------------------------*/
+    /* Get the weights for the linear function                       */
+    memset(lw->w, 0, nuc * sizeof(double));
+    /* Get the weights for the edge                                  */
+    for (j = 0; j < lw->ncells; j++) {
+      cn = lw->cells[j];
+      for (jj = 0; jj < nuc; jj++) {
+	lw->w[jj] += (tr[cn] * lw->B[j][jj]);
+      }
+      lw->tmx = max(lw->tmx, tr[cn]);
+      lw->tmn = min(lw->tmn, tr[cn]);
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Reset the zeroth order weight to the tracer value             */
+    lw->w[0] = tr[c];
+
+    /*---------------------------------------------------------------*/
+    /* Limit the weights                                             */
+    for (j = 1; j <= window->npe[cs]; j++) {
+      v = window->c2v[j][c];
+      vp1 = window->c2v[j][zp1];
+      vm1 = window->c2v[j][zm1];
+      vmin = HUGE;
+      vmax = -HUGE;
+
+      /*-------------------------------------------------------------*/
+      /* Get the min/max values in layer c                           */
+      if (v) {
+	vs = window->m2dv[v];
+	x = window->gridx[vs];
+	y = window->gridy[vs];
+	for (jj = 1; jj <= window->nvc[vs]; jj++) {
+	  c1 = window->v2c[v][jj];
+	  vmin = min(vmin, tr[c1]);
+	  vmax = max(vmax, tr[c1]);
+	}
+	cmax = vmax;
+	cmin = vmin;
+
+	/*-----------------------------------------------------------*/
+	/* Get interpolated values at vertices of the upper layer of */
+	/* the volumetric cell and limit.                            */
+	z = window->cellz[c] + (window->cellz[c] - window->gridz[c]);
+	val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
+	d = val - lw->w[0];
+	/* Get the min/max values in the layer above c if not the    */
+	/* surface layer.                                            */
+	if (vp1 && c != zp1) {
+	  for (jj = 1; jj <= window->nvc[vs]; jj++) {
+	    c1 = window->v2c[vp1][jj];
+	    vmin = min(vmin, tr[c1]);
+	    vmax = max(vmax, tr[c1]);
+	  }
+	}
+	/* Find the slope limiting factor that keeps the             */
+	/* interpolated value monotonic.                             */
+	if (d != 0.0 && val > vmax) {
+	  beta = max(min((vmax - lw->w[0]) / d, beta), 0.0);
+	}	
+	if (d != 0.0 && val < vmin) {
+	  beta = max(min((vmin - lw->w[0]) / d, beta), 0.0);
+	}
+
+	/*-----------------------------------------------------------*/
+	/* Get interpolated values at vertices of the lower layer of */
+	/* the volumetric cell and limit.                            */
+	z = window->cellz[c] - (window->cellz[c] - max(window->gridz[c], window->botz[cs]));
+	val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
+	d = val - lw->w[0];
+	/* Get the min/max values in the layer below c if not the    */
+	/* bottom layer.                                             */
+	vmax = cmax; vmin = cmin;
+	if (vm1 && zm1 != window->zm1[zm1]) {
+	  for (jj = 1; jj <= window->nvc[vs]; jj++) {
+	    c1 = window->v2c[vm1][jj];
+	    vmin = min(vmin, tr[c1]);
+	    vmax = max(vmax, tr[c1]);
+	  }
+	}
+	/* Find the slope limiting factor that keeps the             */
+	/* interpolated value monotonic.                             */
+	if (d != 0.0 && val > vmax) {
+	  beta = max(min((vmax - lw->w[0]) / d, beta), 0.0);
+	}
+	if (d != 0.0 && val < vmin) {
+	  beta = max(min((vmin - lw->w[0]) / d, beta), 0.0);
+	}
+      }
+    }
+    lw->beta = min(max(beta, 0.0), 1.0);
+    /*lw->beta = 0.0;*/
+  }
+}
+
+/* END get_linear_limit()                                            */
 /*-------------------------------------------------------------------*/
 
 
@@ -3582,7 +4151,7 @@ void hor_diffuse(geometry_t *window,  /* Window geometry             */
     /* Get the cross sectional area of the cell faces.               */
     csx = windat->dzu1[e] * window->h1au1[es] * wincon->mdx[es];
     Fx[e] -=
-      (csx * wincon->w3[e] * (tr[c1] - tr[c2]) / window->h1au1[es]);
+      (csx * wincon->w3[e] * (tr[c1] - tr[c2]) / window->h2au1[es]);
   }
 }
 
@@ -4141,8 +4710,18 @@ void auxiliary_routines(geometry_t *window, /* Window geometry       */
 
   /*-----------------------------------------------------------------*/
   /* Get diagnostic numbers if required                              */
-  if (!(wincon->numbers & NONE))
+  if (!(wincon->numbers & NONE) || !(wincon->numbers1 & NONE))
     diag_numbers(window, windat, wincon);
+
+  /*-----------------------------------------------------------------*/
+  /* Get normalized vertical profile of a tracer if required         */
+  if (wincon->nprof >= 0)
+    nor_vert_prof(window, windat, wincon);
+
+  /*-----------------------------------------------------------------*/
+  /* Get the DHW if required                                         */
+  if (wincon->dhwf & DHW_NOAA)
+    calc_dhd(window, windat, wincon);
 
 #if defined(HAVE_TRACERSTATS_MODULE)
   tracerstats_prestep(window,1);
@@ -4437,38 +5016,38 @@ void set_OBC_tr(int tn,             /* Tracer number                 */
     double perct = 20.0;
     double vel_frac = 0.1;
     double bvel, fvel;
-    int ii, si, osi, ci, nn;
+    int e, eo, es, ci, nn, dir;
     double *vals;
 
     vel = windat->u1;
 
     for (ee = 1; ee <= open->no3_e1; ee++) {
-      c = osi = open->obc_e2[ee];
+      c = open->obc_e2[ee];
       c2 = window->m2d[c];
-      imap = (open->ceni[ee]) ? window->em : window->ep;
+      dir = open->ceni[ee];
+      imap = (dir) ? window->em : window->ep;
+
       /* Get the range over which to compute the statistics. This is */
       /* taken as the cell where velocity changes by a certain       */
       /* fraction of the boundary velocity. Note : the boundary      */
       /* value is not included in the subset.                        */
-      si = window->c2e[open->ini[ee]][c];
-      bvel = vel[si];
+      e = es = window->c2e[open->ini[ee]][c];
+      bvel = vel[e];
       fvel = fabs(vel_frac * bvel);
       ci = 0;
-      while (fabs(vel[si] - bvel) < fvel && si != imap[si]) {
-        osi = si;
-        si = imap[si];
+      while (fabs(vel[e] - bvel) < fvel && e != imap[e]) {
+        e = imap[e];
         ci += 1;
       }
-      si = osi;
-
+      eo = e;
       /* Store the tracer values over the range in the array vals[]  */
       if (ci > 0) {
         vals = d_alloc_1d(ci);
         nn = 0;
-        ii = c;
-        while (ii != si) {
-          ii = open->nmape[ee][ii];
-          vals[nn] = tr[ii];
+	e = es;
+        while (e != eo) {
+	  e = imap[e];
+          vals[nn] = tr[window->e2c[e][dir]];
           nn++;
         }
         /* Get the statistical value                                 */
@@ -6606,18 +7185,20 @@ void mode2d_tracer_init(geometry_t *window,   /* Window geometry     */
 
   /* Vertically average all tracers                                  */
   for (n = 0; n < windat->ntr; n++) {
-    memset(wincon->d1, 0, window->szcS * sizeof(double));
-    tr = windat->tr_wc[n];
-    for (cc = 1; cc <= window->b3_t; cc++) {
-      c = window->w3_t[cc];
-      cs = window->m2d[c];
-      wincon->d1[cs] += (tr[c] * wincon->dz[c]);
-    }
-    for (cc = 1; cc <= window->b3_t; cc++) {
-      c = window->w3_t[cc];
-      cs = window->m2d[c];
-      depth = (windat->eta[cs] - window->botz[cs]) * wincon->Ds[cs];
-      tr[c] = wincon->d1[cs] / depth;
+    if (wincon->trinfo_3d[n].advect) {
+      memset(wincon->d1, 0, window->szcS * sizeof(double));
+      tr = windat->tr_wc[n];
+      for (cc = 1; cc <= window->b3_t; cc++) {
+	c = window->w3_t[cc];
+	cs = window->m2d[c];
+	wincon->d1[cs] += (tr[c] * wincon->dz[c]);
+      }
+      for (cc = 1; cc <= window->b3_t; cc++) {
+	c = window->w3_t[cc];
+	cs = window->m2d[c];
+	depth = (windat->eta[cs] - window->botz[cs]) * wincon->Ds[cs];
+	tr[c] = wincon->d1[cs] / depth;
+      }
     }
   }
 

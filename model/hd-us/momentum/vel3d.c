@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: vel3d.c 6138 2019-03-04 01:03:27Z her127 $
  *
  */
 
@@ -425,6 +425,8 @@ void mode3d_prep(geometry_t *geom,      /* Global geometry           */
 
     set_dz_at_u1(window[n], windat[n], wincon[n]);
     init_sigma(window[n], windat[n], wincon[n]);
+    wincon[n]->hor_mix->pre(window[n], windat[n], wincon[n]);
+    wincon[n]->hor_mix->setup(window[n], windat[n], wincon[n]);
 
     /*---------------------------------------------------------------*/
     /* Get the e1 vertical pressure integrals for the 2D mode.       */
@@ -451,7 +453,7 @@ void mode3d_prep(geometry_t *geom,      /* Global geometry           */
 
       wincon[n]->u1inter[es] /= windat[n]->depth_e1[es];
       wincon[n]->topdensu1[es] *= wincon[n]->g;
-      wincon[n]->densavu1[es] *= window[n]->h1au1[es];
+      wincon[n]->densavu1[es] *= window[n]->h2au1[es];
     }
     memset(windat[n]->u1, 0, window[n]->sze * sizeof(double));
     /* Get the open boundary conditions                              */
@@ -1510,6 +1512,8 @@ int vdiff_u1(geometry_t *window,  /* Window geometry                 */
     memcpy(windat->rv_bsc, f_bot, window->szeS * sizeof(double));
   if (wincon->numbers & BOTSTRESS)
     memcpy(windat->tau_be1, f_bot, window->szeS * sizeof(double));
+  if (wincon->numbers & EKPUMP)
+    ekman_pump_e1(window, windat, wincon, windat->wind1, f_bot);
 
   /*-----------------------------------------------------------------*/
   /* Do the vertical diffusion.                                      */
@@ -2225,6 +2229,7 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
   int *vec, nvec, sz;
   double nu, nv, *ut;
   geometry_t *geom=master->geom;
+
   /* Set pointers                                                    */
   if (mode) {
     vec = window->w2_t;
@@ -2241,14 +2246,17 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
 
   /* Compute the tangential component if not supplied                */
   if (u2 == NULL) {
-    int *vee, nvee, n, eoe;
+    int *vee, nvee, nveg, n, eoe;
     ut = wincon->w2;
+    memset(ut, 0, window->sze * sizeof(double));
     if (mode) {
       vee = window->w2_e1;
       nvee = window->a2_e1;
+      nveg = window->n2_e1;
     } else {
       vee = window->w3_e1;
       nvee = window->a3_e1;
+      nveg = window->n3_e1;
     }
     for (ee = 1; ee <= nvee; ee++) {
       e = vee[ee];
@@ -2258,6 +2266,18 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
 	eoe = window->eSe[n][e];
 	if (!eoe) continue;
 	ut[e] += window->wAe[n][e] * u1[eoe];
+      }
+    }
+    if (wincon->slip == 1) {
+      for (ee = nvee + 1; ee <= nveg; ee++) {
+	e = vee[ee];
+	es = window->m2de[e];
+	ut[e] = 0.0;
+	for (n = 1; n <= window->nee[es]; n++) {
+	  eoe = window->eSe[n][e];
+	  if (!eoe) continue;
+	  ut[e] += 2.0 * window->wAe[n][e] * u1[eoe];
+	}
       }
     }
   } else {
@@ -2275,7 +2295,6 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
     for (ee = 1; ee <= window->npe[cs]; ee++) {
       e = window->c2e[ee][c];
       es = window->m2de[e];
-
       /* Get the cell centered east and north velocity               */
       u[c] += (u1[e] * window->costhu1[es] + ut[e] * window->costhu2[es]);
       nu += 1.0;

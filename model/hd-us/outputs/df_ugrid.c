@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_ugrid.c 5914 2018-09-05 03:27:17Z riz008 $
+ *  $Id: df_ugrid.c 6139 2019-03-04 01:03:43Z her127 $
  *
  */
 
@@ -36,6 +36,7 @@ int get_nc_mode(dump_file_t *df);
 void pack_ugrid1(int *hmap, int mapsize, double *var, double *pack, int oset);
 void pack_ugrid2(int *hmap, int *vmap, int *m2d, int mapsize, double *var, double **pack, int oset);
 void pack_ugrid3(int *map, int mapsize, double *var, double *pack, int oset);
+void pack_ugrids(int sednz, int mapsize, double **var, double **pack, int oset);
 void pack_ugridi(int size, int *var, int *pack, int oset);
 void pack_ugrid_i2(int size, int np, int **var, int **pack, int oset);
 void pack_ugrid_i2a(int size, int np, int **var, int **pack, int oset);
@@ -60,6 +61,7 @@ static void df_ugrid_get_dimids(int cdfid, df_ugrid_var_t var, int *ns, int *zid
 static void df_ugrid_get_dimsizes(dump_file_t *df, df_ugrid_var_t var, size_t *sz, size_t *ns, size_t *nz);
 static void df_ugrid3_get_dimids(int cdfid, df_ugrid_var_t var, int *ns);
 static void df_ugrid3_get_dimsizes(dump_file_t *df, df_ugrid_var_t var, size_t *ns);
+static void write_mean_atts(dump_data_t *dumpdata, int fid);
 int find_next_restart_record(dump_file_t *df, int cdfid,
                                     char *timevar, double tref);
 void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
@@ -316,6 +318,18 @@ void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
   if (strlen(modulo))
     write_text_att(cdfid, vid, "modulo", modulo);
 
+  if (geom->sednz > 0) {
+    vid = ncw_var_id(cdfid, "Mesh2_layerfaces_sed");
+    write_text_att(cdfid, vid, "units", dumpdata->lenunit);
+    write_text_att(cdfid, vid, "long_name", "Z coordinate at sediment layer faces");
+    write_text_att(cdfid, vid, "coordinate_type", "Z");
+    
+    vid = ncw_var_id(cdfid, "Mesh2_layers_sed");
+    write_text_att(cdfid, vid, "units", dumpdata->lenunit);
+    write_text_att(cdfid, vid, "long_name", "Z coordinate at sediment layer centres");
+    write_text_att(cdfid, vid, "coordinate_type", "Z");
+  }
+
   if ((vid = ncw_var_id(cdfid, "u1av")) >= 0) {
     write_text_att(cdfid, vid, "units", "metre second-1");
     write_text_att(cdfid, vid, "long_name",
@@ -555,7 +569,7 @@ void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
-
+  write_mean_atts(dumpdata, cdfid);
 }
 
 void write_dump_attributes_ugrid3(dump_data_t *dumpdata, int cdfid,
@@ -1040,7 +1054,10 @@ void *df_ugrid_create(dump_data_t *dumpdata, dump_file_t *df)
   int nedge2 = dumpdata->nedge2 - dumpdata->start_index;
   int nvertex2 = dumpdata->nvertex2 - dumpdata->start_index;
   int npem = dumpdata->npe - dumpdata->start_index;
-
+  int kcentreid_sed;            /* K dimension id at grid centre for
+                                   sediments */
+  int kgridid_sed;              /* K dimension id at grid corner for
+                                   sediments */
   FILE *fp;
   int nc_mode;
   master_t *master= dumpdata->master;
@@ -1076,6 +1093,10 @@ void *df_ugrid_create(dump_data_t *dumpdata, dump_file_t *df)
 
   nc_def_dim(cdfid, "Mesh2_layers", df->nz, &Mesh2_layersid);
   nc_def_dim(cdfid, "Mesh2_layerfaces", df->nz + 1, &Mesh2_layerfacesid);
+  if (df->nz_sed > 0) {
+    nc_def_dim(cdfid, "Mesh2_layerfaces_sed", df->nz_sed + 1, &kgridid_sed);
+    nc_def_dim(cdfid, "Mesh2_layers_sed", df->nz_sed, &kcentreid_sed);
+  }
   nc_def_dim(cdfid, "nMesh2_node", nvertex2, &nMesh2_nodeid);
   nc_def_dim(cdfid, "nMesh2_edge", nedge2, &nMesh2_edgeid);
   nc_def_dim(cdfid, "nMesh2_face", nface2, &nMesh2_faceid);
@@ -1140,6 +1161,16 @@ void *df_ugrid_create(dump_data_t *dumpdata, dump_file_t *df)
   /* time dependent variables */
   dims[0] = recdimid;
   nc_def_var(cdfid, "t", NC_DOUBLE, 1, dims, &vid);
+
+  if (dumpdata->sednz > 0) {
+    dims[0] = recdimid;
+    dims[1] = kgridid_sed;
+    dims[2] = nMesh2_faceid;
+    nc_def_var(cdfid, "Mesh2_layerfaces_sed", NC_DOUBLE, 3, dims, &vid);
+
+    dims[1] = kcentreid_sed;
+    nc_def_var(cdfid, "Mesh2_layers_sed", NC_DOUBLE, 3, dims, &vid);
+  }
 
   df_ugrid_init_data(dumpdata, df, cdfid);
   data = (df_ugrid_data_t *)df->private_data;
@@ -1361,6 +1392,17 @@ void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   }
   nc_put_vara_double(fid, ncw_var_id(fid, "t"), start, count, &newt);
 
+  if (dumpdata->sednz > 0) {
+    count[1] = dumpdata->sednz;
+    count[2] = df->nface2;
+    pack_ugrids(dumpdata->sednz - 1, count[2], geom->cellz_sed, dumpdata->wc, oset);
+    nc_d_writesub_2d(fid, ncw_var_id(fid, "Mesh2_layers_sed"), start, count, dumpdata->wc);
+
+    count[1] = dumpdata->sednz + 1;
+    pack_ugrids(dumpdata->sednz, count[2], geom->gridz_sed, dumpdata->wc, oset);
+    nc_d_writesub_2d(fid, ncw_var_id(fid, "Mesh2_layerfaces_sed"), start, count, dumpdata->wc);
+  }
+
   /* Loop over each variable */
   for (n = 0; n < df->nvars; n++) {
     df_ugrid_var_t vn = data->vars[n];
@@ -1383,17 +1425,28 @@ void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t)
       int cc,c,k, kb;
       double **w = dumpdata->wc;
 
-      if (vn.xylocation & CL_EDGE) w = dumpdata->we;
-      start[1] = (!vn.sediment) ? df->klower : 0;
-      df_ugrid_get_dimsizes(df, vn, &sz, &count[2], &count[1]);
-
-      /* Initialize land cells */
-      for (k = dumpdata->nz-1; k >= 0; k--)
-	for (cc = 0; cc < count[2]; cc++)
-	  w[k][cc] = NaN;
-      pack_ugrid2(vn.hmap, vn.vmap, vn.m2d, sz, (*(double **)p), w, oset);
-      nc_d_writesub_2d(fid, ncw_var_id(fid, df->vars[n]), start, count,
-		       w);
+      if (!vn.sediment) {
+	if (vn.xylocation & CL_EDGE) w = dumpdata->we;
+	start[1] = df->klower;
+	df_ugrid_get_dimsizes(df, vn, &sz, &count[2], &count[1]);
+	
+	/* Initialize land cells */
+	for (k = dumpdata->nz-1; k >= 0; k--)
+	  for (cc = 0; cc < count[2]; cc++)
+	    w[k][cc] = NaN;
+	pack_ugrid2(vn.hmap, vn.vmap, vn.m2d, sz, (*(double **)p), w, oset);
+	nc_d_writesub_2d(fid, ncw_var_id(fid, df->vars[n]), start, count,
+			 w);
+      } else {
+	start[1] = 0;
+	df_ugrid_get_dimsizes(df, vn, NULL, &count[2], &count[1]);
+	/* Initialize land cells */
+	for (k = dumpdata->sednz-1; k >= 0; k--)
+	  for (cc = 0; cc < count[2]; cc++)
+	    w[k][cc] = NaN;
+	pack_ugrids(dumpdata->sednz, count[2], (*(double ***)p), w, oset);
+	nc_d_writesub_2d(fid, ncw_var_id(fid, df->vars[n]), start, count, w);
+      }
     }
   }
 
@@ -1440,7 +1493,6 @@ void df_ugrid3_write(dump_data_t *dumpdata, dump_file_t *df, double t)
     memset(dumpdata->w1,  0, geom->szm*sizeof(double));
     df_ugrid3_get_dimsizes(df, vn, &count[1]);
     pack_ugrid3(vn.hmap, count[1], (*(double **)p), dumpdata->w1, oset);
-
     nc_d_writesub_1d(fid, ncw_var_id(fid, df->vars[n]), start, count,
 		       dumpdata->w1);
   }
@@ -1924,6 +1976,7 @@ int df_ugrid_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
 	var->ndims = 2;
 	var->zlocation = CL_CENTRE;
 	var->hmap = geom->w3_t;
+        var->sediment = 0;
         found = 1;
         break;
       }
@@ -1933,6 +1986,25 @@ int df_ugrid_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
       if (strcmp(dumpdata->trinfo_2d[n].name, name) == 0) {
         var->v = (void **)&master->tr_wcS[n];
         var->xylocation = CL_SP2|CL_FACE;
+        var->sediment = 0;
+        found = 1;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    /* Sediment tracers */
+    for (n = 0; n < dumpdata->nsed; n++) {
+      char name1[MAXSTRLEN];
+      strcpy(name1, dumpdata->trinfo_sed[n].name);
+      strcat(name1, "_sed");
+      if (strcmp(name, name1) == 0) {
+        var->ndims = 2;
+        var->v = (void **)&master->tr_sed[n];
+        var->xylocation = CL_SP2|CL_FACE;
+        var->zlocation = CL_CENTRE;
+        var->sediment = 1;
         found = 1;
         break;
       }
@@ -2094,8 +2166,10 @@ static void df_ugrid_get_dimsizes(dump_file_t *df,
       break;
 
     case CL_CENTRE:
-    default:
       *nz = df->nz_sed;
+      break;
+
+    default:
       break;
     }
   }
@@ -2103,7 +2177,7 @@ static void df_ugrid_get_dimsizes(dump_file_t *df,
 
 
 static void df_ugrid3_get_dimsizes(dump_file_t *df, 
-				  df_ugrid_var_t var, 
+				   df_ugrid_var_t var, 
 				   size_t * ns)       /* Surface (2D) vector size */
 {
   if (var.xylocation == (CL_SP2|CL_FACE))
@@ -2169,6 +2243,17 @@ void pack_ugrid2(int *hmap, int *vmap, int *m2d, int mapsize, double *var, doubl
 
 /* END pack_ugrid2()                                                 */
 /*-------------------------------------------------------------------*/
+
+void pack_ugrids(int sednz, int mapsize, double **var, double **pack, int oset)
+{
+  int cc, k;
+
+  for (cc = 1; cc <= mapsize; cc++) {
+    for (k = 0; k < sednz; k++) {
+      pack[k][cc-oset] = var[k][cc];
+    }
+  }
+}
 
 void pack_ugrid3(int *map, int mapsize, double *var, double *pack, int oset)
 {
@@ -3677,4 +3762,58 @@ void check_window_map_us(geometry_t **window, char *name)
   }
   /* unlink(name); */
   hd_quit("done check_window\n");
+}
+
+static void write_mean_atts(dump_data_t *dumpdata, int fid)
+{
+  master_t *master =  dumpdata->master;
+  char buf[MAXSTRLEN], mcs[MAXSTRLEN];
+  int i;
+
+  if (!(master->means & NONE)) {
+    nc_put_att_double(fid, NC_GLOBAL, "mean_c",
+		      NC_DOUBLE, 1, &master->meanc[1]);
+    nc_put_att_double(fid, NC_GLOBAL, "mean_next",
+		      NC_DOUBLE, 1, &master->means_next);
+    if (master->means_dt == SEASONAL || master->means_dt == MONTHLY || master->means_dt == DAILY) {
+      sprintf(mcs, "%f ", master->meancs[1]);
+      if (master->means_dt == SEASONAL || master->means_dt == MONTHLY) {
+	for (i = 2; i <= 12; i++) {
+	  sprintf(buf, "%f ", master->meancs[i]);
+	  strcat(mcs, buf);
+	}
+      }
+      if (master->means_dt == DAILY) {
+	for (i = 2; i <= 365; i++) {
+	  sprintf(buf, "%f ", master->meancs[i]);
+	  strcat(mcs, buf);
+	}
+      }
+      nc_put_att_text(fid, NC_GLOBAL, "mean_mc", strlen(mcs), mcs);
+    }
+  }
+}
+
+
+void read_mean_atts(master_t *master, int fid)
+{
+  geometry_t *geom = master->geom;
+  parameters_t *params = master->params;
+  char buf[MAXSTRLEN];
+  double d1;
+  int i, cc;
+
+  if (!(params->means & NONE)) {
+    nc_get_att_double(fid, NC_GLOBAL, "mean_c", &d1);
+    for (cc = 1; cc < geom->szcS; cc++)
+      master->meanc[cc] = d1;
+    nc_get_att_double(fid, NC_GLOBAL, "mean_next", &master->means_next);
+    if (master->means_dt == SEASONAL || master->means_dt == MONTHLY || master->means_dt == DAILY) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      nc_get_att_text(fid, NC_GLOBAL, "mean_mc", buf);
+      cc = parseline(buf, fields, MAXNUMARGS);
+      for (i = 1; i <= cc; i++)
+	master->meancs[i] = atof(fields[i-1]);
+    }
+  }
 }

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 5951 2018-09-15 01:16:03Z riz008 $
+ *  $Id: proto.h 6158 2019-03-05 03:24:47Z riz008 $
  *
  */
 
@@ -25,8 +25,8 @@
 /* Version information                                              */
 /*------------------------------------------------------------------*/
 #define COMPAS_MAJOR_VERSION 1
-#define COMPAS_MINOR_VERSION 0
-#define COMPAS_PATCH_VERSION 0
+#define COMPAS_MINOR_VERSION 1
+#define COMPAS_PATCH_VERSION 1
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -64,6 +64,7 @@ void read_totals(parameters_t *params, FILE *fp);
 void read_exclude_points(parameters_t *params, FILE *fp);
 void read_trfilter(parameters_t *params, FILE *fp);
 void read_decorr(parameters_t *params, FILE *fp, int mode);
+int read_dhw(parameters_t *params, FILE *fp);
 void read_trflux(parameters_t *params, FILE *fp);
 void tracer_setup(parameters_t *params, FILE *fp);
 int numbers_init(parameters_t *params);
@@ -275,14 +276,15 @@ int get_mesh_obc_limit(parameters_t *params, int **neic);
 void convert_mesh_input(parameters_t *params, mesh_t *mesh, double **xc, double **yc, 
 			double *bathy, int wf);
 #ifdef HAVE_JIGSAWLIB
-void create_jigsaw_mesh(coamsh_t *cm, jigsaw_msh_t *J_mesh, jigsaw_msh_t *J_hfun);
+void create_jigsaw_mesh(coamsh_t *cm, jigsaw_msh_t *J_mesh, jigsaw_msh_t *J_hfun,
+			int powf, int stproj);
 void create_bounded_mesh(int npts, double *x, double *y, double rmin,
 			 double rmax, jigsaw_msh_t *J_mesh);
 void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh_t *J_hfun);
-void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun);
+void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode);
 void create_hex_radius(double crad, double x00, double y00,
 		       double rmin, double rmax, double gscale,
-		       jigsaw_msh_t *J_mesh);
+		       jigsaw_msh_t *J_mesh, int powf);
 void neighbour_finder_j(jigsaw_msh_t *msh, int ***neic);
 #endif
 void set_params_mesh(parameters_t *params, mesh_t *mesh, double **x, double **y);
@@ -290,6 +292,11 @@ mesh_t *mesh_init(parameters_t *params, int ns2, int npe);
 void free_mesh(mesh_t *mesh);
 int perimeter_mask(parameters_t *params, int **neic);
 void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode);
+double edge_mean(geometry_t *window, double *a, int c);
+double vertex_mean(geometry_t *window, double *a, int c);
+void edge_centre(geometry_t *window, double *a, double *b, int mode);
+void vertex_centre(geometry_t *window, double *a, double *b, int mode);
+void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc);
 
 /*------------------------------------------------------------------*/
 /* Open boundary routines                                           */
@@ -413,6 +420,8 @@ void master_fill(master_t *master, geometry_t **window, window_t **windat,
                  win_priv_t **wincon);
 void master_fill_ts(master_t *master, geometry_t **window, window_t **windat,
 		    win_priv_t **wincon);
+void master_fill_glider(master_t *master, geometry_t **window, window_t **windat,
+			win_priv_t **wincon, ts_point_t *ts, double t);
 void windat_fill(master_t *master, geometry_t *window, window_t *windat,
                  int nwindows, int mode);
 void build_transfer_maps(geometry_t *geom, geometry_t **window, int wn,
@@ -598,6 +607,9 @@ void total_mass(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void steric(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vorticity(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void diag_numbers(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void nor_vert_prof(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void ekman_pump_e1(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		   double *taus, double *taub);
 void init_flushing(master_t *master, geometry_t **window,
                    win_priv_t **wincon);
 void init_age(master_t *master, geometry_t **window, window_t **windat, 
@@ -676,6 +688,8 @@ double con_med(geometry_t *window, double *vel, int c);
 double decorr(geometry_t *window, double *a, int sz, int c, int mode, double scale);
 void calc_decorr(geometry_t *window, double *a, double *dex, int sz, int mode, 
 		 double scale);
+void calc_dhd(geometry_t *window, window_t *windat, win_priv_t *wincon);
+double buoyancy_frequency2_m(master_t * master, geometry_t *geom, double *dens, int c);
 
 /*------------------------------------------------------------------*/
 /* Forcing routines                                                 */
@@ -904,6 +918,7 @@ void tracer_reset_init(master_t *master);
 void tracer_reset_end(master_t *master);
 void tracer_reset2d_init(master_t *master);
 void tracer_reset2d_end(master_t *master);
+void tracer_dhw_init(master_t *master);
 void set_lateral_BC_tr(double **tr, int ntr, int sgbpt, int *bpt,
                        int *bin);
 int advect_diffuse(geometry_t *window, window_t *windat, win_priv_t *wincon);
@@ -1000,6 +1015,12 @@ void get_quadratic_metrics(geometry_t *window, window_t *windat, win_priv_t *win
 			   int e);
 double get_quadratic_value(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 			   double *tr, int e, int j);
+void build_linear_weights(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void get_linear_metrics(geometry_t *window, window_t *windat, win_priv_t *wincon, int co,
+			double **xc, double **yc, double **zc);
+void get_linear_limit(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr);
+double get_linear_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, int co,
+			double x, double y, double z);
 void get_wet_cells(geometry_t *window, win_priv_t *wincon);
 void calc_courant(geometry_t *window, window_t *windat, win_priv_t *wincon,
                   double dt);
@@ -1073,6 +1094,8 @@ void hvisc_u1_2d(geometry_t *window, window_t *windat, win_priv_t *wincon,
                  double *tzp);
 void hvisc_u1_2dus(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 		   double *tzp);
+void hvisc_u1_2dusb(geometry_t *window, window_t *windat, win_priv_t *wincon, 
+		    double *tzp);
 void hvisc_u1_2d_simple(geometry_t *window, window_t *windat,
                         win_priv_t *wincon, double *tzp);
 void hvisc_2d_null(geometry_t *window, window_t *windat, win_priv_t *wincon,
@@ -1161,6 +1184,9 @@ void set_surf_cells(geometry_t *window,  window_t *windat,
 int advect_u1_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);                  
 int nonlin_coriolis_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 int nonlin_coriolis_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+double pv_energy_neutral(window_t *windat, int e, int eoe, int v1, int v2);
+double pv_enstrophy_conserve(window_t *windat, int e, int eoe, int v1, int v2);
+double pv_enstrophy_dissipate(window_t *windat, int e, int eoe, int v1, int v2);
 int advect_u2_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void advect_u1_3d_ang_adv_f(geometry_t *window, window_t *windat,
 			    win_priv_t *wincon);
@@ -1186,8 +1212,10 @@ void hvisc_init(master_t *master, win_priv_t **wincon);
 void hvisc_setup(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_setup_old(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_setup_pre(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void hvisc_setup_pre2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_u1_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_u1_3dus(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void hvisc_u1_3dusb(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_u1_3d_simple(geometry_t *window, window_t *windat,
                         win_priv_t *wincon);
 void hvisc_u2_3d_simple(geometry_t *window, window_t *windat,
@@ -1195,7 +1223,7 @@ void hvisc_u2_3d_simple(geometry_t *window, window_t *windat,
 void hvisc_null(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void reset_hdiff(geometry_t *window, int cl);
 void set_hdiff(geometry_t *window, double *AH, double AH0);
-void reset_hor_diff(master_t *master, double u1vh, double u2vh, int flag);
+void reset_hor_diff(master_t *master, double u1vh, int flag);
 int *stencil(geometry_t *window, int cl, int *size, int type, int edge);
 void pressure_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void pressure_u2(geometry_t *window, window_t *windat, win_priv_t *wincon);
@@ -1297,6 +1325,7 @@ int dump_choose_by_time_m(master_t *master, int fid, double t);
 int dump_choose_by_time_mom(master_t *master, int fid, double t);
 int dump_choose_by_time_s(int fid, double t);
 void read_grid_atts(parameters_t *params, int cdfid);
+void read_mean_atts(master_t *master, int fid);
 int get_nc_mode(dump_file_t *df);
 int dump_re_read(master_t *master, 
 		 int cdfid, int ti);
@@ -1365,7 +1394,6 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
 		     geometry_t **window, dump_data_t *dumpdata);
 void ts_resetup(master_t *master, FILE *fp);
 void timeseries_init_w(master_t *master, geometry_t **window);
-
 void timeseries_end(void);
 timeseries_t **hd_ts_multifile_read(master_t *master, int nf,
                                     cstring * files);
@@ -1462,6 +1490,7 @@ void df_parray_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_sp_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_mom_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 int ts_init(sched_event_t *event);
+int get_glider_loc(master_t *master, ts_point_t *tslist, timeseries_t *loc_ts, double t);
 
 /*------------------------------------------------------------------*/
 /* NetCDF convienience utilities                                    */

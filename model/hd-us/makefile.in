@@ -1,7 +1,7 @@
 #
 # makefile.in - Input makefile for the configure script.
 #
-# $Id: makefile.in 5915 2018-09-05 03:30:40Z riz008 $
+# $Id: makefile.in 5996 2018-10-17 04:57:10Z her127 $
 #
 
 SHELL=/bin/sh
@@ -100,7 +100,7 @@ FRCOBJS=forcings/airtemp.o forcings/cloud.o forcings/evap.o \
 forcings/forcings.o forcings/patm.o forcings/precip.o forcings/rh.o \
 forcings/swr.o forcings/webf.o forcings/wind.o forcings/wetbulb.o \
 forcings/hftemp.o forcings/heatflux.o forcings/storm.o forcings/eta_relax.o \
-forcings/vel_relax.o forcings/crash.o forcings/regulate.o
+forcings/vel_relax.o forcings/crash.o forcings/regulate.o forcings/dhw.o
 
 GINTEROBJS = ginterface/ginterface.o
 

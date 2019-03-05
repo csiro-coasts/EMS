@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: index.c 5898 2018-08-23 02:07:21Z her127 $
+ *  $Id: index.c 5996 2018-10-17 04:57:10Z her127 $
  *
  */
 
@@ -601,10 +601,11 @@ int hd_grid_xyztoc_w(geometry_t *window, double x, double y, double z)
     int found = 0;
     p.x = x;
     p.y = y;
-    cg = delaunay_xytoi_lag(d, &p, d->first_id);
 
+    cg = delaunay_xytoi_lag(d, &p, d->first_id);
     if (cg != -1) {
-      cg = window->tri2c[cs];
+      cg = window->tri2c[cg];
+
       for (cc = 1; cc <= window->b2_t; cc++) {
 	cs = window->w2_t[cc];
 	c = window->wsa[cs];

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 5913 2018-09-05 02:35:27Z her127 $
+ *  $Id: run_setup.c 6129 2019-03-04 00:57:53Z her127 $
  *
  */
 
@@ -515,7 +515,13 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "Van Leer momentum advection scheme.\n");
     }
     if (params->momsc & RINGLER)
-      fprintf(fp, "Vector invariant (with nonlinear Coriolis)  momentum advection scheme.\n");
+      fprintf(fp, "Vector invariant (with nonlinear Coriolis) momentum advection scheme.\n");
+    if (params->momsc & PV_ENEUT)
+      fprintf(fp, "  Vorticity computed using energy neutral formulation.\n");
+    if (params->momsc & PV_ENSCO)
+      fprintf(fp, "  Vorticity computed using enstrophy conserving formulation.\n");
+    if (params->momsc & PV_ENSDS)
+      fprintf(fp, "  Vorticity computed using enstrophy dissipating formulation.\n");
   }
   if (params->momsc & WIMPLICIT)
     fprintf(fp, "  Implicit vertical momentum advection.\n");
@@ -570,6 +576,8 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "Cubic semi-Lagrangian tracer advection scheme.\n");
     else if (params->osl & L_LSQUAD)
       fprintf(fp, "Quadratic least squares semi-Lagrangian tracer advection scheme.\n");
+    else if (params->osl & L_LSLIN)
+      fprintf(fp, "Linear least squares semi-Lagrangian tracer advection scheme.\n");
     else if (params->osl & L_BAYLIN)
       fprintf(fp, "Baycentric linear semi-Lagrangian tracer advection scheme.\n");
     else if (params->osl & L_BILIN)
@@ -604,16 +612,16 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp,
             "Smagorinsky horizontal diffusion; constant = %5.3f\n", smag);
     if (params->bkue1) fprintf(fp,"  base rate applied = %5.3f\n", params->bkue1);
-  } else if (params->u1kh >= 0.0 && params->diff_scale == AUTO)
+  } else if (params->u1kh >= 0.0 && params->diff_scale & AUTO)
     fprintf(fp,"Grid-optimized horizontal diffusion\n");
   else {
-    if (params->diff_scale == LINEAR)
+    if (params->diff_scale & LINEAR)
       fprintf(fp, "Horizontal diffusion = %5.3f : linearly scaled\n",
             params->u1kh);
-    else if (params->diff_scale == NONLIN)
+    else if (params->diff_scale & NONLIN)
       fprintf(fp, "Horizontal diffusion = %5.3f : non-linearly scaled\n",
             params->u1kh);
-    else if (params->diff_scale == NONE)
+    else if (params->diff_scale & NONE)
       fprintf(fp, "Horizontal diffusion = %5.3f : un-scaled\n",
             params->u1kh);
   }
@@ -622,18 +630,38 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp,
             "Smagorinsky horizontal viscosity; constant = %5.3f\n", smag);
     if (params->bsue1) fprintf(fp,"  base rate applied = %5.3f\n", params->bsue1);
-  } else if (params->u1vh >= 0.0 && params->diff_scale == AUTO)
+  } else if (params->u1vh >= 0.0 && params->diff_scale & AUTO)
     fprintf(fp,"Grid-optimized horizontal viscosity\n");
   else {
-    if (params->diff_scale == LINEAR)
-      fprintf(fp, "Horizontal viscosity = %5.3f : linearly scaled\n",
-            params->u1vh);
-    else if (params->diff_scale == NONLIN)
-      fprintf(fp, "Horizontal viscosity = %5.3f : non-linearly scaled\n",
-            params->u1vh);
-    else if (params->diff_scale == NONE)
-      fprintf(fp, "Horizontal viscosity = %5.3f : un-scaled\n",
-            params->u1vh);
+    double ah = params->u1vh;
+    if (params->visc_method & US_BIHARMONIC) {
+      double ahl;
+      if (params->diff_scale & SCALEBI)
+	ahl = ah * (0.125 * master->hmean1 * master->hmean1);
+      else
+	ahl = ah / (0.125 * master->hmean1 * master->hmean1);
+      if (params->diff_scale & LINEAR)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : linearly scaled\n", ah, ahl);
+      else if (params->diff_scale & NONLIN)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : non-linearly scaled\n", ah, ahl);
+      else if (params->diff_scale & CUBIC)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : cubic scaling\n", ah, ahl);
+      else if (params->diff_scale & NONE)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : un-scaled\n", ah, ahl);
+      if (params->diff_scale & SCALE2D)
+	fprintf(fp, "2D horizontal viscosity scaled by IRATIO = %d\n", params->iratio);
+    } else {
+      if (params->diff_scale & LINEAR)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : linearly scaled\n", ah);
+      else if (params->diff_scale & NONLIN)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : non-linearly scaled\n", ah);
+      else if (params->diff_scale & CUBIC)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : cubic scaling\n", ah);
+      else if (params->diff_scale & NONE)
+	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : un-scaled\n", ah);
+      if (params->diff_scale & SCALE2D)
+	fprintf(fp, "2D horizontal viscosity scaled by IRATIO = %d\n", params->iratio);
+    }
   }
   if (params->visc_method & PRE794)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (full form - pre v794)\n");
@@ -641,6 +669,10 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (full form)\n");
   else if (params->visc_method & SIMPLE)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (simple form)\n");
+  else if (params->visc_method & US_LAPLACIAN)
+    fprintf(fp, "Horizontal viscosity using unstructured Laplacian scheme\n");
+  else if (params->visc_method & US_BIHARMONIC)
+    fprintf(fp, "Horizontal viscosity using unstructured biharmonic scheme\n");
   fprintf(fp, "Mean horizontal edge length = %8.2f m\n", master->hmean1);
   fprintf(fp, "Mean horizontal distance between centres = %8.2f m\n", master->hmean2);
   fprintf(fp, "Minimum horizontal distance between centres = %8.2f m\n", master->minres);
@@ -746,6 +778,7 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "  Schumann and Gerz (1995) stability functions used.\n");
   }
   fprintf(fp, "Bottom roughness length scale = %f\n", params->z0);
+  fprintf(fp, "Mean bottom drag coefficient = %f\n", master->quad_bfc);
   fprintf(fp, "\n");
 
   /*-----------------------------------------------------------------*/

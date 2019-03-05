@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: meshes.c 6132 2019-03-04 00:58:51Z her127 $
  *
  */
 
@@ -42,6 +42,12 @@
 #define GM_U    0x0400
 #define GM_D    0x0800
 
+/* Stereogrphic projection */
+typedef enum {
+  ST3PROJ_FWD,
+  ST3PROJ_INV
+} ST3PROJ;
+
 /*------------------------------------------------------------------*/
 /* Valid bathymetry netCDF dimension names                          */
 static char *bathy_dims[3][6] = {
@@ -63,6 +69,9 @@ void sort_circle(delaunay *d, int *vedge, int nedge, int dir);
 int find_mindex(double slon, double slat, double *lon, double *lat, int nsl, double *d);
 void mesh_init_OBC(parameters_t *params, mesh_t *mesh);
 void tria_ball_2d(double *bb, double *p1, double *p2, double *p3);
+void tria_edge_2d(double *bb, double *p1, double *p2);
+void tria_ortho_2d(double *bb, double *p1, double *p2, double *p3);
+void tria_ortho_edge_2d(double *bb, double *p1, double *p2);
 void tria_com(double *bb, double *p1, double *p2, double *p3);
 void remove_duplicates(int ns2, double **x, double **y, mesh_t *mesh);
 void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc);
@@ -71,9 +80,35 @@ void circen(double *p1, double *p2, double *p3);
 double is_obtuse(double *p0, double *p1, double *p2);
 void init_J_jig(jigsaw_jig_t *J_jig);
 double coast_dist(msh_t *msh, double xloc, double yloc);
+double point_dist(int npoints, point *p, double xloc, double yloc);
 double bathyset(double b, double bmin, double bmax, double hmin,
 		double hmax, double expf);
-
+static void st_transform(jigsaw_msh_t *J_msh, ST3PROJ kind,
+			 double xmid, double ymid);
+static void stereo3_fwd(double xpos, double ypos, double xmid, double ymid,
+			double *xnew, double *ynew, double *scal);
+static void stereo3_inv(double xpos, double ypos, double xmid, double ymid,
+			double *xnew, double *ynew, double *scal);
+static void convert_jigsaw_grid_to_mesh(jigsaw_msh_t *imsh,
+					jigsaw_msh_t *omsh);
+void inv_2x2(int la, double *aa, int lx, double *xx, double *da);
+void inv_3x3(int la, double *aa, int lx, double *xx, double *da);
+double det_2x2(int la, double *aa);
+double det_3x3(int la, double *aa);
+void tria_ball_2s(double *bb, double *p1, double *p2, double *p3, double  rr);
+void tria_edge_2s(double *bb, double *p1, double *p2, double  rr);
+void tria_ortho_2s(double *bb, double *p1, double *p2, double *p3, double  rr);
+void tria_ortho_edge_2s(double *bb, double *p1, double *p2, double  rr);
+void tria_norm_vect_3d(double *nv, double *pa, double *pb, double *pc);
+void edge_circ_ball_3d (double *bb, double *p1,	double *p2);
+void tria_circ_ball_3d(double *bb, double *p1, double *p2, double *p3);
+void edge_orth_ball_3d(double *bb, double *p1, double *p2);
+void tria_orth_ball_3d(double *bb, double *p1, double *p2, double *p3);
+void lonlat_to_xyz(double *pp, double *ee, double rr);
+void xyz_to_lonlat(double *ee, double *pp, double rr);
+void tri_cen(int centref, int geogf, double *p1, double *p2, double *p3, double *po);
+void edge_cen(int centref, int geogf, double *v1, double *v2, double *po);
+int in_tri(double *po, double *p0, double *p1, double *p2);
 
 /*-------------------------------------------------------------------*/
 /* Compute the geographic metrics on the sphere using a false pole   */
@@ -474,7 +509,7 @@ void convert_quad_mesh(parameters_t *params)
   for (j = 0; j < nce2; j++)
     for (i = 0; i < nce1; i++) {
       bathy[j][i] = -params->bathy[n++];
-    } 
+    }
   if (params->runmode & DUMP) {
     for (n = 1; n <= params->nland; n++) {
       i = params->lande1[n];
@@ -2017,6 +2052,8 @@ void convert_mesh_input(parameters_t *params,
   if (DEBUG("init_m"))
     dlog("init_m", "\nMesh expansion\n");
   mesh_expand(params, params->bathy, xc, yc);
+  if (params->runmode & (AUTO | DUMP) && !(params->us_type & US_IJ))
+    mesh_reduce(params, params->bathy, xc, yc);
 
   /*-----------------------------------------------------------------*/
   /* Open boundaries. Remap the obc edge number to the vertex        */
@@ -3432,6 +3469,7 @@ int read_mesh_us(parameters_t *params)
   /*-----------------------------------------------------------------*/
   /* Expand the mesh if required                                     */
   mesh_expand(params, params->bathy, params->x, params->y);
+  mesh_reduce(params, params->bathy, params->x, params->y);
 
   set_params_mesh(params, mesh, params->x, params->y);
 
@@ -3446,9 +3484,10 @@ int read_mesh_us(parameters_t *params)
 
 /*-------------------------------------------------------------------*/
 /* Creates a circular coastline msh and resolution hfun file         */
-/* for JIGSAW                                                        */
-/*                                                                   */
-/* TODO: Fix projection issues                                       */
+/* for JIGSAW. This used to be done in lat/lon space but is now done */
+/* in stereographic projection with units of metres. The inverse     */
+/* mapping back to geog space then ensures that the grid is evenly   */
+/* spaced on the sphere.                                             */
 /*-------------------------------------------------------------------*/
 #ifdef HAVE_JIGSAWLIB
 void create_hex_radius(double crad,   /* Radius in metres     */
@@ -3457,13 +3496,15 @@ void create_hex_radius(double crad,   /* Radius in metres     */
 		       double rmin,   /* Min. resolution in m */
 		       double rmax,   /* Max. resolution in m */
 		       double gscale, /* Gaussian func scaler */
-		       jigsaw_msh_t *J_mesh
+		       jigsaw_msh_t *J_mesh,
+		       int powf       /* Power mesh flag      */
 		       )
 {
   /* Constants */
   int cst_res  = 250;    /* resolution for coastline in m       */
   int nHfun    = 100;    /* (Nhfun x Nhfun) resolution matrix   */
   double deg2m = 60.0 * 1852.0;
+  double x00r, y00r;
   
   /* local variables */
   double cang = crad / deg2m; /* Radius in degress */
@@ -3474,6 +3515,7 @@ void create_hex_radius(double crad,   /* Radius in metres     */
   jigsaw_jig_t J_jig;
   jigsaw_msh_t J_geom;
   jigsaw_msh_t J_hfun;
+  jigsaw_msh_t J_hfun_new;
 
   /* Convenient pointers */
   jigsaw_VERT2_array_t *jpoints = &J_geom._vert2;
@@ -3487,6 +3529,7 @@ void create_hex_radius(double crad,   /* Radius in metres     */
   jigsaw_init_jig_t (&J_jig);
   jigsaw_init_msh_t (&J_geom);
   jigsaw_init_msh_t (&J_hfun);
+  if (powf) J_jig._optm_dual = 1;
 
   /* Flag input mesh type */
   J_geom._flags = JIGSAW_EUCLIDEAN_MESH;
@@ -3497,13 +3540,17 @@ void create_hex_radius(double crad,   /* Radius in metres     */
   /* Allocate JIGSAW geom (input mesh) arrays */
   jigsaw_alloc_vert2(jpoints, npts);
   jigsaw_alloc_edge2(jedges,  npts);
+
+  /* Origin in radians */
+  x00r = DEG2RAD(x00);
+  y00r = DEG2RAD(y00);
   
   /* Iterate using polar coordinates */
   for (n=0; n<npts; n++) {
     double theta = (2*PI*n)/npts;
     /* Points */
-    jpoints->_data[n]._ppos[0] = cang * cos(theta) + x00;
-    jpoints->_data[n]._ppos[1] = cang * sin(theta) + y00;
+    jpoints->_data[n]._ppos[0] = crad * cos(theta);
+    jpoints->_data[n]._ppos[1] = crad * sin(theta);
     jpoints->_data[n]._itag = 0;
     /* Connecting edges */
     jedges->_data[n]._itag = 0;
@@ -3523,32 +3570,40 @@ void create_hex_radius(double crad,   /* Radius in metres     */
 
   /* Fill in the x & y grids */
   for (n=0; n<=nHfun; n++) {
-    hfx->_data[n] = (x00 - cang) + 2*n*cang/nHfun;
-    hfy->_data[n] = (y00 - cang) + 2*n*cang/nHfun;
+    hfx->_data[n] = -crad + 2*n*crad/nHfun;
+    hfy->_data[n] = -crad + 2*n*crad/nHfun;
   }
 
-  /* Fill in the gaussian values */
-  /* Note: this needs to be in COLUMN major format but it doesn't
-           really matter here due to the symmetry (although if we do
-           the projection right, it won't be)                          */
+  /*
+   * Fill in the gaussian values
+   *
+   * Note: this needs to be in COLUMN major format but it doesn't really
+   *       matter in this case due to the symmetry in stereographic projection
+   *       space.
+   */
   n = 0;
   for (i=0; i<=nHfun; i++)
     for (j=0; j<=nHfun; j++) {
-      double gval = wgt_gaussian_2d(hfx->_data[i] - x00, /* x grid value */
-				    hfy->_data[j] - y00, /* y grid value */
+      double gval = wgt_gaussian_2d(hfx->_data[i], /* x grid value */
+				    hfy->_data[j], /* y grid value */
 				    gscale);       /* scale        */
-      hfvals->_data[n++] = ((rmax * (1.-gval)) + rmin) / deg2m;
+      hfvals->_data[n++] = ((rmax * (1.-gval)) + rmin);
     }
+
+
   /* Set up some flags/parameters */
   J_hfun._flags = JIGSAW_EUCLIDEAN_GRID;
   J_jig._hfun_scal = JIGSAW_HFUN_ABSOLUTE ;
-  J_jig._hfun_hmin = rmin / deg2m;
-  J_jig._hfun_hmax = rmax / deg2m;
+  J_jig._hfun_hmin = rmin;
+  J_jig._hfun_hmax = rmax;
 
   // Call Jigsaw
   J_jig._verbosity = 0;
   jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, &J_hfun, J_mesh);
   if (jret) hd_quit("Error calling JIGSAW\n");
+
+  /* Perform inverse stereographic projection of output data         */
+  st_transform(J_mesh, ST3PROJ_INV, x00r, y00r);
 
   /* Cleanup */
   jigsaw_free_msh_t(&J_geom);
@@ -3592,10 +3647,11 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   int ncerr;
   int dims;
   double stime;
-  double bmin, bmax, hmin, hmax, s;
+  double bmin, bmax, bnin, bnax, hmin = 0.0, hmax = 0.0, s;
   double *exlon, *exlat, *exrad, *exbth;
   double deg2m = 60.0 * 1852.0;
   double expf = 0.0;
+  double cres = 0.0;
   delaunay *d;
   jigsaw_REALS_array_t *hfvals = &J_hfun->_value;
   jigsaw_REALS_array_t *hfx    = &J_hfun->_xgrid;
@@ -3645,15 +3701,20 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   } else if (endswith(fname,".msh")) {
     imeth = I_MSH;
   } else {
+    double d1, d2, d3;
     imeth = (I_USR|I_MESH);
+    prm_skip_to_end_of_key(fp, "HFUN_BATHY_FILE");
+    i = atoi(fname);    
+    if (i == 0 || fscanf(fp, "%lf %lf %lf", &d1, &d2, &d3) != 3)
+      cres = atof(fname) / deg2m;
   }
 
   /*-----------------------------------------------------------------*/
   /* Define and read parameters                                      */
   /* Note: bmin and bmax are negative for wet cells.                 */
   if (prm_read_int(fp, "NHFUN", &npass)) {
-    bmin = hmax = -HUGE;
-    bmax = hmin = HUGE;
+    bnin = bmax = hmax = -HUGE;
+    bnax = bmin = hmin = HUGE;
     bmn = d_alloc_1d(npass);
     bmx = d_alloc_1d(npass);
     hmn = d_alloc_1d(npass);
@@ -3672,13 +3733,25 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       prm_read_double(fp, buf, &bmx[n]);
       sprintf(buf, "TYPE%d", n);
       prm_read_double(fp, buf, &exf[n]);
-      bmin = max(bmin, bmn[n]);
-      bmax = min(bmax, bmx[n]);
+      /* If bathymetries from file are < 0, then bmax is the deepest */
+      /* depth and bmin the shallowest such that bmax < bmin. In     */
+      /* case we get the bmax from min(bmax, bmn[n]).                */
+      if (bmn[n] < 0) {
+	bnin = max(bnin, bmn[n]);
+	bmin = bnin;
+      } else
+	bmin = min(bmin, bmn[n]);
+      if (bmx[n] < 0) {
+	bnax = min(bnax, bmx[n]);
+	bmax = bnax;
+      } else
+	bmax = max(bmax, bmx[n]);
       hmax = max(hmax, hmx[n]);
       hmin = min(hmin, hmn[n]);
     }
     cm->hfun_min = hmin * deg2m;
     cm->hfun_max = hmax * deg2m;
+
   } else {
     hmin = cm->hfun_min / deg2m;
     hmax = cm->hfun_max / deg2m;
@@ -3686,10 +3759,12 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     prm_read_double(fp, "HFUN_BMIN", &bmin);
     prm_read_double(fp, "HFUN_TYPE", &expf);
     if (prm_read_double(fp, "HFUN_BMAX", &bmax)) bmf = 1;
+    /*
     if (strlen(vname) == 0 && bmin > 0.0 && bmax > 0.0 && bmin < bmax) {
       bmin *= -1.0;
       bmax *= -1.0;
     }
+    */
   }
   prm_read_int(fp, "HFUN_SMOOTH", &smooth);
 
@@ -3710,15 +3785,13 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   if (imeth & I_GRID) {
     /* Make a regular grid in the bounding box at the maximum        */
     /* resolution.                                                   */
-    double res = 0.25 * (hmin + hmax);
+    double res = (cres) ? cres : 0.25 * (hmin + hmax);
     /*double res = 0.05;*/
     nce1 = (int)(fabs(cm->belon - cm->bslon) / res);
     nce2 = (int)(fabs(cm->belat - cm->bslat) / res);
-
     nhfun = nce1 * nce2;
     jigsaw_alloc_reals(hfx, nce1);
     jigsaw_alloc_reals(hfy, nce2);
-
     /* Fill in the x & y grids                                       */
     s = (cm->belon - cm->bslon) / (double)(nce1 - 1);
     for (i = 0; i < nce1; i++)
@@ -3800,6 +3873,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     for (n = 0; n < nord; n++) {
       if (fscanf(fp, "%lf %lf %lf %lf", &exlon[n], &exlat[n], &exrad[n], &exbth[n]) != 4)
 	hd_quit("hfun_from_bathy: Format for HFUN_OVERRIDE is 'lon lat radius value'.\n");
+      if (exbth[n] > 0.0) exbth[n] /= deg2m;
     }
     orf = 1;
   }
@@ -3857,7 +3931,10 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       for (n = 0; n < nhfun; n++) {
 	xloc = J_hfun->_vert2._data[n]._ppos[0];
 	yloc = J_hfun->_vert2._data[n]._ppos[1];
-	b[n] = ts_eval_xy(ts, idb, 0.0, xloc, yloc);
+	if (dims == 4)
+	  b[n] = ts_eval_xyz(ts, idb, stime, xloc, yloc, 0.0);
+	else
+	  b[n] = ts_eval_xy(ts, idb, stime, xloc, yloc);
 	if (!bmf && b[n] < bmax) bmax = b[n];
 	if (verbose) printf("%d %f %f : %f %f\n",n, xloc, yloc, b[n], bmax);
       }
@@ -3927,19 +4004,27 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   } else {
     int constf = 0;
     double d1, d2, d3;
-
     if (!(imeth & I_MSH)) {
       prm_skip_to_end_of_key(fp, "HFUN_BATHY_FILE");
       nbath = atoi(fname);    
       if (nbath == 0 || fscanf(fp, "%lf %lf %lf", &d1, &d2, &d3) != 3) {
 	constf = 1;
 	d1 = atof(fname) / deg2m;
-	for (n = 0; n < nhfun; n++) {
-	  hfvals->_data[n] = d1;
+	if (imeth & I_GRID) {
+	  n = 0;
+	  for (i = 0; i < nce1; i++) {
+	    for (j = 0; j < nce2; j++) {
+	      hfvals->_data[n++] = d1;
+	    }
+	  }
+	} else {
+	  for (n = 0; n < nhfun; n++) {
+	    hfvals->_data[n] = d1;
+	  }
 	}
 	J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
 	if (orf) {
-	  for (n = 0; n < nord; n++) exbth[n] = fabs(exbth[n]) / deg2m;
+	  for (n = 0; n < nord; n++) exbth[n] = fabs(exbth[n]);
 	}
       } else {
 	prm_skip_to_end_of_key(fp, "HFUN_BATHY_FILE");
@@ -3953,7 +4038,6 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	
 	/* Interpolate from a triangulation                              */
 	gs = grid_interp_init(x, y, b, nbath, i_rule);
-	printf("a %d\n",nhfun);
 
 	n = 0;
 	for (i = 0; i < nce1; i++) {
@@ -3990,10 +4074,14 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       double smin[nord];
       int imin[nord], jmin[nord], nmin[nord];
       n = 0;
-      for (m = 0; m < nord; m++) smin[m] = HUGE;
+      for (m = 0; m < nord; m++) {
+	smin[m] = HUGE;
+	nmin[m] = -1;
+      }
       for (i = 0; i < nce1; i++) {
 	for (j = 0; j < nce2; j++) {
 	  for (m = 0; m < nord; m++) {
+	    if (exbth[m] > 0.0) continue;
 	    xloc = exlon[m] - hfx->_data[i];
 	    yloc = exlat[m] - hfy->_data[j];
 	    s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
@@ -4011,13 +4099,16 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	}
       }
       for (m = 0; m < nord; m++) {
-	val[nmin[m]] = exbth[m];
-	hd_warn("HFUN_OVERRIDE%d minimum dist @ %f %f\n", m,
-		hfx->_data[imin[m]],hfy->_data[jmin[m]]);
+	if (nmin[m] >= 0 && exbth[m] <= 0.0) {
+	  val[nmin[m]] = exbth[m];
+	  hd_warn("HFUN_OVERRIDE%d minimum dist @ %f %f\n", m,
+		  hfx->_data[imin[m]],hfy->_data[jmin[m]]);
+	}
       }
     } else {
       for (n = 0; n < nhfun; n++) {
 	for (m = 0; m < nord; m++) {
+	  if (exbth[m] > 0.0) continue;
 	  xloc = exlon[m] - J_hfun->_vert2._data[n]._ppos[0];
 	  yloc = exlat[m] - J_hfun->_vert2._data[n]._ppos[1];
 	  s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
@@ -4026,28 +4117,66 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       }
     }
   }
-  if (exlon) d_free_1d(exlon);
-  if (exlat) d_free_1d(exlat);
-  if (exrad) d_free_1d(exrad);
-  if (exbth) d_free_1d(exbth);
 
   /*-----------------------------------------------------------------*/
   /* Convert to the hfun function                                    */
   if (imeth & (I_NC|I_BTY)) {
     int dof = 0;
 
+    x = d_alloc_1d(nhfun);
+    y = d_alloc_1d(nhfun);
+    n = 0;
+    for (i = 0; i < nce1; i++) {
+      for (j = 0; j < nce2; j++) {
+	x[n] = hfx->_data[i];
+	y[n++] = hfy->_data[j];
+      }
+    }
+
     for (n = 0; n < nhfun; n++) {
-      b[n] = min(max(bmax, b[n]), bmin);
+
+      /* Replace NaNs with nearest valid value                       */
+      bnax = HUGE;
+      if (isnan(b[n])) {
+	for (m = 0; m < nhfun; m++) {
+	  if (!isnan(b[m])) {
+	    s = sqrt((x[n]-x[m])*(x[n]-x[m])+(y[n]-y[m])*(y[n]-y[m]));
+	    if (s < bnax) {
+	      b[n] = b[m];
+	      bnax = s;
+	    }
+	  }
+	}
+      }
+
+      /* Limit the bathymetry. Nore for negative bathymetries the    */
+      /* maximum is the deepest (i.e. most negative).                */
+      if (b[n] < 0.0)
+	b[n] = min(max(bmax, b[n]), bmin);
+      else
+	b[n] = max(min(bmax, b[n]), bmin);
+
       if (npass) {
+	hfvals->_data[n] = 0.0;
 	for (m = 0; m < npass; m++) {
-	  if (b[n] >= bmx[m] && b[n] <= bmn[m])
+	  if ((b[n] < 0.0 && (b[n] >= bmx[m] && b[n] <= bmn[m])) ||
+	      (b[n] > 0.0 && (b[n] <= bmx[m] && b[n] >= bmn[m])))
 	    hfvals->_data[n] = bathyset(b[n], bmn[m], bmx[m], 
 					hmn[m], hmx[m], exf[m]);
+	}
+	if (!hfvals->_data[n]) {
+	  if (b[n] < 0.0) {
+	    if (b[n] < bmax) hfvals->_data[n] = hmax;
+	    if (b[n] > bmin) hfvals->_data[n] = hmin;
+	  } else {
+	    if (b[n] > bmax) hfvals->_data[n] = hmax;
+	    if (b[n] < bmin) hfvals->_data[n] = hmin;
+	  }
 	}
       } else 
 	hfvals->_data[n] = bathyset(b[n], bmin, bmax, hmin, hmax, expf);
 
-      /*printf("%d %f %f\n",n, hfvals->_data[n], b[n]);*/
+      /*printf("%d %f %f min=%f max=%f\n",n, hfvals->_data[n]*deg2m, b[n],bmin,bmax);*/
       if (dof) {
       if (expf > 0.0) {
 	/* Exponential                                               */
@@ -4071,6 +4200,8 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       if (verbose) printf("%d %f %f\n",n, hfvals->_data[n], b[n]);
     }
     }
+    d_free_1d(x);
+    d_free_1d(y);
   }
 
   /*-----------------------------------------------------------------*/
@@ -4082,6 +4213,66 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       i = J_hfun->_edge2._data[n]._node[1];
       hfvals->_data[i] = hmin;
     }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Over-ride resolution values if required                         */
+  if (orf) {
+    double *val = hfvals->_data;
+    if (imeth & I_GRID) {
+      double smin[nord];
+      int imin[nord], jmin[nord], nmin[nord];
+      n = 0;
+      for (m = 0; m < nord; m++) {
+	smin[m] = HUGE;
+	nmin[m] = -1;
+      }
+      for (i = 0; i < nce1; i++) {
+	for (j = 0; j < nce2; j++) {
+	  for (m = 0; m < nord; m++) {
+	    if (exbth[m] <= 0.0) continue;
+	    xloc = exlon[m] - hfx->_data[i];
+	    yloc = exlat[m] - hfy->_data[j];
+	    s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
+	    if (s < exrad[m]) {
+	      val[n] = (val[n] - exbth[m]) * s / exrad[m] + exbth[m];
+	      if (s < smin[m]) {
+		smin[m] = s;
+		imin[m] = i;
+		jmin[m] = j;
+		nmin[m] = n;
+	      }
+	    }
+	  }
+	  n++;
+	}
+      }
+      for (m = 0; m < nord; m++) {
+	if (nmin[m] >= 0 && exbth[m] > 0.0) {
+	  val[nmin[m]] = exbth[m];
+	  hmin = min(hmin, exbth[m]);
+	  hmax = max(hmax, exbth[m]);
+	  cm->hfun_min = hmin * deg2m;
+	  cm->hfun_max = hmax * deg2m;
+	  hd_warn("HFUN_OVERRIDER%d minimum dist @ %f %f\n", m,
+		  hfx->_data[imin[m]],hfy->_data[jmin[m]]);
+	}
+      }
+    } else {
+      for (n = 0; n < nhfun; n++) {
+	for (m = 0; m < nord; m++) {
+	  if (exbth[m] <= 0.0) continue;
+	  xloc = exlon[m] - J_hfun->_vert2._data[n]._ppos[0];
+	  yloc = exlat[m] - J_hfun->_vert2._data[n]._ppos[1];
+	  s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
+	  if (s < exrad[m]) val[n] = (val[n] - exbth[m]) * s / exrad[m] + exbth[m];
+	}
+      }
+    }
+    if (exlon) d_free_1d(exlon);
+    if (exlat) d_free_1d(exlat);
+    if (exrad) d_free_1d(exrad);
+    if (exbth) d_free_1d(exbth);
   }
 
   /*-----------------------------------------------------------------*/
@@ -4275,7 +4466,7 @@ double bathyset(double b,
 
   if (expf > 0.0) {
     /* Exponential                                                   */
-    ret = (hmin - hmax) * exp(b / expf) + 
+    ret = (hmin - hmax) * exp(-fabs(b) / expf) + 
       (hmax - hmin * exp(-fabs(bmax) / expf));
   } else if (expf == 0) {
     /* Linear                                                        */
@@ -4302,7 +4493,7 @@ double bathyset(double b,
 /*-------------------------------------------------------------------*/
 /* Reads a coastline file and creates a hfun file                    */
 /*-------------------------------------------------------------------*/
-void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
+void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode)
 {
   FILE *fp = params->prmfd, *ef, *bf, *hf;
   char buf[MAXSTRLEN], key[MAXSTRLEN];
@@ -4324,22 +4515,74 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
   jigsaw_REALS_array_t *hfx    = &J_hfun->_xgrid;
   jigsaw_REALS_array_t *hfy    = &J_hfun->_ygrid;
   int perimf = 0; /* Set hfun perimeter to maximum resolution        */
+  int npass = 0;
+  int npoints;
+  point *p;
+  double *hmx, *hmn, *bmx, *bmn, *exf;
   msh_t *msh = cm->msh;
+
+  /*-----------------------------------------------------------------*/
+  /* Get the seed points if required                                 */
+  if (mode == 1) {
+    prm_read_int(fp, "HFUN_POINTS", &npoints);
+    p = malloc(npoints * sizeof(point));
+    for(n = 0; n < npoints; n++) {
+      if (fscanf(fp, "%lf %lf", &p[n].x, &p[n].y) != 2)
+	hd_quit("hfun_from_coast: Format for HFUN_POINTS is 'lon lat'.\n");
+    }
+  }
 
   /*-----------------------------------------------------------------*/
   /* Define and read parameters                                      */
   /* Note: bmin and bmax are negative for wet cells.                 */
-  hmin = cm->hfun_min / deg2m;
-  hmax = cm->hfun_max / deg2m;
-  bmin = bmax = 0.0;
-  if (prm_read_double(fp, "HFUN_BMIN", &bmin) && 
-      prm_read_double(fp, "HFUN_BMAX", &bmax)) {
+  /*-----------------------------------------------------------------*/
+  /* Define and read parameters                                      */
+  if (prm_read_int(fp, "NHFUN", &npass)) {
+    bmax = hmax = -HUGE;
+    bmin = hmin = HUGE;
+    bmn = d_alloc_1d(npass);
+    bmx = d_alloc_1d(npass);
+    hmn = d_alloc_1d(npass);
+    hmx = d_alloc_1d(npass);
+    exf = d_alloc_1d(npass);
+    for (n = 0; n < npass; n++) {
+      sprintf(buf, "HMIN%d", n);
+      prm_read_double(fp, buf, &hmn[n]);
+      hmn[n] /= deg2m;
+      sprintf(buf, "HMAX%d", n);
+      prm_read_double(fp, buf, &hmx[n]);
+      hmx[n] /= deg2m;
+      sprintf(buf, "BMIN%d", n);
+      prm_read_double(fp, buf, &bmn[n]);
+      bmn[n] /= deg2m;
+      sprintf(buf, "BMAX%d", n);
+      prm_read_double(fp, buf, &bmx[n]);
+      bmx[n] /= deg2m;
+      sprintf(buf, "TYPE%d", n);
+      prm_read_double(fp, buf, &exf[n]);
+      bmin = min(bmin, bmn[n]);
+      bmax = max(bmax, bmx[n]);
+      hmax = max(hmax, hmx[n]);
+      hmin = min(hmin, hmn[n]);
+    }
     bmf = 1;
-    bmin /= deg2m;
-    bmax /= deg2m;
+    cm->hfun_min = hmin * deg2m;
+    cm->hfun_max = hmax * deg2m;
+  } else {
+    hmin = cm->hfun_min / deg2m;
+    hmax = cm->hfun_max / deg2m;
+    bmin = bmax = 0.0;
+    if (prm_read_double(fp, "HFUN_BMIN", &bmin) && 
+	prm_read_double(fp, "HFUN_BMAX", &bmax)) {
+      bmf = 1;
+      bmin /= deg2m;
+      bmax /= deg2m;
+    } else
+      hd_quit("Can't find NHFUN or HFUN_BMIN & HFUN_BMAX.\n");
+    prm_read_double(fp, "HFUN_TYPE", &expf);
   }
   prm_read_int(fp, "HFUN_SMOOTH", &smooth);
-  prm_read_double(fp, "HFUN_TYPE", &expf);
+
   nexp = 0;
   if (prm_read_int(fp, "HFUN_EXCLUDE", &nexp)) {
     exlon = d_alloc_1d(nexp);
@@ -4354,8 +4597,9 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
       for (n = 0; n < nexp; n++) {
 	xloc = exlon[n] - msh->coords[0][i];
 	yloc = exlat[n] - msh->coords[1][i];
-	if (sqrt(xloc * xloc + yloc * yloc) * deg2m < exrad[n])
+	if (sqrt(xloc * xloc + yloc * yloc) * deg2m < exrad[n]) {
 	  msh->flag[i] |= S_LINK;
+	}
       }
     }
   }
@@ -4409,7 +4653,10 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
       xloc = hfx->_data[i];
       for (j = 0; j < nce2; j++) {
 	yloc = hfy->_data[j];
-	b[n] = coast_dist(msh, xloc, yloc);
+	if (mode == 0) 
+	  b[n] = coast_dist(msh, xloc, yloc);
+	else
+	  b[n] = point_dist(npoints, p, xloc, yloc);
 	if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
 	n++;
       }
@@ -4419,7 +4666,10 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
     for (n = 0; n < nhfun; n++) {
       xloc = J_hfun->_vert2._data[n]._ppos[0];
       yloc = J_hfun->_vert2._data[n]._ppos[1];
-      b[n] = coast_dist(msh, xloc, yloc);
+      if (mode == 0)
+	b[n] = coast_dist(msh, xloc, yloc);
+      else
+	b[n] = point_dist(npoints, p, xloc, yloc);
       if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
     }
     J_hfun->_flags = JIGSAW_EUCLIDEAN_MESH;
@@ -4439,8 +4689,27 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
   /* Convert to the hfun function                                    */
   s = (bmin == bmax) ? 0.0 : (hmin - hmax) / (bmin - bmax);
   for (n = 0; n < nhfun; n++) {
+    int dof = 0;
     b[n] = max(min(bmax, b[n]), bmin);
+
+    if (npass) {
+      hfvals->_data[n] = 0.0;
+      for (m = 0; m < npass; m++) {
+	if (b[n] >= bmn[m] && b[n] <= bmx[m])
+	  hfvals->_data[n] = bathyset(b[n], bmn[m], bmx[m], 
+				      hmn[m], hmx[m], exf[m]);
+      }
+      if (!hfvals->_data[n]) {
+	if (b[n] >= bmax) hfvals->_data[n] = hmax;
+	if (b[n] <= bmin) hfvals->_data[n] = hmin;
+      }
+    } else 
+      hfvals->_data[n] = bathyset(b[n], bmin, bmax, hmin, hmax, expf);
+
+    if (dof) {
     if (expf > 0.0) {
+
+
       /* Exponential                                               */
       hfvals->_data[n] = (hmin - hmax) * exp(b[n] / expf) + 
 	(hmax - hmin * exp(-fabs(bmax) / expf));
@@ -4460,6 +4729,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun)
 	hfvals->_data[n] = 0.5 * ((hmin - hmax) * cos(ba * PI / dd - s) + (hmin + hmax));
     }
     if (verbose) printf("%d %f %f\n",n, hfvals->_data[n], b[n]);
+    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -4670,6 +4940,28 @@ double coast_dist(msh_t *msh, double xloc, double yloc)
 
 
 /*-------------------------------------------------------------------*/
+/* Computs the minimum distance to a coastline                       */
+/*-------------------------------------------------------------------*/
+double point_dist(int npoints, point *p, double xloc, double yloc)
+{
+  int n;
+  double d, x, y, dx, dy;
+  double dist = HUGE;
+
+  for (n = 0; n < npoints; n++) {
+    x = xloc - p[n].x;
+    y = yloc - p[n].y;
+    d = sqrt(x * x + y * y);
+    dist = min(dist, d);
+  }
+  return(dist);
+}
+
+/* END point_dist()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Creates a constant triangulation given a bounding perimeter       */
 /*-------------------------------------------------------------------*/
 void create_bounded_mesh(int npts,     /* Number of perimeter points */
@@ -4810,7 +5102,6 @@ void init_J_jig(jigsaw_jig_t *J_jig)
   J_jig->_optm_qtol = 1.E-04;
   J_jig->_optm_qlim = 0.9250;
 
-
 }
 
 /* END init_J_jig()                                                  */
@@ -4822,13 +5113,15 @@ void init_J_jig(jigsaw_jig_t *J_jig)
 /*-------------------------------------------------------------------*/
 void create_jigsaw_mesh(coamsh_t *cm, 
 			jigsaw_msh_t *J_mesh,
-			jigsaw_msh_t *J_hfun
+			jigsaw_msh_t *J_hfun,
+			int powf, int stproj
 			)
 {
   int filef = 1;
   FILE *ef;
   char buf[MAXSTRLEN], key[MAXSTRLEN];
-
+  double xmid = 0.0, ymid = 0.0;
+  
   /* Constants                                                       */
   double deg2m = 60.0 * 1852.0;
   msh_t *msh = cm->msh;
@@ -4850,9 +5143,8 @@ void create_jigsaw_mesh(coamsh_t *cm,
   jigsaw_init_jig_t (&J_jig);
   jigsaw_init_msh_t (&J_geom);
   init_J_jig(&J_jig);
-
-  jigsaw_VERT2_array_t *hf    = &J_hfun->_vert2;
-  jigsaw_REALS_array_t *hfvals = &J_hfun->_value;
+  /* Power mesh                                                      */
+  if (powf) J_jig._optm_dual = 1;
 
   /* Flag input mesh type                                            */
   J_geom._flags = JIGSAW_EUCLIDEAN_MESH;
@@ -4877,17 +5169,55 @@ void create_jigsaw_mesh(coamsh_t *cm,
 
   /* Set up some flags/parameters                                    */
   J_jig._hfun_scal = JIGSAW_HFUN_ABSOLUTE;
-  J_jig._hfun_hmin = cm->hfun_min / deg2m;
-  J_jig._hfun_hmax = cm->hfun_max / deg2m;
-  J_jig._verbosity = 0;
+  if (stproj) {
+    /* Leave in metres */
+    J_jig._hfun_hmin = cm->hfun_min;
+    J_jig._hfun_hmax = cm->hfun_max;
+  } else {
+    J_jig._hfun_hmin = cm->hfun_min / deg2m;
+    J_jig._hfun_hmax = cm->hfun_max / deg2m;
+  }
+
+  J_jig._verbosity = 1;
+  
   /*J_jig._mesh_eps1 = 10.0;*/
   /*
   J_jig._hfun_hmin = 0.01;
   J_jig._hfun_hmax = 0.02;
   */
+
+  /* Stereographic projection */
+  if (stproj) {
+    /* Calculate mid-points */
+    for (n = 0; n < msh->npoint; n++) {
+      /* Figure out the centroid */
+      xmid += jpoints->_data[n]._ppos[0];
+      ymid += jpoints->_data[n]._ppos[1];
+    }
+    xmid /= msh->npoint; xmid = DEG2RAD(xmid);
+    ymid /= msh->npoint; ymid = DEG2RAD(ymid);
+
+    /* Perform forward stereographic projection of input data          */
+    st_transform(&J_geom, ST3PROJ_FWD, xmid, ymid);
+
+    /* Convert hfun grid to mesh, if needed */
+    if (J_hfun->_flags == JIGSAW_EUCLIDEAN_GRID) {
+      jigsaw_msh_t J_hfun_new;
+      jigsaw_init_msh_t (&J_hfun_new);
+      convert_jigsaw_grid_to_mesh(J_hfun, &J_hfun_new);
+      /* Swap out */
+      J_hfun = &J_hfun_new;
+    }
+    /* Projection of hfun */
+    st_transform(J_hfun, ST3PROJ_FWD, xmid, ymid);
+  }
+
   /* Call Jigsaw                                                     */
   jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, J_hfun, J_mesh);
   if (jret) hd_quit("create_jigsaw_mesh: Error calling JIGSAW\n");
+
+  /* Perform inverse stereographic projection of output data         */
+  if (stproj) st_transform(J_mesh, ST3PROJ_INV, xmid, ymid);
 
   /* Write to file                                                   */
   if (filef) {
@@ -4935,20 +5265,26 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
   int n, nn, i, j, m, mm, id;
   int e1, e2, t1, t2;
   char buf[MAXSTRLEN], code[MAXSTRLEN], key[MAXSTRLEN];
+  char mshtype[MAXSTRLEN];
   double x1, y1, x2, y2, d1, d2;
   double nvoints, nvedges;
+  double radius;
   point *voints;
   delaunay* d;
   triangle* t, tn;
   int ns, *sin, *edges, *mask, **nei, **e2t;
   int intype;
+  int has_proj = (strlen(params->projection) > 0);
+  int is_geog = has_proj && (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
   int verbose = 0;
   int filef = 1;
   int filefj = 0;         /* Print JIGSAW .msh output file           */
-  int centref = 1;        /* Use circumcentres for triangle centres  */
+  int centref = 1;        /* 0 : centre of mass for triangle centres */
+                          /* 1 : circumcentres for triangle centres  */
+                          /* 2 : orthocentres for triangle centres   */
   int newcode = 1;        /* Optimised neighbour finding             */
-  int obtusef = 1;        /* Use centroid for obtuse triangles        */
-  int dtri = -1;          /* Debugging to find triangles              */
+  int obtusef = 1;        /* Use centroid for obtuse triangles       */
+  int dtri = -1;          /* Debugging to find triangles             */
   int dedge = -1;         /* Debugging for edges                     */
 
 #ifdef HAVE_JIGSAWLIB
@@ -4956,7 +5292,16 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 #endif
   params->d = d = malloc(sizeof(delaunay));
   params->us_type |= US_JUS;
+  if (params->us_type & US_POW) centref = 2;
   if (!centref && obtusef) obtusef = 0;
+  if (centref == 2 && obtusef) obtusef = 0;
+
+  is_geog = 0;
+  if (params->us_type & US_STER) is_geog = 1;
+
+  /* centref = 1 with is_geog = 1 appears to generate some odd       */
+  /* looking cells.                                                  */
+  if (centref == 1 && is_geog) is_geog = 0;
 
   if (jmsh == NULL) {
     if ((fp = fopen(infile, "r")) == NULL)
@@ -4964,11 +5309,23 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 
     prm_skip_to_end_of_tok(fp, "mshid", "=", buf);
     meshid = atoi(buf);
+    sprintf(key, "MSHID=%d", meshid);
+    prm_skip_to_end_of_tok(fp, key, ";", mshtype);
     prm_skip_to_end_of_tok(fp, "ndims", "=", buf);
     ndims = atoi(buf);
     prm_skip_to_end_of_tok(fp, "point", "=", buf);
     d->npoints = atoi(buf);
     intype = 1;
+    /*
+    if (strcmp(mshtype, "ELLIPSOID-MESH") == 0) {
+      if (prm_skip_to_end_of_tok(fp, "RADII", "=", buf))
+	radius = atof(buf);
+      else
+	hd_quit("Jigsaw file must specify RADII for ELLIPSOID-MESH files.\n");
+      if (!is_geog)
+	hd_quit("Must use PROJECTION GEOGRAPHIC with Jigsaw ELLIPSOID-MESH files.\n");
+    }
+    */
   } else {
 #ifdef HAVE_JIGSAWLIB
     /* Always the case for now */
@@ -5022,11 +5379,24 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 #ifdef HAVE_JIGSAWLIB
 	p->x = msh->_vert2._data[i]._ppos[0];
 	p->y = msh->_vert2._data[i]._ppos[1];
+	p->z = 0.0;
+	if (centref == 2)
+	  p->z = msh->_power._data[i];
 #endif
     }
     if (filef) fprintf(cf, "%f %f\n", p->x, p->y);
     if (filefj) fprintf(jf, "%f;%f;0\n", p->x, p->y);
   }
+  if (intype && centref == 2) {
+    prm_skip_to_end_of_tok(fp, "power", "=", buf);
+    n = atoi(buf);
+    for (i = 0; i < n; i++) {
+      point* p = &d->points[i];
+      if (fscanf(fp, "%lf", &p->z) != 1)
+	hd_warn("convert_jigsaw_msh: Incorrect number of power entries in %s, line %d\n", infile, i);
+    }
+  }
+
   if (filef) fclose(cf);
 
   /*-----------------------------------------------------------------*/
@@ -5289,7 +5659,7 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
       /* If only one triangle is a neighbour to the edge, then use   */
       /* the centroid of that triangle and the midpoint of the edge  */
       /* as the Voronoi edge.                                        */
-      double p1[3][2];
+      double p1[3][3], v1[3], v2[3];
       int o1;
       x1 = y1 = x2 = y2 = d1 = 0.0;
       for (n = 0; n < 3; n++) {
@@ -5297,17 +5667,31 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 	j = t->vids[n];
 	p1[n][0] = d->points[j].x;
 	p1[n][1] = d->points[j].y;
+	p1[n][2] = d->points[j].z;
 
 	d1 += 1.0;
-	x2 = 0.5 * (d->points[e1].x + d->points[e2].x);
-	y2 = 0.5 * (d->points[e1].y + d->points[e2].y);
+
+	/* Set the vertex coordinates                                */
+	v1[0] = d->points[e1].x;
+	v1[1] = d->points[e1].y;
+	v1[2] = d->points[e1].z;
+	v2[0] = d->points[e2].x;
+	v2[1] = d->points[e2].y;
+	v2[2] = d->points[e2].z;
+
+	/* Compute the mid-point                                     */
+	edge_cen(centref, is_geog, v1, v2, po);
+
+	/* Set the second triangle 'centre' to the mid-point         */
+	x2 = po[0];
+	y2 = po[1];
       }
       o1 = (centref) ? 0 : 1;
       if (obtusef) {
 	if ((d2 = is_obtuse(p1[0],p1[1],p1[2]))) {
 	  if (DEBUG("init_m"))
 	    dlog("init_m", "convert_jigsaw_msh: Obtuse triangle at edge %d, tri %d (%5.2f)\n", i, tri[0], d2);
-	  /*hd_warn("convert_jigsaw_msh: Obtuse triangle at edge %d, tri %d (%5.2f)\n", i, tri[0], d2);*/
+	  hd_warn("convert_jigsaw_msh: Obtuse triangle at edge %d, tri %d (%5.2f)\n", i, tri[0], d2);
 	  o1 = 1;
 	}
       }
@@ -5315,10 +5699,8 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 	tria_com(po, p1[0], p1[1], p1[2]);
       	x1 = po[0]; y1 = po[1];
       } else {
-	/*
-	circumcentre(p1[0], p1[1], p1[2], &x1, &y1);
-	*/
-	tria_ball_2d(po, p1[0], p1[1], p1[2]);
+	/* Compute the centre of the first triangle                  */
+	tri_cen(centref, is_geog, p1[0], p1[1], p1[2], po);
 	x1 = po[0]; y1 = po[1];
       }
       if(i == dedge) 
@@ -5327,7 +5709,7 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
     } else if (m == 2) {
       /* If two triangles are neighbours to the edge, then use the   */
       /* centroids of each triangle as the Voronoi edge.             */
-      double p1[3][2], p2[3][2];
+      double p1[3][3], p2[3][3];
       int o1, o2;
       x1 = y1 = x2 = y2 = d1 = 0.0;
       for (n = 0; n < 3; n++) {
@@ -5335,11 +5717,13 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 	j = t->vids[n];
 	p1[n][0] = d->points[j].x;
 	p1[n][1] = d->points[j].y;
+	p1[n][2] = d->points[j].z;
 
 	t = &d->triangles[tri[1]];
 	j = t->vids[n];
 	p2[n][0] = d->points[j].x;
 	p2[n][1] = d->points[j].y;
+	p2[n][2] = d->points[j].z;
 
 	d1 += 1.0;
       }
@@ -5370,20 +5754,14 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 	tria_com(po, p1[0], p1[1], p1[2]);
       	x1 = po[0]; y1 = po[1];
       } else {
-	/*
-	circumcentre(p1[0], p1[1], p1[2], &x1, &y1);
-	*/
-	tria_ball_2d(po, p1[0], p1[1], p1[2]);
+	tri_cen(centref, is_geog, p1[0], p1[1], p1[2], po);
 	x1 = po[0]; y1 = po[1];
       }
       if (o2) {
 	tria_com(po, p2[0], p2[1], p2[2]);
       	x2 = po[0]; y2 = po[1];
       } else {
-	/*	
-	circumcentre(p2[0], p2[1], p2[2], &x2, &y2);
-	*/
-	tria_ball_2d(po, p2[0], p2[1], p2[2]);
+	tri_cen(centref, is_geog, p2[0], p2[1], p2[2], po);
 	x2 = po[0]; y2 = po[1];
       }
       if (obtusef && o1) {
@@ -5471,6 +5849,80 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 
 /* END convert_jigsaw_msh()                                          */
 /*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Computes the 'centre of a triangle                                */
+/*-------------------------------------------------------------------*/
+void tri_cen(int centref,     /* Type of triange centre              */
+	     int geogf,       /* Geographic projection flag          */
+	     double *p1,      /* [x,y,z] of vertex 1                 */
+	     double *p2,      /* [x,y,z] of vertex 2                 */
+	     double *p3,      /* [x,y,z] of vertex 3                 */
+	     double *po       /* Coordinates of centre               */
+	     )
+{
+
+  if (centref == 1) { /* Voronoi meshes                              */
+    if (geogf) {
+      /* Stereographic projections                                   */
+      tria_ball_2s(po, p1, p2, p3, RADIUS);
+    } else {
+      /* Lat / long plane                                            */
+      tria_ball_2d(po, p1, p2, p3); 
+    }
+  } else {            /* Power meshes                                */
+    if (geogf) {
+      /* Stereographic projections                                   */
+      tria_ortho_2s(po, p1, p2, p3, RADIUS);
+    } else {
+      /* Lat / long plane                                            */
+      tria_ortho_2d(po, p1, p2, p3);
+    }
+    /* If the centre lies outside the triangle then use the centre   */
+    /* of mass.                                                      */
+    if (!in_tri(po, p1, p2, p3))
+      tria_com(po, p1, p2, p3);
+  }
+}
+
+/* END tri_cen()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Computes the 'centre of an edge of a triangle                     */
+/*-------------------------------------------------------------------*/
+void edge_cen(int centref,     /* Type of triange centre             */
+	      int geogf,       /* Geographic projection flag         */
+	      double *v1,      /* [x,y,z] of vertex 1                */
+	      double *v2,      /* [x,y,z] of vertex 2                */
+	      double *po       /* Coordinates of centre              */
+	      )
+{
+  if (centref == 1) { /* Voronoi meshes                              */
+    /* Voronoi meshes                                          */
+    if (geogf) {
+      /* Stereographic projections                                   */
+      tria_edge_2s(po, v1, v2, RADIUS);
+    } else {
+      /* Lat / long plane                                            */
+      tria_edge_2d(po, v1, v2);
+    }
+  } else {            /* Power meshes                                */
+    if (geogf) {
+      /* Stereographic projections                                   */
+      tria_ortho_edge_2s(po, v1, v2, RADIUS);
+    } else {
+      /* Lat / long plane                                            */
+      tria_ortho_edge_2d(po, v1, v2);
+    }
+  }
+}
+
+/* END edge_cen()                                                    */
+/*-------------------------------------------------------------------*/
+
 
 double is_obtuse(double *p0, double *p1, double *p2)
 {
@@ -5671,6 +6123,7 @@ void bisector(double x1a,
 
 /*-------------------------------------------------------------------*/
 /* Determinant of a 2x2 matrix                                       */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
 /*-------------------------------------------------------------------*/
 double det_2x2(
 	       int la ,    /* Leading dimension of aa                */
@@ -5689,7 +6142,39 @@ double det_2x2(
 
 
 /*-------------------------------------------------------------------*/
+/* Determinant of a 3x3 matrix                                       */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+double det_3x3(
+	       int la ,    /* Leading dimension of aa                */
+	       double *aa  /* Matrix                                 */
+	       )
+{   
+  double ret;
+  ret = aa[uij(0,0,la)] * (aa[uij(1,1,la)] * 
+			    aa[uij(2,2,la)] - 
+			    aa[uij(1,2,la)] * 
+			    aa[uij(2,1,la)] ) -
+
+    aa[uij(0,1,la)] * (aa[uij(1,0,la)] * 
+			aa[uij(2,2,la)] - 
+			aa[uij(1,2,la)] * 
+			aa[uij(2,0,la)] ) +
+
+    aa[uij(0,2,la)] * (aa[uij(1,0,la)] * 
+			aa[uij(2,1,la)] - 
+			aa[uij(1,1,la)] * 
+			aa[uij(2,0,la)] ) ;
+  return(ret);
+}
+
+/* END det_3x3()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* 2-by-2 matrix inversion                                           */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
 /*-------------------------------------------------------------------*/
 void inv_2x2(int la,     /* Leading dim. of aa                       */
 	     double *aa, /* Matrix                                   */
@@ -5707,6 +6192,79 @@ void inv_2x2(int la,     /* Leading dim. of aa                       */
 }
 
 /* END inv_2x2()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* 3-by-3 matrix inversion                                           */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void inv_3x3(int la,     /* Leading dim. of aa                       */
+	     double *aa, /* Matrix                                   */
+	     int lx,     /* Leading dim. of xx                       */
+	     double *xx, /* Matrix inversion * det                   */
+	     double *da  /* matrix determinant                       */
+	     )
+{
+  *da = det_3x3(la, aa);
+
+  xx[uij(0,0,lx)] =
+    aa[uij(2,2,la)] * 
+    aa[uij(1,1,la)] - 
+    aa[uij(2,1,la)] * 
+    aa[uij(1,2,la)] ;
+    
+  xx[uij(0,1,lx)] =
+    aa[uij(2,1,la)] * 
+    aa[uij(0,2,la)] - 
+    aa[uij(2,2,la)] * 
+    aa[uij(0,1,la)] ;
+  
+  xx[uij(0,2,lx)] =
+    aa[uij(1,2,la)] * 
+    aa[uij(0,1,la)] - 
+    aa[uij(1,1,la)] * 
+    aa[uij(0,2,la)] ;
+  
+  xx[uij(1,0,lx)] =
+    aa[uij(2,0,la)] * 
+    aa[uij(1,2,la)] - 
+    aa[uij(2,2,la)] * 
+    aa[uij(1,0,la)] ;
+    
+  xx[uij(1,1,lx)] =
+    aa[uij(2,2,la)] * 
+    aa[uij(0,0,la)] - 
+    aa[uij(2,0,la)] * 
+    aa[uij(0,2,la)] ;
+  
+  xx[uij(1,2,lx)] =
+    aa[uij(1,0,la)] * 
+    aa[uij(0,2,la)] - 
+    aa[uij(1,2,la)] * 
+    aa[uij(0,0,la)] ;
+
+  xx[uij(2,0,lx)] =
+    aa[uij(2,1,la)] * 
+    aa[uij(1,0,la)] - 
+    aa[uij(2,0,la)] * 
+    aa[uij(1,1,la)] ;
+
+  xx[uij(2,1,lx)] =
+    aa[uij(2,0,la)] * 
+    aa[uij(0,1,la)] - 
+    aa[uij(2,1,la)] * 
+    aa[uij(0,0,la)] ;
+    
+  xx[uij(2,2,lx)] =
+    aa[uij(1,1,la)] * 
+    aa[uij(0,0,la)] - 
+    aa[uij(1,0,la)] * 
+    aa[uij(0,1,la)] ;
+
+}
+
+/* END inv_3x3()                                                     */
 /*-------------------------------------------------------------------*/
 
 
@@ -5757,6 +6315,573 @@ void tria_ball_2d(double *bb,    /* centre: [x,y]                    */
 /*-------------------------------------------------------------------*/	
 
 
+/*-------------------------------------------------------------------*/	
+/* Routines to compute the 'centres' for edges. This is the midpoint */
+/* if circumcentres are used.                                        */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void tria_edge_2d(double *bb,    /* centre: [x,y]                    */
+		  double *p1,    /* vertex 1: [x,y]                  */
+		  double *p2     /* vertex 2: [x,y]                  */
+		  )
+{
+  bb[0] = 0.5 * (p1[0] + p2[0]);
+  bb[1] = 0.5 * (p1[1] + p2[1]);
+}
+
+/* END tria_edge_2d()                                                */
+/*-------------------------------------------------------------------*/	
+
+
+/*-------------------------------------------------------------------*/
+/* Triangle circumcentre on stereographic projections.               */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void tria_ball_2s(double *bb,    /* centre: [x,y] (deg)              */
+		  double *p1,    /* vert 1: [l,p] (rad)              */
+		  double *p2,    /* vert 2: [l,p] (rad)              */
+		  double *p3,    /* vert 3: [l,p] (rad)              */
+		  double  rr     /* radius of sphere                 */
+		  )
+{
+  double  e1[3] ;
+  double  e2[3] ;
+  double  e3[3] ;
+  double  eb[3] ;
+    
+  lonlat_to_xyz(p1, e1, rr) ;
+  lonlat_to_xyz(p2, e2, rr) ;
+  lonlat_to_xyz(p3, e3, rr) ;
+        
+  tria_circ_ball_3d(eb, e1, e2, e3) ;
+
+  xyz_to_lonlat(eb, bb, rr) ; 
+
+}
+
+/* END void tria_ball_2d()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/	
+/* Routines to compute the 'centres' for edges on stereographic      */
+/* projections. This is the midpoint if circumcentres are used.      */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void tria_edge_2s(double *bb,    /* centre: [x,y] (deg)              */
+		  double *p1,    /* vert 1: [l,p] (rad)              */
+		  double *p2,    /* vert 2: [l,p] (rad)              */
+		  double  rr     /* radius of sphere                 */
+		  )
+{
+  double  e1[3] ;
+  double  e2[3] ;
+  double  eb[3] ;
+    
+  lonlat_to_xyz(p1, e1, rr) ;
+  lonlat_to_xyz(p2, e2, rr) ;
+        
+  edge_circ_ball_3d(eb, e1, e2) ;
+    
+  xyz_to_lonlat(eb, bb, rr) ; 
+
+}
+
+/* END tria_edge_2s()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Triangle circumcentre in 3 dimensions.                            */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void tria_circ_ball_3d(double *bb,    /* centre: [x,y,z]             */
+		       double *p1,    /* vert 1: [x,y,z]             */
+		       double *p2,    /* vert 2: [x,y,z]             */
+		       double *p3     /* vert 3: [x,y,z]             */
+		       )
+{
+  double  nv[3*1] ;
+  double  xm[3*3] ;
+  double  xi[3*3] ;
+  double  xr[3*1] ;
+  double  ee[3*1] ;
+  double  db[3*1] ;
+  double  dd ;
+  int ii;
+       
+  /*------------------------------------ LHS matrix                  */
+  xm[uij(0,0,3)] = p2[0]-p1[0] ;
+  xm[uij(0,1,3)] = p2[1]-p1[1] ;
+  xm[uij(0,2,3)] = p2[2]-p1[2] ;
+        
+  xm[uij(1,0,3)] = p3[0]-p1[0] ;
+  xm[uij(1,1,3)] = p3[1]-p1[1] ;
+  xm[uij(1,2,3)] = p3[2]-p1[2] ;
+        
+  tria_norm_vect_3d(nv, p1, p2, p3);
+        
+  xm[uij(2,0,3)] = nv[0] ;
+  xm[uij(2,1,3)] = nv[1] ;
+  xm[uij(2,2,3)] = nv[2] ;
+
+  /*------------------------------------ RHS vector                  */
+  xr[0] = (double)+.5 * (xm[uij(0,0,3)] * 
+			 xm[uij(0,0,3)] +
+			 xm[uij(0,1,3)] *
+			 xm[uij(0,1,3)] +
+			 xm[uij(0,2,3)] *
+			 xm[uij(0,2,3)] ) ;
+
+  xr[1] = (double)+.5 * (xm[uij(1,0,3)] * 
+			 xm[uij(1,0,3)] +
+			 xm[uij(1,1,3)] *
+			 xm[uij(1,1,3)] +
+			 xm[uij(1,2,3)] *
+			 xm[uij(1,2,3)] ) ;
+        
+  xr[2] = (double)+.0 ;
+
+  /*------------------------------------ matrix inv                  */
+  inv_3x3(3, xm, 3, xi, &dd) ;
+        
+  /*------------------------------------ lin-solver                  */
+  bb[0] = (xi[uij(0,0,3)] * xr[0] +
+	   xi[uij(0,1,3)] * xr[1] +
+	   xi[uij(0,2,3)] * xr[2] )  ;
+        
+  bb[1] = (xi[uij(1,0,3)] * xr[0] +
+	   xi[uij(1,1,3)] * xr[1] +
+	   xi[uij(1,2,3)] * xr[2] )  ;
+
+  bb[2] = (xi[uij(2,0,3)] * xr[0] +
+	   xi[uij(2,1,3)] * xr[1] +
+	   xi[uij(2,2,3)] * xr[2] )  ;
+
+  bb[0] /= dd ;
+  bb[1] /= dd ;
+  bb[2] /= dd ;
+
+  /*------------------------------------ iter. ref.                  */
+  for(ii = 1; ii-- != 0; ) {
+    ee[0] = xr[0] - (xm[uij(0,0,3)] * bb[0] +
+		     xm[uij(0,1,3)] * bb[1] +
+		     xm[uij(0,2,3)] * bb[2] )  ;
+        
+    ee[1] = xr[1] - (xm[uij(1,0,3)] * bb[0] +
+		     xm[uij(1,1,3)] * bb[1] +
+		     xm[uij(1,2,3)] * bb[2] )  ;
+        
+    ee[2] = xr[2] - (xm[uij(2,0,3)] * bb[0] +
+		     xm[uij(2,1,3)] * bb[1] +
+		     xm[uij(2,2,3)] * bb[2] )  ;
+        
+    db[0] = (xi[uij(0,0,3)] * ee[0] +
+	     xi[uij(0,1,3)] * ee[1] +
+	     xi[uij(0,2,3)] * ee[2] )  ;
+        
+    db[1] = (xi[uij(1,0,3)] * ee[0] +
+	     xi[uij(1,1,3)] * ee[1] +
+	     xi[uij(1,2,3)] * ee[2] )  ;
+
+    db[2] = (xi[uij(2,0,3)] * ee[0] +
+	     xi[uij(2,1,3)] * ee[1] +
+	     xi[uij(2,2,3)] * ee[2] )  ;
+        
+    bb[0] += db[0] / dd ;
+    bb[1] += db[1] / dd ;
+    bb[2] += db[2] / dd ;     
+  }
+
+  /*------------------------------------ offset mid                  */
+  bb[0] += p1[0] ;
+  bb[1] += p1[1] ;
+  bb[2] += p1[2] ;
+}
+
+/* END tria_circ_ball_3d()                                           */
+/*-------------------------------------------------------------------*/	
+
+
+/*-------------------------------------------------------------------*/	
+/* Routines to compute the 'centres' for edges i three dimensions.   */
+/* This is the midpoint if circumcentres are used.                   */
+/*-------------------------------------------------------------------*/    
+void edge_circ_ball_3d (double *bb,    /* centre: [x,y,z]            */
+			double *p1,    /* vert 1: [x,y,z]            */
+			double *p2     /* vert 2: [x,y,z]            */
+			)
+{
+  bb[0] = (double)+.5 * (p1[0] + p2[0]) ;
+  bb[1] = (double)+.5 * (p1[1] + p2[1]) ;
+  bb[2] = (double)+.5 * (p1[2] + p2[2]) ;
+}
+
+/* END edge_circ_ball_3d()                                           */
+/*-------------------------------------------------------------------*/	
+
+
+/*-------------------------------------------------------------------*/
+/* Triangle ortho-centre. Contributed by Darren Engwirda (JIGSAW     */
+/* code).                                                            */
+/*-------------------------------------------------------------------*/
+void tria_ortho_2d(double *bb,    /* centre: [x,y]                   */
+		   double *p1,    /* vertex 1: [x,y,w]               */
+		   double *p2,    /* vertex 2: [x,y,w]               */
+		   double *p3     /* vertex 3: [x,y,w]               */
+		   )
+{
+  int ii;
+  double xm[2*2];
+  double xi[2*2];
+  double xr[2*1];
+  double ee[2*1];
+  double db[2*1];
+  double dd;
+
+  /* LHS matrix                                                      */
+  xm[uij(0,0,2)] = p2[0]-p1[0] ;
+  xm[uij(0,1,2)] = p2[1]-p1[1] ;
+  xm[uij(1,0,2)] = p3[0]-p1[0] ;
+  xm[uij(1,1,2)] = p3[1]-p1[1] ;
+
+  /* RHS vector                                                      */
+  xr[0] = (double)+0.5 * (xm[uij(0,0,2)] * xm[uij(0,0,2)] +
+			 xm[uij(0,1,2)] * xm[uij(0,1,2)]);
+        
+  xr[1] = (double)+0.5 * (xm[uij(1,0,2)] * xm[uij(1,0,2)] +
+			  xm[uij(1,1,2)] * xm[uij(1,1,2)]);
+
+
+  xr[0] -= (double)+0.5 * (p2[2] - p1[2]);
+  xr[1] -= (double)+0.5 * (p3[2] - p1[2]);
+
+  /* Matrix inversion                                                */
+  inv_2x2(2, xm, 2, xi, &dd) ;
+    
+  /* linear solver                                                   */
+  bb[0] = (xi[uij(0,0,2)] * xr[0] + xi[uij(0,1,2)] * xr[1]);
+  bb[1] = (xi[uij(1,0,2)] * xr[0] + xi[uij(1,1,2)] * xr[1]);
+  bb[0] /= dd ;
+  bb[1] /= dd ;
+
+  /* Iteration                                                       */
+  for (ii = 1; ii-- != 0;) {
+    ee[0] = xr[0] - (xm[uij(0,0,2)] * bb[0] + xm[uij(0,1,2)] * bb[1]);
+    ee[1] = xr[1] - (xm[uij(1,0,2)] * bb[0] + xm[uij(1,1,2)] * bb[1]);
+        
+    db[0] = (xi[uij(0,0,2)] * ee[0] + xi[uij(0,1,2)] * ee[1]);
+    db[1] = (xi[uij(1,0,2)] * ee[0] + xi[uij(1,1,2)] * ee[1]);
+
+    bb[0] += db[0] / dd;
+    bb[1] += db[1] / dd;
+  }
+
+  /* Offset                                                          */    
+  bb[0] += p1[0] ;
+  bb[1] += p1[1] ;
+  
+  /*------------------------------------ iter. ref.                  */
+  for(ii = 1; ii-- != 0; ) {
+    ee[0] = xr[0] - (xm[uij(0,0,2)] * bb[0] +
+		     xm[uij(0,1,2)] * bb[1] )  ;
+        
+    ee[1] = xr[1] - (xm[uij(1,0,2)] * bb[0] +
+		     xm[uij(1,1,2)] * bb[1] )  ;
+        
+    db[0] = (xi[uij(0,0,2)] * ee[0] +
+	     xi[uij(0,1,2)] * ee[1] )  ;
+        
+    db[1] = (xi[uij(1,0,2)] * ee[0] + xi[uij(1,1,2)] * ee[1] )  ;
+
+    bb[0] += db[0] / dd ;
+    bb[1] += db[1] / dd ;
+  }
+    
+  /*------------------------------------ offset mid                  */
+  bb[0] += p1[0] ;
+  bb[1] += p1[1] ;
+}
+
+/* END tri_orth_2d()                                                 */
+/*-------------------------------------------------------------------*/	
+
+
+/*-------------------------------------------------------------------*/	
+/* Routines to compute the 'centres' for edges. This is the midpoint */
+/* if circumcentres are used.                                        */
+/*-------------------------------------------------------------------*/
+void tria_ortho_edge_2d(double *bb,    /* centre: [x,y]              */
+			double *p1,    /* vertex 1: [x,y,w]          */
+			double *p2     /* vertex 2: [x,y,w]          */
+			)
+{
+  double dp, tt, dd[3*1] ;
+
+  /*------------------------------------ DoF deltas */
+
+  dd[0] = p1[0] - p2[0] ;
+  dd[1] = p1[1] - p2[1] ;
+  dd[2] = p1[2] - p2[2] ;
+        
+  dp = dd[0] * dd[0] + dd[1] * dd[1] ;
+
+  /*------------------------------------ line param */
+  tt = (double)+.5 * (dd[2] + dp) / dp ;
+     
+  /*------------------------------------ interp. 1d */           
+  bb[0] = p1[0] - tt * dd[0] ;
+  bb[1] = p1[1] - tt * dd[1] ; 
+}
+
+/* END tria_orth_edge_2d()                                           */
+/*-------------------------------------------------------------------*/	
+
+
+/*-------------------------------------------------------------------*/
+/* Triangle ortho-centre for stereographic projections.              */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void tria_ortho_2s(double *bb,    /* centre: [l,p] (rad)             */
+		   double *p1,    /* vert 1: [l,p,w] (rad)           */
+		   double *p2,    /* vert 2: [l,p,w] (rad)           */
+		   double *p3,    /* vert 3: [l,p,w] (rad)           */
+		   double  rr     /* radius of sphere                */
+		   )   
+{
+  double  e1[4] ;
+  double  e2[4] ;
+  double  e3[4] ;
+  double  eb[3] ;
+    
+  lonlat_to_xyz(p1, e1, rr) ;
+  lonlat_to_xyz(p2, e2, rr) ;
+  lonlat_to_xyz(p3, e3, rr) ;
+   
+  e1[3] = p1[2] ;
+  e2[3] = p2[2] ;
+  e3[3] = p3[2] ;
+        
+  tria_orth_ball_3d(eb, e1, e2, e3) ;
+    
+  xyz_to_lonlat(eb, bb, rr) ; 
+}
+
+/* END tria_ortho_2s()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/	
+/* Routines to compute the 'centres' for edges in stereographic      */
+/* projections. This is the midpoint if circumcentres are used.      */
+/*-------------------------------------------------------------------*/
+void tria_ortho_edge_2s(double *bb,    /* centre: [l,p] (rad)        */
+			double *p1,    /* vert 1: [l,p,w] (rad)      */
+			double *p2,    /* vert 2: [l,p,w] (rad)      */
+			double  rr     /* radius of sphere           */
+			)
+{
+  double  e1[4] ;
+  double  e2[4] ;
+  double  eb[3] ;
+    
+  lonlat_to_xyz(p1, e1, rr) ;
+  lonlat_to_xyz(p2, e2, rr) ;
+  
+  e1[3] = p1[2] ;
+  e2[3] = p2[2] ;
+        
+  edge_orth_ball_3d(eb, e1, e2) ;
+    
+  xyz_to_lonlat(eb, bb, rr) ; 
+}
+
+/* END tria_ortho_edge_2s()                                          */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/	
+/* Routines to compute the 'centres' for edges in 3 dimensions. This */
+/* is the midpoint if circumcentres are used.                        */
+/*-------------------------------------------------------------------*/
+void edge_orth_ball_3d(double *bb,    /* centre: [x,y,z]             */
+		       double *p1,    /* vert 1: [x,y,z,w]           */
+		       double *p2     /* vert 2: [x,y,z,w]           */
+		       )   
+{
+  double dp, tt, dd[3*1] ;
+
+  /*------------------------------------ DoF deltas                  */
+  dd[0] = p1[0] - p2[0] ;
+  dd[1] = p1[1] - p2[1] ;
+  dd[2] = p1[2] - p2[2] ;
+  dd[3] = p1[3] - p2[3] ;
+        
+
+  dp = dd[0] * dd[0] + dd[1] * dd[1] + dd[2] * dd[2] ;
+
+  /*------------------------------------ line param                  */
+  tt = (double)+.5 * ( dd[3] + dp ) / dp ;
+     
+  /*------------------------------------ interp. 1d                  */
+  bb[0] = p1[0] - tt * dd[0] ;
+  bb[1] = p1[1] - tt * dd[1] ;
+  bb[2] = p1[2] - tt * dd[2] ; 
+}
+    
+/* END edge_orth_ball_3d()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Triangle ortho-centre in three dimensions.                        */
+/* Contributed by Darren Engwirda (JIGSAW code).                     */
+/*-------------------------------------------------------------------*/
+void tria_orth_ball_3d(double *bb,     /* centre: [x,y,z]            */
+		       double *p1,     /* vert 1: [x,y,z,w]          */
+		       double *p2,     /* vert 2: [x,y,z,w]          */
+		       double *p3      /* vert 3: [x,y,z,w]          */
+		       )
+{
+  double  nv[3*1] ;
+  double  xm[3*3] ;
+  double  xi[3*3] ;
+  double  xr[3*1] ;
+  double  ee[3*1] ;
+  double  db[3*1] ;
+  double  dd, w21, w31 ;
+  int ii;
+    
+  /*------------------------------------ LHS matrix                  */
+  xm[uij(0,0,3)] = p2[0] - p1[0] ;
+  xm[uij(0,1,3)] = p2[1] - p1[1] ;
+  xm[uij(0,2,3)] = p2[2] - p1[2] ;
+        
+  xm[uij(1,0,3)] = p3[0] - p1[0] ;
+  xm[uij(1,1,3)] = p3[1] - p1[1] ;
+  xm[uij(1,2,3)] = p3[2] - p1[2] ;
+        
+  tria_norm_vect_3d(nv, p1, p2, p3);
+        
+  xm[uij(2,0,3)] = nv[0] ;
+  xm[uij(2,1,3)] = nv[1] ;
+  xm[uij(2,2,3)] = nv[2] ;
+
+  /*------------------------------------ RHS vector                  */
+  xr[0] = (double)+.5 * (xm[uij(0,0,3)] * 
+			 xm[uij(0,0,3)] +
+			 xm[uij(0,1,3)] *
+			 xm[uij(0,1,3)] +
+			 xm[uij(0,2,3)] *
+			 xm[uij(0,2,3)] ) ;
+
+  xr[1] = (double)+.5 * (xm[uij(1,0,3)] * 
+			 xm[uij(1,0,3)] +
+			 xm[uij(1,1,3)] *
+			 xm[uij(1,1,3)] +
+			 xm[uij(1,2,3)] *
+			 xm[uij(1,2,3)] ) ;
+        
+  w21 = p2[3] - p1[3] ;
+  w31 = p3[3] - p1[3] ;
+  
+  xr[0]-= (double)+.5 * w21 ;
+  xr[1]-= (double)+.5 * w31 ;
+  xr[2] = (double)+.0 ;
+
+  /*------------------------------------ matrix inv                  */
+  inv_3x3(3, xm, 3, xi,&dd) ;
+        
+  /*------------------------------------ lin-solver                  */
+  bb[0] = (xi[uij(0,0,3)] * xr[0] +
+	   xi[uij(0,1,3)] * xr[1] +
+	   xi[uij(0,2,3)] * xr[2] )  ;
+        
+  bb[1] = (xi[uij(1,0,3)] * xr[0] +
+	   xi[uij(1,1,3)] * xr[1] +
+	   xi[uij(1,2,3)] * xr[2] )  ;
+
+  bb[2] = (xi[uij(2,0,3)] * xr[0] +
+	   xi[uij(2,1,3)] * xr[1] +
+	   xi[uij(2,2,3)] * xr[2] )  ;
+
+  bb[0] /= dd ;
+  bb[1] /= dd ;
+  bb[2] /= dd ;
+
+  /*------------------------------------ iter. ref.                  */
+  for(ii = +1; ii-- != +0; ) {
+    ee[0] = xr[0] - (xm[uij(0,0,3)] * bb[0] +
+		     xm[uij(0,1,3)] * bb[1] +
+		     xm[uij(0,2,3)] * bb[2] )  ;
+        
+    ee[1] = xr[1] - (xm[uij(1,0,3)] * bb[0] +
+		     xm[uij(1,1,3)] * bb[1] +
+		     xm[uij(1,2,3)] * bb[2] )  ;
+        
+    ee[2] = xr[2] - ( xm[uij(2,0,3)] * bb[0] +
+		      xm[uij(2,1,3)] * bb[1] +
+		      xm[uij(2,2,3)] * bb[2] )  ;
+        
+    db[0] = (xi[uij(0,0,3)] * ee[0] +
+	     xi[uij(0,1,3)] * ee[1] +
+	     xi[uij(0,2,3)] * ee[2] )  ;
+        
+    db[1] = (xi[uij(1,0,3)] * ee[0] +
+	     xi[uij(1,1,3)] * ee[1] +
+	     xi[uij(1,2,3)] * ee[2] )  ;
+
+    db[2] = (xi[uij(2,0,3)] * ee[0] +
+	     xi[uij(2,1,3)] * ee[1] +
+	     xi[uij(2,2,3)] * ee[2] )  ;
+    
+    bb[0] += db[0] / dd ;
+    bb[1] += db[1] / dd ;
+    bb[2] += db[2] / dd ;
+  }
+
+  /*------------------------------------ offset mid                  */
+  bb[0] += p1[0] ;
+  bb[1] += p1[1] ;
+  bb[2] += p1[2] ;
+}
+
+/* END tria_orth_ball_3d()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Coord. transformation (S^2 <=> E^3)                               */
+/*-------------------------------------------------------------------*/
+void lonlat_to_xyz(double *pp,     /* lonlat: [lat,lon] (deg)        */
+		   double *ee,     /* euclid: [x,y,z]                */
+		   double  rr      /* radius of sphere               */
+		   )
+{
+  ee[0] = rr * cos(DEG2RAD(pp[0])) * cos(DEG2RAD(pp[1])) ;
+  ee[1] = rr * sin(DEG2RAD(pp[0])) * cos(DEG2RAD(pp[1])) ;
+  ee[2] = rr * sin(DEG2RAD(pp[1])) ;
+}
+
+/* END lonlat_to_xyz ()                                              */
+/*-------------------------------------------------------------------*/
+    
+/*-------------------------------------------------------------------*/
+/* Coord. transformation (S^2 <=> E^3)                               */
+/*-------------------------------------------------------------------*/
+void xyz_to_lonlat(double *ee,    /* euclid: [x,y,z]                 */
+		   double *pp,    /* lonlat: [lon,lat] (deg)         */
+		   double rr      /* radius of sphere                */
+		   )
+{
+  pp[1] = RAD2DEG(asin(ee[2]/rr)) ;
+  pp[0] = RAD2DEG(atan2(ee[1], ee[0])) ;
+}
+
+/* END xyz_to_lonlat()                                               */
+/*-------------------------------------------------------------------*/
+
+
 /*-------------------------------------------------------------------*/
 /* Computes the centre of mass of a triangle                         */
 /*-------------------------------------------------------------------*/
@@ -5775,6 +6900,64 @@ void tria_com(double *bb,         /* centre: [x,y]                   */
 }
 
 /* END tri_com()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*  Calculate normal vector (TRIA, E^3)                              */
+/*-------------------------------------------------------------------*/
+void tria_norm_vect_3d(double *nv,    /* normal: [x,y,z]             */
+		       double *pa,    /* vert 1: [x,y,z]             */
+		       double *pb,    /* vert 2: [x,y,z]             */
+		       double *pc     /* vert 3: [x,y,z]             */
+		       )
+{
+  double  ab[3] ;
+  double  ac[3] ;
+
+  /*------------------------------------ edge vect.                  */
+  ab[0] = pb[0] - pa[0] ;
+  ab[1] = pb[1] - pa[1] ;
+  ab[2] = pb[2] - pa[2] ;
+  
+  ac[0] = pc[0] - pa[0] ;
+  ac[1] = pc[1] - pa[1] ;
+  ac[2] = pc[2] - pa[2] ;
+
+  /*------------------------------------ norm vect.                  */
+  nv[0] = ab[1] * ac[2] - ab[2] * ac[1] ;
+  nv[1] = ab[2] * ac[0] - ab[0] * ac[2] ;
+  nv[2] = ab[0] * ac[1] - ab[1] * ac[0] ;
+}
+
+/* END tria_norm_vect_3d()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Returns 1 if a point lies within a triangle. Uses Baycentric      */
+/* coordinates to find if this is so. The area is > 0 for vertices   */
+/* ordered in an anti-clockwise sense, and negative for a clockwise  */
+/* sense.                                                            */
+/*-------------------------------------------------------------------*/
+int in_tri(double *po, double *p0, double *p1, double *p2) {
+  double p0x = p0[0];
+  double p0y = p0[1];
+  double p1x = p1[0];
+  double p1y = p1[1];
+  double p2x = p2[0];
+  double p2y = p2[1];
+  double area = 0.5 * (-p1y*p2x + p0y*(-p1x + p2x) + p0x*(p1y - p2y) + p1x*p2y);
+  double ap = 2.0*fabs(area);
+  double s = (p0y*p2x - p0x*p2y + (p2y - p0y)*po[0] + (p0x - p2x)*po[1])/(2.0*area);
+  double t = (p0x*p1y - p0y*p1x + (p0y - p1y)*po[0] + (p1x - p0x)*po[1])/(2.0*area);
+  double sp = s * ap;
+  double tp = t * ap;
+  int ret = (sp > 0.0 & tp > 0.0 & sp + tp < ap) ? 1 : 0;
+  return(ret);
+}
+
+/* END intri()                                                       */
 /*-------------------------------------------------------------------*/
 
 
@@ -6357,6 +7540,100 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
 
 
 /*-------------------------------------------------------------------*/
+/* Removes nominated cells from the mesh and re-orders the mesh      */
+/* structure.                                                        */
+/*-------------------------------------------------------------------*/
+void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
+{
+  mesh_t *mesh = params->mesh;
+  int cc, c, cn, cs, j, n, ns, ns2i;
+  int ni, *film, *mask;
+  int verbose = 0;
+  int **neic;
+  int *n2o, *o2n;
+  int dored = 0;
+
+  /* Set the mask for cells to include in the mesh                   */
+  ns = mesh->ns2 + 2;
+  mask = i_alloc_1d(ns);
+  memset(mask, 0, ns * sizeof(int));
+  for (cc = 1; cc <= params->nland; cc++) {
+    c = params->lande1[cc];
+    mask[c] = c;
+    mesh->npe[c] = 0;
+    dored = 1;
+  }
+  if (!dored) return;
+
+  /* Make a copy of the current map                                  */
+  ns2i = mesh->ns2;
+  neic = i_alloc_2d(mesh->ns2+1, mesh->mnpe+1);
+  n2o = i_alloc_1d(mesh->ns2+1);
+  o2n = i_alloc_1d(mesh->ns2+1);
+  for (cc = 1; cc <= mesh->ns2; cc++) {
+    for (j = 1; j <= mesh->npe[cc]; j++) {
+      neic[j][cc] = mesh->neic[j][cc];
+    }
+  }
+
+  /* Note; the coordinates remain unchanged, with some redundant   */
+  /* information.                                                  */
+  cn = 1;
+  film = i_alloc_1d(ns);
+  memset(film, 0, ns * sizeof(int));
+  for (cc = 1; cc <= mesh->ns2; cc++) {
+    if (!mask[cc]) {
+      mesh->npe[cn] = mesh->npe[cc];
+      bathy[cn] = bathy[cc];
+      for (j = 0; j <= mesh->npe[cc]; j++) {
+	xc[cn][j] = xc[cc][j];
+	yc[cn][j] = yc[cc][j];
+	mesh->eloc[0][cn][j] = mesh->eloc[0][cc][j];
+	mesh->eloc[1][cn][j] = mesh->eloc[1][cc][j];
+	cs = mesh->neic[j][cc];
+	if (mask[cs]) mesh->neij[j][cc] = j;
+	mesh->neij[j][cn] = mesh->neij[j][cc];
+	n2o[cn] = cc;
+	o2n[cc] = cn;
+      }
+      film[cn++] = cc;
+    } else {
+      if (verbose) printf("%d %f %f\n",cc, mesh->xloc[mesh->eloc[0][cc][0]],
+			  mesh->yloc[mesh->eloc[0][cc][0]]);
+    }
+  }
+  mesh->ns2 = params->ns2 = cn - 1;
+
+  /* Remap the mapping function                                      */
+  for (cc = 1; cc <= mesh->ns2; cc++) {
+    for (j = 0; j <= mesh->npe[cc]; j++) {
+      c = n2o[cc];
+      mesh->neic[j][cc] = o2n[neic[j][c]];
+    }
+  }
+  i_free_2d(neic);
+  i_free_1d(n2o);
+  i_free_1d(o2n);
+
+  hd_warn("mesh_reduce: %d cells eliminated\n", ns2i - mesh->ns2);
+
+  /* OBCs cell centres are referenced to the indices and need to     */
+  /* be remapped. The edge locations are referenced directly to      */
+  /* the coordinates and do not.                                     */
+  for (n = 0; n < mesh->nobc; n++) {
+    for (cc = 1; cc <= mesh->npts[n]; cc++) {
+      c = mesh->loc[n][cc];
+      mesh->loc[n][cc] = film[c];
+    }
+  }
+  i_free_1d(film);
+}
+
+/* END mesh_reduce()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Creates a triangulation using triangle using a bounding           */
 /* perimeter as input. Output is stored in the delaunay structure.   */
 /*-------------------------------------------------------------------*/
@@ -6726,3 +8003,234 @@ delaunay*  make_dual(geometry_t *geom, int kin)
 }
 
 /*-------------------------------------------------------------------*/
+
+/*
+ * Forward stereographic projection of a jigsaw_msh structure
+ *
+ * Note : Only meshes are supported here
+ */
+static void st_transform(jigsaw_msh_t *J_msh, ST3PROJ kind,
+			 double xmid, double ymid)
+{
+  int n;
+  double deg2m = 60.0 * 1852.0;
+  
+  if (J_msh->_flags == JIGSAW_EUCLIDEAN_MESH) {
+    jigsaw_VERT2_array_t *vert2 = &J_msh->_vert2;
+    int sz = vert2->_size;
+    int vsz = J_msh->_value._size;
+    if (sz) {
+      /* Do the transformation */
+      for (n=0; n<sz; n++) {
+	double x, y, scl;
+	if (kind == ST3PROJ_FWD) {
+	  /* Angles will be in lat/lon degrees so need to convert */
+	  stereo3_fwd(DEG2RAD(vert2->_data[n]._ppos[0]),
+		      DEG2RAD(vert2->_data[n]._ppos[1]),
+		      xmid, ymid, &x, &y, &scl);
+
+	  /* Apply value scaling if available */
+	  if (vsz)
+	    J_msh->_value._data[n] *= deg2m*scl;
+
+	  /* Swap out new values */
+	  vert2->_data[n]._ppos[0] = x;
+	  vert2->_data[n]._ppos[1] = y;
+	  
+	} else if (kind == ST3PROJ_INV) {
+	  /* Angles in the mesh will have been converted to radians */
+	  stereo3_inv(vert2->_data[n]._ppos[0],
+		      vert2->_data[n]._ppos[1],
+		      xmid, ymid, &x, &y, NULL);
+
+	  /* Swap out new values - what about wrapping? */
+	  vert2->_data[n]._ppos[0] = RAD2DEG(x);
+	  vert2->_data[n]._ppos[1] = RAD2DEG(y);
+	  
+	} else
+	  hd_quit("st_transform: Unknown stereographic projection kind supplied");
+      }
+    } else
+      hd_quit("st_fwd_transform: VERT2 is empty");
+  } else
+    hd_quit("st_fwd_transform: Only JIGSAW_EUCLIDEAN_MESH type is supported\n");
+}
+
+
+/* 
+ * stereographic projection functions based on Darren Engwirda's 
+ * jigsaw-geo-matlab/script/geom-util/stereo3.m
+ */
+static void stereo3_fwd(double xpos, double ypos, double xmid, double ymid,
+			double *xnew, double *ynew, double *scal)
+{
+  double kden, kval;
+
+  kden = +1. + sin(ymid)*sin(ypos) +
+    cos(ymid)*cos(ypos)*cos(xpos-xmid) ;
+  
+  kval = +2. * RADIUS / kden;
+
+  /* Calculate and assign new values */
+  *xnew = kval * cos(ypos)*sin(xpos-xmid) ;
+  *ynew = kval * (cos(ymid)*sin(ypos) -
+		  sin(ymid)*cos(ypos)*cos(xpos-xmid));
+
+  /* Calculate scaling, if asked */
+  if (scal != NULL) {
+    double dval, dkdy, dXdy, dYdy;
+    
+    dval = -2. * RADIUS / (kden * kden) ;
+    dkdy = dval * (sin(ymid) * cos(ypos) -
+		   cos(ymid) * sin(ypos)*cos(xpos-xmid));
+    
+    dXdy = dkdy * cos(ypos) * sin(xpos-xmid) -
+      kval * sin(ypos)*sin(xpos-xmid) ;
+  
+    dYdy = dkdy * (cos(ymid) * sin(ypos) -
+		   sin(ymid)*cos(ypos)*cos(xpos-xmid)) +
+      kval*(cos(ymid) * cos(ypos) + sin(ymid)*sin(ypos)*cos(xpos-xmid));
+
+    /* Assign output */
+    *scal = +1./RADIUS * sqrt(dXdy*dXdy + dYdy*dYdy) ;
+  }
+}
+
+/* Inverse stereographic */
+static void stereo3_inv(double xpos, double ypos, double xmid, double ymid,
+			double *xnew, double *ynew, double *scal)
+{
+  double rval, cval;
+  
+  rval = sqrt(xpos*xpos + ypos*ypos);
+      
+  cval = +2. * atan2(rval, +2. * RADIUS);
+
+  /* Assign inverse transformations */
+  *xnew = xmid + atan2(xpos * sin(cval),
+		       rval * cos(ymid) * cos(cval) -
+		       ypos * sin(ymid) * sin(cval));
+  
+  *ynew = asin(cos(cval)*sin(ymid) + 
+	       (ypos*sin(cval)*cos(ymid)) / rval);
+
+
+  /* Calculate scaling, if asked */
+  if (scal != NULL) {
+    double dval, kden, kval, dkdy, dXdy, dYdy;
+
+    kden = +1. + sin(ymid)*sin(*xnew) + 
+      cos(ymid)*cos(*ynew)*cos(*xnew-xmid) ;
+    
+    dval = -2. * RADIUS / (kden*kden) ;
+    kval = +2. * RADIUS / kden ;
+    
+    dkdy = dval*(sin(ymid) * cos(*ynew) - 
+		 cos(ymid) * sin(*ynew) * cos(*xnew-xmid));
+    
+    dXdy = dkdy * cos(*ynew) * sin(*xnew-xmid) -
+      kval * sin(*ynew) * sin(*xnew-xmid);
+  
+    dYdy = dkdy * (cos(ymid) * sin(*ynew) - 
+		   sin(ymid) * cos(*ynew)*cos(*xnew-xmid)) +
+      kval*(cos(ymid) * cos(*ynew) + 
+	    sin(ymid)*sin(*ynew)*cos(*xnew-xmid));
+    
+    *scal = RADIUS * +1/sqrt(dXdy*dXdy + dYdy*dYdy);
+  }
+}
+
+
+/*
+ * Converts JIGSAW x/y grid into tria3 mesh
+ */
+static void convert_jigsaw_grid_to_mesh(jigsaw_msh_t *imsh,
+					jigsaw_msh_t *omsh)
+{
+  /* Input grid */
+  jigsaw_REALS_array_t *xgrid = &imsh->_xgrid;
+  jigsaw_REALS_array_t *ygrid = &imsh->_ygrid;
+  jigsaw_REALS_array_t *ivals = &imsh->_value;
+
+  /* Output mesh */
+  jigsaw_TRIA3_array_t *tria3 = &omsh->_tria3;
+  jigsaw_REALS_array_t *ovals = &omsh->_value;
+  jigsaw_VERT2_array_t *vert2 = &omsh->_vert2;
+
+  int nx = xgrid->_size;
+  int ny = ygrid->_size;
+  int i,j,n, ntria, nvert;
+
+  /* Allocate memory for output mesh */
+  ntria = 2*(nx-1)*(ny-1);
+  jigsaw_alloc_tria3(tria3, ntria);
+
+  nvert = nx*ny;
+  jigsaw_alloc_vert2(vert2, nvert);
+  jigsaw_alloc_reals(ovals, nvert);
+  
+  /* Must be x/y grid */
+  if (nx == 0 || ny == 0)
+    hd_quit("convert_jigsaw_grid_to_mesh: x/y grid empty!");
+  
+  /* Create vertices */
+  n = 0;
+  for (i=0; i<nx; i++) {
+    for (j=0; j<ny; j++) {
+      vert2->_data[n]._ppos[0] = xgrid->_data[i];
+      vert2->_data[n]._ppos[1] = ygrid->_data[j];
+      vert2->_data[n]._itag = 0;
+      ovals->_data[n] = ivals->_data[n];
+      n++;
+    }
+  }
+
+  /* 
+   * Traverse the grid and split each rectangular cell into two
+   * triangles
+   */
+  n = 0;
+  for (i=0; i<nx-1; i++) {
+    for (j=0; j<ny-1; j++) {
+      /* 
+       * Start in the lower left hand corner, n0
+       *
+       * n1     n2
+       *  o --- o
+       *  |   / |   ^
+       *  |  /  |   |
+       *  | /   |   y
+       *  o --- o    x->
+       * n0     n3
+       *
+       */
+      int xn0 = i,   yn0 = j;
+      int xn1 = i,   yn1 = j+1;
+      int xn2 = i+1, yn2 = j+1;
+      int xn3 = i+1, yn3 = j;
+      int n0 = ny*xn0 + yn0;
+      int n1 = ny*xn1 + yn1;
+      int n2 = ny*xn2 + yn2;
+      int n3 = ny*xn3 + yn3;
+      
+      /* Clockwise node : n0->n1->n2 */
+      tria3->_data[n]._node[0] = n0;
+      tria3->_data[n]._node[1] = n1;
+      tria3->_data[n]._node[2] = n2;
+      n++;
+      
+      /* Anto-clockwise node : n0->n3->n2 */
+      tria3->_data[n]._node[0] = n0;
+      tria3->_data[n]._node[1] = n3;
+      tria3->_data[n]._node[2] = n2;
+      n++;
+    }
+  }
+
+  /* Flag output mesh type */
+  omsh->_flags = JIGSAW_EUCLIDEAN_MESH;
+
+  /* Delete old mesh */
+  jigsaw_free_msh_t(imsh);
+  
+}

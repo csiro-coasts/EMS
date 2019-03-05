@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: dumpdata.c 6080 2019-02-08 04:13:27Z her127 $
  *
  */
 
@@ -608,13 +608,6 @@ void dumpdata_fill(geometry_t *geom,  /* Sparse global geometry structure */
     s2c_2d(geom, master->tr_wcS[n], dumpdata->tr_wcS[n], nce1, nce2);
   }
   if (sednz) {
-    /*
-    s2c_sed(geom, geom->cellz_sed, dumpdata->cellz_sed, nce1, nce2, sednz);
-    s2c_sed(geom, geom->gridz_sed, dumpdata->gridz_sed, nce1, nce2, sednz+1);
-    for (n = 0; n < master->nsed; n++) {
-      s2c_sed(geom, master->tr_sed[n], dumpdata->tr_sed[n], nce1, nce2, sednz);
-    } 
-    */
     for (k = 0; k < sednz; k++) {
       s2c_2d(geom, geom->cellz_sed[k], dumpdata->cellz_sed[k], nce1, nce2);
       s2c_2d(geom, geom->gridz_sed[k], dumpdata->gridz_sed[k], nce1, nce2);

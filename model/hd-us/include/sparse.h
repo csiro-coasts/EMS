@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 5913 2018-09-05 02:35:27Z her127 $
+ *  $Id: sparse.h 6131 2019-03-04 00:58:32Z her127 $
  *
  */
 
@@ -230,6 +230,7 @@ typedef struct {
   int **pt;                /* Index of j-th triangle i-th point belongs to */
 } npt_t;
 
+
 /*------------------------------------------------------------------*/
 /* Window geometry data structure. Contains all variables which are */
 /* not dependent on or can be derived from information contained in */
@@ -376,12 +377,13 @@ struct win_priv {
   int trsplit;                  /* Split advection using tratio */
   int means;                    /* Mean velocity diagnostic */
   int da;                       /* Data assimilation */
+  int nprof;                    /* Normalized profile flag */
   double means_dt;              /* Mean velocity averaging interval */
   double means_next;            /* Next time for zeroing means */
   double means_os;              /* Offset for restarts */
   int means_tra;                /* Mean tracer number */
   int vorticity;                /* Vorticity diagnostic */
-  int numbers;                  /* Numbers diagnostic */
+  int numbers, numbers1;        /* Numbers diagnostic */
   int save_force;               /* Save input forcing */
   int csr_tide;                 /* Tide constants computed for grid */
   int water_type;               /* Water type */
@@ -423,7 +425,7 @@ struct win_priv {
   int filter;                   /* Filtering options */
   int trout;                    /* Transport file output flag */
   int swr_type;                 /* Type of attenuation */
-
+  int dhwf;                     /* Degree heating diagnostic */
   double albedo;                /* Albedo for swr */
 
   /* Alert thresholds */
@@ -609,6 +611,10 @@ struct win_priv {
   double ***B;
   int **Bcell, *nBcell;
   double *trp, *trm;
+  /* Linear least squares */
+  double ***V;
+  int **Vcell, *nVcell;
+  qweights *lw;
 
   /* FFSL work arrays */
   double *crfxf, *crfyf, *crfzf;   /* Fractional factors of total trajectories for faces */
@@ -628,6 +634,9 @@ struct win_priv {
 
   /* Function to calculate horizontal mixing of momentum.  */
   mix_method_t *hor_mix;
+
+  /* Function to calculate vorticity for momentum advection */
+  double (*pv_calc) (window_t *, int e, int eoe, int v1, int v2);
 
   /* Tidal harmonic structure */
   tidal_consts_t tc;
@@ -1135,6 +1144,9 @@ typedef struct {
   int trflsh;                   /* Flushing tracer flag */
   char trage[MAXSTRLEN];        /* Age tracer flag */
   char dhw[MAXSTRLEN];          /* Degree heating day diagnostic */
+  char dhdf[MAXSTRLEN];         /* Degree heating day file */
+  double dhw_dt;                /* DHW update increment */
+  int dhwf;                     /* Degree heating diagnostic flag */
   int tendf;                    /* Momentum tendency flag */
   char trtend[MAXSTRLEN];       /* Tracer tendency flag */
   int means;                    /* Mean velocity diagnostic */
@@ -1152,7 +1164,7 @@ typedef struct {
   char decs[MAXSTRLEN];         /* Decorrelation scaling */
   int sharp_pyc;                /* Pycnocline sharpening for ROAM */
   int vorticity;                /* Vorticity diagnostic */
-  int numbers;                  /* Numbers diagnostic */
+  int numbers, numbers1;        /* Numbers diagnostic */
   int save_force;               /* Save input forcing */
   int smooth;                   /* Smoothing flag for topography */
   char smooth_v[MAXSTRLEN];     /* Smoothing flag for other variables */
@@ -1233,6 +1245,7 @@ typedef struct {
   char ptinname[MAXSTRLEN];     /* Particle input file */
   int gint_errfcn;              /* Generic interface error handling flag */
   int riverflow;                /* Include river flow diagnostic tracer */
+  char nprof[MAXSTRLEN];        /* Normalized profile flag */
   /* DATA ASSIM */
   int da;                       /* Data assimilation */
   double da_dt;                 /* Data assimilation time step */
@@ -1270,7 +1283,7 @@ typedef struct {
   double ambpress;              /* Ambient air pressure */
   double hmin;                  /* Minimum cell thickness (m) */
   double uf;                    /* Background friction velocity */
-  double quad_bfc;              /* Quadratic bottom friction coeff.  */
+  char quad_bfc[MAXSTRLEN];     /* Quadratic bottom friction coeff.  */
   double rampstart;             /* Start time of ramp period */
   double rampend;               /* End time of ramp period */
   double rampval;               /* Ramp value for forcing */
@@ -1573,7 +1586,7 @@ struct master {
   int means_tra;                /* Mean tracer number */
   double *odeta;                /* detadt at previous timestep */
   int vorticity;                /* Vorticity diagnostic */
-  int numbers;                  /* Numbers diagnostic */
+  int numbers, numbers1;        /* Numbers diagnostic */
   int save_force;               /* Save input forcing */
   double slip;                  /* Slip condition */
   double flt;                   /* Flushing time */
@@ -1603,6 +1616,7 @@ struct master {
   char reef_frac[MAXSTRLEN];    /* Cell area blocked by reef */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
+  int dhwf;                     /* Degree heating diagnostic */
   int dbc;                      /* Sparse coordinate to debug */
   int dbj;                      /* Edge direction to debug */
   int dbgf;                     /* Debug flag */
@@ -1730,6 +1744,9 @@ struct master {
   double *rich_fl;              /* Flux Richardson number */
   double *reynolds;             /* Reynolds number */
   double *froude;               /* Froude number */
+  double *sep;                  /* Surface Ekman pumping */
+  double *bep;                  /* Bottom Ekman pumping */
+  double *tfront;               /* Simpson-Hunter tidal front */
   double *sigma_t;              /* Sigma_t */
   double *rossby_in;            /* Internal Rossby radius (m) */
   double *rossby_ex;            /* External Rossby radius (m) */
@@ -1739,6 +1756,8 @@ struct master {
   double *energy;               /* Total energy (Jm-2) */
   double *kenergy;              /* Kinetic energy (Jm-2) */
   double *obc_phase;            /* OBC phase speed (m/s) */
+  double *nprof;                /* Normalized profile */
+  int nprofn;                   /* Tracer to normalize */
   double *sound;                /* Speed of sound */
   double *schan;                /* Sound channel depth */
   double *sonic;                /* Sonic layer depth */
@@ -1775,12 +1794,17 @@ struct master {
   double *vcorr, *acorr;        /* Local transport fill corrections */
   double *Vi;                   /* Volume error */
   double *unit;                 /* Unit tracer */
+  double *glider;               /* Glider density */
+  double *u1vhc;                /* Cell centered horizontal viscosity */
   double *regionid;             /* Region ids */
   double *regres;               /* Region residence time */
   double *sederr;               /* Error percentage map for sediments */
   double *ecoerr;               /* Error percentage map for ecology */
   double *decv;                 /* Decorrelation length scale variable */
   double *decv1;                /* Decorrelation length scale */
+  double *dhd;                  /* Degree heating day */
+  double *dhwc;                 /* Degree heating week climatology */
+  double *dhw;                  /* Degree heating week */
   double *cellres;              /* Mean cell resolution */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   double *bathy_range_max;
@@ -2316,6 +2340,25 @@ struct master {
   /*UR-ADDED a list of functions which selfsufficiently initialise and exchange data per timestep*/ 
  custom_stack_t* custom_fnstack;
 
+  /* The MPI Id of this process, 0 for non-mpi */
+  int mpi_rank;
+
+  /* function pointers for transfers */
+  void (*win_data_fill_3d)  (master_t *master, geometry_t *window, window_t *windat, int nwindows);
+  void (*win_data_fill_2d)  (master_t *master, geometry_t *window, window_t *windat, int nwindows);
+  void (*win_data_refill_3d) 
+         (master_t *master, geometry_t *window, window_t *windat, int nwindow, int mode);
+  void (*win_data_refill_2d) 
+         (master_t *master, geometry_t *window, window_t *windat, int nwindow, int mode);
+  void (*win_data_empty_3d) (master_t *master, geometry_t *window, window_t *windat, int mode);
+  void (*win_data_empty_2d) (master_t *master, geometry_t *window, window_t *windat, int mode);
+  void (*update_master) (master_t *master, window_t **windat, int mode);
+  void (*master_fill) (master_t *master, geometry_t **window, 
+		       window_t **windat, win_priv_t **wincon);
+  void (*master_fill_ts) (master_t *master, geometry_t **window, 
+			  window_t **windat, win_priv_t **wincon);
+  void (*master_fill_glider) (master_t *master, geometry_t **window, 
+			      window_t **windat, win_priv_t **wincon, ts_point_t *ts, double t);
 };
 
 
@@ -2545,6 +2588,9 @@ struct window {
   double *rich_fl;              /* Flux Richardson number */
   double *reynolds;             /* Reynolds number */
   double *froude;               /* Froude number */
+  double *sep;                  /* Surface Ekman pumping */
+  double *bep;                  /* Bottom Ekman pumping */
+  double *tfront;               /* Simpson-Hunter tidal front */
   double *sigma_t;              /* Sigma_t */
   double *rossby_in;            /* Internal Rossby radius (m) */
   double *rossby_ex;            /* External Rossby radius (m) */
@@ -2554,6 +2600,7 @@ struct window {
   double *energy;               /* Total energy (Jm-2) */
   double *kenergy;              /* Kinetic energy (Jm-2) */
   double *obc_phase;            /* OBC phase speed (m/s) */
+  double *nprof;                /* Normalized profile */
   double *sound;                /* Speed of sound */
   double *schan;                /* Sound channel depth */
   double *sonic;                /* Sonic layer depth */
@@ -2589,6 +2636,8 @@ struct window {
   double *vcorr, *acorr;        /* Local transport fill corrections */
   double *Vi;                   /* Volume error */
   double *unit;                 /* Unit tracer */
+  double *glider;               /* Glider density */
+  double *u1vhc;                /* Cell centered horizontal viscosity */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
   int *totid;                   /* Tracer numbers for 3D totals */
@@ -2597,6 +2646,9 @@ struct window {
   double *sederr;               /* Error percentage map for sediments */
   double *ecoerr;               /* Error percentage map for ecology */
   double *decv1;                /* Decorrelation length scale */
+  double *dhd;                  /* Degree heating day */
+  double *dhwc;                 /* Offset degree heating day */
+  double *dhw;                  /* Degree heating day */
   double sederrstep;            /* Sediment error step */
   double ecoerrstep;            /* Ecology error step */
   int ntot;                     /* Number of additional total tracers */
@@ -2763,8 +2815,12 @@ struct ts_point{
   int *ddim;                  /* 0=2D, 1=3D                           */
   int metric;                 /* Type of metric                       */
   int kernal;                 /* Kernal size                          */
+  int last;                   /* Last location in grid                */
   double *val;                /* Data-model comparison value          */
   double *obs;                /* Observation value                    */
+  double *minv;               /* Minimum value                        */
+  double *maxv;               /* Maximum value                        */
+  double *nvals;              /* Number of values read                */
   double **thresh;            /* Threshold value                      */
 };
 

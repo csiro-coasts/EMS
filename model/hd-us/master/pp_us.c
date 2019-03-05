@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: pp_us.c 6136 2019-03-04 01:02:01Z her127 $
  *
  */
 
@@ -750,8 +750,8 @@ void build_sparse_grid_us(parameters_t *params,
 	  if (k == nz - 1) sgrid->npe[gc] = sgrid->npe[c];
 	  /* Check the ghost mapping doesn't exceed 2D size          */
 	  if(sgrid->m2d[gc]>sgrid->szcS)
-	    hd_quit("pp_us: Ghost mapping > 2D size: k=%d cc=%d c=%d cn=%d cns=%d gc=%d cs=%d\n",
-		    k,cc,c,cn,cns,gc,c2);
+	    hd_quit("pp_us: Ghost mapping > 2D size(%d): k=%d cc=%d c=%d cn=%d cns=%d gc=%d cs=%d\n",
+		    sgrid->szcS,k,cc,c,cn,cns,gc,c2);
 	  /*if (!(is_obc(cc, m->nobc, m->npts, m->loc))) {*/
 	  sgrid->bpt[c1] = gc;
 	  sgrid->bin[c1] = c;
@@ -861,7 +861,7 @@ void build_sparse_grid_us(parameters_t *params,
 	    sgrid->w3_t[b3++] = gc;
 	    /*printf("Land ghost c=%d, cc=%d, c=%d, dir=%d %d %d %d %d %d\n", gc, b3, c, jj, cc, cs, k, m->iloc[cc], m->jloc[cc]);*/
 	    if (k == nz - 1) {
-	      if (pc) printf("Land ghost c=%d, cc=%d, c=%d, dir=%d\n", gc, c3, c, jj);
+	      if (pc) printf("Land ghost gc=%d, cc=%d, c=%d, dir=%d\n", gc, c3, c, jj);
 	      sgrid->w2_t[c3++] = gc;
 	    }
 	    gc++;
@@ -1819,6 +1819,7 @@ void build_sparse_grid_us(parameters_t *params,
     }
     cs = sgrid->m2d[c];
     npe = sgrid->npe[cs];
+    /* Get the index n that points to the edge e from the centre c   */
     for (nn = 1; nn <= npe; nn++) {
       e1 = sgrid->c2e[nn][c];
       if (e1 == e) {
@@ -1826,6 +1827,7 @@ void build_sparse_grid_us(parameters_t *params,
 	break;
       }
     }
+    /* Get the index n1 for the edge that has v1 as a vertex         */
     for (nn = 1; nn <= npe; nn++) {
       e1 = sgrid->c2e[nn][c];
       if (e == e1) continue;
@@ -1834,6 +1836,7 @@ void build_sparse_grid_us(parameters_t *params,
 	break;
       }
     }
+    /* Get the index n2 for the edge that has v2 as a vertex         */
     for (nn = 1; nn <= npe; nn++) {
       e2 = sgrid->c2e[nn][c];
       if (e == e2) continue;
@@ -1850,13 +1853,19 @@ void build_sparse_grid_us(parameters_t *params,
 	if (n1 > n2) {
 	  sgrid->e2v[e][0] = v2;
 	  sgrid->e2v[e][1] = v1;
-	}      
+	} else {
+	  sgrid->e2v[e][0] = v1;
+	  sgrid->e2v[e][1] = v2;
+	}
       } else {
 	/* All other vertex indices                                  */
 	if (n1 < n2) {
 	  sgrid->e2v[e][0] = v2;
 	  sgrid->e2v[e][1] = v1;
-	}      
+	} else {
+	  sgrid->e2v[e][0] = v1;
+	  sgrid->e2v[e][1] = v2;
+	}
       }
     } else {  
       /* Outward pointing vectors if inward vector points to         */
@@ -1865,13 +1874,19 @@ void build_sparse_grid_us(parameters_t *params,
 	if (n1 < n2) {
 	  sgrid->e2v[e][0] = v2;
 	  sgrid->e2v[e][1] = v1;
-	}      
+	} else {
+	  sgrid->e2v[e][0] = v1;
+	  sgrid->e2v[e][1] = v2;
+	}
       } else {
 	/* All other vertex indices                                  */
 	if (n1 > n2) {
 	  sgrid->e2v[e][0] = v2;
 	  sgrid->e2v[e][1] = v1;
-	}      
+	} else {
+	  sgrid->e2v[e][0] = v1;
+	  sgrid->e2v[e][1] = v2;
+	}
       }
     }
   }
@@ -2368,6 +2383,7 @@ void build_sparse_grid_us(parameters_t *params,
     e = sgrid->w3_e1[ee];
     sgrid->e2ijk[e] = NOTVALID;
   }
+
   /* Edge maps to cell centre to retrieve (i,j,k)                    */
   for (ee = 1; ee <= sgrid->n3_e1; ee++) {
     e = sgrid->w3_e1[ee];
@@ -3302,7 +3318,7 @@ void build_sparse_grid_us(parameters_t *params,
   /* Set geographical flag */
   geom->is_geog = (strlen(params->projection) > 0) &&
     (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
-  
+
   /*-----------------------------------------------------------------*/
   /* Free memory                                                     */
   l_free_2d((long **)flg);
@@ -3968,7 +3984,6 @@ void ete(geometry_t *sgrid, int e, int *e1, int *e2)
   j = (j <= npe) ? jm(j, npe) : jp(j, npe);
   *e2 = sgrid->c2e[j][c];
 }
-
 
 /*-------------------------------------------------------------------*/
 /* Routine to read the batymetry and set SOLID and OUTSIDE cells     */

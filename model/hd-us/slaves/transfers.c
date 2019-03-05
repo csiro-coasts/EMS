@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 5923 2018-09-06 02:10:19Z her127 $
+ *  $Id: transfers.c 6112 2019-02-22 01:42:17Z riz008 $
  *
  */
 
@@ -128,6 +128,10 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     if (master->rsalt) windat->rsalt[lc] = master->rsalt[c];
     if (!(master->decf & (NONE|DEC_ETA))) {
       windat->decv1[lc] = master->decv1[c];
+    }
+    if (master->dhwf & DHW_NOAA) {
+      windat->dhw[lc] = master->dhw[c];
+      windat->dhd[lc] = master->dhd[c];
     }
   }
   for (cc = 1; cc <= window->enonS; cc++) {
@@ -899,6 +903,13 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
 	if (master->tau_diss2) master->tau_diss2[c] = windat->tau_diss2[lc];
       }
     }
+    if (master->dhwf & DHW_NOAA) {
+      for (cc = 1; cc <= window->b3_t; cc++) {
+	lc = window->w3_t[cc];
+	c = window->wsa[lc];
+	master->dhd[c] = windat->dhd[lc];
+      }
+    }
     if (!(master->decf & NONE)) {
       if (master->decf == DEC_ETA) {
 	for (cc = 1; cc <= window->b2_t; cc++) {
@@ -1466,6 +1477,75 @@ void master_fill_ts(master_t *master,     /* Master data             */
 }
 
 /* END master_fill_ts()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Transfers columns corresponding to a stencil surrounding the a    */
+/* glider location at time t for variables to be compared to glider  */
+/* observations.                                                     */
+/*-------------------------------------------------------------------*/
+void master_fill_glider(master_t *master,     /* Master data         */
+			geometry_t **window,  /* Window geometry     */
+			window_t **windat,    /* Window data         */
+			win_priv_t **wincon,  /* Window constants    */
+			ts_point_t *ts,
+			double t
+			)
+{
+  geometry_t *geom = master->geom;
+  int wn, tn, cg, c, cs, lc;
+  int m, i, found;
+  int *st = NULL, ssize;    
+
+  /* Get the cell the glider resides in                              */
+  cg = get_glider_loc(master, ts, &ts->ts, t);
+
+  /* Get a neighbourhood around the glider cell                      */
+  ssize = ts->kernal;
+  st = stencil(geom, cg, &ssize, ST_SIZED, 0);
+
+  /* Transfer data to the master within the neighbourhood            */
+  for (m = 0; m < ssize; m++) {
+    c = st[m];                    /* Stencil coordinate              */
+    cs = geom->m2d[c];            /* Surface coordinate              */
+    for (wn = 1; wn <= master->nwindows; wn++) {
+      if (geom->fm[c].wn == wn) { /* Check if c lies in window wn    */
+	lc = geom->fm[c].sc;      /* Local coordinate                */
+
+	c = cs;
+	/* Loop down the water column                                */
+	while (c != geom->zm1[c]) {
+	  /* Loop over variables to be compared to glider obs        */
+	  for (tn = 0; tn < ts->dnvars; tn++) {
+	    if (strcmp(ts->dvars[tn], "N2") == 0) {
+	      ts->data[tn][c] = windat[wn]->dens[lc];
+	    } else {
+	      found = 0;
+	      for (i = 0; i < master->ntr; i++) {
+		if (strcmp(ts->dvars[tn], master->trinfo_3d[i].name) == 0) {
+		  ts->data[tn][c] = windat[wn]->tr_wc[i][c];
+		  found = 1;
+		}
+	      }
+	      if (found == 0) {
+		for (i = 0; i < master->ntrS; i++) {
+		  if (strcmp(ts->dvars[tn], master->trinfo_2d[i].name) == 0) {
+		    ts->data[tn][geom->m2d[c]] = windat[wn]->tr_wcS[i][window[wn]->m2d[lc]];
+		    found = 1;
+		  }
+		}
+	      }
+	    }
+	  }
+	  c = geom->zm1[c];
+	}
+      }
+    }
+  }
+}
+
+/* END master_fill_glider()                                          */
 /*-------------------------------------------------------------------*/
 
 
@@ -2137,9 +2217,10 @@ void unpack_sparse(int *map, int mapsize, double *var, double *unpack, int oset)
 void unpack_sparse3(int *map, int mapsize, double *var, double *unpack, int oset)
 {
   int cc, c;
+
   for (cc = 1; cc <= mapsize; cc++) {
     c = map[cc];
-    unpack[c] = var[cc - 1];
+    unpack[c] = var[cc - oset];
   }
 }
 
@@ -3032,7 +3113,7 @@ int mpi_check_multi_windows_Vz(geometry_t *geom, master_t *master,
   
   fprintf(fp,"MPI Multi window check invoded\n");
   fprintf(fp,"------------------------------\n");
-  fprintf(fp,"t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->t, mpi_rank,
+  fprintf(fp,"nstep = %d, t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->nstep, master->t, mpi_rank,
 	 master->nwindows, prmname);
   fprintf(fp,"\n");
 

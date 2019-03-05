@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: landfill.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: landfill.c 5996 2018-10-17 04:57:10Z her127 $
  *
  */
 
@@ -61,11 +61,13 @@ void dump_bathy_mask(dump_data_t *dumpdata, double bathyf)
   int i, j, k, n;
 
   /* Filling the surface elevation array. */
-  k = dumpdata->nz - 1;
-  for (j = 0; j < dumpdata->nce2; ++j) {
-    for (i = 0; i < dumpdata->nce1; ++i) {
-      if (dumpdata->flag[k][j][i] & (SOLID | OUTSIDE))
+  if (bathyf != 9999) {
+    k = dumpdata->nz - 1;
+    for (j = 0; j < dumpdata->nce2; ++j) {
+      for (i = 0; i < dumpdata->nce1; ++i) {
+	if (dumpdata->flag[k][j][i] & (SOLID | OUTSIDE))
         dumpdata->eta[j][i] = 0.0;
+      }
     }
   }
 

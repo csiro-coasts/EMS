@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: vel2d.c 6137 2019-03-04 01:02:43Z her127 $
  *
  */
 
@@ -68,9 +68,8 @@ void mode2d_step_window_p1(master_t *master,
   /*-----------------------------------------------------------------*/
   /* Refill the master with updated velocity from the window         */
   /* data structure. This is required at auxiliary cells for the     */
-  /* time filtering of u1av & u2av in asselin(). These filtered      */
-  /* velocities are then used to get fluxes to update eta, and are   */
-  /* required to be defined at front and right edge auxiliary cells. */
+  /* time filtering of u1av asselin(). This filtered velocity is     */
+  /* then used to get fluxes to update eta.                          */
   if (master->nwindows > 1)
     win_data_empty_2d(master, window, windat, NVELOCITY);
 }
@@ -407,6 +406,7 @@ void vel_u1av_update(geometry_t *window,  /* Window geometry         */
       wincon->b2 = cot;
       wincon->b3 = bft;
     }
+    if (wincon->mode2d && wincon->numbers & BOTSTRESS) windat->tau_be1[e] = bft;
 
     /*---------------------------------------------------------------*/
     /* Calculate nu1av value                                         */
@@ -415,6 +415,13 @@ void vel_u1av_update(geometry_t *window,  /* Window geometry         */
       windat->dt2d * (midx * (pgt + cot) + bft + wincon->u1inter[e]);
   }
   debug_c(window, D_UA, D_POST);
+
+  /* Get the bottom stress from the 2D mode if required              */
+  if (wincon->mode2d && wincon->numbers & BOTSTRESS) {
+    memcpy(wincon->w8, windat->tau_be1, window->szeS * sizeof(double));
+    vel_cen(window, windat, wincon, wincon->w8, NULL, windat->tau_be1, windat->tau_be2,
+	    windat->tau_bm, NULL, 1);
+  }
 
   /*-----------------------------------------------------------------*/
   /* Add the non-linear terms                                        */
@@ -1244,6 +1251,8 @@ void asselin(geometry_t *window,  /* Window geometry                 */
   int *mask = wincon->i7;
   double yr = 86400.0 * 365.0;
   int checkf = 0;
+  /*int checkf = 95784;*/
+  /*int checkf = 49149;*/
   double mf=0.0, mfe[window->npem+1], af[window->npem+1];
 
   for (j = 1; j <= window->npem; j++) mfe[j] = 0.0;
@@ -1503,18 +1512,19 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	      }
 	    }
 	  }
-	  if (c == checkf) {
+	  if (wincon->ic == 0 && window->wsa[c] == checkf) {
 	    double vel;
 	    f2 = 0.0;
 	    for (j = 1; j <= window->npe[c]; j++) {
 	      e = window->c2e[j][c];
 	      vel = windat->u1av[e];
-	      if (open->bec[j][cc]) vel = nvel[j];
+	      /*if (open->bec[j][cc]) vel = nvel[j];*/
 	      f2 += window->eSc[j][c] * vel * windat->depth_e1[e] * 
 		window->h1au1[e] * wincon->mdx[e] * windat->dt2d;
 	    }
 	    f1 = windat->etab[c] - f2 / window->cellarea[c];
-	    printf("check: %f %d actual=%f global=%f new=%f\n",windat->days, c, windat->eta[c], eta, f1);
+	    printf("check: %f %d[%f %f] actual=%f eta=%f tide=%f new=%f\n",windat->days, c, 
+		   window->cellx[c], window->celly[c], windat->eta[c], eta, tide, f1);
 	  }
 	}
       }

@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 5913 2018-09-05 02:35:27Z her127 $
+ *  $Id: hd_params.h 6066 2019-02-08 04:08:32Z her127 $
  *
  */
 
@@ -334,6 +334,9 @@
 #define FCT           0x040000
 #define ORDER3US      0x080000
 #define ORDER4US      0x100000
+#define PV_ENEUT      0x200000
+#define PV_ENSCO      0x400000
+#define PV_ENSDS      0x800000
 
 /* Lagrangian method */
 #define L_LINEAR      0x001
@@ -344,6 +347,7 @@
 #define L_BILIN       0x020
 #define L_BAYLIN      0x040
 #define L_FG          0x080
+#define L_LSLIN       0x100
 
 #define TR_FIRST      0x000001
 
@@ -453,6 +457,11 @@
 #define BOTSTRESS    0x1000000
 #define UNIT         0x2000000
 #define CELLRES      0x4000000
+#define GLIDER       0x8000000
+#define PASS         0x10000000
+#define EKPUMP       0x20000000
+#define TIDEFR       0x40000000
+#define U1VHC        0x00000001
 
 /* Wind input */
 #define SPEED         2
@@ -478,6 +487,9 @@
 #define U2_AK          0x000800  /* No Smagorinsky, u2kh allocated */
 #define NONLIN         0x002000  /* Nonlinear diffusion scaling */
 #define SMAG           0x004000  /* Smagorinsky diffusion */
+#define SCALE2D        0x008000  /* Viscosity is scaled for 2D mode */
+#define SCALEBI        0x010000  /* Biharmonic viscosity scaling */
+#define CUBIC          0x020000  /* Cubic viscosity scaling */
 
 /* Save input forcing flags */
 #define OTEMP          1
@@ -501,6 +513,7 @@
 #define PRE794         4
 #define STANDARD       8
 #define US_LAPLACIAN   16
+#define US_BIHARMONIC  32
 
 /* General velocity flags */
 #define U1_F1          1
@@ -790,6 +803,7 @@
 #define VINIT_GEO  2
 
 /* Time series comparison metrics */
+#define TS_NONE    0x0000
 #define TS_DIFF    0x0001
 #define TS_MEAN    0x0002
 #define TS_RMSE    0x0004
@@ -800,6 +814,7 @@
 #define TS_F       0x0080
 #define TS_CLOS    0x0100
 #define TS_PRED    0x0200
+#define TS_GLIDER  0x0400
 
 /* Unstructred types */
 #define US_TRI     0x0001
@@ -815,7 +830,9 @@
 #define US_CUS     0x0400   /* Create unstructured    */
 #define US_IUS     0x0800   /* Input unstructured     */
 #define US_JUS     0x1000   /* Jigsaw unstructured    */
-#define US_MIX     0x2000
+#define US_POW     0x2000   /* Jigsaw power mesh      */
+#define US_STER    0x4000   /* Stereographic mesh     */
+#define US_MIX     0x8000   /* Mixed polygons         */
 
 /* Stencil types */
 #define ST_STAR    0x001
@@ -870,6 +887,10 @@
 #define L_GHOST        2
 #define L_SED          4
 #define L_OUT          8
+
+/* Degree heating diagnostic */
+#define DHW_NOAA   1
+#define DHW_RT     2
 
 /* Misc */
 #define INV_BARO 8

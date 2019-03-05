@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: preprocess.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: preprocess.c 6074 2019-02-08 04:11:22Z her127 $
  *
  */
 
@@ -4733,11 +4733,6 @@ void alloc_geom(geometry_t *geom, /* Model geometry structure */
     geom->u1y = d_alloc_1d(sizeS);
     geom->u2x = d_alloc_1d(sizeS);
     geom->u2y = d_alloc_1d(sizeS);
-
-    if (geom->sednz) {
-      geom->gridz_sed = d_alloc_2d(sizeS, geom->sednz + 1);
-      geom->cellz_sed = d_alloc_2d(sizeS, geom->sednz);
-    }
   }
   if (mask & MASTER_A) {
     geom->s2i = i_alloc_1d(size);

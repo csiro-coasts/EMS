@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdrycond.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: bdrycond.c 6126 2019-03-04 00:56:11Z her127 $
  *
  */
 
@@ -316,21 +316,21 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       }
     } else if (code & U1BDRY) {
       double fvx, fvy;
-      for (cc = sb; cc <= eb; cc++) {
-	c = obc[cc];
-	c2 = window->m2d[c];
-	fvx = (ramp * csr_tide_eval(&open->tun, cc, gmt));
-	fvy = (ramp * csr_tide_eval(&open->tvn, cc, gmt));
-	fval[c] += (fvx * window->costhu1[c2] + fvy * window->sinthu1[c2]);
+      for (ee = sb; ee <= eb; ee++) {
+	e = obc[ee];
+	e2 = window->m2de[e];
+	fvx = (ramp * csr_tide_eval(&open->tun, ee, gmt));
+	fvy = (ramp * csr_tide_eval(&open->tvn, ee, gmt));
+	fval[e] += (fvx * window->costhu1[e2] + fvy * window->sinthu1[e2]);
       }
     } else {
       double fvx, fvy;
-      for (cc = sb; cc <= eb; cc++) {
-	c = obc[cc];
-	c2 = window->m2d[c];
-	fvx = (ramp * csr_tide_eval(&open->tut, cc, gmt));
-	fvy = (ramp * csr_tide_eval(&open->tvt, cc, gmt));
-	fval[c] += (fvx * window->costhu1[c2] + fvy * window->sinthu1[c2]);
+      for (ee = sb; ee <= eb; ee++) {
+	e = obc[ee];
+	e2 = window->m2de[e];
+	fvx = (ramp * csr_tide_eval(&open->tut, ee, gmt));
+	fvy = (ramp * csr_tide_eval(&open->tvt, ee, gmt));
+	fval[e] += (fvx * window->costhu1[e2] + fvy * window->sinthu1[e2]);
       }
     }
   }

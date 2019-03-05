@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: windows.c 6140 2019-03-04 01:04:05Z her127 $
  *
  */
 
@@ -691,6 +691,7 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
   int ns = geom->szcS;
   int *mask, *wm;
   int checkf = 1;
+  int assignf = 1;
   int verbose = 0;
   int v2_t = geom->v2_t;
 
@@ -828,12 +829,14 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
 	c = open->obc_t[cc];
 	ci = open->oi1_t[cc];
 	wn = wm[ci];
-	wsizeS[wn]++;
-	ws2[wn][wsizeS[wn]] = c;
-	if (verbose) printf("OBC wn=%d wi=%d c=%d[%d %d]\n",wn,wsizeS[wn],c,geom->s2i[c],geom->s2j[c]);
-	wm[c] = wn;
-	if (geom->win_size)
-	  geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+	if (wn && !wm[c]) {
+	  wsizeS[wn]++;
+	  ws2[wn][wsizeS[wn]] = c;
+	  wm[c] = wn;
+	  if (verbose) printf("OBC wn=%d wi=%d c=%d[%d %d]\n",wn,wsizeS[wn],c,geom->s2i[c],geom->s2j[c]);
+	  if (geom->win_size)
+	    geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+	}
       }
     }
   }
@@ -857,27 +860,30 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
 	if (found) break;
       }
       if (!found) {
-      /* Add any cells not found to neighboring windows
-	for (n = 1; n <= nwindows; n++) mw[n] = 0;
-	for (j = 1; j <= geom->npe[c]; j++) {
-	  cn = geom->c2c[j][c];
-	  if ((wn = wm[cn])) mw[wn] += 1;
-	}
-	wn = 1;
-	wi = mw[wn];
-	for (n = 1; n <= nwindows; n++) {
-	  if (mw[n] > wi) {
-	    wi = mw[n];
-	    wn = n;
+	if (assignf) {
+	  /* Add any cells not found to neighboring windows          */
+	  for (n = 1; n <= nwindows; n++) mw[n] = 0;
+	  for (j = 1; j <= geom->npe[c]; j++) {
+	    cn = geom->c2c[j][c];
+	    if ((wn = wm[cn])) mw[wn] += 1;
 	  }
-	}
-	wsizeS[wn]++;
-	ws2[wn][wsizeS[wn]] = c;
-	wm[c] = wn;
-	if (geom->win_size)
-	  geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
-	hd_warn("window_cells_grouped: Cell %d[%d %d] not found: allocated to window%d (%f %f)\n", c, geom->s2i[c], geom->s2j[c], wn, geom->cellx[c], geom->celly[c]);
-	*/
+	  /* Assign to the window with the most neighbours           */
+	  wn = 1;
+	  wi = mw[wn];
+	  for (n = 1; n <= nwindows; n++) {
+	    if (mw[n] > wi) {
+	      wi = mw[n];
+	      wn = n;
+	    }
+	  }
+	  wc[wn]++;
+	  wsizeS[wn]++;
+	  ws2[wn][wsizeS[wn]] = c;
+	  wm[c] = wn;
+	  if (geom->win_size)
+	    geom->win_size[wn] = (double)wsizeS[wn] / (double)geom->b2_t;
+	  hd_warn("window_cells_grouped: Cell %d[%d %d] not found: allocated to window%d (%f %f)\n", c, geom->s2i[c], geom->s2j[c], wn, geom->cellx[c], geom->celly[c]);
+	} else
 	hd_warn("window_cells_grouped: Can't find window partition for cell %d[%d %d] %f %f\n", c, geom->s2i[c], geom->s2j[c], geom->cellx[c], geom->celly[c]);
       }
     }
@@ -4255,14 +4261,14 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
         if (window[nn]->open[n]->ntt) {
 	  m = (window[nn]->open[n]->bgz) ? window[nn]->open[n]->bgz : 1;
 	  window[nn]->open[n]->ttsz = window[nn]->open[n]->no3_t + 
-	    m * window[nn]->open[n]->no3_e1 + 1;
+	    m * window[nn]->open[n]->no3_e1;
           window[nn]->open[n]->t_transfer = 
-	    d_alloc_2d(window[nn]->open[n]->ttsz, 
+	    d_alloc_2d(window[nn]->open[n]->ttsz + 1, 
 		       window[nn]->open[n]->ntt);
           window[nn]->open[n]->t_tmap =
-            i_alloc_1d(window[nn]->open[n]->ttsz);
+            i_alloc_1d(window[nn]->open[n]->ttsz + 1);
 	  window[nn]->open[n]->t_imap = 
-	    i_alloc_2d(m + 1, window[nn]->open[n]->ttsz);
+	    i_alloc_2d(m + 1, window[nn]->open[n]->ttsz + 1);
           ff[nn][n] |= 8;
         }
       }
@@ -5724,6 +5730,14 @@ window_t **win_data_build(master_t *master,   /* Master data         */
         windat[n]->fltr = windat[n]->tr_wc[tn];
       } else if (strcmp("age", master->trname[tn]) == 0) {
         windat[n]->agetr = windat[n]->tr_wc[tn];
+      } else if (strcmp("glider", master->trname[tn]) == 0) {
+        windat[n]->glider = windat[n]->tr_wc[tn];
+      } else if (strcmp("u1vhc", master->trname[tn]) == 0) {
+        windat[n]->u1vhc = windat[n]->tr_wc[tn];
+      } else if (strcmp("nprof", master->trname[tn]) == 0) {
+        windat[n]->nprof = windat[n]->tr_wc[tn];
+      } else if (strcmp("unit", master->trname[tn]) == 0) {
+        windat[n]->unit = windat[n]->tr_wc[tn];
       } else if (strcmp("decorr_e1", master->trname[tn]) == 0) {
         windat[n]->decv1 = windat[n]->tr_wc[tn];
       } else if (master->swr_type & SWR_3D && strcmp("swr_attenuation", master->trname[tn]) == 0) {
@@ -5749,6 +5763,13 @@ window_t **win_data_build(master_t *master,   /* Master data         */
 	sprintf(buf, "%s_ncon", master->trinfo_3d[master->trtend].name);
 	if (strcmp(buf, master->trname[tn]) == 0)
 	  windat[n]->tr_ncon = windat[n]->tr_wc[tn];
+      } else if (master->dhwf & DHW_NOAA) {
+	if (strcmp("dhd", master->trname[tn]) == 0)
+	  windat[n]->dhd = windat[n]->tr_wc[tn];
+	else if (strcmp("dhwc", master->trname[tn]) == 0)
+	  windat[n]->dhwc = windat[n]->tr_wc[tn];
+	else if (strcmp("dhw", master->trname[tn]) == 0)
+	  windat[n]->dhw = windat[n]->tr_wc[tn];
       }
     }
 
@@ -5770,6 +5791,7 @@ window_t **win_data_build(master_t *master,   /* Master data         */
         windat[n]->wtop[cc] = master->wtop[c];
         windat[n]->wbot[cc] = master->wbot[c];
         windat[n]->patm[cc] = master->patm[c];
+	if (master->meanc) windat[n]->meanc[cc] = master->meanc[c];
 
         if (master->ntrS) {
 	  for (tn = 0; tn < windat[n]->ntrS; tn++) {
@@ -6173,6 +6195,12 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->ecoerr = windat->tr_wcS[m];
       if (strcmp("decorr_e1", master->trinfo_2d[m].name) == 0)
         windat->decv1 = windat->tr_wcS[m];
+      if (strcmp("sep", master->trinfo_2d[m].name) == 0)
+        windat->sep = windat->tr_wcS[m];
+      if (strcmp("bep", master->trinfo_2d[m].name) == 0)
+        windat->bep = windat->tr_wcS[m];
+      if (strcmp("tide_front", master->trinfo_2d[m].name) == 0)
+        windat->tfront = windat->tr_wcS[m];
       /*if (strcmp("oeta", master->trinfo_2d[m].name) == 0 && windat->eta_rlx)
         windat->eta_rlx->val1 = windat->tr_wcS[m];*/
     }
@@ -6790,6 +6818,12 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->trasf = 0;
     wincon[n]->momsc = master->momsc;
     wincon[n]->momsc2d = master->momsc2d;
+    if (wincon[n]->momsc & PV_ENSCO)
+      wincon[n]->pv_calc = pv_enstrophy_conserve;
+    else if (wincon[n]->momsc & PV_ENSDS)
+      wincon[n]->pv_calc = pv_enstrophy_dissipate;
+    else
+      wincon[n]->pv_calc = pv_energy_neutral;
     wincon[n]->hmin = master->hmin;
     wincon[n]->uf = master->uf;
     wincon[n]->quad_bfc = master->quad_bfc;
@@ -6812,6 +6846,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->cfl = master->cfl;
     wincon[n]->cfl_dt = master->cfl_dt;
     wincon[n]->lnm = master->lnm;
+    wincon[n]->nprof = master->nprofn;
     wincon[n]->vorticity = master->vorticity;
     wincon[n]->numbers = master->numbers;
     wincon[n]->compatible = master->compatible;
@@ -7278,6 +7313,8 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
 	strcpy(wincon[n]->trasr, "cubic");
       else if (wincon[n]->osl & L_LSQUAD)
 	strcpy(wincon[n]->trasr, "quadratic");
+      else if (wincon[n]->osl & L_LSLIN)
+	strcpy(wincon[n]->trasr, "linearlsq");
       else
 	strcpy(wincon[n]->trasr, "linear");
 
@@ -7629,8 +7666,8 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
       for (m = 1; m <= window[n]->nvc[v]; m++) {
 	c = window[n]->v2c[v][m];
 	if (c && !window[n]->wgst[c]) {
-	  d2 += wincon[n]->coriolis[c];
-	  d1 += 1.0;
+	  d2 += wincon[n]->coriolis[c] * window[n]->dualareap[v][m];
+	  d1 += window[n]->dualareap[v][m];
 	}
       }
       if (d1) windat[n]->fv[v] = d2 / d1;
@@ -7696,7 +7733,6 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
       c = window[n]->w2_t[cc];
       windat[n]->etab[c] = wincon[n]->oldeta[c] = windat[n]->eta[c];
     }
-
     /* Set the lateral boundary conditions for velocity.             */
 #if !GLOB_BC
     vel2D_lbc(windat[n]->u1, window[n]->nbpte1, window[n]->nbe1,
@@ -7747,6 +7783,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
        wincon[n]->momsc & LAGRANGE ||
        wincon[n]->do_pt) {
       tran_grid_init(window[n], windat[n], wincon[n]);
+      build_linear_weights(window[n], windat[n], wincon[n]); 
     }
 
     /* Get the weights for the second derivative                     */
@@ -9287,6 +9324,116 @@ void nan_check(geometry_t **window,   /* Window geometry             */
 /* END nan_check()                                                   */
 /*-------------------------------------------------------------------*/
 
+
+/*-------------------------------------------------------------------*/
+/* Averages an edge array onto the centre location c and returns the */
+/* centered value.                                                   */
+/*-------------------------------------------------------------------*/
+double edge_mean(geometry_t *window, double *a, int c)
+{
+  int ee, e;
+  int cs = window->m2d[c];
+  double ret = 0.0;
+
+  for (ee = 1; ee <= window->npe[cs]; ee++)
+    ret += a[window->c2e[ee][c]];
+  return(ret / (double)window->npe[cs]);
+}
+
+/* END edge_mean()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Averages an edge array onto the centre location in an array.      */
+/*-------------------------------------------------------------------*/
+void edge_centre(geometry_t *window, double *a, double *b, int mode)
+{
+  int sz, nv, *vec;
+  int cc, c, cs, ee, e;
+
+  if (mode) {
+    vec = window->w3_t;
+    nv = window->b3_t;    
+    sz = window->szcS;
+  } else {
+    vec = window->w2_t;
+    nv = window->b2_t;    
+    sz = window->szc;
+  }
+
+  memset(b, 0, sz *sizeof(double));
+  for (cc = 1; cc <= nv; cc++) {
+    c = vec[cc];
+    cs = window->m2d[c];
+    for (ee = 1; ee <= window->npe[cs]; ee++) {
+      e = window->c2e[ee][c];
+      b[c] += a[e];
+    }
+    b[c] /= (double)window->npe[cs];
+  }
+}
+
+/* END edge_centre()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Averages an vertex array onto the centre location c and returns   */
+/* the centered value.                                               */
+/*-------------------------------------------------------------------*/
+double vertex_mean(geometry_t *window, double *a, int c)
+{
+  int vv, v;
+  int cs = window->m2d[c];
+  double ret = 0.0;
+
+  for (vv = 1; vv <= window->npe[cs]; vv++)
+    ret += a[window->c2v[vv][c]];
+  return(ret / (double)window->npe[cs]);
+}
+
+/* END vertex_mean()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Averages an vertex array onto the centre location in an array.    */
+/*-------------------------------------------------------------------*/
+void vertex_centre(geometry_t *window, double *a, double *b, int mode)
+{
+  int sz, nv, *vec;
+  int cc, c, cs, vv, v;
+
+  if (mode) {
+    vec = window->w3_t;
+    nv = window->b3_t;    
+    sz = window->szcS;
+  } else {
+    vec = window->w2_t;
+    nv = window->b2_t;    
+    sz = window->szc;
+  }
+
+  memset(b, 0, sz *sizeof(double));
+  for (cc = 1; cc <= nv; cc++) {
+    c = vec[cc];
+    cs = window->m2d[c];
+    for (vv = 1; vv <= window->npe[cs]; vv++) {
+      v = window->c2v[vv][c];
+      b[c] += a[v];
+    }
+    b[c] /= (double)window->npe[cs];
+  }
+}
+
+/* END vertex_centre()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Returns the status of an edge in the window map.                  */
+/*-------------------------------------------------------------------*/
 int eiw(geometry_t *geom, int e, int *mode)
 {
   int c1 = geom->e2c[e][0];
@@ -9310,7 +9457,13 @@ int eiw(geometry_t *geom, int e, int *mode)
     hd_quit("Can't assign window to edge %d\n", e);
 }
 
+/* END eiw()                                                         */
+/*-------------------------------------------------------------------*/
 
+
+/*-------------------------------------------------------------------*/
+/* Returns a cell centre adjacent to edge e in window wn.            */
+/*-------------------------------------------------------------------*/
 int eic(geometry_t *geom, int e, int wn, int *mode)
 {
   int c1 = geom->e2c[e][0];
@@ -9339,3 +9492,5 @@ int eic(geometry_t *geom, int e, int wn, int *mode)
   }
 }
 
+/* END eic()                                                         */
+/*-------------------------------------------------------------------*/

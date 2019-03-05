@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: monitor.c 6128 2019-03-04 00:57:29Z her127 $
  *
  */
 
@@ -70,7 +70,6 @@ void reset_means2d_m(master_t *master, int trm);
 void quicksort(double *p, int *q, int l, int r);
 int partition(double *p, int *q, int l, int r);
 int mergeSort(int a[], int start, int end );
-double edge_mean(geometry_t *window, double *a, int c);
 double vertex_mean(geometry_t *window, double *a, int c);
 dump_file_t *create_output(master_t *master, int *fid, char *filename);
 double percentiles[] = {0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
@@ -2511,6 +2510,41 @@ double calc_min_cfl_3d(geometry_t *window, /* Window geometry        */
 
 
 /*-------------------------------------------------------------------*/
+/* Computs a normalized vertical profile of a tracer. Note: this     */
+/* differs to the tracerstats version in that a no-gradient is set   */
+/* above the surface, whereas all tracerstats routines only perform  */
+/* operations on wet cells.                                          */
+/*-------------------------------------------------------------------*/
+void nor_vert_prof(geometry_t *window,       /* Window geometry       */
+		   window_t *windat,         /* Window data           */
+		   win_priv_t *wincon        /* Window constants      */
+		   )
+{
+  int c, cc, cs;
+  double trs;
+
+  for (cc = 1; cc <= wincon->vcs2; cc++) {
+    c = wincon->s2[cc];
+    cs = c;
+    trs = windat->tr_wc[wincon->nprof][cs];
+    while (c != window->zm1[c]) {
+      windat->nprof[c] = (trs) ? windat->tr_wc[wincon->nprof][c] / trs : 0.0;
+      c = window->zm1[c];
+    }
+    trs = windat->nprof[cs];
+    c = cs;
+    while(c != window->zp1[c]) {
+      c = window->zp1[c];
+      windat->nprof[c] = trs;
+    } 
+  }
+}
+
+/* END nor_vert_prof()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Calculates diagnostic numbers and saves to tracers if required    */
 /*-------------------------------------------------------------------*/
 void diag_numbers(geometry_t *window,       /* Window geometry       */
@@ -2548,7 +2582,28 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
   double T1 = 18.0;
   double So = 35.0;
   double *P = wincon->w8;
-  double d1;
+  double d1, d2;
+
+  if (windat->u1vhc) {
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      cs = window->m2d[c];
+      windat->u1vhc[c] = 0.0;
+      d1 = 0.0;
+      for (ee = 1; ee <= window->npe[cs]; ee++) {
+	e = window->c2e[ee][c];
+	es = window->m2de[e];
+	d2 = window->h1au1[es];
+	if (wincon->diff_scale & NONLIN) d2 = d2 * d2;
+	if (wincon->diff_scale & CUBIC) d2 = d2 * d2 * d2;
+	windat->u1vhc[c] += (d2 * wincon->u1vh[e]);
+	d1 += d2;
+      }
+      windat->u1vhc[c] /= d1;
+      if (wincon->diff_scale & SCALEBI)
+	windat->u1vhc[c] /= (0.125 * window->cellarea[cs]);
+    }
+  }
 
   /* Get the pressure (Bar) for sound calculations */
   if (windat->sound) {
@@ -2628,7 +2683,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     speed = sqrt(windat->u[c] * windat->u[c] +
 		 windat->v[c] * windat->v[c]);
     if (windat->speed_3d) windat->speed_3d[c] = speed;
-    if (windat->speed_2d)
+    if (windat->speed_2d || windat->tfront)
       windat->speed_2d[cs] = sqrt(windat->uav[cs] * windat->uav[cs] +
 				  windat->vav[cs] * windat->vav[cs]);
 
@@ -2637,6 +2692,12 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     N2 = buoyancy_frequency2(window, windat, wincon, c);
     N = N2 > 0 ? sqrt(N2) : 0.0;
     if (windat->brunt) windat->brunt[c] = N;
+
+    /* Simpson-Hunter tidal front                                    */
+    if (windat->tfront) {
+      d1 = depth / (windat->dens_0[c] * wincon->Cd[c] * pow(windat->speed_2d[cs], 3.0));
+      windat->tfront[c] = log10(d1);
+    }
 
     /* Get the mode 1 internal wave speed                            */
     /* c=NH/(n.pi), n=1,2,3... (Gill, 1982, p159) for long waves     */
@@ -2735,27 +2796,60 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
 /* END diag_numbers()                                                */
 /*-------------------------------------------------------------------*/
 
-double edge_mean(geometry_t *window, double *a, int c)
-{
-  int ee, e;
-  int cs = window->m2d[c];
-  double ret = 0.0;
 
-  for (ee = 1; ee <= window->npe[cs]; ee++)
-    ret += a[window->c2e[ee][c]];
-  return(ret / (double)window->npe[cs]);
+/*-------------------------------------------------------------------*/
+/* Computs the surface and bottom Ekman pumping                      */
+/*-------------------------------------------------------------------*/
+void ekman_pump_e1(geometry_t *window,   /* Window geometry          */
+		   window_t *windat,     /* Window data              */
+		   win_priv_t *wincon,   /* Window constants         */
+		   double *taus,
+		   double *taub
+		   )
+{
+  int cc, c, e, j;
+  double *dutdn = wincon->d1;
+  double *dundt = wincon->d2;
+  double *d1 = wincon->d3;
+
+  /* Initialize                                                      */
+  memset(windat->sep, 0, window->szcS * sizeof(double));
+  memset(windat->bep, 0, window->szcS * sizeof(double));
+
+  /* Gradients of surface stress                                     */
+  vel_grad(window, windat, wincon, taus, NULL, d1, dutdn, GRAD_2D|GRAD_NOR);
+  vel_grad(window, windat, wincon, taus, NULL, dundt, d1, GRAD_2D|GRAD_TAN);
+
+  /* Compute wind stress curl and surface Ekman pumping              */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    for (j = 1; j<= window->npe[c]; j++) {
+      e = window->c2e[j][c];
+      windat->sep[c] += (dutdn[e] - dundt[e]) * wincon->coriolis[c] *
+	windat->dens[c];
+    }
+    windat->sep[c] /= (double)window->npe[c];
+  }
+
+  /* Gradients of bottom stress                                      */
+  vel_grad(window, windat, wincon, taub, NULL, d1, dutdn, GRAD_2D|GRAD_NOR);
+  vel_grad(window, windat, wincon, taub, NULL, dundt, d1, GRAD_2D|GRAD_TAN);
+
+  /* Compute bottom stress curl and surface Ekman pumping            */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    for (j = 1; j<= window->npe[c]; j++) {
+      e = window->c2e[j][c];
+      windat->bep[c] += (dutdn[e] - dundt[e]) * wincon->coriolis[c] *
+	windat->dens[c];
+    }
+    windat->bep[c] /= (double)window->npe[c];
+  }
 }
 
-double vertex_mean(geometry_t *window, double *a, int c)
-{
-  int vv, v;
-  int cs = window->m2d[c];
-  double ret = 0.0;
+/* END ekman_pump_e1()                                               */
+/*-------------------------------------------------------------------*/
 
-  for (vv = 1; vv <= window->npe[cs]; vv++)
-    ret += a[window->c2v[vv][c]];
-  return(ret / (double)window->npe[cs]);
-}
 
 /*-------------------------------------------------------------------*/
 /* Computs the depth of sound channels                               */
@@ -2929,6 +3023,26 @@ double buoyancy_frequency2(geometry_t *window, /* Window geometry    */
   /* Brunt Vaisala frequency squared                                 */
   N2 = -(wincon->g / RHO_0) *
     (drho / (0.5 * (wincon->dz[zm1] + wincon->dz[c])));
+
+  return(N2);
+}
+
+double buoyancy_frequency2_m(master_t *master,  /* Master data       */
+			     geometry_t *geom,  /* Global geometry   */
+			     double *dens,      /* Density           */
+			     int c              /* Sparse coordinate */
+)
+{
+  int zm1;
+  double drho, N2, dz;
+
+  /* Density gradient                                                */
+  zm1 = geom->zm1[c];
+  drho = dens[c] - dens[zm1];
+  dz = fabs(geom->cellz[c] - geom->cellz[zm1]);
+
+  /* Brunt Vaisala frequency squared                                 */
+  N2 = -(master->g / RHO_0) * (drho / dz);
 
   return(N2);
 }

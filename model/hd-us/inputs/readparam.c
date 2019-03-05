@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 5913 2018-09-05 02:35:27Z her127 $
+ *  $Id: readparam.c 6134 2019-03-04 00:59:33Z her127 $
  *
  */
 
@@ -120,10 +120,10 @@ void set_default_param(parameters_t *params)
   sprintf(params->trans_dt, "%c", '\0');
   params->runno = 0;
   sprintf(params->rev, "%c", '\0');
-  params->momsc = RINGLER|WTOP_O2|WIMPLICIT;
+  params->momsc = RINGLER|WTOP_O2|WIMPLICIT|PV_ENEUT;
   params->trasc = VANLEER;
   params->ultimate = 0;
-  params->osl = L_LSQUAD;
+  params->osl = L_LSLIN;
   params->smagorinsky = 0.0;
   params->sue1 = 0.0;
   params->kue1 = 0.0;
@@ -150,7 +150,7 @@ void set_default_param(parameters_t *params)
   sprintf(params->means_os, "%c", '\0');
   sprintf(params->bathystats, "%c", '\0');
   params->vorticity = NONE;
-  params->numbers = NONE;
+  params->numbers = params->numbers1 = NONE;
   params->u1_f = params->u1av_f = NONE;
   params->save_force = NONE;
   params->lnm = 0.0;
@@ -257,6 +257,7 @@ void set_default_param(parameters_t *params)
   params->sharp_pyc = 0;
   params->uscf = 0;
   params->mlat = params->mlon = NOTVALID;
+  sprintf(params->nprof, "%c", '\0');
   sprintf(params->reef_frac, "%c", '\0');
   params->dbi = params->dbj = params->dbk = -1;
   params->dbgf = NONE;
@@ -294,6 +295,7 @@ void set_default_param(parameters_t *params)
   params->compatible = 0; /* Backwards compatibility                 */
   params->gint_errfcn = LWARN;
   params->nptsu = NULL;
+  params->nland = 0;
 
   /* Set the alert thresholds. Note: velocities are set via          */
   /* params->velmax and params->wmax.                                */
@@ -415,6 +417,12 @@ parameters_t *params_read(FILE *fp)
 	params->us_type |= (US_RUS|US_WUS|US_P);
     }
   }
+  if (prm_read_char(fp, "POWER_MESH", buf)) {
+    if (is_true(buf)) params->us_type |= US_POW;
+  }
+  if (prm_read_char(fp, "STEREOGRAPHIC_MESH", buf)) {
+    if (is_true(buf)) params->us_type |= US_STER;
+  }
   sprintf(keyword, "INTERP_RULE");
   if (prm_read_char(fp, keyword, params->i_rule));
 
@@ -528,6 +536,14 @@ parameters_t *params_read(FILE *fp)
       params->momsc |= RINGLER;
     if (contains_token(buf, "VECINVAR") != NULL)
       params->momsc |= RINGLER;
+    if (contains_token(buf, "NEUTRAL") != NULL)
+      params->momsc |= PV_ENEUT;
+    if (contains_token(buf, "CONSERVE") != NULL)
+      params->momsc |= PV_ENSCO;
+    if (contains_token(buf, "DISSIPATE") != NULL)
+      params->momsc |= PV_ENSDS;
+    if (!(params->momsc & (PV_ENEUT|PV_ENSCO|PV_ENSDS)))
+      params->momsc |= PV_ENEUT;
   }
 
   /* Use 4th order approximations for wtop by default                */
@@ -594,11 +610,15 @@ parameters_t *params_read(FILE *fp)
       params->osl = L_CUBIC;
     else if (strcmp(buf, "QUADRATIC") == 0)
       params->osl = L_LSQUAD;
+    else if (strcmp(buf, "LINEARLSQ") == 0)
+      params->osl = L_LSLIN;
     else if (strcmp(buf, "BILINEAR") == 0)
       params->osl = L_BILIN;
     else if (strcmp(buf, "BAYCENTRIC") == 0)
       params->osl = L_BAYLIN;
   }
+  if (params->trasc & FFSL && params->osl & (L_BILIN|L_BAYLIN))
+    hd_quit("Cannot use FFSL advection with bilinear or baycentric interpolation, due to streamline tracking from edges.\n");
 
   /* Setting robust > 1 will cap and smooth smagorinsky              */
   sprintf(keyword, "ROBUST");
@@ -792,6 +812,11 @@ parameters_t *params_read(FILE *fp)
   if (params->lnm != 0.0)
     params->ntrS++;
   read_debug(params, fp);
+  sprintf(keyword, "PROFILE");
+  if (prm_read_char(fp, keyword, buf)) {
+    strcpy(params->nprof, buf);
+    params->ntr += 1;
+  }
 
   read_decorr(params, fp, 0);
 
@@ -904,9 +929,12 @@ parameters_t *params_read(FILE *fp)
   params->ntr += numbers_init(params);
 
   /* Degree heating days                                             */
-  sprintf(keyword, "DHW");
-  if (prm_read_char(fp, keyword, params->dhw)) {
-    params->ntr += 3;
+  params->ntr += read_dhw(params, fp);
+
+  /* Auto point source                                               */
+  if (prm_read_char(fp, "pss", buf)) {
+    params->numbers |= PASS;
+    params->ntr += 1;
   }
 
   /* River flow diagnostic                                           */
@@ -1031,7 +1059,7 @@ parameters_t *params_read(FILE *fp)
   sprintf(keyword, "UF");
   prm_read_double(fp, keyword, &params->uf);
   sprintf(keyword, "QBFC");
-  prm_read_double(fp, keyword, &params->quad_bfc);
+  prm_read_char(fp, keyword, params->quad_bfc);
   sprintf(keyword, "RAMPSTART");
   prm_get_time_in_secs(fp, keyword, &params->rampstart);
   sprintf(keyword, "RAMPEND");
@@ -1453,8 +1481,12 @@ parameters_t *params_read(FILE *fp)
       params->ntrS += 3;
     }
     if (strcmp(buf, "BULK") == 0) {
-      params->saltflux = BULK;
-      params->ntrS += 1;
+      if (!(params->heatflux & ADVANCED))
+	hd_warn("params_read(): BULK saltflux must also use BULK heatflux. No saltflux included.\n");
+      else {
+	params->saltflux = BULK;
+	params->ntrS += 1;
+      }
     }
   }
 
@@ -1908,6 +1940,12 @@ parameters_t *auto_params(FILE * fp, int autof)
 	params->us_type |= (US_RUS|US_WUS);
     }
   }
+  if (prm_read_char(fp, "POWER_MESH", buf)) {
+    if (is_true(buf)) params->us_type |= US_POW;
+  }
+  if (prm_read_char(fp, "STEREOGRAPHIC_MESH", buf)) {
+    if (is_true(buf)) params->us_type |= US_STER;
+  }
   sprintf(keyword, "CONVERSION");
   if (prm_read_char(fp, keyword, buf)) {
     if (contains_token(buf, "NONE") != NULL) {
@@ -1983,7 +2021,7 @@ parameters_t *auto_params(FILE * fp, int autof)
   params->iratio = 0;
   params->stab = SUB_STEP_NOSURF;
   params->uf = 1e-4;
-  params->quad_bfc = 0.003;
+  strcpy(params->quad_bfc, "0.003");
   params->rampstart = params->t;
   params->rampend = params->rampstart + 86400;
   params->rampf = WIND|FILEIN|CUSTOM|TIDALH|TIDALC|TIDEBC|FLATHR|INV_BARO;
@@ -2378,9 +2416,12 @@ parameters_t *auto_params(FILE * fp, int autof)
   /* Diagnistic numbers (optional)                                   */
   params->atr += numbers_init(params);
 
-  sprintf(keyword, "DHW");
-  if (prm_read_char(fp, keyword, params->dhw)) {
-    params->atr+=3;
+  params->atr += read_dhw(params, fp);
+
+  /* Auto point source                                               */
+  if (prm_read_char(fp, "pss", buf)) {
+    params->numbers |= PASS;
+    params->ntr += 1;
   }
 
   /* River flow diagnostic                                           */
@@ -2823,6 +2864,16 @@ parameters_t *auto_params(FILE * fp, int autof)
 	bsgn = -1.0;
     }
   }
+
+  /* Insert land cells for unstructured meshes if required           */  
+  /*
+  if (!(params->us_type & US_IJ)) {
+    for (n = 1; n <= params->nland; n++) {
+      c = params->lande1[n];
+      params->bathy[c] = LANDCELL;
+    }
+  }
+  */
 
   /* Interpolate the bathymetry onto the grid                        */
   if (params->us_type & US_IJ) {
@@ -3316,20 +3367,15 @@ void autoset(parameters_t *params, master_t *master, geometry_t *geom)
   /* closest to the water column. This is reversed here so that the  */
   /* sediment origin is the deepest layer.                           */
   if (geom->sednz) {
-    for (c = 1; c <= geom->sgnumS; c++) {
-      i = geom->s2i[c];
-      j = geom->s2j[c];
-      k = geom->s2k[c];
-      if (i == NOTVALID && j == NOTVALID && k == NOTVALID)
+    for (c = 1; c <= geom->szcS; c++) {
+      if (geom->wgst[c])
         continue;               /* Continue on ghosts                */
-      if (i < params->nce1 && j < params->nce2) {
-        for (lc = 0; lc <= geom->sednz; lc++) {
-          geom->gridz_sed[lc][c] = params->gridz_sed[lc];
-        }
-        for (lc = geom->sednz - 1; lc >= 0; lc--) {
-          geom->cellz_sed[lc][c] = 0.5 * (geom->gridz_sed[lc][c] +
-                                          geom->gridz_sed[lc + 1][c]);
-        }
+      for (k = 0; k <= geom->sednz; k++) {
+	geom->gridz_sed[k][c] = params->gridz_sed[k];
+      }
+      for (k = geom->sednz - 1; k >= 0; k--) {
+	geom->cellz_sed[k][c] = 0.5 * (geom->gridz_sed[k][c] +
+					geom->gridz_sed[k + 1][c]);
       }
     }
   }
@@ -3533,6 +3579,7 @@ void autoset(parameters_t *params, master_t *master, geometry_t *geom)
   /*-----------------------------------------------------------------*/
   /* Bottom roughness                                                */
   if (params->z0 == 0.0) {
+    double qbfc = atof(params->quad_bfc);
     n = 0;
     d1 = 0.0;
     for (cc = 1; cc <= geom->b2_t; cc++) {
@@ -3546,7 +3593,7 @@ void autoset(parameters_t *params, master_t *master, geometry_t *geom)
     }
     if (n)
       d1 /= (double)n;
-    n = 1e4 * d1 / (exp(0.4 * sqrt(1.0 / params->quad_bfc)) - 1);
+    n = 1e4 * d1 / (exp(0.4 * sqrt(1.0 / fabs(qbfc))) - 1);
     params->z0 = (double)n / 1e4;
   }
 
@@ -3604,8 +3651,8 @@ void autoset(parameters_t *params, master_t *master, geometry_t *geom)
     }
     for (vv = 1; vv <= geom->n2_e2; vv++) {
       v = geom->w2_e2[vv];
-      lon = geom->gridx[c];
-      lat = geom->gridy[c];
+      lon = geom->gridx[v];
+      lat = geom->gridy[v];
       if (mp != NULL)
 	mp_inverse(mp, lon, lat, &lat, &lon);
       master->fv[v] = 2 * 7.29e-05 * sin(lat * M_PI / 180.0);
@@ -3837,7 +3884,7 @@ static double *read_bathy_from_db_us(FILE *fp, parameters_t *params) {
 static int read_bathy_from_file(FILE *fp, parameters_t *params) {
   FILE* fb = fp;
   char buf[MAXLINELEN];
-  int cc, is, js, ie, je, jm, im;
+  int cc, cn, is, js, ie, je, jm, im;
   int nce1 = params->nce1;
   int nce2 = params->nce2;
 
@@ -3869,20 +3916,30 @@ static int read_bathy_from_file(FILE *fp, parameters_t *params) {
       hd_quit("read_bathy: incorrect BATHY data : %d  (requires %d)\n", 
 	      params->nvals, nce1 * nce2);
   } else {
-    if (params->nvals != params->ns2)
+    if (params->nvals != params->ns2 + params->nland)
       hd_quit("read_bathy: incorrect BATHY data : %d  (requires %d)\n", 
 	      params->nvals, params->ns2);
   }
 
   if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
     double *bathy;
+    int *mask = i_alloc_1d(params->nvals);
+    /* Set the land override mask                                    */
+    memset(mask, 0, params->nvals * sizeof(int));
+    for (cc = 1; cc <= params->nland; cc++) {
+      mask[params->lande1[cc]] = cc;
+    }
+    /* Re-order the bathymetry array                                 */
     bathy = d_alloc_1d(params->nvals);
     memcpy(bathy, params->bathy, params->nvals * sizeof(double));
     d_free_1d(params->bathy);
     params->bathy = d_alloc_1d(params->ns2 + 1);
-    for (cc = 1; cc <= params->ns2; cc++)
-      params->bathy[cc] = bathy[cc-1];
+    cn = 1;
+    for (cc = 0; cc < params->ns2; cc++) {
+      if (!mask[cc]) params->bathy[cn++] = bathy[cc];
+    }
     d_free_1d(bathy);
+    i_free_1d(mask);
   }
 
   return 1;
@@ -3947,9 +4004,10 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
 {
   char buf[MAXSTRLEN];
   char i_rule[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
   GRID_SPECS *gs = NULL;
   int nbath;
-  double *x, *y, *b, **botz, **cellx, **celly;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
   double bmean;
   int fid;
   int ncerr;
@@ -3957,48 +4015,159 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
   size_t count[4];
   size_t nce1;
   size_t nce2;
-  int n, i, j, cc, c;
+  int n, m, i, j, cc, c;
   int limf = 1;     /* Limit bathymetry to bmin and bmax             */
   int bverbose = 0;
   int intype = -1;
+  int dof = 0;
+  int spf = 0;           /* Sparse data interpolation                */
+  int nf = 0;            /* Number of bathymetry files               */
+  int idb;
 
-  /* Open the dump file for reading                                  */
-  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
-    printf("Can't find input bathymetry file %s\n", fname);
-    hd_quit((char *)nc_strerror(ncerr));
-  }
+  sprintf(i_rule, "%c", '\0');
+  if (prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)) spf = 1;
+  nf = parseline(fname, fields, MAXNUMARGS);
+  m = 0;
 
-  /* Get dimensions                                                  */
-  i = 0;
-  while (bathy_dims[i][0] != NULL) {
-    if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
-	nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0) {
-      intype = i;
-      break;
-    }
-    i++;
+  /*-----------------------------------------------------------------*/
+  /* Initialise                                                      */
+  if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
+    params->bathy = d_alloc_1d(params->ns2 + 1);
+    for (cc = 1; cc <= params->ns2; cc++) params->bathy[cc] = NaN;
+  } else {
+    params->bathy = d_alloc_1d(params->nce1 * params->nce2);
+    cc = 0;
+    for (j = 0; j < params->nce2; j++)
+      for (i = 0; i < params->nce1; i++)
+	params->bathy[cc++] = NaN;
   }
-  if (intype < 0)      
-    hd_quit("read_bathy_from_sparse_nc: Can't find batyhmetry attributes in file %s.\n", fname);
 
   /*-----------------------------------------------------------------*/
   /* Interpolate the bathymetry                                      */
   /*-----------------------------------------------------------------*/
-  /* Interpolation method. Options:                                  */
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation from structured input using ts_read().            */
+  if (nf > 1 || !spf) {
+    timeseries_t *ts = NULL;
+
+    if (DEBUG("init_m"))
+      dlog("init_m", "\nStructured bathymetry reading from file\n");
+
+    /* If nf > 1 and i_rule is set, then interpolate file 0:nf-2     */
+    /* with ts_read() and file nf-1 using i_rule.                    */
+    n = (nf > 1 && spf) ? nf - 1 : nf;
+
+    for (m = 0; m < n; m++) {
+
+      /* Open the file and get dimensions                            */
+      if ((ncerr = nc_open(fields[m], NC_NOWRITE, &fid)) != NC_NOERR) {
+	printf("Can't find input bathymetry file %s\n", fields[m]);
+	hd_quit((char *)nc_strerror(ncerr));
+      }
+      i = 0;
+      while (bathy_dims[i][0] != NULL) {
+	if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
+	    nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0) {
+	  intype = i;
+	  break;
+	}
+	i++;
+      }
+      if (intype < 0)      
+	hd_quit("read_bathy_from_sparse_nc: Can't find batyhmetry attributes in file %s.\n", fields[m]);
+
+      /* Initialize the timeseries file                              */
+      ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+      if (ts == NULL)
+	hd_quit("read_bathy_from_sparse_nc: No memory available.\n");
+      memset(ts, 0, sizeof(timeseries_t));
+    
+      /* Read the time series                                        */
+      ts_read(fields[m], ts);
+      if ((idb = ts_get_index(ts, fv_get_varname(fields[m], bathy_dims[intype][0], buf))) == -1)
+	hd_quit("read_bathy_from_sparse_nc: Can't find variable %s in file %s\n", 
+		bathy_dims[intype][0], fields[m]);
+
+      /* Read the values                                             */
+      if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
+	/* Unstructured.                                             */
+	for (cc = 1; cc <= params->ns2; cc++) {
+	  if (isnan(params->bathy[cc])) {
+	    params->bathy[cc] = ts_eval_xy(ts, idb, 0.0, params->x[cc][0], params->y[cc][0]);
+	    
+	    /*printf("%d %f %d %f : %f %f\n",m,(double)cc/(double)params->ns2,cc,params->bathy[cc],params->x[cc][0], params->y[cc][0]);*/
+	    if (limf) {
+	      if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
+		params->bathy[cc] = -params->bmax;
+	      if (params->bmin && fabs(params->bathy[cc]) < params->bmin) 
+		params->bathy[c] = -params->bmin;
+	      if (params->bmin && params->bathy[cc] > params->bmin)
+		params->bathy[cc] = LANDCELL;
+	    }
+	  }
+	}
+	params->nvals = cc-1;
+      } else {
+	/* Structured                                                */
+	cc = 0;
+	for (j = 0; j < params->nce2; j++)
+	  for (i = 0; i < params->nce1; i++) {
+	    params->bathy[cc] = -ts_eval_xy(ts, idb, 0.0, params->x[2*j][2*i], params->y[2*j][2*i]);
+	    cc++;
+	  }
+	params->nvals = params->nce1 * params->nce2;
+      }
+      ts_free((timeseries_t*)ts);
+      free(ts);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Sparse interpolation method. Options:                           */
   /* linear, cubic, nn_sibson, nn_non_sibson, average                */
-  sprintf(i_rule, "%c", '\0');
-  if (prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)) {
+  if (spf) {
+    int lond, latd;
 
     if (DEBUG("init_m"))
       dlog("init_m", "\nUnstructured bathymetry reading from file\n");
+
+    /*---------------------------------------------------------------*/
+    /* Open the file and get dimensions                              */
+    if ((ncerr = nc_open(fields[m], NC_NOWRITE, &fid)) != NC_NOERR) {
+      printf("Can't find input bathymetry file %s\n", fields[m]);
+      hd_quit((char *)nc_strerror(ncerr));
+    }
+
+    /* Get dimensions                                                  */
+    i = 0;
+    while (bathy_dims[i][0] != NULL) {
+      if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
+	  nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0) {
+	intype = i;
+	break;
+      }
+      i++;
+    }
+    nc_inq_varndims(fid, ncw_dim_id(fid, bathy_dims[intype][3]), &lond);
+    nc_inq_varndims(fid, ncw_dim_id(fid, bathy_dims[intype][4]), &latd);
+
+    if (intype < 0)      
+      hd_quit("read_bathy_from_sparse_nc: Can't find batyhmetry attributes in file %s.\n", fields[m]);
 
     /*---------------------------------------------------------------*/
     /* Interpolation from unstructured input using a triangulation.  */
     /* The input bathymetry is structured, but is triangulated then  */
     /* interpolated using i_rule.                                    */
     /* Allocate and read.                                            */
-    cellx = d_alloc_2d(nce1, nce2);
-    celly = d_alloc_2d(nce1, nce2);
+    if (lond == 1)
+      celx = d_alloc_1d(nce1);
+    else if (lond == 2)
+      cellx = d_alloc_2d(nce1, nce2);
+    if (latd == 1)
+      cely = d_alloc_1d(nce2);
+    else if (latd == 2)
+      celly = d_alloc_2d(nce1, nce2);
     botz = d_alloc_2d(nce1, nce2);
     start[0] = 0L;
     start[1] = 0L;
@@ -4008,8 +4177,26 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
     count[1] = nce1;
     count[2] = 0;
     count[3] = 0;
-    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, cellx[0]);
-    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, celly[0]);
+    if (lond == 1) {
+      count[0] = nce1;
+      count[1] = 0;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, celx);
+    } else if (lond == 2) {
+      count[0] = nce2;
+      count[1] = nce1;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, cellx[0]);
+    }
+    if (latd == 1) {
+      count[0] = nce2;
+      count[1] = 0;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, cely);
+    } else if (latd == 2) {
+      count[0] = nce2;
+      count[1] = nce1;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, celly[0]);
+    }
+    count[0] = nce2;
+    count[1] = nce1;
     nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][0]), start, count, botz[0]);
     nc_close(fid);
 
@@ -4019,11 +4206,14 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
     for (j = 0; j < nce2; j++) {
       for (i = 0; i < nce1; i++) {
 	if (isnan(botz[j][i])) continue;
-	if (isnan(cellx[j][i])) continue;
-	if (isnan(celly[j][i])) continue;
-	if (botz[j][i] != LANDCELL && botz[j][i] != NOTVALID) nbath++;
+	if (lond == 1 && isnan(celx[i])) continue;
+	if (lond == 2 && isnan(cellx[j][i])) continue;
+	if (latd == 1 && isnan(cely[j])) continue;
+	if (latd == 2 && isnan(celly[j][i])) continue;
+	if (botz[j][i] != LANDCELL && fabs(botz[j][i]) != fabs(NOTVALID)) nbath++;
       }
     }
+
     x = d_alloc_1d(nbath);
     y = d_alloc_1d(nbath);
     b = d_alloc_1d(nbath);
@@ -4031,91 +4221,59 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
     for (j = 0; j < nce2; j++) {
       for (i = 0; i < nce1; i++) {
 	if (isnan(botz[j][i])) continue;
-	if (isnan(cellx[j][i])) continue;
-	if (isnan(celly[j][i])) continue;
-	if (botz[j][i] != LANDCELL && botz[j][i] != NOTVALID) {
-	  x[n] = cellx[j][i];
-	  y[n] = celly[j][i]; 
+	if (lond == 1 && isnan(celx[i])) continue;
+	if (lond == 2 && isnan(cellx[j][i])) continue;
+	if (latd == 1 && isnan(cely[j])) continue;
+	if (latd == 2 && isnan(celly[j][i])) continue;
+	if (botz[j][i] != LANDCELL && fabs(botz[j][i]) != fabs(NOTVALID)) {
+	  if (lond == 1)
+	    x[n] = celx[i];
+	  else if (lond == 2)
+	    x[n] = cellx[j][i];
+	  if (latd == 1)
+	    y[n] = cely[j]; 
+	  else if (latd == 2)
+	    y[n] = celly[j][i]; 
 	  b[n] = botz[j][i];
 	  bmean += b[n];
+	  if(b[n] > 0.0)printf("%d(%d %d) %f %f %f %f\n",n,i,j,x[n],y[n],b[n],OUTSIDE);
 	  n++;
 	}
       }
     }
     if (n) bmean /= (double)n;
-    d_free_2d(cellx);
-    d_free_2d(celly);
+    if (lond == 1)
+      d_free_1d(celx);
+    else if (lond == 2)
+      d_free_2d(cellx);
+    if (latd == 1)
+      d_free_1d(cely);
+    else if (latd == 2)
+      d_free_2d(celly);
     d_free_2d(botz);
 
     /* Interpolate from a triangulation                              */
     gs = grid_interp_init(x, y, b, nbath, i_rule);
-    params->bathy = d_alloc_1d(params->ns2+1);
+
     for (c = 1; c <= params->ns2; c++) {
-      params->bathy[c] = grid_interp_on_point(gs, params->x[c][0], params->y[c][0]);
-      if (limf) {
-	if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
-	  params->bathy[c] = -params->bmax;
-	if (params->bmin && fabs(params->bathy[c]) < params->bmin) 
-	  params->bathy[c] = -params->bmin;
-	if (params->bmin && params->bathy[c] > params->bmin)
-	  params->bathy[c] = LANDCELL;
+      if(isnan(params->bathy[c])) {
+	params->bathy[c] = grid_interp_on_point(gs, params->x[c][0], params->y[c][0]);
+	if (limf) {
+	  if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
+	    params->bathy[c] = -params->bmax;
+	  if (params->bmin && fabs(params->bathy[c]) < params->bmin) 
+	    params->bathy[c] = -params->bmin;
+	  if (params->bmin && params->bathy[c] > params->bmin)
+	    params->bathy[c] = LANDCELL;
+	}
       }
       if (isnan(params->bathy[c])) params->bathy[c] = bmean;
       if (bverbose) printf("%d %f : %f %f\n",c, params->bathy[c], params->x[c][0], params->y[c][0]);
+      /*printf("%d %f %d %f\n",m,(double)c/(double)params->ns2,c,params->bathy[c]);*/
     }
     grid_specs_destroy(gs);
     params->nvals = params->ns2-1;
-  } else {
-    /*---------------------------------------------------------------*/
-    /* Interpolation from structured input using ts_read().          */
-    timeseries_t *ts = NULL;
-    int idb;
-
-    if (DEBUG("init_m"))
-      dlog("init_m", "\nStructured bathymetry reading from file\n");
-
-    /* Initialize the timeseries file                                */
-    ts = (timeseries_t *)malloc(sizeof(timeseries_t));
-    if (ts == NULL)
-      hd_quit("read_bathy_from_sparse_nc: No memory available.\n");
-    memset(ts, 0, sizeof(timeseries_t));
-    
-    /* Read the time series                                          */
-    ts_read(fname, ts);
-    if ((idb = ts_get_index(ts, fv_get_varname(fname, bathy_dims[intype][0], buf))) == -1)
-      hd_quit("read_bathy_from_sparse_nc: Can't find variable %s in file %s\n", 
-	      bathy_dims[intype][0], fname);
-
-    /* Read the values                                               */
-    if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
-      /* Unstructured                                                */
-      params->bathy = d_alloc_1d(params->ns2 + 1);
-      for (cc = 1; cc <= params->ns2; cc++) {
-	params->bathy[cc] = ts_eval_xy(ts, idb, 0.0, params->x[cc][0], params->y[cc][0]);
-	if (limf) {
-	  if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
-	    params->bathy[cc] = -params->bmax;
-	  if (params->bmin && fabs(params->bathy[cc]) < params->bmin) 
-	    params->bathy[c] = -params->bmin;
-	  if (params->bmin && params->bathy[cc] > params->bmin)
-	    params->bathy[cc] = LANDCELL;
-	}
-      }
-      params->nvals = cc-1;
-    } else {
-      /* Structured                                                  */
-      params->bathy = d_alloc_1d(params->nce1 * params->nce2);
-      cc = 0;
-      for (j = 0; j < params->nce2; j++)
-	for (i = 0; i < params->nce1; i++) {
-	  params->bathy[cc] = -ts_eval_xy(ts, idb, 0.0, params->x[2*j][2*i], params->y[2*j][2*i]);
-	  cc++;
-	}
-      params->nvals = params->nce1 * params->nce2;
-    }
-    ts_free((timeseries_t*)ts);
-    free(ts);
-  }
+  } 
   if (DEBUG("init_m"))
     dlog("init_m", "\nBathymetry read  from file OK\n");
 }
@@ -4542,11 +4700,11 @@ int numbers_init(parameters_t *params      /* Input parameter data   */
   char buf[MAXSTRLEN];
   int ntr = 0;
 
-  params->numbers = 0;
+  params->numbers = params->numbers1 = 0;
   sprintf(keyword, "NUMBERS");
   if (prm_read_char(params->prmfd, keyword, buf)) {
     if (contains_token(buf, "NONE") != NULL) {
-      params->numbers = NONE;
+      params->numbers = params->numbers1 = NONE;
     } else {
       if (contains_token(buf, "BRUNT") != NULL) {
 	params->numbers |= BRUNT;
@@ -4653,27 +4811,88 @@ int numbers_init(parameters_t *params      /* Input parameter data   */
 	params->numbers |= UNIT;
 	ntr++;
       }
+      if (contains_token(buf, "PASSIVE") != NULL) {
+	params->numbers |= PASS;
+	ntr++;
+      }
+      if (contains_token(buf, "GLIDER") != NULL) {
+	params->numbers |= GLIDER;
+	ntr++;
+      }
       if (contains_token(buf, "RESOLUTION") != NULL) {
 	params->numbers |= CELLRES;
 	params->ntrS++;
+      }
+      if (contains_token(buf, "EKMAN_PUMP") != NULL) {
+	params->numbers |= EKPUMP;
+	params->ntrS+=1;
+      }
+      if (contains_token(buf, "TIDE_FRONT") != NULL) {
+	params->numbers |= TIDEFR;
+	params->ntrS+=1;
+      }
+      if (contains_token(buf, "U1VH") != NULL) {
+	params->numbers1 |= U1VHC;
+	ntr++;
       }
       if (contains_token(buf, "ALL_NUMBERS") != NULL) {
 	params->numbers |= (BRUNT|INT_WAVE|RICHARD_GR|RICHARD_FL|REYNOLDS|
 			    FROUDE|SOUND|ROSSBY_IN|ROSSBY_EX|SHEAR_V|
 			    BUOY_PROD|SHEAR_PROD|SPEED_3D|SPEED_2D|
 			    OBC_PHASE|SPEED_SQ|SIGMA_T|ENERGY|WET_CELLS|
-			    SLOPE|SURF_LAYER|BOTSTRESS|UNIT|CELLRES);
-	ntr+=17;
-	params->ntrS += 12;
+			    SLOPE|SURF_LAYER|BOTSTRESS|UNIT|EKPUMP|TIDEFR|CELLRES);
+	params->numbers1 |= (U1VHC);
+	ntr+=18;
+	params->ntrS += 14;
       }
+      if (params->numbers == 0) params->numbers = NONE;
+      if (params->numbers1 == 0) params->numbers1 = NONE;
     }
   } else {
-    params->numbers = NONE;
+    params->numbers = params->numbers1 = NONE;
   }
   return(ntr);
 }
 
 /* END numbers_init()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initializes the degree heating diagnostic                         */
+/*-------------------------------------------------------------------*/
+int read_dhw(parameters_t *params, FILE *fp)
+{
+  char buf[MAXSTRLEN], keyword[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int n, ret;
+
+  sprintf(keyword, "DHW");
+
+  if (prm_read_char(fp, keyword, buf)) {
+    n = parseline(buf, fields, MAXNUMARGS);
+    if (n == 1) {
+      strcpy(params->dhw, fields[0]);
+      ret = 3;
+      params->dhwf = DHW_RT;
+    }
+    if (n == 2) {
+      strcpy(params->dhw, fields[0]);
+      strcpy(params->dhdf, fields[1]);
+      sprintf(keyword, "DHW_DT");
+      if (prm_read_char(fp, keyword, buf))
+	tm_scale_to_secs(buf, &params->dhw_dt);
+      else
+	params->dhw_dt = 86400.0;
+      params->dhwf = DHW_NOAA;
+      ret = 3;
+    }
+    return(ret);
+  }
+  return(0);
+}
+
+/* END init_dhw()                                                    */
 /*-------------------------------------------------------------------*/
 
 
@@ -4953,16 +5172,22 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     fprintf(op, "SMAGORINSKY          %s\n", params->smag);
   if (params->smag_smooth)
     fprintf(op, "SMAG_SMOOTH          %d\n", params->smag_smooth);
+  if (params->diff_scale & NONE)
+    fprintf(op, "DIFF_SCALE           NONE\n");
   if (params->diff_scale & LINEAR)
     fprintf(op, "DIFF_SCALE           LINEAR\n");
   if (params->diff_scale & NONLIN)
     fprintf(op, "DIFF_SCALE           NONLIN\n");
+  if (params->diff_scale & CUBIC)
+    fprintf(op, "DIFF_SCALE           CUBIC\n");
   if (params->visc_method == NONE)
     fprintf(op, "VISC_METHOD          NONE\n");
   else if (params->visc_method == LAPLACIAN)
     fprintf(op, "VISC_METHOD          LAPLACIAN\n");
   else if (params->visc_method == US_LAPLACIAN)
     fprintf(op, "VISC_METHOD          US_LAPLACIAN\n");
+  else if (params->visc_method == US_BIHARMONIC)
+    fprintf(op, "VISC_METHOD          US_BIHARMONIC\n");
   else if (params->visc_method == SIMPLE)
     fprintf(op, "VISC_METHOD          SIMPLE\n");
   else if (params->visc_method == (LAPLACIAN|PRE794))
@@ -4988,7 +5213,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
   }
 
   fprintf(op, "# Bottom friction\n");
-  fprintf(op, "QBFC                 %-6.4f\n", params->quad_bfc);
+  fprintf(op, "QBFC                 %s\n", params->quad_bfc);
   fprintf(op, "UF                   %-6.5f\n", params->uf);
   fprintf(op, "Z0                   %-6.4f\n\n", params->z0);
   if (params->z0s)
@@ -5190,7 +5415,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     fprintf(op, "RADIATION            %s\n", params->swr);
     fprintf(op, "RADIATION_INPUT_DT   %s\n", otime(params->swr_dt, tag));
     fprintf(op, "SWR_ATTENUATION      %s\n", params->swr_attn);
-    fprintf(op, "SWR_TRANSMISSION     %s\n", params->swr_tran);
+    fprintf(op, "SWR_TRANSMISION     %s\n", params->swr_tran);
     fprintf(op, "SWR_BOT_ABSORB       %s\n", params->swr_babs);
     fprintf(op, "ALBEDO               %-6.2f\n", params->albedo);
     fprintf(op, "\n");
@@ -5467,6 +5692,11 @@ void write_grid_specs(FILE *op, parameters_t *params)
   else
     fprintf(op, "GRIDTYPE             %s\n", params->gridtype);
 
+  if (params->us_type & US_POW)
+    fprintf(op, "POWER_MESH           YES\n");
+  if (params->us_type & US_STER)
+    fprintf(op, "STEREOGRAPHIC_MESH   YES\n");
+
   if (params->us_type & US_IJ) {
     fprintf(op, "NCE1                 %d\n", params->nce1);
     fprintf(op, "NCE2                 %d\n", params->nce2);
@@ -5476,6 +5706,7 @@ void write_grid_specs(FILE *op, parameters_t *params)
     fprintf(op, "nMesh2_face_indices  %d\n", mesh->ns);
     fprintf(op, "nMesh2_face          %d\n",mesh->ns2);
   }
+
   /*fprintf(op, "PERIODIC             NONE\n");*/
   if (params->gridcode & (GRECT_DXY_ROT|GRECT_DLATLON_ROT|GRECT_DLATLON_FP)) {
     fprintf(op, "X00                  %-8.5f\n", params->rg->x0);
@@ -5644,6 +5875,7 @@ void read_grid(parameters_t *params)
     /* Circular unstructured meshes                                  */
     jigsaw_msh_t J_mesh;
     double gscale = 0.25;
+    int powf = (params->us_type & US_POW) ? 1 : 0;
     prm_read_double(fp, "X00", &x00);
     prm_read_double(fp, "Y00", &y00);
     prm_read_double(fp, "DX_MIN", &rmin);
@@ -5657,7 +5889,7 @@ void read_grid(parameters_t *params)
     jigsaw_init_msh_t(&J_mesh);
     
     /* Creates circular coastline, hfun and runs JIGSAW              */
-    create_hex_radius(crad, x00, y00, rmin, rmax, gscale, &J_mesh);
+    create_hex_radius(crad, x00, y00, rmin, rmax, gscale, &J_mesh, powf);
 
     /* Copy out JIGSAW mesh into COMPAS data structures              */
     convert_jigsaw_msh(params, NULL, &J_mesh);
@@ -5682,6 +5914,8 @@ void read_grid(parameters_t *params)
     jigsaw_msh_t J_mesh;
     jigsaw_msh_t J_hfun;
     coamsh_t *cm;
+    int powf = (params->us_type & US_POW) ? 1 : 0;
+    int stproj = (params->us_type & US_STER) ? 1 : 0;
 
     /* Set up the bounding perimeters                                */ 
     cm = cm_alloc();
@@ -5694,7 +5928,9 @@ void read_grid(parameters_t *params)
     /* Build the hfun file                                           */
     jigsaw_init_msh_t (&J_hfun);
     if (strcmp(buf, "COAST") == 0)
-      hfun_from_coast(params, cm, &J_hfun);
+      hfun_from_coast(params, cm, &J_hfun, 0);
+    else if (strcmp(buf, "POINT") == 0)
+      hfun_from_coast(params, cm, &J_hfun, 1);
     else
       hfun_from_bathy(params, buf, cm, &J_hfun);
 
@@ -5702,7 +5938,7 @@ void read_grid(parameters_t *params)
     jigsaw_init_msh_t(&J_mesh);
 
     /* Create the mesh                                               */
-    create_jigsaw_mesh(cm, &J_mesh, &J_hfun);
+    create_jigsaw_mesh(cm, &J_mesh, &J_hfun, powf, stproj);
 
     /* Copy out JIGSAW mesh into COMPAS data structures              */
     convert_jigsaw_msh(params, NULL, &J_mesh);
@@ -7041,17 +7277,20 @@ void read_hdiff(parameters_t *params, FILE *fp, int mode)
 
   sprintf(keyword, "DIFF_SCALE");
   if (prm_read_char(fp, keyword, buf)) {
-    if (strcmp(buf, "NONE") == 0)
-      params->diff_scale = NONE;
-    if (strcmp(buf, "LINEAR") == 0)
-      params->diff_scale = LINEAR;
-    if (strcmp(buf, "NONLIN") == 0)
-      params->diff_scale = NONLIN;
-    if (strcmp(buf, "AUTO") == 0) {
-      params->diff_scale = AUTO;
+    params->diff_scale = 0;
+    if (contains_token(buf, "NONE") != NULL)
+      params->diff_scale |= NONE;
+    if (contains_token(buf, "LINEAR") != NULL)
+      params->diff_scale |= LINEAR;
+    if (contains_token(buf, "NONLIN") != NULL)
+      params->diff_scale |= NONLIN;
+    if (contains_token(buf, "CUBIC") != NULL)
+      params->diff_scale |= CUBIC;
+    if (contains_token(buf, "AUTO") != NULL) {
+      params->diff_scale |= AUTO;
     }
-    if (strcmp(buf, "SMAG") == 0) {
-      params->diff_scale = SMAG;
+    if (contains_token(buf, "SMAG") != NULL) {
+      params->diff_scale |= SMAG;
       params->smagorinsky = 0.1;
       if (params->u1vh > 0.0) 
 	params->u1vh *= -1.0;
@@ -7062,7 +7301,12 @@ void read_hdiff(parameters_t *params, FILE *fp, int mode)
       else if (params->u1kh == 0.0) 
 	params->u1kh = -1.0;
     }
+    if (contains_token(buf, "SCALE2D") != NULL)
+      params->diff_scale |= SCALE2D;
+    if (contains_token(buf, "SCALEBI") != NULL)
+      params->diff_scale |= SCALEBI;
   }
+
 
   sprintf(keyword, "SMAGORINSKY");
   if (prm_read_char(fp, keyword, params->smag) ) {
@@ -7110,6 +7354,8 @@ void read_hdiff(parameters_t *params, FILE *fp, int mode)
       params->visc_method = LAPLACIAN;
     if (strcmp(buf, "US_LAPLACIAN") == 0)
       params->visc_method = US_LAPLACIAN;
+    if (strcmp(buf, "US_BIHARMONIC") == 0)
+      params->visc_method = US_BIHARMONIC;
     if (strcmp(buf, "SIMPLE") == 0)
       params->visc_method = SIMPLE;
     if (strcmp(buf, "PRE_V794") == 0)
@@ -8093,7 +8339,15 @@ void read_means(parameters_t *params, FILE *fp, int mode)
 	}
       }
     }
-
+    /* Generic (auto) tracers                                        */
+    if (contains_token(buf, "TRA3D") != NULL) {
+      params->means |= MTRA3D;
+      strcpy(params->means_tra, buf);
+    }
+    if (contains_token(buf, "TRA2D") != NULL) {
+      params->means |= MTRA2D;
+      strcpy(params->means_tra, buf);
+    }
     if (params->means & ETA_M)
       params->ntrS += 1;
     if (params->means & WIND)
@@ -8879,9 +9133,11 @@ char *adname(int m)
   case WIMPLICIT:
     return ("WIMPLICIT");
   case RINGLER:
-    return ("RINGLER");
+    return ("VECINVAR");
   case RINGLER|WTOP_O2|WIMPLICIT:
-    return ("RINGLER WTOP_O2 WIMPLICIT");
+    return ("VECINVAR WTOP_O2 WIMPLICIT");
+  case RINGLER|WTOP_O2|WIMPLICIT|PV_ENEUT:
+    return ("VECINVAR WTOP_O2 WIMPLICIT NEUTRAL");
   case LAGRANGE|VANLEER:
     return ("LAGRANGE|VANLEER");
   }
