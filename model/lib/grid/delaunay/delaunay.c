@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: delaunay.c 5859 2018-07-02 04:04:44Z her127 $
+ *  $Id: delaunay.c 6100 2019-02-08 05:14:33Z her127 $
  *
  */
 
@@ -565,7 +565,7 @@ int delaunay_xytoi_ng(delaunay* d, point* p, int id)
 /* result if the point lies on a vertex (i.e. the source cell in the */
 /* Lagrange streamline tracing is the same as the streamline origin  */
 /* (the destination cell)). The baycentric method is used to check   */
-/* if the point les within each triangle in the walk.                */
+/* if the point lies within each triangle in the walk.               */
 /* For Lagrange streamline tracking, it helps to seed the first_id   */
 /* with the triangle corresponding to the destination cell to        */
 /* improve efficiency (i.e. reduce the length of the walk).          */

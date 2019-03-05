@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: gridlib.h 5859 2018-07-02 04:04:44Z her127 $
+ *  $Id: gridlib.h 6102 2019-02-08 05:15:14Z her127 $
  *
  */
 
@@ -34,7 +34,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: gridlib.h 5859 2018-07-02 04:04:44Z her127 $
+ *  $Id: gridlib.h 6102 2019-02-08 05:15:14Z her127 $
  *
  */
 
@@ -47,7 +47,8 @@ typedef enum {
   GRID_AVERAGE         = 8,
   GRID_LSQQ            = 16,
   GRID_BL              = 32,
-  GRID_BAL             = 64
+  GRID_BAL             = 64,
+  GRID_LSQL            = 128
 } INTERP_RULE;
 
 #include <float.h>
@@ -67,6 +68,7 @@ typedef enum {
 #include "bilinear.h"
 #include "baycentric.h"
 #include "lsqq.h"
+#include "lsql.h"
 #include "preader.h"
 #include "svd.h"
 #include "triangle.h"

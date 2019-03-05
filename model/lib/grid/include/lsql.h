@@ -2,9 +2,9 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *
- *  File: model/lib/grid/include/lsqq.h
+ *  File: model/lib/grid/include/lsql.h
  *  
- *  Description: A header file for lsqq's public functions
+ *  Description: A header file for lsql's public functions
  *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -12,15 +12,15 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: lsqq.h 6103 2019-02-08 05:15:37Z her127 $
+ *  $Id: lsql.h 6152 2019-03-05 02:09:15Z riz008 $
  *
  */
-#if !defined(_LSQQ_H)
-#define _LSQQ_H
+#if !defined(_LSQL_H)
+#define _LSQL_H
 
-#if !defined(_LSQQ_STRUCT)
-#define _LSQQ_STRUCT
-typedef struct lsqq lsqq;
+#if !defined(_LSQL_STRUCT)
+#define _LSQL_STRUCT
+typedef struct lsql lsql;
 #endif
 
 #include "nan.h"
@@ -29,11 +29,11 @@ typedef struct lsqq lsqq;
 #include "ems.h"
 #include "svd.h"
 
-#define nop 6 /* Number of polynomial coefficients             */
+#define nol 3 /* Number of polynomial coefficients             */
 
 typedef struct {
     double **B;
-    double w[nop];
+    double w[nol];
     int ncells;
     int *cells;
     double tmx;
@@ -42,27 +42,27 @@ typedef struct {
     double xr;
     double yr;
     double beta;
-} qweights;
+} lweights;
 
 /* Builds linear interpolator.
  *
  * @param d Delaunay triangulation
  * @return Linear interpolator
  */
-lsqq* lsqq_build(delaunay* d);
+lsql* lsql_build(delaunay* d);
 
 /* Destroys linear interpolator.
  *
  * @param l Structure to be destroyed
  */
-void lsqq_destroy(lsqq* l);
+void lsql_destroy(lsql* l);
 
 /* Finds linearly interpolated value in a point.
  *
  * @param l Linear interpolation
  * @param p Point to be interpolated (p->x, p->y -- input; p->z -- output)
  */
-void lsqq_interpolate_point(lsqq* l, point* p);
+void lsql_interpolate_point(lsql* l, point* p);
 
 /* Linearly interpolates data in an array of points.
  *
@@ -71,14 +71,14 @@ void lsqq_interpolate_point(lsqq* l, point* p);
  * @param nout Number of ouput points
  * @param pout Array of output points [nout]
  */
-void lsqq_interpolate_points(int nin, point pin[], int nout, point pout[]);
+void lsql_interpolate_points(int nin, point pin[], int nout, point pout[]);
 
 /* Rebuild the wieights given new data */
-void lsqq_rebuild(lsqq* l, point* p);
+void lsql_rebuild(lsql* l, point* p);
 
 /* Limiter */
-void lsqq_limit(lsqq* l, int npoint, point* p);
+void lsql_limit(lsql* l, int npoint, point* p);
 
-void lsqq_minmax(lsqq* l, int id, double *mn, double *mx);
+void lsql_minmax(lsql* l, int id, double *mn, double *mx);
 
 #endif

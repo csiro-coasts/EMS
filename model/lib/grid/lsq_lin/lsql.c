@@ -2,14 +2,13 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *
- *  File: model/lib/grid/lsq_quad/lsqq.c
+ *  File: model/lib/grid/lsq_lin/lsql.c
  *  
- *  Description: 2D least squares quadratic interpolation
+ *  Description: 2D least squares linear interpolation
  *
- *  `lsqq' -- "Least squares quadratic" -- is a structure for
- *  conducting least squares quadratic interpolation on a given data
- *  on a "point-to-point" basis. It interpolates linearly within each
- *  triangle resulted from the Delaunay triangluation of input data.
+ *  `lsql' -- "Least squares linear" -- is a structure for
+ *  conducting least squares linear interpolation on a given data
+ *  on a "point-to-point" basis.
  *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -17,50 +16,50 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: lsqq.c 6104 2019-02-08 05:15:56Z her127 $
+ *  $Id: lsql.c 6152 2019-03-05 02:09:15Z riz008 $
  *
  */
 
 #include <stdlib.h>
 #include <stdio.h>
-#include "lsqq.h"
+#include "lsql.h"
 
 
-struct lsqq {
+struct lsql {
     delaunay* d;
-    qweights* weights;
+    lweights* weights;
 };
 
 //
-int lsqq_verbose = 0;
+int lsql_verbose = 0;
 
 /*-------------------------------------------------------------------*/
 /* Gets the metrics of cells surrounding edge e using least squares  */
 /* fitting, where the solution to npe equations of a polynomial of   */
-/* degree nop is obtained via singular value decomposition.          */
+/* degree nol is obtained via singular value decomposition.          */
 /* The least squares fit uses cell centred values of cells           */
 /* surrounding a given edge, e.                                      */
 /* The polynomial used is:                                           */
-/* t = co + c1.x + c2.y + c3.x.x + c4.x.y + c5.y.y                   */
+/* t = co + c1.x + c2.y                                              */
 /* Used (lat,lon) based coordinates.                                 */
 /* @param d Delaunay triangulation                                   */
-/* @return quadratic interpolator                                    */
+/* @return linear interpolator                                       */
 /*-------------------------------------------------------------------*/
-lsqq* lsqq_build(delaunay* d)
+lsql* lsql_build(delaunay* d)
 {
     int i, j;
     int npem;
     double **p, **b;
     double *f, *s, *w, *std;
     double z0, **coeff;
-    lsqq* l = malloc(sizeof(lsqq));
+    lsql* l = malloc(sizeof(lsql));
     short *mask;
     int *npe;
     int trif = 0;
     int edef = 0;
 
     l->d = d;
-    l->weights = malloc(d->npoints * sizeof(qweights));
+    l->weights = malloc(d->npoints * sizeof(lweights));
     npe = i_alloc_1d(d->npoints);
     mask = s_alloc_1d(d->npoints);
 
@@ -121,10 +120,10 @@ lsqq* lsqq_build(delaunay* d)
 
     /*---------------------------------------------------------------*/
     /* Allocate                                                      */
-    p = d_alloc_2d(nop, npem);
-    b = d_alloc_2d(nop, npem);
-    f = d_alloc_1d(nop);
-    w = d_alloc_1d(nop);
+    p = d_alloc_2d(nol, npem);
+    b = d_alloc_2d(nol, npem);
+    f = d_alloc_1d(nol);
+    w = d_alloc_1d(nol);
     s = d_alloc_1d(npem);
     std = d_alloc_1d(npem);
 
@@ -135,14 +134,14 @@ lsqq* lsqq_build(delaunay* d)
       int jj, n;
       double *x, *y;
 
-      qweights* lw = &l->weights[i];
+      lweights* lw = &l->weights[i];
       lw->ncells = npe[i];
-      lw->orf = (npe[i] > 5) ? 6 : 3;
+      lw->orf = 3;
       lw->xr = d->points[i].x;
       lw->yr = d->points[i].y;
       lw->beta = 1.0;
       if (nt) {
-	lw->B = d_alloc_2d(nop, npe[i]);
+	lw->B = d_alloc_2d(nol, npe[i]);
 	lw->cells = i_alloc_1d(npe[i]);
 	x = d_alloc_1d(npe[i]);
 	y = d_alloc_1d(npe[i]);
@@ -181,11 +180,6 @@ lsqq* lsqq_build(delaunay* d)
 	p[j][1] = x[j];
 	p[j][2] = y[j];
 
-	if (lw->orf == 6) {
-	  p[j][3] = x[j] * x[j];
-	  p[j][4] = x[j] * y[j];
-	  p[j][5] = y[j] * y[j];
-	}
 	s[j] = 1.0;
 	std[j] = 0.0;
       }
@@ -204,7 +198,7 @@ lsqq* lsqq_build(delaunay* d)
       }
 
       /* Compute the coefficients                                    */
-      memset(lw->w, 0, nop * sizeof(double));
+      memset(lw->w, 0, nol * sizeof(double));
       for (n = 0; n < lw->ncells; n++) { 
 	j = lw->cells[n];
 	z0 = d->points[j].z;
@@ -227,9 +221,10 @@ lsqq* lsqq_build(delaunay* d)
     return l;
 }
 
-
-/* Limit the weights */
-void lsqq_limit(lsqq* l, int npoint, point* p)
+/*-------------------------------------------------------------------*/
+/* Limit the weights to make a monotone solution                     */
+/*-------------------------------------------------------------------*/
+void lsql_limit(lsql* l, int npoint, point* p)
 {
   int i, id;
   double z0, xp, yp, d;
@@ -237,12 +232,12 @@ void lsqq_limit(lsqq* l, int npoint, point* p)
 
   /* Recalculate the weights using data in p.z */
   id = (int)p[0].z;
-  qweights* lw = &l->weights[id];
+  lweights* lw = &l->weights[id];
 
   lw->beta = 1.0;
 
   for (i = 0; i < npoint; ++i) {
-    lsqq_interpolate_point(l, &p[i]);
+    lsql_interpolate_point(l, &p[i]);
     xp = p[i].x - lw->xr;
     yp = p[i].y - lw->yr;
     d = lw->w[1] * xp + lw->w[2] * yp;
@@ -255,11 +250,13 @@ void lsqq_limit(lsqq* l, int npoint, point* p)
     }
   }
   lw->beta = min(max(beta, 0.0), 1.0);
+
 }
 
-
-/* Remakes the weights from cached weights */
-void lsqq_rebuild(lsqq* l, point* p)
+/*-------------------------------------------------------------------*/
+/* Remakes the weights from cached weights                           */
+/*-------------------------------------------------------------------*/
+void lsql_rebuild(lsql* l, point* p)
 {
   int i, j, jj, n;
   double z0;
@@ -267,8 +264,8 @@ void lsqq_rebuild(lsqq* l, point* p)
 
   /* Recalculate the weights using data in p.z */
   for (i = 0; i < d->npoints; ++i) {
-    qweights* lw = &l->weights[i];
-    memset(lw->w, 0, nop * sizeof(double));
+    lweights* lw = &l->weights[i];
+    memset(lw->w, 0, nol * sizeof(double));
     lw->tmx = -1e10;
     lw->tmn = 1e10;
     for (n = 0; n < lw->ncells; n++) { 
@@ -282,7 +279,7 @@ void lsqq_rebuild(lsqq* l, point* p)
     }
     /* Set the leading term to the cell mean so that the integral of */
     /* the lsq function over a cell equalls the cell mean value.     */
-    /*lw->w[0] = p[i].z;*/
+    lw->w[0] = p[i].z;
   }
 }
 
@@ -291,7 +288,7 @@ void lsqq_rebuild(lsqq* l, point* p)
  *
  * @param l Structure to be destroyed
  */
-void lsqq_destroy(lsqq* l)
+void lsql_destroy(lsql* l)
 {
     d_free_2d(l->weights->B);
     i_free_1d(l->weights->cells);
@@ -304,11 +301,11 @@ void lsqq_destroy(lsqq* l)
  * @param l Quadratic interpolation
  * @param p Point to be interpolated (p->x, p->y -- input; p->z -- output)
  */
-void lsqq_interpolate_point(lsqq* l, point* p)
+void lsql_interpolate_point(lsql* l, point* p)
 {
   int i;
   delaunay* d = l->d;
-  qweights* lw;
+  lweights* lw;
   double v;
   int id = (int)p->z;
   double xp, yp;
@@ -325,13 +322,12 @@ void lsqq_interpolate_point(lsqq* l, point* p)
 	  lw->w[5] * yp * yp);
   }
 
-  v = min(lw->tmx, max(lw->tmn, v));
   p->z = v;
 }
 
-void lsqq_minmax(lsqq* l, int id, double *mn, double *mx)
+void lsql_minmax(lsql* l, int id, double *mn, double *mx)
 {
-  qweights* lw = &l->weights[id];
+  lweights* lw = &l->weights[id];
   *mn = lw->tmn;
   *mx = lw->tmx;
 }
@@ -343,14 +339,14 @@ void lsqq_minmax(lsqq* l, int id, double *mn, double *mx)
  * @param nout Number of ouput points
  * @param pout Array of output points [nout]
  */
-void lsqq_interpolate_points(int nin, point pin[], int nout, point pout[])
+void lsql_interpolate_points(int nin, point pin[], int nout, point pout[])
 {
     delaunay* d = delaunay_build(nin, pin, 0, NULL, 0, NULL);
-    lsqq* l = lsqq_build(d);
+    lsql* l = lsql_build(d);
     int seed = 0;
     int i;
 
-    if (lsqq_verbose) {
+    if (lsql_verbose) {
         fprintf(stderr, "xytoi:\n");
         for (i = 0; i < nout; ++i) {
             point* p = &pout[i];
@@ -360,9 +356,9 @@ void lsqq_interpolate_points(int nin, point pin[], int nout, point pout[])
     }
 
     for (i = 0; i < nout; ++i)
-        lsqq_interpolate_point(l, &pout[i]);
+        lsql_interpolate_point(l, &pout[i]);
 
-    if (lsqq_verbose) {
+    if (lsql_verbose) {
         fprintf(stderr, "output:\n");
         for (i = 0; i < nout; ++i) {
             point* p = &pout[i];;
@@ -370,7 +366,7 @@ void lsqq_interpolate_points(int nin, point pin[], int nout, point pout[])
         }
     }
 
-    lsqq_destroy(l);
+    lsql_destroy(l);
     delaunay_destroy(d);
 }
 

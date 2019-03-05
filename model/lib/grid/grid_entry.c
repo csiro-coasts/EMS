@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: grid_entry.c 5866 2018-07-05 07:03:24Z riz008 $
+ *  $Id: grid_entry.c 6125 2019-02-27 06:24:57Z riz008 $
  *
  */
 
@@ -22,6 +22,8 @@
 #include "stdio.h"
 
 int grid_entry_verbose = 0;
+
+static int nnf = 0;
 
 /*
  * Writes value to the output buffer, if supplied else prints to stdout
@@ -56,7 +58,6 @@ static void set_interpolation_function(GRID_SPECS *gs, gridmap *gm, delaunay *di
   void        *interpolator      = NULL;
   delaunay    *d                 = NULL;
   INTERP_RULE rule               = gs->type;
-  int nnf = 0;
 
   if (rule == GRID_CSA) {
     interpolator = csa_create();
@@ -125,6 +126,10 @@ static void set_interpolation_function(GRID_SPECS *gs, gridmap *gm, delaunay *di
       interpolator = lsqq_build(d);
       rebuild = (void (*)(void*, point *)) lsqq_rebuild;
       interpolate_point = (void (*)(void*, point *)) lsqq_interpolate_point;
+    } else if (rule == GRID_LSQL) {
+      interpolator = lsql_build(d);
+      rebuild = (void (*)(void*, point *)) lsql_rebuild;
+      interpolate_point = (void (*)(void*, point *)) lsql_interpolate_point;
     }
   }
 
@@ -135,7 +140,6 @@ static void set_interpolation_function(GRID_SPECS *gs, gridmap *gm, delaunay *di
   gs->rebuild2          = rebuild2;
   gs->interpolator      = interpolator;
   gs->d                 = d;
-
 }
 
 /*
@@ -157,6 +161,8 @@ static INTERP_RULE interp_rule_from_char(char *rule)
     return(GRID_AVERAGE);
   else if (strcasecmp("quadratic", rule) == 0)
     return(GRID_LSQQ);
+  else if (strcasecmp("linearlsq", rule) == 0)
+    return(GRID_LSQL);
   else if (strcasecmp("bilinear", rule) == 0)
     return(GRID_BL);
   else if (strcasecmp("baylinear", rule) == 0)
@@ -238,8 +244,12 @@ void grid_specs_destroy(GRID_SPECS *gs)
   else if (rule == GRID_AVERAGE)
     ga_destroy(gs->interpolator);
   else {
-    if (rule == GRID_NN_SIBSON || rule == GRID_NN_NONSIBSONIAN)
-      nnpi_destroy(gs->interpolator);
+    if (rule == GRID_NN_SIBSON || rule == GRID_NN_NONSIBSONIAN) {
+      if (!nnf)
+	nnpi_destroy(gs->interpolator);
+      else
+	nnhpi_destroy(gs->interpolator);
+    }
     else if (rule == GRID_LINEAR)
       lpi_destroy(gs->interpolator);
     else if (rule == GRID_LINEAR)
@@ -250,6 +260,8 @@ void grid_specs_destroy(GRID_SPECS *gs)
       bal_destroy(gs->interpolator);
     else if (rule == GRID_LSQQ)
       lsqq_destroy(gs->interpolator);
+    else if (rule == GRID_LSQL)
+      lsql_destroy(gs->interpolator);
     delaunay_destroy(gs->d);
   }
   
@@ -261,7 +273,8 @@ void grid_specs_destroy(GRID_SPECS *gs)
 }
 
 /*
- * Main entry function
+ * Main entry function for standalone executable, the library should
+ * call the _interp_on_point routine
  */
 int grid_interp(GRID_SPECS *gs)
 {

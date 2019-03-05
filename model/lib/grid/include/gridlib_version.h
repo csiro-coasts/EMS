@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: gridlib_version.h 5839 2018-06-28 03:38:07Z riz008 $
+ *  $Id: gridlib_version.h 6155 2019-03-05 02:57:41Z riz008 $
  *
  */
 
@@ -20,7 +20,7 @@
 
 /* Release verions and getters */
 #define GRIDLIB_MAJOR_VERSION 1
-#define GRIDLIB_MINOR_VERSION 0
+#define GRIDLIB_MINOR_VERSION 1
 #define GRIDLIB_PATCH_VERSION 0
 
 int get_gridlib_major_vers(void);
