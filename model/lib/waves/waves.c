@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: waves.c 5849 2018-06-29 05:03:57Z riz008 $
+ *  $Id: waves.c 6117 2019-02-26 04:26:42Z her127 $
  *
  */
 
@@ -229,7 +229,7 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   wave->model = model;
 
   /* Get the quadratic friction coefficient                          */
-  wave->quad_bfc = w_get_quad_bfc(model);
+  wave->quad_bfc = i_get_quad_bfc(model);
 
   /* Set the method of computing the wave variables                  */
   wave->do_amp = wave->do_per = wave->do_dir = wave->do_ub = WCOMP;
@@ -242,47 +242,47 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   if (nn) wave->do_stokes = WFILE;
 
   /* Check that wave variables exist */
-  if(!w_check_orbital_file(model)) {
+  if(!i_check_orbital_file(model)) {
     emstag(LFATAL,"waves:init"," Wave input file is undefined. Use ORBITAL_VEL in the parameter file.\n");
     exit(0);
   }
-  if (!w_check_wave_period(model)) {
+  if (!i_check_wave_period(model)) {
     emstag(LFATAL,"waves:init"," Wave period variable, '%s', undefined.\n", wave->period_name );
     exit(0);
   }
-  if (!w_check_wave_amp(model)) {
+  if (!i_check_wave_amp(model)) {
     emstag(LFATAL,"waves:init"," Wave amplitude variable, '%s', undefined.\n", wave->amp_name);
     exit(0);
   }
-  if (!w_check_wave_dir(model)) {
+  if (!i_check_wave_dir(model)) {
     emstag(LFATAL,"waves:init"," Wave direction variable, '%s', undefined.\n", wave->dir_name);
     exit(0);
   }
-  if (!w_check_wave_ub(model)) {
+  if (!i_check_wave_ub(model)) {
     emstag(LFATAL,"waves:init"," Wave orbital velocity variable, '%s', undefined.\n", wave->ub_name);
     exit(0);
   }
   if (wave->do_wif & WFILE) {
-    if (!w_check_wave_Fx(model)) {
+    if (!i_check_wave_Fx(model)) {
       emstag(LFATAL,"waves:init"," Wave-induced force e1 variable, '%s', undefined.\n", wave->Fx_name);
       exit(0);
     }
-    if (!w_check_wave_Fy(model)) {
+    if (!i_check_wave_Fy(model)) {
       emstag(LFATAL,"waves:init"," Wave-induced force e2 variable, '%s', undefined.\n", wave->Fy_name);
       exit(0);
     }
   }
-  if (!w_check_wind(model)) {
+  if (!i_check_wind(model)) {
     emstag(LFATAL,"waves:init"," Wind variables undefined.\n");
     exit(0);
   }
 
   if (wave->do_stokes & WFILE) {
-    if (!w_check_wave_ste1(model)) {
+    if (!i_check_wave_ste1(model)) {
       emstag(LFATAL,"waves:init"," Stokes velocity x variable, '%s', undefined.\n", wave->ste1_name);
       exit(0);
     }
-    if (!w_check_wave_ste2(model)) {
+    if (!i_check_wave_ste2(model)) {
       emstag(LFATAL,"waves:init"," Stokes velocity y variable, '%s', undefined.\n", wave->ste2_name);
       exit(0);
     }
@@ -430,9 +430,9 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   }
 
   /* Get the boundary radiation stress mask                         */
-  size = w_get_winsize(model);
+  size = i_get_winsize(model);
   wave->brsm = i_alloc_1d(size);
-  memset(wave->brsm, 0, n * sizeof(int));
+  memset(wave->brsm, 0, size * sizeof(int));
   w_get_brsm(model, wave->brsm);
 
   /* Get the grid angles                                            */
@@ -441,19 +441,19 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   wave->sinthcell = d_alloc_1d(size);
   wave->costhcell = d_alloc_1d(size);
   for (i = 1; i <= wave->cols; i++) {
-    wave->thetau1[i] = w_get_thetau1(model, i);
-    wave->thetau2[i] = w_get_thetau2(model, i);
-    wave->sinthcell[i] = w_get_sinthcell(model, i);
-    wave->sinthcell[i] = w_get_costhcell(model, i);
+    wave->thetau1[i] = i_get_thetau1(model, i);
+    wave->thetau2[i] = i_get_thetau2(model, i);
+    wave->sinthcell[i] = i_get_sinthcell(model, i);
+    wave->sinthcell[i] = i_get_costhcell(model, i);
   }
 
   /* Get the fetch                                                  */
-  if (w_check_fetch(model)) {
+  if (i_check_fetch(model)) {
     wave->do_fetch = 1;
     wave->fetch = d_alloc_2d(8, size);
     for (i = 1; i <= wave->cols; i++) {
       for (n = 0; n < 8; n++)
-	wave->fetch[i][n] = w_get_fetch(model, i, n);
+	wave->fetch[i][n] = i_get_fetch(model, i, n);
     }
   }
 
@@ -544,18 +544,18 @@ void wave_step(void* model, wave_t *wave, int c) {
   wave->area = i_get_cellarea_w(model, c);
 
   /* Get the borrom roughness parameter                              */
-  wave->z0 = w_get_z0(model, c);
+  wave->z0 = i_get_z0(model, c);
 
   /* Get the surface elevation                                       */
   wave->eta = i_get_eta(model, c);
 
   /* Get the bottom velocities                                       */
-  w_get_bot_vel(model, wave->sinthcell[wave->cc], wave->costhcell[wave->cc],
+  i_get_bot_vel(model, wave->sinthcell[wave->cc], wave->costhcell[wave->cc],
 		&wave->u1bot, &wave->u2bot, & wave->bot_l, c);
 
   /* Get the wind components                                         */
-  wave->wx = w_get_wave_wind1(model, c);
-  wave->wy = w_get_wave_wind2(model, c);
+  wave->wx = i_get_wave_wind1(model, c);
+  wave->wy = i_get_wave_wind2(model, c);
 
   /* Read in the 2D tracers                                          */
   i_get_tracer_2d(model, c, wave->ntrS, wave->tmap_2d, wave->tr_in);

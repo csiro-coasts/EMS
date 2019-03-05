@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: waves.h 5849 2018-06-29 05:03:57Z riz008 $
+ *  $Id: waves.h 6153 2019-03-05 02:50:03Z riz008 $
  *
  */
 
@@ -150,7 +150,7 @@ struct wave{
 /* Release verions and getters */
 #define WAVES_MAJOR_VERSION 1
 #define WAVES_MINOR_VERSION 0
-#define WAVES_PATCH_VERSION 0
+#define WAVES_PATCH_VERSION 1
 
 int get_waves_major_vers(void);
 int get_waves_minor_vers(void);
@@ -214,38 +214,40 @@ extern int *i_get_tmap_sed(void* hmodel, int ntr, char *trname[]);
 extern int *i_get_tmap_2d(void* hmodel, int ntr, char *trname[]);
 
 /* Wave interface routines */
-extern int w_check_orbital_file(void *hmodel);
-extern void w_check_wave_data(int *wa, int *wp, int *wd, int *wu, int *rs, int *stv);
+extern int i_check_orbital_file(void *hmodel);
 extern double w_get_dt(void *hmodel);
-extern int w_check_wave_period(void *hmodel);
-extern double w_get_wave_period(void *hmodel, int c);
-extern int w_check_wave_amp(void *hmodel);
-extern double w_get_wave_amp(void *hmodel, int c);
-extern int w_check_wave_dir(void *hmodel);
-extern double w_get_wave_dir(void *hmodel, int c);
-extern int w_check_wave_ub(void *hmodel);
-extern double w_get_wave_ub(void *hmodel, int c);
-extern int w_check_wave_Fx(void *hmodel);
-extern double w_get_wave_Fx(void *hmodel, int c);
-extern int w_check_wave_Fy(void *hmodel);
-extern double w_get_wave_Fy(void *hmodel, int c);
-extern int w_check_wind(void *hmodel);
-extern double w_get_wave_wind1(void *hmodel, int c);
-extern double w_get_wave_wind2(void *hmodel, int c);
-extern double w_get_thetau1(void *hmodel, int c);
-extern double w_get_thetau2(void *hmodel, int c);
-extern int w_get_winsize(void *hmodel);
+extern int i_check_wave_period(void *hmodel);
+extern double i_get_wave_period(void *hmodel, int c);
+extern int i_check_wave_amp(void *hmodel);
+extern double i_get_wave_amp(void *hmodel, int c);
+extern int i_check_wave_dir(void *hmodel);
+extern double i_get_wave_dir(void *hmodel, int c);
+extern int i_check_wave_ub(void *hmodel);
+extern double i_get_wave_ub(void *hmodel, int c);
+extern int i_check_wave_Fx(void *hmodel);
+extern double i_get_wave_Fx(void *hmodel, int c);
+extern int i_check_wave_Fy(void *hmodel);
+extern double i_get_wave_Fy(void *hmodel, int c);
+extern int i_check_wind(void *hmodel);
+extern double i_get_wave_wind1(void *hmodel, int c);
+extern double i_get_wave_wind2(void *hmodel, int c);
+extern double i_get_thetau1(void *hmodel, int c);
+extern double i_get_thetau2(void *hmodel, int c);
+extern int i_get_winsize(void *hmodel);
 extern void w_get_brsm(void *hmodel, int *brsm);
-extern void w_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
+extern void i_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
 			  double *u1bot, double *u2bot, double *botz, int c);
-extern double w_get_quad_bfc(void *hmodel);
-extern double w_get_z0(void *hmodel, int c); 
-extern double w_get_sinthcell(void *hmodel, int cc);
-extern double w_get_costhcell(void *hmodel, int cc);
-extern double w_get_fetch(void *hmodel, int cc, int n);
-extern double w_check_fetch(void *hmodel);
+extern double i_get_quad_bfc(void *hmodel);
+extern double i_get_z0(void *hmodel, int c); 
+extern double i_get_sinthcell(void *hmodel, int cc);
+extern double i_get_costhcell(void *hmodel, int cc);
+extern double i_get_fetch(void *hmodel, int cc, int n);
+extern double i_check_fetch(void *hmodel);
 extern void i_set_error(void* hmodel, int col, int errorf, char *text);
-extern int w_check_wave_ste1(void *hmodel);
-extern double w_get_wave_ste1(void *hmodel, int c);
-extern int w_check_wave_ste2(void *hmodel);
-extern double w_get_wave_ste2(void *hmodel, int c);
+extern int i_check_wave_ste1(void *hmodel);
+extern double i_get_wave_ste1(void *hmodel, int c);
+extern int i_check_wave_ste2(void *hmodel);
+extern double i_get_wave_ste2(void *hmodel, int c);
+
+/* From forcings/webf.c */
+extern void w_check_wave_data(int *wa, int *wp, int *wd, int *wu, int *rs, int *stv);
