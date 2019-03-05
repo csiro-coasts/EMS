@@ -30,7 +30,6 @@ includedir = @includedir@
 mandir = @mandir@/manl
 
 GRIDINC=-I../model/lib/grid/include
-CONFINC=-I../conf
 
 #### End of system configuration section. ####
 
