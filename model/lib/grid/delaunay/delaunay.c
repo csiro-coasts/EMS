@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: delaunay.c 6100 2019-02-08 05:14:33Z her127 $
+ *  $Id: delaunay.c 6161 2019-03-05 04:49:33Z riz008 $
  *
  */
 
@@ -28,7 +28,7 @@
 #include "istack.h"
 #include "nan.h"
 #include "delaunay.h"
-
+#include "emsmath.h"
 
 //
 int verbose = 0;
@@ -599,7 +599,7 @@ int delaunay_xytoi_lag(delaunay* d, point* p, int id)
                 ids = d->neighbours[id].tids[(i + 2) % 3];
 
 		if (ids == idp) {
-		  ids = d->neighbours[id].tids[ran3(&ran)%3];
+		  ids = d->neighbours[id].tids[((int)ran3(&ran))%3];
 		}
 
 		/*
@@ -654,7 +654,7 @@ int delaunay_xytoi_lago(delaunay* d, point* p, int id)
                 ids = d->neighbours[id].tids[(i + 2) % 3];
 
 		if (ids == idp) {
-		  ids = d->neighbours[id].tids[ran3(&ran)%3];
+		  ids = d->neighbours[id].tids[((int)ran3(&ran))%3];
 		}
 		/*printf("%d %d %d %d %d\n",i,id,idp,ids,ran3(&ran)%3);*/
 
@@ -663,7 +663,7 @@ int delaunay_xytoi_lago(delaunay* d, point* p, int id)
 		  printf(" %f %f\n",d->points[t1->vids[0]].x,d->points[t1->vids[0]].y);
 		  printf(" %f %f\n",d->points[t1->vids[1]].x,d->points[t1->vids[1]].y);
 		  printf(" %f %f\n",d->points[t1->vids[2]].x,d->points[t1->vids[2]].y);
-		  while((ids = d->neighbours[id].tids[ran3(&ran)%3]) < 0) {
+		  while((ids = d->neighbours[id].tids[((int)ran3(&ran))%3]) < 0) {
 		    printf("idp %d %d\n",idp,ids);
 		  }
 		  printf("end %d %d\n",idp,ids);

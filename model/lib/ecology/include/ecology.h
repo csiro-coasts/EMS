@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: ecology.h 6160 2019-03-05 04:35:12Z riz008 $
  *
  */
 
@@ -87,6 +87,8 @@ void ecology_printstepstats(ecology* e, FILE* f);
 void ecology_printstats(ecology* e, FILE* f);
 
 void eco_write_setup(ecology *e, const char *str, ...);
+
+void ecology_find_rsr_waves(ecology *e);
 
 #define _ECOLOGY_H
 #endif

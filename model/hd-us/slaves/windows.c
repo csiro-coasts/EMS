@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6140 2019-03-04 01:04:05Z her127 $
+ *  $Id: windows.c 6165 2019-03-05 05:07:39Z riz008 $
  *
  */
 
@@ -2450,7 +2450,7 @@ void local_map_build_v2c(geometry_t *geom, /* Global geometry        */
 	  cax = reset_map(geom, cgm, wn, wsa, ac);
 	  j = joc(geom, c, cgm);       /* Direction of cgm from c    */
 	  if(verbose && c==cs && !j)
-	    printf("v2c_um wn=%d c=%d cgm=%d v=%d cl=%d j=%d\n",wn,c,cgm,v,cgm,cax,j);
+	    printf("v2c_um wn=%d c=%d cgm=%d v=%d cax=%d j=%d\n",wn,c,cgm,v,cax,j);
 	  if (j && domap) {
 	    e = geom->c2e[j][c];       /* Edge in j direction        */
 	    if (!mask[e]) {
@@ -2465,7 +2465,7 @@ void local_map_build_v2c(geometry_t *geom, /* Global geometry        */
 	      }
 	      mask[e] = 1;
 	      if(verbose && c==cs)
-		printf("v2c_m wn=%d c=%d cgm=%d v=%d cl=%d j=%d\n",wn,c,cgm,v,cgm,cax,j);
+		printf("v2c_m wn=%d c=%d cgm=%d v=%d cax=%d j=%d\n",wn,c,cgm,v,cax,j);
 	    }
 	  }
 	}
@@ -3795,7 +3795,7 @@ void get_local_wsv(geometry_t *geom,
     window[wn]->b2_e2--;
     window[wn]->v2_e2--;
     if (checkf) {
-      printf("win%d szv=%d n3_e2=%d\n",window[wn]->szv, window[wn]->n3_e2);
+      printf("win%d szv=%d n3_e2=%d\n",wn,window[wn]->szv, window[wn]->n3_e2);
       printf("szvS=%d n2_e2=%d\n",window[wn]->szvS, window[wn]->n2_e2);
     }
   }

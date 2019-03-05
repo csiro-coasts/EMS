@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6065 2019-02-08 04:08:10Z her127 $
+ *  $Id: ginterface.c 6162 2019-03-05 05:06:30Z riz008 $
  *
  */
 
@@ -43,6 +43,7 @@ static int sed_map[MAXNUMVARS];
 static int e_nepi;
 static int epi_map[MAXNUMVARS];
 
+int i_get_c(void *model, int b);
 
 trs_t* trs_create();
 

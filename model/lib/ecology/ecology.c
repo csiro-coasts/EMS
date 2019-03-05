@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 5976 2018-09-26 00:30:13Z riz008 $
+ *  $Id: ecology.c 6160 2019-03-05 04:35:12Z riz008 $
  *
  */
 
@@ -743,7 +743,6 @@ ecology* ecology_build(void* model, char* prmfname)
      *   - needs to come before bio_opt_init and slot
      *     in between finalising the epi stringtable
      */
-    // ecology_find_rsr_waves(e);    
     e->bio_opt = NULL;
     create_processes(e, e->processfname);
 

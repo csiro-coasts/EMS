@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 6132 2019-03-04 00:58:51Z her127 $
+ *  $Id: meshes.c 6164 2019-03-05 05:07:19Z riz008 $
  *
  */
 
@@ -3857,7 +3857,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       jigsaw_alloc_vert2(jpoints, nhfun);
       for (i = 0; i < nhfun; i++) {
 	fscanf(hp, "%lf;%lf;0\n",&jpoints->_data[n]._ppos[0],
-	       jpoints->_data[n]._ppos[1]);
+	       &jpoints->_data[n]._ppos[1]);
       }
       J_hfun->_flags = JIGSAW_EUCLIDEAN_MESH;
     }
@@ -5455,7 +5455,7 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 	fprintf(ef, "%f %f\n", d->points[e2].x, d->points[e2].y);
 	fprintf(ef, "NaN NaN\n");
       }
-      if (filefj) fprintf(jf, "%d;%d;%d\n",e1, e2);
+      if (filefj) fprintf(jf, "%d;%d\n",e1, e2);
     }
   }
   if (filef) fclose(ef);
@@ -5551,7 +5551,7 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
   if (verbose) printf("npoints=%d nedges=%d ntriangles=%d\n", d->npoints, d->nedges, d->ntriangles);
   if (filef) {
     for (i = 0; i < d->nedges; i++) {
-      fprintf(tf, "%f %f\n",i,d->points[d->edges[2*i]].x,d->points[d->edges[2*i]].y);
+      fprintf(tf, "%f %f\n",d->points[d->edges[2*i]].x,d->points[d->edges[2*i]].y);
       fprintf(tf, "%f %f\n",d->points[d->edges[2*i+1]].x,d->points[d->edges[2*i+1]].y);
       fprintf(tf, "NaN NaN\n");
     }

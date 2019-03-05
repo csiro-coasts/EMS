@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 6134 2019-03-04 00:59:33Z her127 $
+ *  $Id: readparam.c 6166 2019-03-05 05:07:52Z riz008 $
  *
  */
 
@@ -4236,7 +4236,7 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
 	    y[n] = celly[j][i]; 
 	  b[n] = botz[j][i];
 	  bmean += b[n];
-	  if(b[n] > 0.0)printf("%d(%d %d) %f %f %f %f\n",n,i,j,x[n],y[n],b[n],OUTSIDE);
+	  //if(b[n] > 0.0)printf("%d(%d %d) %f %f %f %f\n",n,i,j,x[n],y[n],b[n],OUTSIDE);
 	  n++;
 	}
       }
@@ -4523,7 +4523,7 @@ void eta_init(geometry_t *geom,      /* Global geometry              */
   if (prm_read_int(params->prmfd, buf, &n)) {
     prm_flush_line(params->prmfd);
     for (cc = 0; cc < n; cc++) {
-      if (fscanf(params->prmfd, "%d %d : %lf", &i, &val) != 2)
+      if (fscanf(params->prmfd, "%d : %lf", &i, &val) != 2)
 	hd_quit("eta_init: Can't read cc : val in SURFACE_POINTS list.\n", n);
       /* Flush the remainder of the line */
       prm_flush_line(params->prmfd);

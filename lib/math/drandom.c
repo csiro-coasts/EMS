@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: drandom.c 5833 2018-06-27 00:21:35Z riz008 $
+ *  $Id: drandom.c 6161 2019-03-05 04:49:33Z riz008 $
  */
 
 #include <stdio.h>
@@ -34,7 +34,6 @@
 double drandom(double min, double max)
 {
   int init;
-  float ran3(int *idum);
 
   /* ran3() initialises itself automatically, so we don't ever need to do
      this */

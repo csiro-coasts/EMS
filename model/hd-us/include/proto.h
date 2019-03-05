@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6158 2019-03-05 03:24:47Z riz008 $
+ *  $Id: proto.h 6163 2019-03-05 05:06:46Z riz008 $
  *
  */
 
@@ -535,6 +535,8 @@ void set_unit_eta(geometry_t *window, window_t *windat, win_priv_t *wincon,
 void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double vertex_weighted_tr(geometry_t *window, window_t *windat, 
 			  win_priv_t *wincon, double *tr, int v);
+int find_cell(geometry_t *window, int cd, double xs, double ys,
+	      double *xi, double *yi);
 
 /*------------------------------------------------------------------*/
 /* Global geometry preprocessing routines                           */
