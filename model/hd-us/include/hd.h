@@ -28,13 +28,6 @@
 #include <time.h>
 #include <semaphore.h>
 #include "ems.h"
-#include "svn_rev.h"
-
-/*
- * This is just the Version of SHOC. The subversion revision string
- * is construncted in main.c - see gen_ver_str()
- */
-#define VERSION "v1.0"
 
 /* ANSI value may not be defined in old stdio.h */
 #ifndef SEEK_SET

@@ -26,7 +26,7 @@
 /*------------------------------------------------------------------*/
 #define COMPAS_MAJOR_VERSION 1
 #define COMPAS_MINOR_VERSION 1
-#define COMPAS_PATCH_VERSION 1
+#define COMPAS_PATCH_VERSION 2
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */

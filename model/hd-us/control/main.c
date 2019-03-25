@@ -452,6 +452,8 @@ int main(int argc, char *argv[])
   process_args(argc, argv);
   prm_set_case(0);
 
+  fprintf(stderr, "Run start:\t%s\n", ctime(&now));
+  
   /* MPI Info */
 #ifdef HAVE_MPI
   fprintf(stderr, "\nMPI_RANK %d for %s(%d)\n", mpi_rank, prmname, getpid());
