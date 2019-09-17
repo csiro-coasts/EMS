@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 6166 2019-03-05 05:07:52Z riz008 $
+ *  $Id: readparam.c 6318 2019-09-13 04:33:25Z her127 $
  *
  */
 
@@ -47,9 +47,10 @@
 
 /*-------------------------------------------------------------------*/
 /* Valid bathymetry netCDF dimension names                           */
-static char *bathy_dims[3][6] = {
+static char *bathy_dims[4][6] = {
   {"botz", "i_centre", "j_centre", "x_centre", "y_centre", "standard"},
   {"height", "lon", "lat", "lon", "lat", "nc_bathy"},
+  {"height", "nlon", "nlat", "lon", "lat", "nc_bathy"},
   {NULL, NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -76,6 +77,8 @@ void read_compatible(parameters_t *params, FILE *fp);
 void read_means(parameters_t *params, FILE *fp, int mode);
 void read_debug(parameters_t *params, FILE *fp);
 void read_win_type(parameters_t *params, FILE *fp);
+void read_profile(parameters_t *params, FILE *fp);
+void read_turb(parameters_t *params, FILE *fp);
 void check_TS_relax(parameters_t *params, FILE *fp);
 void get_output_path(parameters_t *params, FILE *fp);
 void baro_vortex(master_t *master, geometry_t *geom, int io, int jo);
@@ -103,6 +106,12 @@ static double *read_bathy_from_db_us(FILE *fp, parameters_t *params);
 double* topo_get_z_for_grid_us(topo_files_t *tfs, double *gx, double *gy,
 			       int ns2, topo_hint_t hint);
 void remove_OBC_corner(parameters_t *params);
+poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts);
+void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode);
+void bathy_interp_s(parameters_t *params, char *fname, int mode);
+void write_tile_dump(master_t *master, FILE *op, char *fname, char *vars, int tile, int obc,
+		     double *regionid, int nreg, int *reg, int **flag, int nobc, int fm, int mode);
+
 
 /*-------------------------------------------------------------------*/
 /* Routine to set default parameters                                 */
@@ -149,6 +158,8 @@ void set_default_param(parameters_t *params)
   params->means = NONE;
   sprintf(params->means_os, "%c", '\0');
   sprintf(params->bathystats, "%c", '\0');
+  sprintf(params->particles, "%c", '\0');
+  sprintf(params->addquad, "%c", '\0');
   params->vorticity = NONE;
   params->numbers = params->numbers1 = NONE;
   params->u1_f = params->u1av_f = NONE;
@@ -167,6 +178,7 @@ void set_default_param(parameters_t *params)
   params->thin_merge = 1;
   params->sigma = 0;
   params->maxgrad = -1.0;
+  sprintf(params->maxdiff, "%c", '\0');
   params->bathyfill = B_REMOVE;
   params->bvel = 0.0;
   params->nonlinear = 1;
@@ -199,12 +211,15 @@ void set_default_param(parameters_t *params)
   sprintf(params->swr_attn, "%c", '\0');
   sprintf(params->swr_attn1, "%c", '\0');
   sprintf(params->swr_tran, "%c", '\0');
+  sprintf(params->swr_regions, "%c", '\0');
+  strcpy(params->swr_data, "GHRSST");
   sprintf(params->densname, "%c", '\0');
   sprintf(params->regions, "%c", '\0');
   sprintf(params->region_dt, "%c", '\0');
   sprintf(params->region_vars, "%c", '\0');
   sprintf(params->region_mode, "%c", '\0');
   sprintf(params->i_rule, "%c", '\0');
+  sprintf(params->cookiecut, "%c", '\0');
   params->region_obc = 0;
   params->do_pt = 0;
   strcpy(params->dp_mode, "none");
@@ -256,8 +271,13 @@ void set_default_param(parameters_t *params)
   params->porusplate = 0;
   params->sharp_pyc = 0;
   params->uscf = 0;
+  params->tidef = 0;
+  params->tidep = 0;
+  params->eqt_alpha = 0.948;
+  params->eqt_beta = 0.7;
   params->mlat = params->mlon = NOTVALID;
   sprintf(params->nprof, "%c", '\0');
+  sprintf(params->nprof2d, "%c", '\0');
   sprintf(params->reef_frac, "%c", '\0');
   params->dbi = params->dbj = params->dbk = -1;
   params->dbgf = NONE;
@@ -265,6 +285,7 @@ void set_default_param(parameters_t *params)
   memset(params->momfile, 0, sizeof(params->momfile));
   memset(params->avhrr_path, 0, sizeof(params->avhrr_path));
   memset(params->ghrsst_path, 0, sizeof(params->ghrsst_path));
+  memset(params->ghrsst_opt, 0, sizeof(params->ghrsst_opt));
   params->rampf = WIND|FILEIN|CUSTOM|TIDALH|TIDALC|TIDEBC|FLATHR|ETA_RELAX;
   memset(params->trvars, 0, sizeof(params->trvars));
   sprintf(params->smooth_v, "%c", '\0');
@@ -296,6 +317,7 @@ void set_default_param(parameters_t *params)
   params->gint_errfcn = LWARN;
   params->nptsu = NULL;
   params->nland = 0;
+  params->nturb = 0;
 
   /* Set the alert thresholds. Note: velocities are set via          */
   /* params->velmax and params->wmax.                                */
@@ -542,6 +564,8 @@ parameters_t *params_read(FILE *fp)
       params->momsc |= PV_ENSCO;
     if (contains_token(buf, "DISSIPATE") != NULL)
       params->momsc |= PV_ENSDS;
+    if (contains_token(buf, "APVM") != NULL)
+      params->momsc |= PV_APVM;
     if (!(params->momsc & (PV_ENEUT|PV_ENSCO|PV_ENSDS)))
       params->momsc |= PV_ENEUT;
   }
@@ -694,7 +718,15 @@ parameters_t *params_read(FILE *fp)
     params->mode2d = is_true(buf);
   sprintf(keyword, "SLIP");
   prm_read_double(fp, keyword, &params->slipprm);
-
+  sprintf(keyword, "TIDE_POTENTIAL");
+  if (prm_read_char(fp, keyword, buf)) {
+    if (params->tidep = is_true(buf)) {
+      prm_read_double(fp, "EQT_ALPHA", &params->eqt_alpha);
+      prm_read_double(fp, "EQT_BETA", &params->eqt_beta);
+      params->ntrS += 1;
+      params->tidef |= TD_EQT;
+    }
+  }
   read_means(params, fp, 0);
 
   /* Window sizes                                                    */
@@ -812,11 +844,7 @@ parameters_t *params_read(FILE *fp)
   if (params->lnm != 0.0)
     params->ntrS++;
   read_debug(params, fp);
-  sprintf(keyword, "PROFILE");
-  if (prm_read_char(fp, keyword, buf)) {
-    strcpy(params->nprof, buf);
-    params->ntr += 1;
-  }
+  read_profile(params, fp);
 
   read_decorr(params, fp, 0);
 
@@ -839,14 +867,18 @@ parameters_t *params_read(FILE *fp)
 
   /* GHRSST SST                                                      */
   if (prm_read_char(fp, "GHRSST", params->ghrsst_path)) {
+    prm_read_char(fp, "GHRSST_OPTIONS", params->ghrsst_opt);
     create_ghrsst_list(params);
-    params->ntrS++;
+    params->ntrS+=2;
   }
 
   /* Particle tracking                                               */
   if(prm_read_char(fp, "PT_InputFile", params->ptinname)) {
     params->do_pt = 1;
     params->ntr++;
+    /* Auto particle source                                          */
+    if (prm_read_char(fp, "particles", params->particles))
+      params->do_pt = 2;
   }
 
   /* Transport mode files                                            */
@@ -1490,6 +1522,9 @@ parameters_t *params_read(FILE *fp)
     }
   }
 
+  /* Tidal energy extraction                                         */
+  read_turb(params, fp);
+
   prm_set_errfn(hd_silent_warn);
 
   /* Sediment geometry                                               */
@@ -1722,6 +1757,12 @@ parameters_t *params_read(FILE *fp)
   }
 
   /* Read the csr tide model paths if required                       */
+  sprintf(keyword, "TIDE_CSR_ORTHOWEIGHTS");
+  prm_read_char(fp, keyword, params->orthoweights);
+  sprintf(keyword, "TIDE_CSR_CON_DIR");
+  prm_read_char(fp, keyword, params->nodal_dir);
+  sprintf(keyword, "TIDE_CONSTITUENTS");
+  prm_read_char(fp, keyword, params->tide_con_file);
   for (n = 0; n < params->nobc; n++) {
     if(params->open[n]->bcond_ele & TIDALH) {
       prm_set_errfn(hd_quit);
@@ -1895,6 +1936,10 @@ parameters_t *auto_params(FILE * fp, int autof)
   params->nce2 = nce2;
   prm_set_errfn(hd_silent_warn);
 
+  /* Add a quad grid to the structured mesh                          */
+  sprintf(keyword, "ADD_QUAD");
+  prm_read_char(fp, keyword, params->addquad);
+
   /* Porus plate sub-gridscale parameterisation                      */
   sprintf(keyword, "PORUS_PLATE");
   if (prm_read_char(fp, keyword, params->reef_frac)) {
@@ -1961,6 +2006,7 @@ parameters_t *auto_params(FILE * fp, int autof)
   }
   sprintf(keyword, "INTERP_RULE");
   if (prm_read_char(fp, keyword, params->i_rule));
+  prm_read_char(fp, "COOKIE_CUT", params->cookiecut);
 
   /* Output files (optional)                                         */
   get_output_path(params, fp);
@@ -2394,8 +2440,9 @@ parameters_t *auto_params(FILE * fp, int autof)
 
   /* GHRSST SST                                                      */
   if (prm_read_char(fp, "GHRSST", params->ghrsst_path)) {
+    prm_read_char(fp, "GHRSST_OPTIONS", params->ghrsst_opt);
     create_ghrsst_list(params);
-    params->ntrS++;
+    params->ntrS+=2;
   }
 
   /* Transport mode files (optional)                                 */
@@ -2411,6 +2458,9 @@ parameters_t *auto_params(FILE * fp, int autof)
   if (prm_read_char(fp, "PT_InputFile", params->ptinname)) {
     params->do_pt = 1;
     params->atr++;
+    /* Auto particle source                                          */
+    if (prm_read_char(fp, "particles", params->particles))
+      params->do_pt = 2;
   }
 
   /* Diagnistic numbers (optional)                                   */
@@ -2447,6 +2497,8 @@ parameters_t *auto_params(FILE * fp, int autof)
   }
   sprintf(keyword, "MAXGRAD");
   prm_read_double(fp, keyword, &params->maxgrad);
+  sprintf(keyword, "MAXDIFF");
+  prm_read_char(fp, keyword, params->maxdiff);
   sprintf(keyword, "VEL_BATHY");
   prm_read_double(fp, keyword, &params->bvel);
   sprintf(keyword, "SMOOTHING");
@@ -2479,6 +2531,8 @@ parameters_t *auto_params(FILE * fp, int autof)
   prm_read_double(fp, keyword, &params->hmin);
 
   /* Bottom roughness (optional)                                     */
+  sprintf(keyword, "QBFC");
+  prm_read_char(fp, keyword, params->quad_bfc);
   z0_init(params);
 
   /* Surface relaxation (optional)                                   */
@@ -2976,6 +3030,10 @@ parameters_t *auto_params(FILE * fp, int autof)
   /*-----------------------------------------------------------------*/
   /* Explicit mappings                                               */
   read_explicit_maps(params, fp);
+
+  /*-----------------------------------------------------------------*/
+  /* Tidal energy extraction                                         */
+  read_turb(params, fp);
 
   /*-----------------------------------------------------------------*/
   /* Grid conversion                                                 */
@@ -3941,7 +3999,6 @@ static int read_bathy_from_file(FILE *fp, parameters_t *params) {
     d_free_1d(bathy);
     i_free_1d(mask);
   }
-
   return 1;
 }
 
@@ -4005,6 +4062,99 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
   char buf[MAXSTRLEN];
   char i_rule[MAXSTRLEN];
   char *fields[MAXSTRLEN * MAXNUMARGS];
+  char *rules[MAXSTRLEN * MAXNUMARGS];
+  GRID_SPECS *gs = NULL;
+  int nbath;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
+  double bmean;
+  int fid;
+  int ncerr;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  int n, m, i, j, cc, c;
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  int bverbose = 0;
+  int intype = -1;
+  int dof = 0;
+  int spf = 0;           /* Sparse data interpolation                */
+  int nf = 0;            /* Number of bathymetry files               */
+  int nr = 0;            /* Number of i_rules                        */
+  int idb;
+  poly_t *pl;
+
+  sprintf(i_rule, "%c", '\0');
+  if (prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)) {
+    spf = 1;
+    nr = parseline(i_rule, rules, MAXNUMARGS);
+  }
+  nf = parseline(fname, fields, MAXNUMARGS);
+  if (nr > 1 && nr != nf)
+    hd_quit("read_bathy_from_sparse_nc: Number of INTERP_RULE must equal 1 or number of BATHYFILES.\n");
+  m = 0;
+
+  /*-----------------------------------------------------------------*/
+  /* Initialise                                                      */
+  if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
+    params->bathy = d_alloc_1d(params->ns2 + 1);
+    for (cc = 1; cc <= params->ns2; cc++) params->bathy[cc] = NaN;
+  } else {
+    params->bathy = d_alloc_1d(params->nce1 * params->nce2);
+    cc = 0;
+    for (j = 0; j < params->nce2; j++)
+      for (i = 0; i < params->nce1; i++)
+	params->bathy[cc++] = NaN;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolate the bathymetry                                      */
+  /*-----------------------------------------------------------------*/
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation of the first nf-1 files.                          */
+  /* If nf = 1 and no i_rule is supplied then use structured         */
+  /* interpolation.                                                  */
+  /* If nf > 1 and one i_rule is set then use structured             */
+  /* interpolation.                                                  */
+  /* If nf > 1 and  multiple i_rules are supplied then use the       */
+  /* corresponding rule. If i_rule is 'none' then also use           */
+  /* structured interpolation.                                       */
+  /* i_rule options:                                                 */
+  /* linear, cubic, nn_sibson, nn_non_sibson, average                */
+  if (nf > 1 || !spf) {
+
+    if (DEBUG("init_m"))
+      dlog("init_m", "\nStructured bathymetry reading from file\n");
+
+    /* If nf > 1 and i_rule is set, then interpolate file 0:nf-2     */
+    /* with ts_read() and file nf-1 using i_rule.                    */
+    n = (nf > 1 && spf) ? nf - 1 : nf;
+
+    for (m = 0; m < n; m++) {
+      if (spf && nr > 1 && strcmp(rules[m], "none") != 0)
+	bathy_interp_us(params, fields[m], rules[m], 1);
+      else
+	bathy_interp_s(params, fields[m], nf);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolate the last file with unstructured methods if an       */
+  /* i_rule is supplied.                                             */
+  if (spf) {
+    bathy_interp_us(params, fields[m], rules[m], 0);
+  }
+  if (DEBUG("init_m"))
+    dlog("init_m", "\nBathymetry read from file OK\n");
+}
+
+
+void read_bathy_from_sparse_nc_o(parameters_t *params, char *fname)
+{
+  char buf[MAXSTRLEN];
+  char i_rule[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
   GRID_SPECS *gs = NULL;
   int nbath;
   double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
@@ -4023,6 +4173,7 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
   int spf = 0;           /* Sparse data interpolation                */
   int nf = 0;            /* Number of bathymetry files               */
   int idb;
+  poly_t *pl;
 
   sprintf(i_rule, "%c", '\0');
   if (prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)) spf = 1;
@@ -4089,21 +4240,38 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
 	hd_quit("read_bathy_from_sparse_nc: Can't find variable %s in file %s\n", 
 		bathy_dims[intype][0], fields[m]);
 
+      /* Get a polgon of the perimeter of the bathy file             */
+      pl = nc2poly(fid, nce1, nce2, bathy_dims[intype][3], bathy_dims[intype][4], fields[m], ts);
+
       /* Read the values                                             */
       if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
 	/* Unstructured.                                             */
 	for (cc = 1; cc <= params->ns2; cc++) {
 	  if (isnan(params->bathy[cc])) {
+	    /* Note: ts_eval_xy() for bathymetry files (idb = 'botz' */
+	    /* or 'height') will return NaN if the xytoij() mapping  */
+	    /* does not return valid indices (i.e. (x,y) lies        */
+	    /* outside the (i,j) bounds of the file).                */
+	    /* This seems not entirely reliable though, so we use a  */
+	    /* bounding polygon for the perimeter.                   */
+	    /* Check if the location lies within the file's bounding */
+	    /* perimeter.                                            */
+	    if (!poly_contains_point(pl, params->x[cc][0], params->y[cc][0])) continue;
+
 	    params->bathy[cc] = ts_eval_xy(ts, idb, 0.0, params->x[cc][0], params->y[cc][0]);
 	    
 	    /*printf("%d %f %d %f : %f %f\n",m,(double)cc/(double)params->ns2,cc,params->bathy[cc],params->x[cc][0], params->y[cc][0]);*/
-	    if (limf) {
+	    if (limf && !isnan(params->bathy[cc])) {
 	      if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
 		params->bathy[cc] = -params->bmax;
 	      if (params->bmin && fabs(params->bathy[cc]) < params->bmin) 
 		params->bathy[c] = -params->bmin;
-	      if (params->bmin && params->bathy[cc] > params->bmin)
-		params->bathy[cc] = LANDCELL;
+	      if (params->bmin && params->bathy[cc] > params->bmin) {
+		if (nf > 1)
+		  params->bathy[cc] = NaN;
+		else
+		  params->bathy[cc] = LANDCELL;
+	      }
 	    }
 	  }
 	}
@@ -4120,6 +4288,7 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
       }
       ts_free((timeseries_t*)ts);
       free(ts);
+      poly_destroy(pl);
     }
   }
 
@@ -4128,6 +4297,7 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
   /* linear, cubic, nn_sibson, nn_non_sibson, average                */
   if (spf) {
     int lond, latd;
+    int varid;
 
     if (DEBUG("init_m"))
       dlog("init_m", "\nUnstructured bathymetry reading from file\n");
@@ -4149,8 +4319,11 @@ void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
       }
       i++;
     }
-    nc_inq_varndims(fid, ncw_dim_id(fid, bathy_dims[intype][3]), &lond);
-    nc_inq_varndims(fid, ncw_dim_id(fid, bathy_dims[intype][4]), &latd);
+
+    varid = ncw_var_id(fid, bathy_dims[intype][3]);
+    nc_inq_varndims(fid, varid, &lond);
+    varid = ncw_var_id(fid, bathy_dims[intype][4]);
+    nc_inq_varndims(fid, varid, &latd);
 
     if (intype < 0)      
       hd_quit("read_bathy_from_sparse_nc: Can't find batyhmetry attributes in file %s.\n", fields[m]);
@@ -4356,6 +4529,313 @@ void read_bathy_from_sparse_bty(parameters_t *params, char *fname)
 }
 
 /* END read_bathy_from_sparse_bty()                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Interpolates bathymetry using unstructured method i_rule from the */
+/* GRID_SPEC libraries.                                              */
+/*-------------------------------------------------------------------*/
+void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode)
+{
+  int n, m, i, j, cc, c;
+  int intype = -1;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  int nbath;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
+  double bmean;
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  GRID_SPECS *gs = NULL;
+  int bverbose = 0;
+  poly_t *pl;
+
+  if (DEBUG("init_m"))
+    dlog("init_m", "\nUnstructured bathymetry reading from file\n");
+  hd_warn("Unstructured interpolation of bathy file %s using rule %s\n", fname, i_rule);
+
+  /*-----------------------------------------------------------------*/
+  /* Open the file and get dimensions                              */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    printf("Can't find input bathymetry file %s\n", fname);
+    hd_quit((char *)nc_strerror(ncerr));
+  }
+
+  /* Get dimensions                                                  */
+  i = 0;
+  while (bathy_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0) {
+      intype = i;
+      break;
+    }
+    i++;
+  }
+
+  varid = ncw_var_id(fid, bathy_dims[intype][3]);
+  nc_inq_varndims(fid, varid, &lond);
+  varid = ncw_var_id(fid, bathy_dims[intype][4]);
+  nc_inq_varndims(fid, varid, &latd);
+
+  if (intype < 0)      
+    hd_quit("read_bathy_from_sparse_nc: Can't find batyhmetry attributes in file %s.\n", fname);
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation from unstructured input using a triangulation.    */
+  /* The input bathymetry is structured, but is triangulated then    */
+  /* interpolated using i_rule.                                      */
+  /* Allocate and read.                                              */
+  if (lond == 1)
+    celx = d_alloc_1d(nce1);
+  else if (lond == 2)
+    cellx = d_alloc_2d(nce1, nce2);
+  if (latd == 1)
+    cely = d_alloc_1d(nce2);
+  else if (latd == 2)
+    celly = d_alloc_2d(nce1, nce2);
+  botz = d_alloc_2d(nce1, nce2);
+  start[0] = 0L;
+  start[1] = 0L;
+  start[2] = 0L;
+  start[3] = 0L;
+  count[0] = nce2;
+  count[1] = nce1;
+  count[2] = 0;
+  count[3] = 0;
+  if (lond == 1) {
+    count[0] = nce1;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, celx);
+  } else if (lond == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, cellx[0]);
+  }
+  if (latd == 1) {
+    count[0] = nce2;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, cely);
+  } else if (latd == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, celly[0]);
+  }
+  count[0] = nce2;
+  count[1] = nce1;
+  nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][0]), start, count, botz[0]);
+  nc_close(fid);
+
+  /*-----------------------------------------------------------------*/
+  /* Set the wet bathymetry vector (to interpolate from)             */
+  nbath = n = 0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (botz[j][i] != LANDCELL && fabs(botz[j][i]) != fabs(NOTVALID)) nbath++;
+    }
+  }
+
+  x = d_alloc_1d(nbath);
+  y = d_alloc_1d(nbath);
+  b = d_alloc_1d(nbath);
+  bmean = 0.0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (botz[j][i] != LANDCELL && fabs(botz[j][i]) != fabs(NOTVALID)) {
+	if (lond == 1)
+	  x[n] = celx[i];
+	else if (lond == 2)
+	  x[n] = cellx[j][i];
+	if (latd == 1)
+	  y[n] = cely[j]; 
+	else if (latd == 2)
+	    y[n] = celly[j][i]; 
+	b[n] = botz[j][i];
+	bmean += b[n];
+	n++;
+      }
+    }
+  }
+  if (n) bmean /= (double)n;
+  if (lond == 1)
+    d_free_1d(celx);
+  else if (lond == 2)
+    d_free_2d(cellx);
+  if (latd == 1)
+    d_free_1d(cely);
+  else if (latd == 2)
+    d_free_2d(celly);
+  d_free_2d(botz);
+
+  /* Interpolate from a triangulation                                */
+  gs = grid_interp_init(x, y, b, nbath, i_rule);
+  
+  /* If mode = 1 only interpolate within the bound of the supplied   */
+  /* file. Get a polgon of the perimeter of the bathy file.          */
+  if (mode) {
+    timeseries_t *ts = NULL;
+    ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+    if (ts == NULL)
+      hd_quit("read_bathy_from_sparse_nc: No memory available.\n");
+    memset(ts, 0, sizeof(timeseries_t));
+    ts_read(fname, ts);
+    pl = nc2poly(fid, nce1, nce2, bathy_dims[intype][3], bathy_dims[intype][4], fname, ts);
+    ts_free((timeseries_t*)ts);
+    free(ts);
+  }
+
+  for (c = 1; c <= params->ns2; c++) {
+    if(isnan(params->bathy[c])) {
+      if (mode && !poly_contains_point(pl, params->x[c][0], params->y[c][0])) continue;
+      params->bathy[c] = grid_interp_on_point(gs, params->x[c][0], params->y[c][0]);
+      if (limf) {
+	if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
+	  params->bathy[c] = -params->bmax;
+	if (params->bmin && fabs(params->bathy[c]) < params->bmin) 
+	  params->bathy[c] = -params->bmin;
+	if (params->bmin && params->bathy[c] > params->bmin)
+	  params->bathy[c] = LANDCELL;
+      }
+    }
+    if (isnan(params->bathy[c])) params->bathy[c] = bmean;
+    if (bverbose) printf("%d %f : %f %f\n",c, params->bathy[c], params->x[c][0], params->y[c][0]);
+    /*printf("%d %f %d %f\n",m,(double)c/(double)params->ns2,c,params->bathy[c]);*/
+  }
+  grid_specs_destroy(gs);
+  d_free_1d(x);
+  d_free_1d(y);
+  d_free_1d(b);
+  if (mode) poly_destroy(pl);
+  params->nvals = params->ns2-1;
+}
+
+/* END bathy_interp_us()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Interpolates bathymetry using bilinear methods via timeseries     */
+/* libraries.                                                        */
+/*-------------------------------------------------------------------*/
+void bathy_interp_s(parameters_t *params, char *fname, int mode)
+{
+  char buf[MAXSTRLEN];
+  int n, m, i, j, cc, c;
+  int intype = -1;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  int nbath;
+  int idb;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
+  double bmean;
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  timeseries_t *ts = NULL;
+  poly_t *pl;
+  int bverbose = 0;
+
+  hd_warn("Structured interpolation of bathy file %s\n", fname);
+
+  /* Open the file and get dimensions                                */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    printf("Can't find input bathymetry file %s\n", fname);
+    hd_quit((char *)nc_strerror(ncerr));
+  }
+  i = 0;
+  while (bathy_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0) {
+      intype = i;
+      break;
+    }
+    i++;
+  }
+  if (intype < 0)      
+    hd_quit("read_bathy_from_sparse_nc: Can't find batyhmetry attributes in file %s.\n", fname);
+
+  /* Initialize the timeseries file                                  */
+  ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+  if (ts == NULL)
+    hd_quit("read_bathy_from_sparse_nc: No memory available.\n");
+  memset(ts, 0, sizeof(timeseries_t));
+    
+  /* Read the time series                                            */
+  ts_read(fname, ts);
+  if ((idb = ts_get_index(ts, fv_get_varname(fname, bathy_dims[intype][0], buf))) == -1)
+    hd_quit("read_bathy_from_sparse_nc: Can't find variable %s in file %s\n", 
+	    bathy_dims[intype][0], fname);
+
+  /* Get a polgon of the perimeter of the bathy file                 */
+  pl = nc2poly(fid, nce1, nce2, bathy_dims[intype][3], bathy_dims[intype][4], fname, ts);
+
+  /* Read the values                                                 */
+  if (params->us_type & (US_RUS|US_G) && !(params->us_type & US_RS)) {
+    /* Unstructured.                                                 */
+    for (cc = 1; cc <= params->ns2; cc++) {
+      if (isnan(params->bathy[cc])) {
+	/* Note: ts_eval_xy() for bathymetry files (idb = 'botz'     */
+	/* or 'height') will return NaN if the xytoij() mapping does */
+	/* not return valid indices (i.e. (x,y) lies outside the     */
+	/* (i,j) bounds of the file).                                */
+	/* This seems not entirely reliable though, so we use a      */
+	/* bounding polygon for the perimeter.                       */
+	/* Check if the location lies within the file's bounding     */
+	/* perimeter.                                                */
+	if (!poly_contains_point(pl, params->x[cc][0], params->y[cc][0])) continue;
+
+	params->bathy[cc] = ts_eval_xy(ts, idb, 0.0, params->x[cc][0], params->y[cc][0]);
+	    
+	if (limf && !isnan(params->bathy[cc])) {
+	  if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
+	    params->bathy[cc] = -params->bmax;
+	  if (params->bmin && fabs(params->bathy[cc]) < params->bmin) 
+	    params->bathy[c] = -params->bmin;
+	  if (params->bmin && params->bathy[cc] > params->bmin) {
+	    if (mode > 1)
+	      params->bathy[cc] = NaN;
+	    else
+	      params->bathy[cc] = LANDCELL;
+	  }
+	}
+      }
+    }
+    params->nvals = cc-1;
+  } else {
+    /* Structured                                                    */
+    cc = 0;
+    for (j = 0; j < params->nce2; j++)
+      for (i = 0; i < params->nce1; i++) {
+	params->bathy[cc] = -ts_eval_xy(ts, idb, 0.0, params->x[2*j][2*i], params->y[2*j][2*i]);
+	cc++;
+      }
+    params->nvals = params->nce1 * params->nce2;
+  }
+  ts_free((timeseries_t*)ts);
+  free(ts);
+  poly_destroy(pl);
+}
+
+/* END bathy_interp_s()                                              */
 /*-------------------------------------------------------------------*/
 
 
@@ -4835,6 +5315,28 @@ int numbers_init(parameters_t *params      /* Input parameter data   */
 	params->numbers1 |= U1VHC;
 	ntr++;
       }
+      if (contains_token(buf, "UNIFORMITY") != NULL) {
+	params->numbers1 |= MESHUN;
+	params->ntrS+=1;
+      }
+      if (contains_token(buf, "TPXO") != NULL) {
+	params->numbers1 |= TPXO;
+	params->tidef |= TD_TPXOE;
+	params->ntrS++;
+      }
+      if (contains_token(buf, "TPXO_VEL") != NULL) {
+	params->numbers1 |= TPXOV;
+	params->tidef |= TD_TPXOV;
+	params->ntrS+=2;
+      }
+      if (contains_token(buf, "TPXO_TRAN") != NULL) {
+	params->numbers1 |= TPXOT;
+	params->ntrS+=2;
+      }
+      if (contains_token(buf, "TRAN2D") != NULL) {
+	params->numbers1 |= TRAN2D;
+	params->ntrS+=2;
+      }
       if (contains_token(buf, "ALL_NUMBERS") != NULL) {
 	params->numbers |= (BRUNT|INT_WAVE|RICHARD_GR|RICHARD_FL|REYNOLDS|
 			    FROUDE|SOUND|ROSSBY_IN|ROSSBY_EX|SHEAR_V|
@@ -5034,6 +5536,85 @@ int read2darray(FILE * fp, char *label, double **array, long n1, long n2)
 
 
 /*-------------------------------------------------------------------*/
+/* Creates a polygon of ther perimeter of data within a netCDF file  */
+/*-------------------------------------------------------------------*/
+poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts)
+{ 
+  int i, j;                                     /* Cartesian couters */
+  size_t start[4];
+  size_t count[4];
+  double **lon, **lat;
+  poly_t *pl;
+  int n;
+  df_variable_t *vlon, *vlat;
+  pl = poly_create();
+  datafile_t *df = ts->df;
+
+  /* Get variables                                                   */
+  if ((vlon = df_get_variable_by_name(df, xname)) == NULL)
+    hd_quit("nc2poly: Can't find variable %s in file %s\n", xname, bname);
+  if ((vlat = df_get_variable_by_name(df, yname)) == NULL)
+    hd_quit("nc2poly: Can't find variable %s in file %s\n", yname, bname);
+
+  /* Allocate                                                        */
+  lon = d_alloc_2d(nce1, nce2);
+  lat = d_alloc_2d(nce1, nce2);
+
+  /* Read in the coordinate information                              */
+  if (vlon->nd == 1) {
+    double *x = d_alloc_1d(nce1);
+    start[0] = 0;
+    count[0] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, xname), start, count, x);
+    for (j = 0; j < nce2; j++)
+      for (i = 0; i < nce1; i++)
+	lon[j][i] = x[i];
+    d_free_1d(x);
+  } else if (vlon->nd == 2) {
+    start[0] = 0;
+    start[1] = 0;
+    count[0] = nce2;
+    count[0] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, xname), start, count, lon[0]);
+  }
+  if (vlat->nd == 1) {
+    double *y = d_alloc_1d(nce2);
+    start[0] = 0;
+    count[0] = nce2;
+    nc_get_vara_double(fid, ncw_var_id(fid, yname), start, count, y);
+    for (j = 0; j < nce2; j++)
+      for (i = 0; i < nce1; i++)
+	lat[j][i] = y[j];
+    d_free_1d(y);
+  } else if (vlon->nd == 2) {
+    start[0] = 0;
+    start[1] = 0;
+    count[0] = nce2;
+    count[0] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, xname), start, count, lat[0]);
+  }
+
+  /* Create the polygon from the perimeter                           */
+  i = 0;
+  for (j = 0; j < nce2; j++) {
+    poly_add_point(pl, lon[j][0], lat[j][0]);
+    poly_add_point(pl, lon[j][nce1-1], lat[j][nce1-1]);
+  }
+  for (i = 0; i < nce1; i++) {
+    poly_add_point(pl, lon[0][i], lat[0][i]);
+    poly_add_point(pl, lon[nce2-1][i], lat[nce2-1][i]);
+  }
+  poly_add_point(pl, lon[0][0], lat[0][0]);
+  d_free_2d(lon);
+  d_free_2d(lat);
+  return(pl);
+}
+
+/* END nc2poly()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Writes parameter structure specification to file                  */
 /*-------------------------------------------------------------------*/
 void params_write(parameters_t *params, dump_data_t *dumpdata)
@@ -5180,6 +5761,8 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     fprintf(op, "DIFF_SCALE           NONLIN\n");
   if (params->diff_scale & CUBIC)
     fprintf(op, "DIFF_SCALE           CUBIC\n");
+  if (params->diff_scale & AREAL)
+    fprintf(op, "DIFF_SCALE           AREA\n");
   if (params->visc_method == NONE)
     fprintf(op, "VISC_METHOD          NONE\n");
   else if (params->visc_method == LAPLACIAN)
@@ -5312,6 +5895,8 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     fprintf(op, "SMOOTHING            %d\n", params->smooth);
   if (params->maxgrad > 0.0)
     fprintf(op, "MAXGRAD              %-6.2f\n", params->maxgrad);
+  if (strlen(params->maxdiff))
+    fprintf(op, "MAXDIFF              %s\n", params->maxdiff);
 
   fprintf(op, "\n# Tracers\n");
   ntr = (params->roammode & (A_RECOM_R1|A_RECOM_R2)) ? 2 : params->ntr;
@@ -5505,6 +6090,12 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     }
     fprintf(op, "TS0.dt               1 hour\n");
     fprintf(op, "TS0.reference        msl\n\n");
+  }
+
+  if (strlen(params->cookiecut)) {
+    fprintf(op, "NBOUNDARIES           0\n\n");
+    fclose(op);
+    return;
   }
 
   fprintf(op, "# Open boundaries\n");
@@ -7286,6 +7877,8 @@ void read_hdiff(parameters_t *params, FILE *fp, int mode)
       params->diff_scale |= NONLIN;
     if (contains_token(buf, "CUBIC") != NULL)
       params->diff_scale |= CUBIC;
+    if (contains_token(buf, "AREA") != NULL)
+      params->diff_scale |= AREAL;
     if (contains_token(buf, "AUTO") != NULL) {
       params->diff_scale |= AUTO;
     }
@@ -7569,6 +8162,13 @@ void read_swr(parameters_t *params, FILE *fp, int mode)
     strcpy(params->swr_babs, "1.0");
     params->ntrS++;
   }
+  sprintf(keyword, "SWR_REGIONS");
+  if (prm_read_char(fp, keyword, params->swr_regions)) {
+    sprintf(keyword, "SWREG_DT");
+    prm_get_time_in_secs(fp, keyword, &params->swreg_dt);
+    prm_read_char(fp, "SWR_DATA", params->swr_data);
+    params->ntrS+=4;
+  }
 }
 
 /* END read_swr()                                                    */
@@ -7617,6 +8217,38 @@ void read_hf_bulk(parameters_t *params, FILE *fp)
 
 
 /*-------------------------------------------------------------------*/
+/* Routine to read n tidal energy extraction                         */
+/*-------------------------------------------------------------------*/
+void read_turb(parameters_t *params, FILE *fp)
+{
+  int n, m;
+  char keyword[MAXSTRLEN], buf[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+
+  if(prm_read_int(fp, "NTURBINES", &params->nturb)) {
+    params->turbv = d_alloc_2d(params->nturb, 4);
+
+    params->turbs = (char **)malloc(params->nturb * sizeof(char *));
+    for (m = 0; m < params->nturb; m++) {
+      params->turbs[m] = (char *)malloc(sizeof(char)*MAXSTRLEN);
+      sprintf(keyword, "TURB%d", m);
+      prm_read_char(fp, keyword, params->turbs[m]);
+      strcpy(buf, params->turbs[m]);
+      n = parseline(buf, fields, MAXNUMARGS);
+      if (n != 4) hd_quit("read_turb: Format is TURB# x y z v\n");
+      params->turbv[0][m] = atof(fields[0]);
+      params->turbv[1][m] = atof(fields[1]);
+      params->turbv[2][m] = atof(fields[2]);
+      params->turbv[3][m] = atof(fields[3]);
+    }
+  }
+}
+
+/* END read_turb()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to read backwards compatibility parameter                 */
 /*-------------------------------------------------------------------*/
 void read_compatible(parameters_t *params, FILE *fp)
@@ -7653,6 +8285,8 @@ void read_compatible(parameters_t *params, FILE *fp)
       params->compatible |= V4201;
     if (contains_token(buf, "V5342") != NULL)
       params->compatible |= V5342;
+    if (contains_token(buf, "V6257") != NULL)
+      params->compatible |= V6257;
   }
 }
 
@@ -7724,6 +8358,16 @@ void read_eta_relax(parameters_t *params, FILE *fp)
     } else if (prm_read_char(fp, dt_name, buf) > 0) {
       tm_scale_to_secs(buf, &params->etarlxdt);
       params->ntrS++;
+    } else if (strcmp(params->etarlxn, "TPXO") == 0) {
+      prm_read_char(fp, tc_name, params->etarlxtcs);
+      if (sscanf(params->etarlxtcs, "%lf %s", &params->etarlxtc, buf) == 2)
+	tm_scale_to_secs(params->etarlxtcs, &params->etarlxtc);
+      if (prm_read_char(fp, dt_name, buf) > 0)
+	tm_scale_to_secs(buf, &params->etarlxdt);
+      else
+	params->etarlxdt = 86400.0;
+      params->ntrS++;
+      params->etarlx = ETA_TPXO;
     } else {
       params->etarlxdt = 3600.0;
       params->etarlxtc = 0.0;
@@ -7807,6 +8451,35 @@ void read_debug(parameters_t *params, FILE *fp)
 }
 
 /* END read_debug()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to read profile generation                                */
+/*-------------------------------------------------------------------*/
+void read_profile(parameters_t *params, FILE *fp)
+{
+  char buf[MAXSTRLEN];
+  char keyword[MAXSTRLEN];
+  int n, m;
+
+  sprintf(keyword, "PROFILE");
+  if (prm_read_char(fp, keyword, buf)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    n = parseline(buf, fields, MAXNUMARGS);
+    if (n == 1) {
+      strcpy(params->nprof, fields[0]);
+      params->ntr += 1;
+    }
+    if (n == 2) {
+      strcpy(params->nprof, fields[0]);
+      strcpy(params->nprof2d, fields[1]);
+      params->ntr += 1;
+    }
+  }
+}
+
+/* END read_profile()                                                */
 /*-------------------------------------------------------------------*/
 
 
@@ -8001,17 +8674,17 @@ void create_ghrsst_list(parameters_t *params)
 {
   FILE *ap;
   char infile[MAXSTRLEN], path[MAXSTRLEN], date[MAXSTRLEN], fname[MAXSTRLEN];
-  char fname2[MAXSTRLEN], daystr[MAXSTRLEN];
+  char fname2[MAXSTRLEN], daystr[MAXSTRLEN], infile2[MAXSTRLEN], buf[MAXSTRLEN];
   double start;            /* Model start time                       */
   double stop;             /* Model stop time                        */
   int nfiles, nf = 0;      /* Number of SST files                    */
   int fid;                 /* netcdf file handle                     */
   int ncerr;               /* netcdf error code                      */
-  int i, n;                /* Counter                                */
+  int i, n, nc;            /* Counter                                */
   int product;             /* Number of days in composite            */
   int ys, mos, ds, hs, mis, ss;  /* Start year, month, day           */
   int ye, moe, de, he, mie, se;  /* End year, month, day             */
-  int y, m, d, day, lp;          /* Year, month, day                 */
+  int y, m, d, day, lp, py;      /* Year, month, day                 */
   int is_mnc;
   double ep;                     /* Epoch                            */
   int tday;                      /* Transition day                   */
@@ -8023,6 +8696,23 @@ void create_ghrsst_list(parameters_t *params)
   int lyr[2] = {365, 366};
   char files[MAXNUMTSFILES][MAXSTRLEN];
   char *fields[MAXSTRLEN * MAXNUMARGS];
+  char vars[MAXSTRLEN];
+  int noday = 0;
+  int yrmnc = 0;
+  int intype;
+
+  /* Get any options                                                 */
+  sprintf(vars, "%c", '\0');
+  nfiles = parseline(params->ghrsst_opt, fields, MAXNUMARGS);
+  for (n = 0; n < nfiles; n++) {
+    strcpy(path, fields[n]);
+    if (strcmp(path, "NODAY") == 0) noday = 1;
+    if (strcmp(path, "YRMNC") == 0) yrmnc = 1;
+    if (strcmp(path, "VARIABLES") == 0) {
+      strcpy(vars, fields[n+1]);
+      n++;
+    }
+  }
 
   /* Get the input arguments                                         */
   nfiles = parseline(params->ghrsst_path, fields, MAXNUMARGS);
@@ -8033,22 +8723,43 @@ void create_ghrsst_list(parameters_t *params)
     strcpy(path, fields[n]);
     m = strlen(path);
     if (path[m-4] == '.' && path[m-3] == 'm' &&
-	path[m-2] == 'n' && path[m-1] == 'c')
+	path[m-2] == 'n' && path[m-1] == 'c') {
       is_mnc += 1;
+      intype = 1;
+    } else { /* File may contain variable substitution */
+      for (i = 0; i < m-6; i++) {
+	if (path[i] == '.' && path[i+1] == 'm' &&
+	    path[i+2] == 'n' && path[i+3] == 'c' &&
+	    path[i+4] == '(' && path[m-1] == ')') {
+	  is_mnc += 1;
+	  intype = 2;
+	}
+      }
+    }
   }
   is_mnc = (is_mnc == nfiles) ? 1 : 0;
 
   if (is_mnc) {
     for (n = 0; n < nfiles; n++) {
       strcpy(path, fields[n]);
-      if (n == nfiles-1)
-	sprintf(fname, "%s(ghrsst=analysed_sst)", fields[n]);
-      else
-	sprintf(fname, "%s(ghrsst=analysed_sst) ", fields[n]);
-      if ((ap = fopen(path, "r")) == NULL)
-	hd_warn("Can't open GHRSST file '%s'\n", path);
-      else {
-	fclose(ap);
+      if (is_mnc == 1) {
+	if (intype == 1) {    /* Assume it is a GHRSST file          */
+	  if (n == nfiles-1)
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error)", fields[n]);
+	  else
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error) ", fields[n]);
+	  if ((ap = fopen(path, "r")) == NULL)
+	    hd_warn("Can't open GHRSST file '%s'\n", path);
+	  else {
+	    fclose(ap);
+	  }
+	} else if (intype == 2) {
+	  /* Filename includes variable substitution                 */
+	  if (n == 0) 
+	    sprintf(fname, fields[n]);
+	  else
+	    sprintf(fname, "%s%s", fname, fields[n]);
+	}
       }
     }
     params->ghrsst = 2;
@@ -8065,6 +8776,11 @@ void create_ghrsst_list(parameters_t *params)
       strcpy(fname2, fields[2]);
       tday = atoi(fields[3]);
       mode = 2;
+    } else if (nfiles == 3) {
+      strcpy(path, fields[0]);
+      strcpy(fname, fields[1]);
+      strcpy(fname2, fields[2]);
+      mode = 3;
     } else {
       hd_warn("create_ghrsst_list: GHRSST input format = <path> <filename>\n");
       return;
@@ -8072,7 +8788,6 @@ void create_ghrsst_list(parameters_t *params)
   }
 
   /* Open the file list                                              */
-  ap = fopen("ghrsst_list.mnc", "w");
   params->ghrsst = 1;
 
   /* Get start and end year, month, day                              */
@@ -8084,27 +8799,55 @@ void create_ghrsst_list(parameters_t *params)
   tm_to_julsecs(start, &ys, &mos, &ds, &hs, &mis, &ss);
   stop = stop / 86400.0 + ep;
   tm_to_julsecs(stop, &ye, &moe, &de, &he, &mie, &se);
+  y = py = ys; m = mos; d = ds; n = 0;
 
   /* Print the file header                                           */
-  fprintf(ap, "multi-netcdf-version 1.0\n\n");
-  fprintf(ap, "nfiles %d\n", nfiles);
+  if (yrmnc) {
+    sprintf(buf, "ghrsst_list-%d.mnc", y);
+    strcpy(files[yrmnc], buf);
+  } else
+    sprintf(buf, "ghrsst_list.mnc");
+  ap = fopen(buf, "w");
+  fprintf(ap, "multi-netcdf-version 1.0\n");
+  fprintf(ap, "nfiles %d\n\n", nfiles);
 
   /* Make a list of files for each day.                              */
   /* Print the list of files                                         */
-  y = ys; m = mos; d = ds; n = 0;
   for (i = 0; i < nfiles; i++) {
     day = yrday(y, m, d);
+    /* Separate .mnc files for each year if required                 */
+    if (yrmnc && y != py) {
+      py = y;
+      rewind(ap);
+      fprintf(ap, "multi-netcdf-version 1.0\n");
+      fprintf(ap, "nfiles %d\n", n);
+      fclose(ap);
+      sprintf(buf, "ghrsst_list-%d.mnc", y);
+      ap = fopen(buf, "w");
+      fprintf(ap, "multi-netcdf-version 1.0\n");
+      fprintf(ap, "nfiles %d\n\n", nfiles);
+      yrmnc++;
+      strcpy(files[yrmnc], buf);
+      n = 0;
+    }
     if (day < 10)
       sprintf(daystr, "00%d", day);
     else if (day < 100)
       sprintf(daystr, "0%d", day);
     else
       sprintf(daystr, "%d", day);
-    if (path[strlen(path) - 1] == '/')
-      sprintf(infile, "%s%d/%s", path, y, daystr);
-    else
-      sprintf(infile, "%s/%d/%s", path, y, daystr);
-    
+    if (!noday) {
+      if (path[strlen(path) - 1] == '/')
+	sprintf(infile, "%s%d/%s", path, y, daystr);
+      else
+	sprintf(infile, "%s/%d/%s", path, y, daystr);
+    } else {
+      if (path[strlen(path) - 1] == '/')
+	sprintf(infile, "%s%d", path, y);
+      else
+	sprintf(infile, "%s/%d/", path, y);
+    }
+
     sprintf(date, "%d", y);
     if (m < 10)
       sprintf(date, "%s0%d", date, m);
@@ -8128,7 +8871,24 @@ void create_ghrsst_list(parameters_t *params)
     }
     if (mode == 1)
       sprintf(infile, "%s/%s%s", infile, date, fname);
-    else {
+    else if (mode == 3) {
+      /*
+      timeseries_t *ts ;
+      ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+      */
+      strcpy(infile2, infile);
+      sprintf(infile, "%s/%s%s", infile, date, fname);
+      if ((ncerr = nc_open(infile, NC_NOWRITE, &fid)) != NC_NOERR) {
+	printf("file%d %s not found\n",n, infile);
+	sprintf(infile2, "%s/%s%s", infile2, date, fname2);
+	if ((ncerr = nc_open(infile2, NC_NOWRITE, &fid)) != NC_NOERR) {
+	  continue;
+	  /*hd_quit("Can't open file%d %s\n", n, infile2);*/
+	}
+	strcpy(infile, infile2);
+      }
+      nc_close(fid);
+    } else {
       if (day <= tday)
 	sprintf(infile, "%s/%s%s", infile, date, fname);
       else
@@ -8142,10 +8902,8 @@ void create_ghrsst_list(parameters_t *params)
       hd_warn("  File = %s\n", infile);
     } else {
     */
-      fprintf(ap, "file%d.filename %s\n", n, infile);
-      nc_close(fid);
-      n++;
-
+    fprintf(ap, "file%d.filename %s\n", n, infile);
+    n++;
   }
   if(!n) {
     hd_quit("No GHRSST SST files found from %d/%d/%d to %d/%d/%d\n",
@@ -8156,6 +8914,26 @@ void create_ghrsst_list(parameters_t *params)
     fprintf(ap, "nfiles %d\n", n);
   }
   fclose(ap);
+
+  /* Write the .mnc files to params->ghrsst_path                     */
+  if (yrmnc) {
+    if (strlen(vars))
+      sprintf(params->ghrsst_path, "%s%s", files[1], vars);
+    else
+      sprintf(params->ghrsst_path, "%s(ghrsst=analysed_sst)(ghrsst_error=analysis_error)", files[1]);
+    for (n = 2; n <= yrmnc; n++) {
+      if (strlen(vars))
+	sprintf(params->ghrsst_path, "%s %s%s", params->ghrsst_path, files[n], vars);
+      else
+	sprintf(params->ghrsst_path, "%s %s(ghrsst=analysed_sst)(ghrsst_error=analysis_error)", 
+	       params->ghrsst_path, files[n]);
+    }
+  } else {
+    if (strlen(vars))
+      sprintf(params->ghrsst_path, "ghrsst_list.mnc%s", vars);
+    else
+      strcpy(params->ghrsst_path, "ghrsst_list.mnc(ghrsst=analysed_sst)(ghrsst_error=analysis_error)");
+  }
 }
 
 /* END create_ghrsst_list()                                          */
@@ -8869,6 +9647,446 @@ int read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj)
 /* END read_blocks()                                                 */
 /*-------------------------------------------------------------------*/
 
+#define R_OUT  1
+#define R_INT  2
+#define R_OBC  4
+#define R_NOR  8
+#define R_TAN  16
+
+/*-------------------------------------------------------------------*/
+/* Cookie cuts a mesh given a .bncc region file                      */
+/*-------------------------------------------------------------------*/
+void cookie_cut(master_t *master, parameters_t *params)
+{
+  FILE *op, *bp;
+  geometry_t *geom = master->geom;
+  mesh_t *mesh = params->mesh;
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int c, cc, cn, ee, e, v;
+  int j, jp, n, nn, nb, m, mr, nr, fn, nv, rgn, ns2, ns;
+  int nreg, *reg, *mask, *maskb, *mapc, *mapv, **flag, *rask, *eask;
+  int *nobc, *nobn, *nobt, *obc, *obe, tobc;
+  int found[geom->nobc];
+  double *regionid;
+  int sf = 0;
+  int verbose = 0;
+
+  if (!strlen(params->cookiecut)) return;
+  n = parseline(params->cookiecut, fields, MAXNUMARGS);
+  if (strcmp(fields[n-1], "2way") == 0) {
+    sf = 1;
+    mr = n - 3;
+    fn = n - 2;
+  } else {
+    mr = n - 2;
+    fn = n - 1;
+  }
+  if (n < 1) hd_quit("COOKIE_CUT format = region.bncc region_no output.prm\n");
+  if (!(endswith(fields[0], ".bncc")))
+    hd_quit("COOKIE_CUT requires a .bncc (COMPAS) region file\n");
+  regionid = d_alloc_1d(geom->szc);
+  nr = read_regioni(master, fields[0], regionid);
+  if (!nr) {
+    hd_warn("cookie_cut(): Region file %s contains no valid boxnos\n", fields[0]);
+    return;
+  }
+  rask = i_alloc_1d(nr);
+  memset(rask, 0, nr * sizeof(int));
+  for (m = 0; m < mr; m++) {
+    rgn = atoi(fields[m+1]);
+    rask[rgn] = 1;
+  }
+
+  /* Loop over supplied regions and create .prm files. Parameters    */
+  /* are written according to current .prm settings.                 */
+  for (m = 0; m < mr; m++) {
+    /* Open the output file                                          */
+    sprintf(params->oname, "%s%s", fields[fn], fields[m+1]);
+    sprintf(buf, "%s.prm", params->oname);
+
+    /* Get the region to cookie cut and save cell centres            */
+    reg = i_alloc_1d(geom->szcS);
+    mask = i_alloc_1d(geom->szcS);
+    rgn = atoi(fields[m+1]);
+    memset(mask, 0, geom->szcS * sizeof(int));
+    nreg = 0;
+    for (cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->w2_t[cc];
+      if (rgn == (int)regionid[c]) {
+	reg[nreg++] = c;
+	mask[c] = 1;
+	if (sf) {
+	  for (j = 1; j <= geom->npe[c]; j++) {
+	    cn = geom->c2c[j][c];
+	    n = (int)regionid[cn];
+	    if (!mask[cn] && n != NOTVALID && n != rgn) {
+	      reg[nreg++] = cn;
+	      mask[cn] = 1;
+	    }
+	  }
+	}
+      }
+    }
+    i_free_1d(mask);
+
+    /* Get the edges of the cell centres                             */
+    nv = 0;
+    mask = i_alloc_1d(geom->szvS);
+    memset(mask, 0, geom->szvS * sizeof(int));
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      for (j = 1; j <= geom->npe[c]; j++) {
+	v = geom->c2v[j][c];
+	if (!mask[v]) {
+	  mask[v] = v;
+	  nv++;
+	}
+      }
+    }
+  
+    /* Reset mesh size and write the parameter file                  */
+    ns2 = mesh->ns2;
+    ns = mesh->ns;
+    mesh->ns2 = nreg;
+    mesh->ns = nreg + nv;
+    params_write(params, master->dumpdata);
+    if ((op = fopen(buf, "a")) == 0)
+      hd_quit("cookie_cut(): Can't open file %s\n", buf);
+    fseek(op, 0, SEEK_END);
+    if (params->us_type & US_IJ) {
+      fprintf(op, "\nGRIDTYPE             UNSTRUCTURED\n");
+      fprintf(op, "Mesh2 unstructured   v1.0\n");
+      fprintf(op, "nMaxMesh2_face_nodes %d\n", mesh->mnpe);
+      fprintf(op, "nMesh2_face_indices  %d\n", mesh->ns);
+      fprintf(op, "nMesh2_face          %d\n\n", mesh->ns2);
+    }
+    mesh->ns2 = ns2;
+    mesh->ns = ns;
+
+    /* Make maps from vertices and centres to mesh indices           */
+    n = 1;
+    mapc = i_alloc_1d(geom->szcS);
+    mapv = i_alloc_1d(geom->szvS);
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      mapc[c] = n;
+      n++;
+    }
+    for (cc = 1; cc <= geom->n2_e2; cc++) {
+      v = geom->w2_e2[cc];
+      if (v == mask[v]) {
+	mapv[v] = n;
+	n++;
+      }
+    }
+    if(n - 1 != nv + nreg) hd_quit("cookie cut error.\n");
+
+    /* Write the dumpfiles for data transfer across tiles.           */
+    /* First make a flag array describing the status of cells and    */
+    /* count the R_OBC cells for each boundary.                      */
+    fprintf(op, "OutputFiles           df_tile%d.txt\n\n",rgn);
+    flag = i_alloc_2d(nreg, geom->npem+1);
+    maskb = i_alloc_1d(geom->szcS);
+    memset(maskb, 0, geom->szcS * sizeof(int));
+    eask = i_alloc_1d(geom->szeS);
+    memset(eask, 0, geom->szeS * sizeof(int));
+    nobc = i_alloc_1d(nr);
+    nobn = i_alloc_1d(nr);
+    nobt = i_alloc_1d(nr);
+    memset(nobc, 0, nr * sizeof(int));
+    memset(nobn, 0, nr * sizeof(int));
+    memset(nobt, 0, nr * sizeof(int));
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      n = (int)regionid[c];
+      maskb[c] = n+1;
+      for (j = 1; j <= geom->npe[c]; j++) flag[j][cc] = 0;
+    }
+
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      n = (int)regionid[c];
+      /* Centres                                                     */
+      if (n == rgn)
+	flag[0][cc] = R_INT;
+      else {
+	flag[0][cc] = R_OBC;
+	nobc[n]++;
+      }
+      /* Edges                                                       */
+      for (j = 1; j <= geom->npe[c]; j++) {
+	cn = geom->c2c[j][c];
+	if (geom->wgst[cn]) continue;
+	nn = (int)regionid[cn];
+	if (nn == NOTVALID) 
+	  flag[j][cc] = R_OUT;
+	else {
+	  if (nn == rgn) {
+	    flag[j][cc] = R_INT;
+	  } else {
+	    if ((sf && maskb[cn] && maskb[c]-1 != rgn && maskb[cn]-1 != rgn)) {
+	      int e = geom->c2e[j][c];
+	      if (!eask[e]) {
+		flag[j][cc] = (R_OBC|R_TAN);
+		eask[e] = 1;
+		nobt[nn]++;
+	      }
+	    } 
+	    if (!maskb[cn]) {
+	      flag[j][cc] = (R_OBC|R_NOR);
+	      nobn[nn]++;
+	    }
+	  }
+	}
+      }
+    }
+
+    tobc = 0;
+    for (n = 0; n < nr; n++) {
+      if (!rask[n]) nobc[n] = nobn[n] = nobt[n] = 0;
+      if (nobc[n]) {
+	if (verbose) printf("OBC%d-%d = %d centres\n",rgn,n,nobc[n]);
+	tobc++;
+      }
+    }
+
+    if (sf) {
+      /* Print the output from this tile used by other tiles         */
+      sprintf(key, "df_tile%d.txt",rgn);
+      bp = fopen(key, "w");
+      fprintf(bp, "multi-dumpfile-version 1.0\n");
+      fprintf(bp, "nfiles                %d\n",tobc);
+      c = 0;
+      for (n = 0; n < nr; n++) {
+	if (nobc[n]) fprintf(bp, "file%d df_tile%d-%d.txt\n",c++, rgn, n);
+      }
+      fclose(bp);
+
+      for (n = 0; n < geom->nobc; n++) {
+	open_bdrys_t *open = geom->open[n];
+	found[n] = 0;
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  c = open->obc_e2[ee];
+	  ns = (int)regionid[c];	
+	  if (ns == rgn) found[n]++;
+	}
+      }
+      for (n = 0; n < geom->nobc; n++) {
+	if (found[n]) tobc++;
+      }
+    } else {
+      tobc = 0;
+      memset(nobc, 0, nr * sizeof(int));
+    }
+
+
+
+    /* Print the open boundaries for this tile                       */
+    fprintf(op, "NBOUNDARIES           %d\n",tobc);
+    nb = 0;
+    /* Open boundaries that fall within this tile                    */
+    for (n = 0; n < geom->nobc; n++) {
+      open_bdrys_t *open = geom->open[n];
+      if (found[n]) {
+	fprintf(op, "BOUNDARY%d.NAME        %s\n", nb, open->name);
+	fprintf(op, "BOUNDARY%d.TYPE        u1\n", nb);
+	fprintf(op, "BOUNDARY%d.UPOINTS     %d\n",nb, found[n]);
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  c = open->obc_e2[ee];
+	  e = open->obc_e1[ee];
+	  ns = (int)regionid[c];	
+	  if (ns == rgn) {
+	    int v1 = geom->e2v[e][0];
+	    int v2 = geom->e2v[e][1];
+	    fprintf(op, "%d (%5.3f,%5.3f)-(%5.3f,%5.3f)\n",mapc[c],
+		    geom->gridx[v1], geom->gridy[v1],
+		    geom->gridx[v2], geom->gridy[v2]);
+	  }
+	}
+	nb++;
+      }
+      fprintf(op, "\n");
+    }
+    /* Open boundaries from overlapping tiles                        */
+    for (n = 0; n < nr; n++) {
+      if (nobc[n]) {
+	sprintf(key, "boundary%d-%d.xy", n, rgn);
+	if (verbose) bp = fopen(key, "w");
+	fprintf(op, "BOUNDARY%d.NAME        tile%d\n", nb, n);
+	fprintf(op, "BOUNDARY%d.TYPE        u1\n", nb);
+	sprintf(key, "bdry%d-%d_", n, rgn);
+	fprintf(op, "BOUNDARY%d.BCOND0      SOLID\n", nb);
+	fprintf(op, "#BOUNDARY%d.BCOND0      NEST2WAY %seta.mpk %sts.mpk %suv_nor.mpk %suv_tan.mpk\n", 
+		nb, key, key, key, key);
+	fprintf(op, "BOUNDARY%d.UPOINTS     %d\n",nb, nobn[n]);
+	for (cc = 0; cc < nreg; cc++) {
+	  c = reg[cc];
+	  ns = (int)regionid[c];
+	  if (ns == n) {
+	    for (j = 1; j <= geom->npe[c]; j++) {
+	      int e = geom->c2e[j][c];
+	      int v1 = geom->e2v[e][0];
+	      int v2 = geom->e2v[e][1];
+	      cn = geom->c2c[j][c];
+	      if (flag[j][cc] & R_NOR) {
+		fprintf(op, "%d (%5.3f,%5.3f)-(%5.3f,%5.3f)\n",mapc[c],
+			geom->gridx[v1], geom->gridy[v1],
+			geom->gridx[v2], geom->gridy[v2]);
+		if (verbose) {
+		  fprintf(bp, "%f %f\n",geom->gridx[v1], geom->gridy[v1]);
+		  fprintf(bp, "%f %f\n",geom->gridx[v2], geom->gridy[v2]);
+		}
+	      }
+	    }
+	  }
+	}
+	fprintf(op, "\n");
+	if (verbose) {
+	  fprintf(bp, "NaN NaN\n");
+	  fclose(bp);
+	}
+
+	/* Print the output file specification from tile n used by   */
+	/* this tile.                                                */
+	sprintf(key, "df_tile%d-%d.txt",n,rgn);
+	bp = fopen(key, "w");
+	fprintf(bp, "OutputFiles           4\n\n");
+	ns = 0;
+	write_tile_dump(master, bp, "eta", "eta", n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
+	sprintf(key, "temp salt");
+	write_tile_dump(master, bp, "ts", key, n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
+	sprintf(key, "u v");
+	write_tile_dump(master, bp, "uv_nor", key, n, rgn, regionid, nreg, reg, flag, nobn[n], ns++, R_NOR);
+	write_tile_dump(master, bp, "uv_tan", key, n, rgn, regionid, nreg, reg, flag, nobt[n], ns++, R_TAN);
+	fclose(bp);
+      }
+    }
+
+    /* Write the coordinates and save mapping from centres and edges */
+    /* to coordinate indices.                                        */
+    n = 1;
+    fprintf(op, "\nCoordinates\n");
+    for (cc = 1; cc <= geom->n2_e2; cc++) {
+      v = geom->w2_e2[cc];
+      if (v == mask[v]) {
+	fprintf(op, "%d %f %f\n", n, geom->gridx[v], geom->gridy[v]);
+	mapv[v] = n;
+	n++;
+      }
+    }
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      fprintf(op, "%d %f %f\n", n, geom->cellx[c], geom->celly[c]);
+      mapc[c] = n;
+      n++;
+    }
+    if(n - 1 != nv + nreg) hd_quit("cookie cut error.\n");
+
+    /* Write the mesh indices                                        */
+    n = 1;
+    fprintf(op, "\nIndices\n");
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      fprintf(op, "%d %d %d\n",n, geom->npe[c], mapc[c]);
+      for (j = 1; j <= geom->npe[c]; j++) {
+	v = geom->c2v[j][c];
+	fprintf(op, "%d %d ", j, mapv[v]);
+	jp = (j == geom->npe[c]) ? 1 : j + 1;
+	v = geom->c2v[jp][c];
+	fprintf(op, "%d\n", mapv[v]);
+      }
+      n++;
+    }
+
+    /* Write the bathymetry                                          */
+    fprintf(op, "\nBATHY    %d\n", nreg);
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      fprintf(op, "%f\n", geom->botz[c]);
+    }
+
+    fclose(op);
+    i_free_1d(mapc);
+    i_free_1d(mapv);
+    i_free_1d(mask);
+    i_free_1d(maskb);
+    i_free_1d(eask);
+    i_free_1d(reg);
+    i_free_1d(nobc);
+    i_free_1d(nobn);
+    i_free_1d(nobt);
+  }
+  i_free_1d(rask);
+  d_free_1d(regionid);
+}
+
+/* END cookie_cut()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Writes boundary (2way) dumpfile specifications into a df.txt file */
+/*-------------------------------------------------------------------*/
+void write_tile_dump(master_t *master,   /* Master data              */ 
+		     FILE *op,           /* Dump file pointer        */
+		     char *fname,        /* File name                */
+		     char *vars,         /* Variable names           */
+		     int tile,           /* Tile to dump from        */
+		     int obc,            /* Tile files are used by   */
+		     double *regionid,   /* Region array             */
+		     int nreg,           /* # points in tile obc     */
+		     int *reg,           /* Indices of tile obc      */
+		     int **flag,         /* Flag array for tile obc  */
+		     int nobc,           /* Number of points         */
+		     int fn,             /* File number              */
+		     int mode            /* Centers or edges         */
+		     )
+{
+  geometry_t *geom = master->geom;
+  char buf[MAXSTRLEN];
+  int c, cc, e, j, n;
+
+  sprintf(buf, "bdry%d-%d_%s.mpk", tile, obc, fname);
+  fprintf(op, "file%d.name            %s\n", fn, buf);
+  fprintf(op, "file%d.filetype        memory\n", fn);
+  fprintf(op, "file%d.tinc            %5.2f seconds\n", fn, master->grid_dt);
+  fprintf(op, "file%d.sync_dt         0 seconds\n", fn);
+  fprintf(op, "file%d.filter          copy\n", fn);
+  fprintf(op, "file%d.fill_rule       cascade_search\n", fn);
+  fprintf(op, "file%d.bytespervalue   4\n", fn);
+  fprintf(op, "file%d.vars            %s\n", fn, vars);
+  fprintf(op, "file%d.points          %d\n", fn, nobc);
+
+  if (mode == R_OBC) {
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      n = (int)regionid[c];
+      if (n == tile) {
+	if (flag[0][cc] & R_OBC)
+	  fprintf(op, "%f %f\n", geom->cellx[c], geom->celly[c]);
+      }
+    }
+  }
+  if (mode & (R_NOR|R_TAN)) {
+    for (cc = 0; cc < nreg; cc++) {
+      c = reg[cc];
+      n = (int)regionid[c];
+      if (n == tile) {
+	for (j = 1; j <= geom->npe[c]; j++) {
+	  if (flag[j][cc] & mode) {
+	    e = geom->c2e[j][c];
+	    fprintf(op, "%f %f\n", geom->u1x[e], geom->u1y[e]);
+	  }
+	}
+      }
+    }
+  }
+  fprintf(op, "\n");
+}
+
+/* END write_tile_dump()                                             */
+/*-------------------------------------------------------------------*/
 
 
 double intp(double a, double b, int xs, int xe, int x)
@@ -9609,3 +10827,4 @@ void not_included(char *text)
 {
   hd_warn("Functionality %s is not included in COMPAS.\n", text);
 }
+

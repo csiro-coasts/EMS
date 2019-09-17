@@ -19,7 +19,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ncw.c 5833 2018-06-27 00:21:35Z riz008 $
+ *  $Id: ncw.c 6297 2019-08-28 02:28:37Z riz008 $
  */
 
 #include <stdlib.h>
@@ -1400,4 +1400,19 @@ void ncw_def_var_as(const char fname[], int ncid, const char oldvarname[], const
     }
 }
 
+/** Designate chunking
+ *
+ * @param fname NetCDF file name
+ * @param ncid NetCDF file id
+ * @param varid NetCDF variable id
+ * @param chunksize array of chunk sizes
+ */
+void ncw_def_var_chunking(const char fname[], int ncid, int varid, size_t *chunksize)
+{
+  int status = nc_def_var_chunking(ncid, varid, NC_CHUNKED, chunksize);
+  
+  if (status != NC_NOERR)
+    quit("\"%s\": setting chunk sizes failed: %s\n", (fname != NULL?fname:EMPTY), nc_strerror(status));
+  
+}
 // EOF

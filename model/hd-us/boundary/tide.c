@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tide.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: tide.c 6308 2019-09-13 04:29:41Z her127 $
  *
  */
 
@@ -63,6 +63,16 @@ void tide_vec_init(master_t *master, tidal_consts_t *tc, double *cellx,
 int time_to_yr(double t, char *u);
 void set_tmaps_3d(geometry_t *window, int bcond, int cs, int vs, int *map, 
                   int is, int ie, int *ivec);
+int check_tidefile_type(char *name, char *fname, int mode);
+double mjd2gmst(double mjd);
+double mjd2gmst_d(double mjd);
+void lunar_angles(double mjd, double *A, double *dec);
+void moon_pos(double mjd, double *L, double *B);
+double frac(double a);
+double r2r(double x);
+double sgn(double a);
+double atan3 (double a, double b);
+void moonvars(double jdate, double *rasc, double *decl, double *plon, double *plat, double *dist);
 
 double c_b13 = -999.0;
 double c_b129 = 360.0;
@@ -83,10 +93,10 @@ int tmode = 1;                  /* tmode=0 : calculate tide from
          /* tmode=1 : calculate tide from harmonics */
 
 /*-------------------------------------------------------------------*/
-/* Routine to initialise custom tide forcing. The constituent list   */
-/* is read from the parameter file, then phase and amplitude         */
-/* information are read from file and populate the tide data         */
-/* structures.                                                       */
+/* Routine to initialise custom tide forcing along open boundaries.  */
+/* The constituent list is read from the parameter file, then phase  */
+/* and amplitude information are read from file and populate the     */
+/* tide data structures.                                             */
 /*-------------------------------------------------------------------*/
 void custom_tide_init(master_t *master, 
 		      geometry_t **window,
@@ -108,16 +118,22 @@ void custom_tide_init(master_t *master,
   int have_tide_files = 0;
   timeseries_t *tsa, *tsp;
   int tsp_id, tsa_id;
+  int fid, ncerr;
   int y1;
   double stime = master->t;
   double tzi = 0.0, tz = tm_tz_offset(master->timeunit);
   double d1, d2 = 0.0;
-  int bcond;
-  char units[MAXSTRLEN];
+  int bcond = 0;
+  char units[MAXSTRLEN], ampunits[MAXSTRLEN], type[MAXSTRLEN];
   int vs;
   int bs, be, *bec;
+  int botzf, fw;
   double *xloc, *yloc;
   char files[MAXNUMTSFILES][MAXSTRLEN];
+
+  datafile_t *df;
+  df_variable_t *v;
+  df_attribute_t *a;
 
   char *tname[MAXCONSTIT + 1] = {
     /* long period */
@@ -167,32 +183,39 @@ void custom_tide_init(master_t *master,
     tzi = tm_tz_offset(tsp->t_units);
     ts_free(tsp);
     free(tsp);
+    tsa = hd_ts_read(master, master->tide_con_file, 0);
   }
 
   /*-----------------------------------------------------------------*/
   /* Parse windows and boundaries                                    */
   for (n = 1; n <= geom->nwindows; n++) {
-
     ncmax = 0;
+    fw = 0;
     for (nn = 0; nn < window[n]->nobc; nn++) {
       open = window[n]->open[nn];
       vs = 0;
+
       /* Set the pointers                                            */
       if (mode == TD_NU) {
 	tc = &open->tun;
 	tc->type = TD_NU;
+	strcpy(type, "normal u");
       } else if (mode == TD_NV) {
 	tc = &open->tvn;
 	tc->type = TD_NV;
+	strcpy(type, "normal v");
       } else if (mode == TD_TU) {
 	tc = &open->tut;
 	tc->type = TD_TU;
+	strcpy(type, "tangential u");
       } else if (mode == TD_TV) {
 	tc = &open->tvt;
 	tc->type = TD_TV;
+	strcpy(type, "tangential v");
       } else {
 	tc = &open->tc;
 	tc->type = TD_ETA;
+	strcpy(type, "elevation");
       }
 
       /* Get the cells to prescribe tidal harmonics for              */
@@ -276,6 +299,10 @@ void custom_tide_init(master_t *master,
 	  }
 	  if (mask[tc->nt] == -1)
 	    hd_warn("custom_tide_init: Can't recognize tidal constituent %s. Ignoring this constituent.\n", con_name[t]);
+	}
+	if (!tc->nt && !fw) {
+	  hd_warn("custom_tide_init: No tide constitudents specified for %s OBC%d %s\n",type, nn, open->name);
+	  fw = 1;
 	}
 
 	/* Allocate memory */
@@ -380,36 +407,78 @@ void custom_tide_init(master_t *master,
 	  size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
 	  strncpy(name, tc->tname[i], size);
 	  name[size] = '\0';
-	  if (mode &  (TD_NU|TD_TU))
-	    sprintf(buf,"%s_amp_u",name);
-	  else if (mode &  (TD_NV|TD_TV))
-	    sprintf(buf,"%s_amp_v",name);
-	  else
+	  if (mode &  (TD_NU|TD_TU)) {
+	    sprintf(buf,"%s_amp",name);
+	    botzf = check_tidefile_type(buf, master->tide_con_file, mode);
+	    if (botzf == -1) 
+	      hd_quit("Can't find units ms-1 or m2s-1 for %s in %s\n", buf, master->tide_con_file);
+	  } else if (mode &  (TD_NV|TD_TV)) {
+	    sprintf(buf,"%s_amp",name);
+	    botzf = check_tidefile_type(buf, master->tide_con_file, mode);
+	    if (botzf == -1) 
+	      hd_quit("Can't find units ms-1 or m2s-1 for %s in %s\n", buf, master->tide_con_file);
+	  } else {
 	   sprintf(buf,"%s_amp",name);
-	  tsa = frc_read_cell_ts(master, master->tide_con_file, stime,
-				 buf, units, &d2, &tsa_id, NULL);
-	  if (mode &  (TD_NU|TD_TU))
-	    sprintf(buf,"%s_phase_u",name);
-	  else if (mode &  (TD_NV|TD_TV))
-	    sprintf(buf,"%s_phase_v",name);
-	  else
+	   botzf = 0;
+	  }
+	  if (botzf) {
+	    master->tidef |= TD_TRAN;
+	  } else {
+	    master->tidef |= TD_VEL;
+	  }
+
+	  /*
+	  tsa = frcw_read_cell_ts(master, master->tide_con_file, stime,
+				  buf, units, &d2, &tsa_id, NULL);
+	  */
+	  
+	  if ((tsa_id = ts_get_index(tsa, buf)) < 0)
+	    hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+	  
+	  if (mode &  (TD_NU|TD_TU)) {
+	    if (botzf)
+	      sprintf(buf,"%s_phase_U",name);
+	    else
+	      sprintf(buf,"%s_phase_u",name);
+	  } else if (mode &  (TD_NV|TD_TV)) {
+	    if (botzf)
+	      sprintf(buf,"%s_phase_V",name);
+	    else
+	      sprintf(buf,"%s_phase_v",name);
+	  } else
 	    sprintf(buf,"%s_phase",name);	  
+
+	  /*
 	  tsp = frc_read_cell_ts(master, master->tide_con_file, stime,
 				 buf, "degrees", &d2, &tsp_id, NULL);
-
+	  */
+	  if ((tsp_id = ts_get_index(tsa, buf)) < 0)
+	    hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+	  
 	  /* Get the tidal harmonics for each cell on the boundary */
 	  vs = 1;
 	  for (cc = bs; cc <= be; cc++) {
 	    c = bec[cc];
 	    tc->amp[vs][i] = ts_eval_xy(tsa, tsa_id, stime, xloc[c], yloc[c]);
-	    tc->pha[vs][i] = ts_eval_xy(tsp, tsp_id, stime, xloc[c], yloc[c]);
+	    tc->pha[vs][i] = ts_eval_xy(tsa, tsp_id, stime, xloc[c], yloc[c]);
 	    tc->pha[vs][i] = zoneshift(name, tc->pha[vs][i], (int)tzi/3600, 0); 
 	    tc->map[cc] = vs;
 	    set_tmaps_3d(window[n], bcond, c, vs, tc->map, bs, be, bec);
+	    /* Velocoty amplitudes from file are transports; divide  */
+	    /* by model depth to get velocity.                       */
+	    if (botzf) {
+	      int c1 = window[n]->e2c[c][0];
+	      int c2 = window[n]->e2c[c][1];
+	      /*double depth = 0.5 * fabs(window[n]->botz[c1] + window[n]->botz[c2])*/
+	      double depth = fabs(window[n]->botzu1[c]);
+	      tc->amp[vs][i] /= depth;
+	    }
 	    vs++;
 	  }
-	  hd_ts_free(master, tsa);
-	  hd_ts_free(master, tsp);
+	  
+	  /*hd_ts_free(master, tsa);*/
+	  /*hd_ts_free(master, tsp);*/
+	  
 	}
 	if (DEBUG("init_m")) {
 	  cc = 1;
@@ -430,12 +499,672 @@ void custom_tide_init(master_t *master,
       }
     }
   }
+  hd_ts_free(master, tsa);
+  /*hd_ts_free(master, tsp);*/
+}
+
+/* END custom_tide_init()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to check if a tide file contains transports (with units   */
+/* m2s-1) for the amplitute of velocity constituents, or speed (with */
+/* units ms-1). Returns 1 for the former and 0 for the latter.       */
+/*-------------------------------------------------------------------*/
+int check_tidefile_type(char *name, char *fname, int mode)
+{
+  char buf[MAXSTRLEN];
+  char buf1[MAXSTRLEN];
+  char buf2[MAXSTRLEN];
+  char units[MAXSTRLEN];
+  char units1[MAXSTRLEN];
+  int fid;
+
+  nc_open(fname, NC_NOWRITE, &fid);
+
+  /* Check for velocity amplitudes in the file */
+  if (mode & (TD_NU|TD_TU))
+    sprintf(buf, "%s_u",name);
+  else if (mode &  (TD_NV|TD_TV))
+    sprintf(buf, "%s_v",name);
+  else
+    sprintf(buf, "%s", name);
+  sprintf(units, "%c", '\0');
+  if (nc_get_att_text(fid, ncw_var_id(fid, buf), "units", units) >= 0) {
+    strcpy(buf1, units);
+    if (strcmp(buf1, "ms-1") == 0) {
+      strcpy(name, buf);
+      nc_close(fid);
+      return(0);
+    }
+  }
+  if (mode &  (TD_NU|TD_TU))
+    sprintf(buf, "%s_U",name);
+  else if (mode &  (TD_NV|TD_TV))
+    sprintf(buf, "%s_V",name);
+  else
+    sprintf(buf, "%s",name);
+  sprintf(buf1, "%c", '\0');
+  nc_get_att_text(fid, ncw_var_id(fid, buf), "units", units1);
+  strcpy(buf2, units1);
+  if (strcmp(buf2, "m2s-1") == 0) {
+    strcpy(name, buf);
+    nc_close(fid);
+    return(1);
+  }
+  nc_close(fid);
+  return(-1);
+}
+
+/* END check_tidefile_type()                                         */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to initialise custom tide forcing within the mesh.        */
+/* The constituent list is read from the parameter file, then phase  */
+/* and amplitude information are read from file and populate the     */
+/* tide data structures.                                             */
+/*-------------------------------------------------------------------*/
+void custom_tide_grid_init(master_t *master, 
+			   geometry_t **window
+			   )
+{
+  geometry_t *geom = master->geom;
+  open_bdrys_t *open;
+  cstring *con_name;
+  tidal_consts_t *tc = NULL;
+  FILE *fp2;
+  int i, k, t, c, cc, m, n, nn;
+  int nc, ncmax;
+  int size;
+  int *mask;
+  char buf[MAXSTRLEN], name[5];
+  int have_tide_files = 0;
+  timeseries_t *tsa, *tsp;
+  int tsp_id, tsa_id;
+  int y1;
+  double stime = master->t;
+  double tzi = 0.0, tz = tm_tz_offset(master->timeunit);
+  double d1, d2 = 0.0;
+  char files[MAXNUMTSFILES][MAXSTRLEN];
+  char tide_con[MAXSTRLEN];
+
+  char *tname[MAXCONSTIT + 1] = {
+    /* long period */
+    "LP   55.565",              /* 1 */
+    "Sa   56.554",              /* 2 */
+    "Ssa  57.555",              /* 3 */
+    "TERa 58.554",              /* 4 */
+    "Mm   65.455",              /* 5 */
+    "Mf   75.555",              /* 6 */
+    "TERm 85.455",              /* 7 */
+    "93a  93.555",              /* 8 */
+    /* diurnal */
+    "2Q1 125.755",              /* 9 */
+    "Q1  135.655",              /* 10 */
+    "O1  145.555",              /* 11 */
+    "M1  155.655",              /* 12 */
+    "P1  163.555",              /* 13 */
+    "S1  164.556",              /* 14 */
+    "K1  165.555",              /* 15 */
+    "PHI1 167.555",             /* 16 */
+    "J1  175.455",              /* 17 */
+    "OO1 185.555",              /* 18 */
+    "NU1 195.455",              /* 19 */
+    /* semi-diurnal */
+    "227 227.655",              /* 20 */
+    "2N2 235.755",              /* 21 */
+    "MU2 237.555",              /* 22 */
+    "N2  245.655",              /* 23 */
+    "NU2 247.455",              /* 24 */
+    "M2  255.555",              /* 25 */
+    "L2  265.455",              /* 26 */
+    "T2  272.556",              /* 27 */
+    "S2  273.555",              /* 28 */
+    "K2  275.555",              /* 29 */
+    "285 285.455"
+  };                            /* 30 */
+
+  strcpy(tide_con, "M2 S2 N2 K2 K1 O1 P1 Q1");
+
+  /* Check to see if the CSR tides have been initialised.            */
+  if(strlen(master->nodal_dir) > 0)
+    have_tide_files = 1;
+
+  /* Get the timezone                                                */
+  if (strlen(master->tide_con_file)) {
+    tsp = (timeseries_t *)malloc(sizeof(timeseries_t));
+    memset(tsp, 0, sizeof(timeseries_t));
+    ts_read(master->tide_con_file, tsp);
+    tzi = tm_tz_offset(tsp->t_units);
+    ts_free(tsp);
+    free(tsp);
+  } else {
+    hd_warn("Can't find TIDE_CONSTITUENTS file for custom tide computation.\n");
+    master->numbers1 &= ~TPXO;
+    for (n = 1; n <= geom->nwindows; n++) {
+      win_priv_t *wincon = window[n]->wincon;
+      wincon->numbers1 &= ~TPXO;
+    }
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Parse windows and boundaries                                    */
+  for (n = 1; n <= geom->nwindows; n++) {
+    win_priv_t *wincon = window[n]->wincon;
+
+    tc = &wincon->tc;
+    ncmax = 0;
+
+    if (wincon->csr_tide == 1)
+      hd_quit("Cannot allocate tidal structure: CSR TIDAL_REMOVAL already set.\n");
+
+    tc->map = NULL;
+    size = window[n]->szcS;
+
+    strcpy(buf, tide_con);
+    ncmax = parseline(buf, (char **)files, MAXNUMTSFILES);
+
+    if (size) {
+
+      /*-------------------------------------------------------------*/
+      /* Allocate the cells for the tidal structures                 */
+      tc->amp = d_alloc_2d(ncmax + 1, size);
+      tc->pha = d_alloc_2d(ncmax + 1, size);
+      
+      /*-------------------------------------------------------------*/
+      /* Set the harmonics if TIDALC boundaries are found            */
+      if (!have_tide_files)
+	hd_quit
+	  ("custom_tide_grid_init: Custom tide specified, but no nodal constituent files.");
+	
+      /* Read in the desired constituent names                       */
+      strcpy(buf, tide_con);
+      nc = parseline(buf, (char **)files, MAXNUMTSFILES);
+
+      con_name = (cstring *)malloc(sizeof(cstring) * nc);
+      for (t = 0; t < nc; t++) {
+	strcpy(con_name[t], ((char **)files)[t]);
+      }
+      mask = i_alloc_1d(nc+1);
+      for (t = 0; t <= nc; t++) mask[t] = -1;
+
+      /* Get the number of constituents                              */
+      tc->nt = 0;
+      for (t = 0; t < nc; t++) {
+	for (i = i_1[0]; i <= i_2[2]; i++) {
+	  size = strlen(tname[i-1]) - strlen(strpbrk(tname[i-1], " "));
+	  strncpy(name, tname[i-1], size);
+	  name[size] = '\0';
+	  if (strcmp(con_name[t], name) == 0) {
+	    tc->nt++;
+	    mask[tc->nt] = i-1;
+	    break;
+	  }
+	}
+	if (mask[tc->nt] == -1)
+	  hd_warn("custom_tide_grid_init: Can't recognize tidal constituent %s. Ignoring this constituent.\n", con_name[t]);
+      }
+      
+      /* Allocate memory                                             */
+      tc->z0 = z0;
+      tc->yr = d_alloc_1d(yrs + 1);
+      size = tc->nt + 1;
+      tc->sigma = d_alloc_1d(size);
+      tc->j = d_alloc_2d(size, yrs + 1);
+      tc->v = d_alloc_2d(size, yrs + 1);
+      tc->vpv = d_alloc_2d(size, yrs + 1);
+
+      /* Get the tidal constituent names                             */
+      tc->tname = (char **)malloc((tc->nt + 1) * sizeof(char *));
+      for (i = 1; i <= tc->nt; i++) {
+	tc->tname[i] = (char *)malloc(MAXCONSTIT * sizeof(char));
+	strcpy(tc->tname[i], tname[mask[i]]);
+      }
+      i_free_1d(mask);
+      free(con_name);
+      
+      /* Read in astronomical arguments                              */
+      for (i = 1; i <= tc->nt; i++) {
+	size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
+	strncpy(name, tc->tname[i], size);
+	name[size] = '\0';
+	sprintf(buf, "%s%s.con", master->nodal_dir, strlwr(name));
+	if (strcasecmp(name, "z0") != 0) {
+	  if ((fp2 = fopen(buf, "r")) == NULL) {
+	    hd_quit("custom_bdry_init: Can't open file '%s'.", buf);
+	    continue;
+	  }
+	  fscanf(fp2, "%lf", &d1);
+	  tc->sigma[i] = d1 / 3600.0; /* Convert to degrees per second */
+	  k = 1;
+	  while (k <= yrs) {
+	    if ((y1 = feof(fp2)))
+	      break;
+	    fscanf(fp2, "%lf %lf %lf %lf", &tc->yr[k], &tc->j[k][i],
+		   &tc->v[k][i], &tc->vpv[k][i]);
+	    k++;
+	  }
+	  fclose(fp2);
+	  if (k - 1 != yrs)
+	    hd_quit("custom_bdry_init: Could not read %d years.", yrs);
+	}
+      }
+
+      /* Check that the model timeunit is in seconds                 */
+      sprintf(buf, "%s", strlwr(master->timeunit));
+      if (strcasecmp(strtok(buf, " "), "seconds") == 0)
+	d2 = 86400.0;
+      else if (strcasecmp(strtok(buf, " "), "minutes") == 0)
+	d2 = 1440.0;
+      else if (strcasecmp(strtok(buf, " "), "minutes") == 0)
+	d2 = 1440.0;
+      else if (strcasecmp(strtok(buf, " "), "hours") == 0)
+	d2 = 24.0;
+      else if (strcasecmp(strtok(buf, " "), "days") == 0)
+	d2 = 1.0;
+      else
+	hd_quit("%s is an invalid timeunit for tidal forcing\n",
+		master->timeunit);
+
+      /* Get the Julian days of valid years                          */
+      sprintf(buf, "days since 1990-01-01 00:00:00");
+      m = (int)(tz / 3600);
+      if (m >= 0 && m < 10)
+	sprintf(buf, "%s +0%d", buf, m);
+      else if (m >= 10)
+	sprintf(buf, "%s +%d", buf, m);
+      else if (m < 0 && m > -10)
+	sprintf(buf, "%s -0%d", buf, -m);
+      else if (m <= -10)
+	sprintf(buf, "%s -%d", buf, -m);
+      tc->yr[1] = -7305.0;          /* 1 Jan 1970 relative to 1 Jan 1990 */
+      tm_change_time_units(buf, master->timeunit, &tc->yr[1], 1);
+      y1 = 1970;
+      for (k = 2; k <= yrs; k++) {
+	if (y1 % 4 == 0 && (y1 % 100 != 0 || y1 % 400 == 0))
+	  d1 = 366.0;
+	else
+	  d1 = 365.0;
+	y1++;
+	/* Nodal correction years converted to seconds relative to   */
+	/* the model timeunit.                                       */
+	tc->yr[k] = tc->yr[k - 1] + d1 * d2;
+      }
+
+      /* Find the first year less than Julian day                    */
+      k = 1;
+      while (stime - tz > tc->yr[k] && k <= yrs)
+	k++;
+      tc->k = k - 1;
+      if (k == yrs) {
+	hd_warn("custom_tide_init: Simulation period lies outside nodel correction range.\n");
+      }
+      
+      /* Read the amplitude and phase files and check they contain   */
+      /* the specified constituents.                                 */
+      for (i = 1; i <= tc->nt; i++) {
+	
+	size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
+	strncpy(name, tc->tname[i], size);
+	name[size] = '\0';
+	sprintf(buf,"%s_amp",name);
+	tsa = frc_read_cell_ts(master, master->tide_con_file, stime,
+			       buf, "m", &d2, &tsa_id, NULL);
+	sprintf(buf,"%s_phase",name);	  
+	tsp = frc_read_cell_ts(master, master->tide_con_file, stime,
+			       buf, "degrees", &d2, &tsp_id, NULL);
+	
+	/* Get the tidal harmonics for each cell in the domain       */
+	for (cc = 1; cc <= window[n]->b2_t; cc++) {
+	  c = window[n]->w2_t[cc];
+	  tc->amp[c][i] = ts_eval_xy(tsa, tsa_id, stime, window[n]->cellx[c], window[n]->celly[c]);
+	  tc->pha[c][i] = ts_eval_xy(tsp, tsp_id, stime, window[n]->cellx[c], window[n]->celly[c]);
+	  tc->pha[c][i] = zoneshift(name, tc->pha[c][i], (int)tzi/3600, 0);
+	}
+	/* Open boundary ghosts
+	for (nn = 0; nn < window[n]->nobc; nn++) {
+	  open_bdrys_t *open = window[n]->open[nn];
+	  for (cc = 1; cc <= open->no2_e1; cc++) {
+	    c = open->ogc_t[cc];
+	    tc->amp[c][i] = ts_eval_xy(tsa, tsa_id, stime, window[n]->cellx[c], window[n]->celly[c]);
+	    tc->pha[c][i] = ts_eval_xy(tsp, tsp_id, stime, window[n]->cellx[c], window[n]->celly[c]);
+	    tc->pha[c][i] = zoneshift(name, tc->pha[c][i], (int)tzi/3600, 0);
+	  }
+	}
+	*/
+	hd_ts_free(master, tsa);
+	hd_ts_free(master, tsp);
+      }
+      if (DEBUG("init_m")) {
+	cc = 1;
+	dlog("init_m", "\n\nwindow %d) has %d tidal constituents\n", n, tc->nt);	     
+	/* Freq. in deg/sec = 24*(360/freq)/86400 hours              */
+	dlog("init_m", " Name Doodson   Freq(o/s) Amp(m)  Phase(o)\n");
+	for(i = 1; i <= tc->nt; i++) {
+	  dlog("init_m", "  %s %f %f %f\n",tc->tname[i], tc->sigma[i],
+	       tc->amp[cc][i], tc->pha[cc][i]);
+	}
+      }
+    }
+  }
 
   hd_ts_free(master, tsa);
   hd_ts_free(master, tsp);
 }
 
-/* END custom_tide_init()                                            */
+/* END custom_tide_grid_init()                                       */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to initialise custom tide forcing within the mesh.        */
+/* The constituent list is read from the parameter file, then phase  */
+/* and amplitude information are read from file and populate the     */
+/* tide data structures.                                             */
+/*-------------------------------------------------------------------*/
+void custom_tide_grid_init_uv(master_t *master, 
+			      geometry_t **window,
+			      int mode
+			      )
+{
+  geometry_t *geom = master->geom;
+  cstring *con_name;
+  tidal_consts_t *tc = NULL;
+  FILE *fp2;
+  int i, k, t, c, cc, m, n, nn;
+  int nc, ncmax;
+  int size;
+  int *mask;
+  char buf[MAXSTRLEN], name[5];
+  int have_tide_files = 0;
+  int botzf;
+  timeseries_t *tsa;
+  int tsp_id, tsa_id;
+  int y1;
+  double stime = master->t;
+  double tzi = 0.0, tz = tm_tz_offset(master->timeunit);
+  double d1, d2 = 0.0;
+  char files[MAXNUMTSFILES][MAXSTRLEN];
+  char tide_con[MAXSTRLEN];
+
+  char *tname[MAXCONSTIT + 1] = {
+    /* long period */
+    "LP   55.565",              /* 1 */
+    "Sa   56.554",              /* 2 */
+    "Ssa  57.555",              /* 3 */
+    "TERa 58.554",              /* 4 */
+    "Mm   65.455",              /* 5 */
+    "Mf   75.555",              /* 6 */
+    "TERm 85.455",              /* 7 */
+    "93a  93.555",              /* 8 */
+    /* diurnal */
+    "2Q1 125.755",              /* 9 */
+    "Q1  135.655",              /* 10 */
+    "O1  145.555",              /* 11 */
+    "M1  155.655",              /* 12 */
+    "P1  163.555",              /* 13 */
+    "S1  164.556",              /* 14 */
+    "K1  165.555",              /* 15 */
+    "PHI1 167.555",             /* 16 */
+    "J1  175.455",              /* 17 */
+    "OO1 185.555",              /* 18 */
+    "NU1 195.455",              /* 19 */
+    /* semi-diurnal */
+    "227 227.655",              /* 20 */
+    "2N2 235.755",              /* 21 */
+    "MU2 237.555",              /* 22 */
+    "N2  245.655",              /* 23 */
+    "NU2 247.455",              /* 24 */
+    "M2  255.555",              /* 25 */
+    "L2  265.455",              /* 26 */
+    "T2  272.556",              /* 27 */
+    "S2  273.555",              /* 28 */
+    "K2  275.555",              /* 29 */
+    "285 285.455"
+  };                            /* 30 */
+
+  strcpy(tide_con, "M2 S2 N2 K2 K1 O1 P1 Q1");
+
+  /* Check to see if the CSR tides have been initialised.            */
+  if(strlen(master->nodal_dir) > 0)
+    have_tide_files = 1;
+
+  /* Get the timezone                                                */
+  if (strlen(master->tide_con_file)) {
+    tsa = hd_ts_read(master, master->tide_con_file, 0);
+    tzi = tm_tz_offset(tsa->t_units);
+  } else {
+    hd_warn("Can't find TIDE_CONSTITUENTS file for custom tide computation.\n");
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Parse windows and boundaries                                    */
+  for (n = 1; n <= geom->nwindows; n++) {
+    win_priv_t *wincon = window[n]->wincon;
+
+    if (mode & TD_NU)
+      tc = &wincon->tcu;
+    else if (mode & TD_NV)
+      tc = &wincon->tcv;
+    ncmax = 0;
+
+    if (wincon->csr_tide == 1)
+      hd_quit("Cannot allocate tidal structure: CSR TIDAL_REMOVAL already set.\n");
+
+    tc->map = NULL;
+    size = window[n]->szeS;
+
+    strcpy(buf, tide_con);
+    ncmax = parseline(buf, (char **)files, MAXNUMTSFILES);
+
+    if (size) {
+
+      /*-------------------------------------------------------------*/
+      /* Allocate the cells for the tidal structures                 */
+      tc->amp = d_alloc_2d(ncmax + 1, size);
+      tc->pha = d_alloc_2d(ncmax + 1, size);
+      
+      /*-------------------------------------------------------------*/
+      /* Set the harmonics if TIDALC boundaries are found            */
+      if (!have_tide_files)
+	hd_quit
+	  ("custom_tide_grid_init: Custom tide specified, but no nodal constituent files.");
+	
+      /* Read in the desired constituent names                       */
+      strcpy(buf, tide_con);
+      nc = parseline(buf, (char **)files, MAXNUMTSFILES);
+
+      con_name = (cstring *)malloc(sizeof(cstring) * nc);
+      for (t = 0; t < nc; t++) {
+	strcpy(con_name[t], ((char **)files)[t]);
+      }
+      mask = i_alloc_1d(nc+1);
+      for (t = 0; t <= nc; t++) mask[t] = -1;
+
+      /* Get the number of constituents                              */
+      tc->nt = 0;
+      for (t = 0; t < nc; t++) {
+	for (i = i_1[0]; i <= i_2[2]; i++) {
+	  size = strlen(tname[i-1]) - strlen(strpbrk(tname[i-1], " "));
+	  strncpy(name, tname[i-1], size);
+	  name[size] = '\0';
+	  if (strcmp(con_name[t], name) == 0) {
+	    tc->nt++;
+	    mask[tc->nt] = i-1;
+	    break;
+	  }
+	}
+	if (mask[tc->nt] == -1)
+	  hd_warn("custom_tide_grid_init: Can't recognize tidal constituent %s. Ignoring this constituent.\n", con_name[t]);
+      }
+      
+      /* Allocate memory                                             */
+      tc->z0 = z0;
+      tc->yr = d_alloc_1d(yrs + 1);
+      size = tc->nt + 1;
+      tc->sigma = d_alloc_1d(size);
+      tc->j = d_alloc_2d(size, yrs + 1);
+      tc->v = d_alloc_2d(size, yrs + 1);
+      tc->vpv = d_alloc_2d(size, yrs + 1);
+
+      /* Get the tidal constituent names                             */
+      tc->tname = (char **)malloc((tc->nt + 1) * sizeof(char *));
+      for (i = 1; i <= tc->nt; i++) {
+	tc->tname[i] = (char *)malloc(MAXCONSTIT * sizeof(char));
+	strcpy(tc->tname[i], tname[mask[i]]);
+      }
+      i_free_1d(mask);
+      free(con_name);
+
+      /* Read in astronomical arguments                              */
+      for (i = 1; i <= tc->nt; i++) {
+	size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
+	strncpy(name, tc->tname[i], size);
+	name[size] = '\0';
+	sprintf(buf, "%s%s.con", master->nodal_dir, strlwr(name));
+	if (strcasecmp(name, "z0") != 0) {
+	  if ((fp2 = fopen(buf, "r")) == NULL) {
+	    hd_quit("custom_bdry_init: Can't open file '%s'.", buf);
+	    continue;
+	  }
+	  fscanf(fp2, "%lf", &d1);
+	  tc->sigma[i] = d1 / 3600.0; /* Convert to degrees per second */
+	  k = 1;
+	  while (k <= yrs) {
+	    if ((y1 = feof(fp2)))
+	      break;
+	    fscanf(fp2, "%lf %lf %lf %lf", &tc->yr[k], &tc->j[k][i],
+		   &tc->v[k][i], &tc->vpv[k][i]);
+	    k++;
+	  }
+	  fclose(fp2);
+	  if (k - 1 != yrs)
+	    hd_quit("custom_bdry_init: Could not read %d years.", yrs);
+	}
+      }
+
+      /* Check that the model timeunit is in seconds                 */
+      sprintf(buf, "%s", strlwr(master->timeunit));
+      if (strcasecmp(strtok(buf, " "), "seconds") == 0)
+	d2 = 86400.0;
+      else if (strcasecmp(strtok(buf, " "), "minutes") == 0)
+	d2 = 1440.0;
+      else if (strcasecmp(strtok(buf, " "), "minutes") == 0)
+	d2 = 1440.0;
+      else if (strcasecmp(strtok(buf, " "), "hours") == 0)
+	d2 = 24.0;
+      else if (strcasecmp(strtok(buf, " "), "days") == 0)
+	d2 = 1.0;
+      else
+	hd_quit("%s is an invalid timeunit for tidal forcing\n",
+		master->timeunit);
+
+      /* Get the Julian days of valid years                          */
+      sprintf(buf, "days since 1990-01-01 00:00:00");
+      m = (int)(tz / 3600);
+      if (m >= 0 && m < 10)
+	sprintf(buf, "%s +0%d", buf, m);
+      else if (m >= 10)
+	sprintf(buf, "%s +%d", buf, m);
+      else if (m < 0 && m > -10)
+	sprintf(buf, "%s -0%d", buf, -m);
+      else if (m <= -10)
+	sprintf(buf, "%s -%d", buf, -m);
+      tc->yr[1] = -7305.0;          /* 1 Jan 1970 relative to 1 Jan 1990 */
+      tm_change_time_units(buf, master->timeunit, &tc->yr[1], 1);
+      y1 = 1970;
+      for (k = 2; k <= yrs; k++) {
+	if (y1 % 4 == 0 && (y1 % 100 != 0 || y1 % 400 == 0))
+	  d1 = 366.0;
+	else
+	  d1 = 365.0;
+	y1++;
+	/* Nodal correction years converted to seconds relative to   */
+	/* the model timeunit.                                       */
+	tc->yr[k] = tc->yr[k - 1] + d1 * d2;
+      }
+
+      /* Find the first year less than Julian day                    */
+      k = 1;
+      while (stime - tz > tc->yr[k] && k <= yrs)
+	k++;
+      tc->k = k - 1;
+      if (k == yrs) {
+	hd_warn("custom_tide_init: Simulation period lies outside nodel correction range.\n");
+      }
+      
+      /* Read the amplitude and phase files and check they contain   */
+      /* the specified constituents.                                 */
+      for (i = 1; i <= tc->nt; i++) {
+	
+	size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
+	strncpy(name, tc->tname[i], size);
+	name[size] = '\0';
+
+	sprintf(buf,"%s_amp",name);
+	botzf = check_tidefile_type(buf, master->tide_con_file, mode);
+	/*
+	tsa = frcw_read_cell_ts(master, master->tide_con_file, stime,
+				buf, "ms-1", &d2, &tsa_id, NULL);
+	*/
+	if (botzf) {
+	  master->tidef |= TD_TRAN;
+	} else {
+	  master->tidef |= TD_VEL;
+	}
+
+	if ((tsa_id = ts_get_index(tsa, buf)) < 0)
+	  hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+
+	if (mode & TD_NU) {
+	  if (botzf)
+	    sprintf(buf,"%s_phase_U",name);
+	  else
+	    sprintf(buf,"%s_phase_u",name);
+	} else {
+	  if (botzf)
+	    sprintf(buf,"%s_phase_V",name);
+	  else
+	    sprintf(buf,"%s_phase_v",name);
+	}
+	if ((tsp_id = ts_get_index(tsa, buf)) < 0)
+	  hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+	/*
+	tsp = frc_read_cell_ts(master, master->tide_con_file, stime,
+			       buf, "degrees", &d2, &tsp_id, NULL);
+	*/
+	/* Get the tidal harmonics for each cell in the domain       */
+	for (cc = 1; cc <= window[n]->b2_e1; cc++) {
+	  c = window[n]->w2_e1[cc];
+	  tc->amp[c][i] = ts_eval_xy(tsa, tsa_id, stime, window[n]->u1x[c], window[n]->u1y[c]);
+	  tc->pha[c][i] = ts_eval_xy(tsa, tsp_id, stime, window[n]->u1x[c], window[n]->u1y[c]);
+	  tc->pha[c][i] = zoneshift(name, tc->pha[c][i], (int)tzi/3600, 0);
+	  /* Velocoty amplitudes from file are transports; divide    */
+	  /* by model depth to get velocity.                         */
+	  if (botzf) {
+	    int c1 = window[n]->e2c[c][0];
+	    int c2 = window[n]->e2c[c][1];
+	    /*double depth = 0.5 * fabs(window[n]->botz[c1] + window[n]->botz[c2]);*/
+	    double depth = fabs(window[n]->botzu1[c]);
+	    tc->amp[c][i] /= depth;
+	  }
+	}
+	/*
+	hd_ts_free(master, tsa);
+	hd_ts_free(master, tsp);
+	*/
+      }
+    }
+  }
+  hd_ts_free(master, tsa);
+}
+
+/* END custom_tide_grid_init_uv()                                    */
 /*-------------------------------------------------------------------*/
 
 
@@ -551,7 +1280,7 @@ void csr_tide_grid_init(master_t *master, geometry_t **window)
   /* if required.                                                    */
   for (n = 1; n <= master->nwindows; n++) {
     win_priv_t *wincon = window[n]->wincon;    /* Window constants   */
-    if (do_tide) {
+    if (do_tide && wincon->tide_r & CSR_R) {
       tide_vec_init(master, &wincon->tc, window[n]->cellx, window[n]->celly, 
 		    window[n]->w2_t, window[n]->b2_t);
       wincon->csr_tide = 1;
@@ -931,7 +1660,7 @@ void tide_vec_init(master_t *master,    /* Master data               */
     sprintf(buf, "%s%s.con", master->nodal_dir, strlwr(name));
     if (strcasecmp(name, "z0") != 0) {
       if ((fp2 = fopen(buf, "r")) == NULL) {
-        hd_quit("tide_bdry_init: Can't open file '%s'.", buf);
+        hd_quit("tide_vec_init: Can't open file '%s'.", buf);
         continue;
       }
       fscanf(fp2, "%lf", &d1);
@@ -946,7 +1675,7 @@ void tide_vec_init(master_t *master,    /* Master data               */
       }
       fclose(fp2);
       if (k - 1 != yrs)
-        hd_quit("tide_bdry_init: Could not read %d years.", yrs);
+        hd_quit("tide_vec_init: Could not read %d years.", yrs);
     }
   }
 
@@ -2264,4 +2993,466 @@ int time_to_yr(double t, char *u)
   tm_to_julsecs(j, &y, &mo, &d, &h, &mi, &s);
 
   return(y);
+}
+
+/*-------------------------------------------------------------------*/
+/* Computes the equilibrium tide                                     */
+/*-------------------------------------------------------------------*/
+void equ_tide_eval(geometry_t *window,    /* Window geometry         */
+		   window_t *windat,      /* Window data             */
+		   win_priv_t *wincon,    /* Window constants        */
+		   double *equitide       /* Equilibrium tide array  */
+		   )
+{
+  int n, c, cc, cs;
+  int yr, mon, nday, jd; /* Year, month, day, Julian date            */
+  double day;            /* Day of year                              */
+  double hrs;            /* Hours at longitude lon                   */
+  double ml = 7.35e22;   /* Mass of the moon                         */
+  double ms = 1.99e30;   /* Mass of the sun                          */
+  double me = 5.97e24;   /* Mass of the earth                        */
+  double a = 6370997.0;  /* Radius of the earth                      */
+  double Rl = 3844e5;    /* Mean distance of moon from earth         */
+  double Rs = 1496e8;    /* Mean distance of sun from earth          */
+  double es = 0.0167086; /* Solar eccentricity                       */
+  double el = 0.0549;    /* Lunar eccentricity                       */
+  double as = 149.60e9;  /* Sun semi-maor axis (m)                   */
+  double lat;            /* Latitude (radians)                       */ 
+  double lon;            /* Longitude (degrees)                      */
+  double gmst;           /* Greenwhich mean sidereal time (hours)    */
+  double Al;             /* Lunar right ascension of ascending node  */
+  double elon, elat;     /* Lunar ecliptic longitude and latitude    */
+  double mass[2];        /* Lunar and solar mass (kg)                */
+  double radius[2];      /* Lunar and solar distance (m)             */
+  double dec[2];         /* Lunar and solar declination (rad)        */
+  double hrang[2];       /* Lunar and solar hour angle (rad)         */
+  double jt;             /* Julian date                              */
+  double d2r = PI/180.0; /* Degrees to radians                       */
+  double C0, C1, C2;
+  double d1, sins, coss;
+
+  /* Set up arrays                                                   */
+  mass[0] = ml; mass[1] = ms;
+  radius[0] = Rl; radius[1] = Rs;
+  el *= d2r;
+  for (n = 0; n <= 1; n++)
+    mass[n] = a * (mass[n] / me);
+
+  /* Get the Julian date                                             */
+  tm_time_to_ymd(windat->t, master->timeunit, &yr, &mon, &nday);
+  jd = date_to_jul(mon, nday, yr);
+  /* Julian date starts at midday - adjust half a day                */
+  jt = (double)jd - 0.5;
+
+  /* Get the Greenwhich mean sidereal time in hours                  */
+  /* see https://aa.usno.navy.mil/faq/docs/GAST.php                  */
+  jt += windat->days - floor(windat->days);
+  gmst = fmod(18.697374558 + 24.06570982441908 * (jt - 2451545.0), 24.0) * PI / 12.0;
+
+  /* Get the lunar right ascension, radius and declination           */
+  moonvars(jt, &Al, &dec[0], &elon, &elat, &radius[0]);
+  radius[0] *= 1e3;
+
+  /* Get the equilibrium tide                                        */
+  for (cc = 1; cc <= window->a2_t; cc++) {
+    double ramp = (wincon->rampf & (TIDALH|TIDALC)) ? windat->rampval : 1.0;
+    c = window->w2_t[cc];
+    cs = window->m2d[c];
+    lon = window->cellx[cs];
+    lat = window->celly[cs] * d2r;
+
+    /* Get the day of the year                                       */
+    if (window->is_geog)
+      dtime(NULL, master->timeunit, windat->t, &yr, &day, &lon);
+    else
+      continue;
+
+    /* Get the solar hour angle                                      */
+    nday = (int)day;
+    hrs = 24 * (day - (double)nday);
+    hrang[1] = (hrs - 12.0) * PI / 12.0;
+    radius[1] = d2r * day * 360.0 / 365.25;
+    radius[1] = as * (1.0 - es * es) / (1.0 + es *cos(radius[1]));
+    
+    /* Get the solar declination                                     */
+    d1 = nday * 2 * PI / 365.0;
+    dec[1] = 0.006918 + 0.070257 * sin(d1) - 0.399912 * cos(d1)
+      + 0.000907 * sin(2 * d1) - 0.006758 * cos(2 * d1)
+      + 0.00148 * sin(3 * d1) - 0.002697 * cos(3 * d1);
+
+    /* Get the lunar hour angle (Pugh Eq. 3.20a)                     */
+    hrang[0] = lon * d2r + gmst - Al;
+
+    /* Compute the equibibrium tide contribution                     */
+    equitide[cs] = 0.0;
+    for (n = 0; n <= 1; n++) {
+      /* Get the time dependent coefficients                         */
+      d1 = pow(a / radius[n], 3.0);
+      C0 = d1 * (1.5 * sin(dec[n]) * sin(dec[n]) - 0.5);
+      C1 = d1 * (0.75 * sin(2.0*dec[n]) * sin(2.0*dec[n])*cos(hrang[n]));
+      C2 = d1 * (0.75 * cos(dec[n]) * cos(dec[n])*cos(2.0*hrang[n]));
+
+      sins = sin(lat)*sin(lat);
+      coss = cos(lat)*cos(lat);
+      equitide[cs] += mass[n] * (C0 * (1.5 * sins - 0.5) +
+				 C1 * sin(2.0 * lat)+
+				 C2 * coss);
+      /*printf("%d %d %f %f %f : %f %f\n",c,n,dec[n],lat*180/PI,hrang[n]*180/PI,windat->eta[cs],eta);*/
+    }
+    equitide[c] *= ramp;
+  }
+  /* Set the ghost cells                                             */
+  set_lateral_bc_eta(equitide, window->nbptS, window->bpt,
+		     window->bin, window->bin2, 0);
+}
+
+
+double equ_tide_evalo(geometry_t *window, window_t *windat, int c)
+{
+  int n, cs = window->m2d[c];
+  int yr, mon, nday, jd; /* Year, month, day, Julian date            */
+  double day;            /* Day of year                              */
+  double hrs;            /* Hours at longitude lon                   */
+  double ml = 7.35e22;   /* Mass of the moon                         */
+  double ms = 1.99e30;   /* Mass of the sun                          */
+  double me = 5.97e24;   /* Mass of the earth                        */
+  double a = 6370997.0;  /* Radius of the earth                      */
+  double Rl = 3844e5;    /* Mean distance of moon from earth         */
+  double Rs = 1496e8;    /* Mean distance of sun from earth          */
+  double es = 0.0167086; /* Solar eccentricity                       */
+  double el = 0.0549;    /* Lunar eccentricity                       */
+  double as = 149.60e9;  /* Sun semi-maor axis (m)                   */
+  double lat;            /* Latitude (radians)                       */ 
+  double lon = window->cellx[cs];  /* Longitude (degrees)            */
+  double gmst;           /* Greenwhich mean sidereal time (hours)    */
+  double Al;             /* Lunar right ascension of ascending node  */
+  double elon, elat;     /* Lunar ecliptic longitude and latitude    */
+  double mass[2];        /* Lunar and solar mass (kg)                */
+  double radius[2];      /* Lunar and solar distance (m)             */
+  double dec[2];         /* Lunar and solar declination (rad)        */
+  double hrang[2];       /* Lunar and solar hour angle (rad)         */
+  double jt;             /* Julian date                              */
+  double eta;            /* Equilibrium tide height (m)              */
+  double w0 = 1.0;        /* Mean solar day, cycles/mean solar day   */
+  double w1 = 0.9661369;  /* Mean lunar day                          */
+  double w2 = 0.0366009;  /* Sidereal month                          */
+  double w3 = 0.0027379;  /* Tropical year                           */
+  double w4 = 0.0030937;  /* Lunar perigee                           */
+  double w5 = 0.0001471;  /* Regression of lunar node                */
+  double w0d = 15.0;      /* Mean solar day, deg/mean solar hour     */
+  double w1d = 14.4921;   /* Mean lunar day                          */
+  double w2d = 0.5490;    /* Sidereal month                          */
+  double w3d = 0.0411;    /* Tropical year                           */
+  double w4d = 0.0046;    /* Lunar perigee                           */
+  double w5d = 0.0022;    /* Regression of lunar node                */
+  double d2r = PI/180.0;  /* Degrees to radians                      */
+  double C0, C1, C2;
+  double d1, sins, coss;
+
+  /* Set up arrays                                                   */
+  mass[0] = ml; mass[1] = ms;
+  radius[0] = Rl; radius[1] = Rs;
+  lat = window->celly[cs] * d2r;
+  el *= d2r;
+
+  /* Get the Julian date                                             */
+  tm_time_to_ymd(windat->t, master->timeunit, &yr, &mon, &nday);
+  jd = date_to_jul(mon, nday, yr);
+  /* Julian date starts at midday - adjust half a day                */
+  jt = (double)jd - 0.5;
+
+  /* Get the day of the year                                         */
+  if (window->is_geog) {
+    /*dtime(master->params->output_tunit, master->timeunit, windat->t, &yr, &day, NULL);*/
+    dtime(NULL, master->timeunit, windat->t, &yr, &day, &lon);
+  } else {
+    hd_warn("Can't compute equilibrium tide from a non-geographic mesh.\n");
+    return(0.0);
+  }
+
+  /* Get the solar hour angle                                        */
+  nday = (int)day;
+  hrs = 24 * (day - (double)nday);
+  hrang[1] = (hrs - 12.0) * PI / 12.0;
+  radius[1] = d2r * day * 360.0 / 365.25;
+  radius[1] = as * (1.0 - es * es) / (1.0 + es *cos(radius[1]));
+
+  /* Get the solar declination                                       */
+  d1 = nday * 2 * PI / 365.0;
+  dec[1] = 0.006918 + 0.070257 * sin(d1) - 0.399912 * cos(d1)
+    + 0.000907 * sin(2 * d1) - 0.006758 * cos(2 * d1)
+    + 0.00148 * sin(3 * d1) - 0.002697 * cos(3 * d1);
+
+  /* Get the Greenwhich mean sidereal time in hours                  */
+  /* see https://aa.usno.navy.mil/faq/docs/GAST.php                  */
+  jt += windat->days - floor(windat->days);
+  gmst = fmod(18.697374558 + 24.06570982441908 * (jt - 2451545.0), 24.0) * PI / 12.0;
+  /*gmst = mjd2gmst(jt) * PI / 12.0;*/
+
+  /* Get the lunar right ascension, radius and declination           */
+  moonvars(jt, &Al, &dec[0], &elon, &elat, &radius[0]);
+  radius[0] *= 1e3;
+
+  /* Get the lunar hour angle (Pugh Eq. 3.20a)                       */
+  /*hrang[0] = lon * d2r + d2r * (w0d + w3d) * gmst - Al;*/
+  hrang[0] = lon * d2r + gmst - Al;
+
+  /*if(window->wn==1&&c==100)printf("t=%f gmst=%f lon=%f lat=%f A=%f hrang[0]=%f %f %f %f\n",windat->days,gmst*12./PI,elon/d2r,elat/d2r,Al/d2r,hrang[0]/d2r,dec[0]/d2r,radius[0]/1e3,jt);*/
+
+  eta = 0.0;
+  for (n = 0; n <= 1; n++) {
+    d1 = pow(a/radius[n],3.0);
+    C0 = d1 * (1.5 * sin(dec[n]) * sin(dec[n]) - 0.5);
+    C1 = d1 * (0.75 * sin(2.0*dec[n]) * sin(2.0*dec[n])*cos(hrang[n]));
+    C2 = d1 * (0.75 * cos(dec[n]) * cos(dec[n])*cos(2.0*hrang[n]));
+
+    /* Compute the equibibrium tide contribution                     */
+    sins = sin(lat)*sin(lat);
+    coss = cos(lat)*cos(lat);
+    eta += a * (mass[n] / me) * (C0*(1.5*sins-0.5) +
+				 C1*sin(2.0*lat)+
+				 C2*coss);
+    /*printf("%d %d %f %f %f : %f %f\n",c,n,dec[n],lat*180/PI,hrang[n]*180/PI,windat->eta[cs],eta);*/
+  }
+  return(eta);
+}
+
+
+#define r2r(x)  (2.0 * PI * (x - floor(x)))
+
+/*-------------------------------------------------------------------*/
+/* lunar ephemeris                                                   */
+/* input jdate = julian date                                         */
+/* output                                                            */
+/*  rasc  = right ascension of the moon (radians)                    */
+/*          (0 <= rasc <= 2 pi)                                      */
+/*  decl  = declination of the moon (radians)                        */
+/*          (-pi/2 <= decl <= pi/2)                                  */
+/* https://au.mathworks.com/matlabcentral/fileexchange/              */
+/*       39191-low-precision-ephemeris?focused=3789856&tab=function  */
+/*-------------------------------------------------------------------*/
+void moonvars(double jdate, 
+	      double *rasc, 
+	      double *decl, 
+	      double *plon, 
+	      double *plat,
+	      double *dist
+	      )
+{
+double atr = PI / 648000.;
+/* time arguments                                                    */
+double djd = jdate - 2451545.;
+double t = (djd / 3652.5) + 1;
+/* fundamental trig arguments (radians)                              */
+double gm = r2r(0.374897 + 0.03629164709 * djd);
+double gm2 = 2. * gm;
+double gm3 = 3. * gm;
+double fm = r2r(0.259091 + 0.0367481952 * djd);
+double fm2 = 2. * fm;
+double em = r2r(0.827362 + 0.03386319198 * djd);
+double em2 = 2. * em;
+double em4 = 4. * em;
+double gs = r2r(0.993126 + 0.0027377785 * djd);
+double lv = r2r(0.505498 + 0.00445046867 * djd);
+double lm = r2r(0.606434 + 0.03660110129 * djd);
+double ls = r2r(0.779072 + 0.00273790931 * djd);
+double rm = r2r(0.347343 - 0.00014709391 * djd);
+/* geocentric, ecliptic longitude of the moon (radians)              */
+ double a, b, obliq, r;
+double l = 22640. * sin(gm) - 4586. * sin(gm - em2) + 2370. * sin(em2);
+ l = l + 769. * sin(gm2) - 668. * sin(gs) - 412. * sin(fm2);
+ l = l - 212. * sin(gm2 - em2) - 206. * sin(gm - em2 + gs);
+ l = l + 192. * sin(gm + em2) + 165. * sin(em2 - gs);
+ l = l + 148. * sin(gm - gs) - 125. * sin(em) - 110. * sin(gm + gs);
+ l = l - 55. * sin(fm2 - em2) - 45. * sin(gm + fm2) + 40. * sin(gm - fm2);
+ l = l - 38. * sin(gm - em4) + 36. * sin(gm3) - 31. * sin(gm2 - em4);
+ l = l + 28. * sin(gm - em2 - gs) - 24. * sin(em2 + gs) + 19. * sin(gm - em);
+ l = l + 18. * sin(em + gs) + 15. * sin(gm + em2 - gs) + 14. * sin(gm2 + em2);
+ l = l + 14. * sin(em4) - 13. * sin(gm3 - em2) - 17. * sin(rm);
+ l = l - 11. * sin(gm + 16. * ls - 18. * lv) + 10. * sin(gm2 - gs) + 
+   9. * sin(gm - fm2 - em2);
+ l = l + 9. * (cos(gm + 16. * ls - 18. * lv) - sin(gm2 - em2 + gs)) -
+   8. * sin(gm + em);
+ l = l + 8. * (sin(2. * (em - gs)) - sin(gm2 + gs)) - 7. * (sin(2. * gs) + 
+   sin(gm - 2. * (em - gs)) - sin(rm));
+ l = l - 6. * (sin(gm - fm2 + em2) + sin(fm2 + em2)) -
+   4. * (sin(gm - em4 + gs) - t * cos(gm + 16. * ls - 18 * lv));
+ l = l - 4. * (sin(gm2 + fm2) - t * sin(gm + 16. * ls - 18. * lv));
+ l = l + 3. * (sin(gm - 3. * em) - sin(gm + em2 + gs) -
+    sin(gm2 - em4 + gs) + sin(gm - 2. * gs) + sin(gm - em2 - 2. * gs));
+ l = l - 2. * (sin(gm2 - em2 - gs) + sin(fm2 - em2 + gs) - sin(gm + em4));
+l = l + 2. * (sin(4. * gm) + sin(em4 - gs) + sin(gm2 - em));
+ *plon = lm + atr * l;
+ /* geocentric, ecliptic latitude of the moon (radians)              */
+ b = 18461. * sin(fm) + 1010. * sin(gm + fm) + 1000. * sin(gm - fm);
+ b = b - 624. * sin(fm - em2) - 199. * sin(gm - fm - em2) -
+    167. * sin(gm + fm - em2);
+ b = b + 117. * sin(fm + em2) + 62. * sin(gm2 + fm) + 33. * sin(gm - fm + em2);
+ b = b + 32. * sin(gm2 - fm) - 30. * sin(fm - em2 + gs) -
+    16. * sin(gm2 - em2 + fm);
+ b = b + 15. * sin(gm + fm + em2) + 12. * sin(fm - em2 - gs) -
+   9. * sin(gm - fm - em2 + gs);
+ b = b - 8. * (sin(fm + rm) - sin(fm + em2 - gs)) -
+    7. * sin(gm + fm - em2 + gs);
+ b = b + 7. * (sin(gm + fm - gs) - sin(gm + fm - em4));
+ b = b - 6. * (sin(fm + gs) + sin(3. * fm) - sin(gm - fm - gs));
+ b = b - 5. * (sin(fm + em) + sin(gm + fm + gs) + sin(gm - fm + gs) -
+	       sin(fm - gs) - sin(fm - em));
+ b = b + 4. * (sin(gm3 + fm) - sin(fm - em4)) - 3. * (sin(gm - fm - em4) -
+						      sin(gm - 3. * fm));
+ b = b - 2. * (sin(gm2 - fm - em4) + sin(3. * fm - em2) - sin(gm2 - fm + em2) -
+	       sin(gm - fm + em2 - gs));
+ *plat = atr * (b + 2. * (sin(gm2 - fm - em2) + sin(gm3 - fm)));
+ /* obliquity of the ecliptic (radians)                              */
+ obliq = atr * (84428 - 47 * t + 9 * cos(rm));
+ /* geocentric distance (kilometers)                                 */
+ r = 60.36298 - 3.27746 * cos(gm) - .57994 * cos(gm - em2);
+ r = r - .46357 * cos(em2) - .08904 * cos(gm2) + .03865 * cos(gm2 - em2);
+ r = r - .03237 * cos(em2 - gs) - .02688 * cos(gm + em2) - 
+   .02358 * cos(gm - em2 + gs);
+ r = r - .0203 * cos(gm - gs) + .01719 * cos(em) + .01671 * cos(gm + gs);
+ r = r + .01247 * cos(gm - fm2) + .00704 * cos(gs) + .00529 * cos(em2 + gs);
+ r = r - .00524 * cos(gm - em4) + .00398 * cos(gm - em2 - gs) -
+   .00366 * cos(gm3);
+ r = r - .00295 * cos(gm2 - em4) - .00263 * cos(em + gs) +
+   .00249 * cos(gm3 - em2);
+ r = r - .00221 * cos(gm + em2 - gs) + .00185 * cos(fm2 - em2) -
+    .00161 * cos(2 * (em - gs));
+ r = r + 0.00147 * cos(gm + fm2 - em2) - 0.00142 * cos(em4) +
+   0.00139 * cos(gm2 - em2 + gs);
+ *dist = 6378.14 * (r - 0.00118 * cos(gm - em4 + gs) - 0.00116 * cos(gm2 + em2) -
+		    0.0011 * cos(gm2 - gs));
+ /* geocentric, equatorial right ascension and declination (radians) */
+ a = sin(*plon) * cos(obliq) - tan(*plat) * sin(obliq);
+ b = cos(*plon);
+ *rasc = atan3(a, b);
+ *decl = asin(sin(*plat) * cos(obliq) + cos(*plat) * sin(obliq) * sin(*plon));
+}
+
+/* Four quadrant inverse tangent */
+/*  a = sine of angle */
+/*  b = cosine of angle */
+/* y = angle (radians; 0 =< c <= 2 * pi) */
+double atan3 (double a, double b)
+{
+double epsilon = 0.0000000001;
+double pidiv2 = 0.5 * PI;
+ double y, c;
+
+ if (fabs(a) < epsilon) {
+    y = (1. - sgn(b)) * pidiv2;
+    return(y);
+ } else {
+    c = (2. - sgn(a)) * pidiv2;
+ }
+
+ if (fabs(b) < epsilon) {
+    y = c;
+    return(y);
+ } else
+    y = c + sgn(a) * sgn(b) * (fabs(atan(a / b)) - pidiv2);
+ return(y);
+}
+
+double sgn(double a)
+{
+  double ret;
+  if (a > 0.0) ret = 1.0;
+  if (a== 0.0) ret = 0.0;
+  if (a < 0.0) ret = -1.0;
+  return(ret);
+}
+
+
+/* mjd2gmst modified julian date to greenwich mean sidereal time.    */
+/* gmst = mjd2gmst(mjd) converts modified julian date to greenwich   */
+/* mean sidereal time using the algorithm from the Astronomical      */
+/* Almanac 2002, pg. B6.                                             */
+double mjd2gmst(double mjd)
+{
+  /* Calculate the greenwich mean sidereal time at midnight          */
+  double mjd2000 = 51544.5; /* Modified Julian Date of Epoch J2000.0 */
+  double int_mjd = floor(mjd);
+  double frac_mjd = mjd-int_mjd;
+  double Tu = (int_mjd - mjd2000)/36525.0;
+  double gmst = 24110.54841 + Tu * (8640184.812866 +
+				    Tu * (0.093104 -  Tu * 6.2e-6));
+  /* Add the mean sidereal time interval from midnight to time       */
+  gmst = fmod(gmst + frac_mjd*86400*1.00273790934,86400);
+  /* Convert to hours                                                */
+  gmst = gmst/3600;
+  return(gmst);
+}
+
+/* Right ascension and declination of Moon pole in EME2000, rad      */
+/* https://www.hq.nasa.gov/alsj/lunar_cmd_2005_jpl_d32296.pdf        */
+void lunar_angles(double mjd, double *A, double *dec)
+{
+  double J2000 = 2451545.0; /* Reference epoch of J2000, Julian days */
+  double D = mjd-J2000;     /* Days past epoch of J2000              */
+  double T = D / 36525.0;   /* Julian centuries past J2000           */
+  double E1 = 125.045 - 0.0529921 * D;
+  double E2 = 250.089 - 0.1059842 * D;
+  double E3 = 260.008 + 13.0120009 * D;
+  double E4 = 176.625 + 13.3407154 * D;
+  double E6 = 311.589 + 26.4057084 * D;
+  double E7 = 134.963 + 13.0649930 * D;
+  double E10 = 15.134 - 0.1589763 * D;
+  double E13 = 25.053 + 12.9590088 * D;
+  double d2r = PI / 180.0;
+  double d0 = 66.5392;
+  /*d0 = -10.218;*/
+
+  *A = (269.9949 + 0.0031 * T - 3.8787*sin(E1*d2r) - 0.1204*sin(E2*d2r) + 
+	0.0700*sin(E3*d2r) - 0.0172*sin(E4*d2r) + 0.0072*sin(E6*d2r) - 0.0052*sin(E10*d2r)
+	+ 0.0043*sin(E13*d2r)) * d2r;
+
+  *dec = (d0 + 0.0130 * T + 1.5419*cos(E1*d2r) + 0.0239*cos(E2*d2r) - 0.0278*cos(E3*d2r) +
+	  0.0068*cos(E4*d2r) - 0.0029*cos(E6*d2r) + 0.0009*cos(E7*d2r) +
+	  0.0008*cos(E10*d2r) - 0.0009*cos(E13*d2r)) * d2r;
+
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Moon: Computes the Moon's geocentric position using a low         */
+/* precision analytical series.                                      */
+/* Input: Mjd_TT=Terrestrial Time (Modified Julian Date)             */
+//* Output: ecliptic longitude (L) and latitude (B)                  */
+/* Modified from matlab code by M. Mahooti.                          */
+/* https://www.mathworks.com/matlabcentral/fileexchange/             */
+/*                        56041-moon-position?s_tid=prof_contriblnk  */
+/*-------------------------------------------------------------------*/
+void moon_pos(double mjd, double *L, double *B)
+{
+  double pi2 = 2*PI;              /* 2pi                             */
+  double Rad = PI/180.0;          /* Radians per degree              */
+  double Arcs = 3600.0*180.0/PI;  /* Arcseconds per radian           */
+  double MJD_J2000 = 51544.5;     /* Modified Julian Date of J2000   */
+  /* Constants                                                       */
+  double ep = 23.43929111*Rad;    /* Obliquity of J2000 ecliptic     */
+  double T = (mjd-MJD_J2000)/36525.0; /* Julian cent. since J2000    */
+  /* Mean elements of lunar orbit                                    */
+  double L_0 = frac(0.606433 + 1336.851344*T);    /* Mean longitude [rev] w.r.t. J2000 equinox */
+  double l = pi2*frac(0.374897 + 1325.552410*T);  /* Moon's mean anomaly [rad] */
+  double lp = pi2*frac(0.993133 + 99.997361*T);   /* Sun's mean anomaly [rad] */
+  double D = pi2*frac(0.827361 + 1236.853086*T);  /* Diff. long. Moon-Sun [rad] */
+  double F = pi2*frac(0.259086 + 1342.227825*T);  /* Argument of latitude */
+  /* Ecliptic longitude (w.r.t. equinox of J2000)                    */
+  double dL = +22640.0*sin(l) - 4586.0*sin(l-2*D) + 2370.0*sin(2*D) +  769.0*sin(2*l) -
+    668.9*sin(lp) - 412.0*sin(2*F) - 212.0*sin(2*l-2*D) - 206.0*sin(l+lp-2*D) +
+    192.0*sin(l+2*D) - 165.0*sin(lp-2*D) - 125.0*sin(D) - 110.0*sin(l+lp) +
+    148.0*sin(l-lp) - 55.0*sin(2*F-2*D);
+  *L = pi2 * frac(L_0 + dL/1296.0e3);         /* [rad]                */
+  /* Ecliptic latitude                                                */
+  double S = F + (dL+412*sin(2*F)+541*sin(lp)) / Arcs; 
+  double h = F-2*D;
+  double N = -526.0*sin(h) + 44.0*sin(l+h) - 31.0*sin(-l+h) - 23.0*sin(lp+h) +
+    11.0*sin(-lp+h) - 25.0*sin(-2*l+F) + 21.0*sin(-l+F);
+  *B = ( 18520.0*sin(S) + N ) / Arcs;         /* [rad]                */
+}
+
+double frac(double a)
+{
+  return(a-floor(a));
 }

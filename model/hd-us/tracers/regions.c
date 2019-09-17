@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: regions.c 5898 2018-08-23 02:07:21Z her127 $
+ *  $Id: regions.c 6328 2019-09-13 04:38:11Z her127 $
  *
  */
 
@@ -32,6 +32,7 @@ void get_regions(geometry_t *win, region_t *region, double *mask, int nregions);
 void region_schedule(region_t *region, double dt, double trem, char *timeunit);
 double get_totflux(region_t *region, int tr);
 int find_trindex(region_t *region, int trn);
+void read_region_us(geometry_t *geom, char *name, double *regionid);
 
 /*-------------------------------------------------------------------*/
 /* Reads the region infromation from the parameter file              */
@@ -1335,53 +1336,57 @@ int read_regioni(master_t *master, char *rname, double *regionid)
   char buf[MAXSTRLEN];
   int rg[MAXREGIONS], found;
 
-  /* Open the file                                                   */
-  if ((ncerr = nc_open(rname, NC_NOWRITE, &fid)) != NC_NOERR) {
-    hd_warn("read_region: Can't find regions file %s\n", rname);
-    return(0);
-  }
-
-  /* Get the dimensions                                              */
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "nbox"), &nr);
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "i_centre"), &nce1);
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "j_centre"), &nce2);
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "k_centre"), &nz);
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "record"), &record);
-
-  /* Exact dimesions; read data 'as is'.                             */
-  if ((int)nce1 == geom->nce1 && (int)nce2 == geom->nce2 && (int)nz == geom->nz) {
-    if (record > 1)
-      timeindex = dump_choose_by_time_s(fid, master->t);
-    if (timeindex > (int)(record - 1)) {
-      hd_warn("get_region: dump %d does not exist in file %s!\n", timeindex, rname);
+  if (geom->us_type & US_IJ) {
+    /* Open the file                                                 */
+    if ((ncerr = nc_open(rname, NC_NOWRITE, &fid)) != NC_NOERR) {
+      hd_warn("read_region: Can't find regions file %s\n", rname);
       return(0);
     }
-    /* Get the region id from file */
-    read3d(geom, fid, "boxnos", regionid, timeindex, geom->nz, geom->nce2, geom->nce1);
-    nc_close(fid);
-  } else {  /* Interpolate onto the grid                             */
-    hd_warn("read_region: interpolating regions from file %s onto the grid.\n", 
-	    rname);
-    ts = hd_ts_read(master, rname, 0);
 
-    id = ts_get_index(ts, fv_get_varname(buf, "boxnos", buf));
-    if (id < 0) {
-      hd_warn("read_region: The file '%s' does not contain the variable 'boxnos'.\n",
+    /* Get the dimensions                                            */
+    nc_inq_dimlen(fid, ncw_dim_id(fid, "nbox"), &nr);
+    nc_inq_dimlen(fid, ncw_dim_id(fid, "i_centre"), &nce1);
+    nc_inq_dimlen(fid, ncw_dim_id(fid, "j_centre"), &nce2);
+    nc_inq_dimlen(fid, ncw_dim_id(fid, "k_centre"), &nz);
+    nc_inq_dimlen(fid, ncw_dim_id(fid, "record"), &record);
+
+    /* Exact dimesions; read data 'as is'.                           */
+    if ((int)nce1 == geom->nce1 && (int)nce2 == geom->nce2 && (int)nz == geom->nz) {
+      if (record > 1)
+	timeindex = dump_choose_by_time_s(fid, master->t);
+      if (timeindex > (int)(record - 1)) {
+	hd_warn("get_region: dump %d does not exist in file %s!\n", timeindex, rname);
+	return(0);
+      }
+      /* Get the region id from file */
+      read3d(geom, fid, "boxnos", regionid, timeindex, geom->nz, geom->nce2, geom->nce1);
+      nc_close(fid);
+    } else {  /* Interpolate onto the grid                             */
+
+      hd_warn("read_region: interpolating regions from file %s onto the grid.\n", 
 	      rname);
-      return(0);
+      ts = hd_ts_read(master, rname, 0);
+    
+      id = ts_get_index(ts, fv_get_varname(buf, "boxnos", buf));
+      if (id < 0) {
+	hd_warn("read_region: The file '%s' does not contain the variable 'boxnos'.\n",
+		rname);
+	return(0);
+      }
+      for (c = 1; c < geom->szc; c++) regionid[c] = NOTVALID;
+      for (cc = 1; cc <= geom->b3_t; cc++) {
+	c = geom->w3_t[cc];
+	cs = geom->m2d[c];
+	d1 = ts_eval_xyz(ts, id, master->t, geom->cellx[cs], geom->celly[cs], geom->cellz[c]);
+	if (fmod(d1, 1) <= 0.5)		     
+	  regionid[c] = floor(d1);
+	else
+	  regionid[c] = ceil(d1);
+      }
+      nc_close(fid);
     }
-    for (c = 1; c < geom->szc; c++) regionid[c] = NOTVALID;
-    for (cc = 1; cc <= geom->b3_t; cc++) {
-      c = geom->w3_t[cc];
-      cs = geom->m2d[c];
-      d1 = ts_eval_xyz(ts, id, master->t, geom->cellx[cs], geom->celly[cs], geom->cellz[c]);
-      if (fmod(d1, 1) <= 0.5)		     
-	regionid[c] = floor(d1);
-      else
-	regionid[c] = ceil(d1);
-    }
-    nc_close(fid);
-  }
+  } else
+    read_region_us(geom, rname, regionid);
 
   /* Count the number of regions. A potential bug can occur, where   */
   /* if regions are extrapolated, the region mask is set zero and    */
@@ -1427,6 +1432,117 @@ int read_regioni(master_t *master, char *rname, double *regionid)
 }
 
 /* END read_regioni()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Reads a region specification from unstructured fine (.bncc) and   */
+/* interpolates onto the mesh using unstructured interpolation.      */
+/*-------------------------------------------------------------------*/
+void read_region_us(geometry_t *geom, char *name, double *regionid)
+{
+  int varid;
+  char i_rule[MAXSTRLEN];
+  GRID_SPECS *gs = NULL;
+  double *x, *y, **b, **xv, **yv;
+  float *v;
+  int fid;
+  int ncerr;
+  size_t start[4];
+  size_t count[4];
+  size_t ns, nz, nr, nv, record;
+  int cc, c, cs;
+  double d1;
+  int n, m;
+  poly_t *pl;
+
+  /*-----------------------------------------------------------------*/
+  /* Open the file and get dimensions                                */
+  if ((ncerr = nc_open(name, NC_NOWRITE, &fid)) != NC_NOERR) {
+    printf("Can't find region file %s\n", name);
+    hd_quit((char *)nc_strerror(ncerr));
+  }
+
+  /* Get dimensions                                                  */
+  nc_inq_dimlen(fid, ncw_dim_id(fid, "nbox"), &nr);
+  nc_inq_dimlen(fid, ncw_dim_id(fid, "record"), &record);
+  nc_inq_dimlen(fid, ncw_dim_id(fid, "nMesh2_face"), &ns);
+  nc_inq_dimlen(fid, ncw_dim_id(fid, "Mesh2_layers"), &nz);
+  nc_inq_dimlen(fid, ncw_dim_id(fid, "maxvert"), &nv);
+
+  x = d_alloc_1d(ns);
+  y = d_alloc_1d(ns);
+  b = d_alloc_2d(ns, nz);
+  v = f_alloc_1d(nr);
+  xv = d_alloc_2d(nr, nv);
+  yv = d_alloc_2d(nr, nv);
+
+  start[0] = 0L;
+  start[1] = 0L;
+  start[2] = 0L;
+  start[3] = 0L;
+  count[0] = ns;
+  count[1] = 0;
+  count[2] = 0;
+  count[3] = 0;
+  nc_get_vara_double(fid, ncw_var_id(fid, "Mesh2_face_x"), start, count, x);
+  nc_get_vara_double(fid, ncw_var_id(fid, "Mesh2_face_y"), start, count, y);
+  count[0] = nr;
+  nc_get_vara_float(fid, ncw_var_id(fid, "nvert"), start, count, v);
+  count[0] = nv;
+  count[1] = nr;
+  nc_get_vara_double(fid, ncw_var_id(fid, "x_vert"), start, count, xv[0]);
+  nc_get_vara_double(fid, ncw_var_id(fid, "y_vert"), start, count, yv[0]);
+  count[0] = 1;
+  count[1] = nz;
+  count[2] = ns;
+  count[3] = 0;
+  nc_get_vara_double(fid, ncw_var_id(fid, "boxnos"), start, count, b[0]);
+  nc_close(fid);
+
+  /*---------------------------------------------------------------*/
+  /* Use point_in_poly to check for cell centres inside boxes      */
+  for (c = 1; c < geom->szc; c++) regionid[c] = NOTVALID;
+  for (n = 0; n < nr; n++) {
+    pl = poly_create();
+    for (m = 0; m < (int)v[n]; m++)
+      poly_add_point(pl, xv[m][n], yv[m][n]);
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      cs = geom->m2d[c];
+      if (poly_contains_point(pl, geom->cellx[cs], geom->celly[cs])) {
+	regionid[c] = (double)n;
+      }
+    }
+    poly_destroy(pl);
+  }
+  d_free_1d(x);
+  d_free_1d(y);
+  d_free_2d(b);
+  f_free_1d(v);
+  d_free_2d(xv);
+  d_free_2d(yv);
+  return;
+
+  /*---------------------------------------------------------------*/
+  /* Interpolate from a triangulation                              */
+  strcpy(i_rule, "linear");
+  gs = grid_interp_init(x, y, b[nz-1], ns, i_rule);
+
+  for (c = 1; c < geom->szc; c++) regionid[c] = NOTVALID;
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    c = geom->w3_t[cc];
+    cs = geom->m2d[c];
+    d1 = grid_interp_on_point(gs, geom->cellx[cs], geom->celly[cs]);
+    if (fmod(d1, 1) <= 0.5)		     
+      regionid[c] = floor(d1);
+    else
+      regionid[c] = ceil(d1);
+  }
+  grid_specs_destroy(gs);
+} 
+
+/* END read_region_us()                                              */
 /*-------------------------------------------------------------------*/
 
 

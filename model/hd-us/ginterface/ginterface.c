@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6162 2019-03-05 05:06:30Z riz008 $
+ *  $Id: ginterface.c 6250 2019-07-31 05:19:38Z riz008 $
  *
  */
 
@@ -32,8 +32,6 @@
 int LOCAL_TRACERS[] = {NOT, ETA, KZ, VZ,U1VH, U2VH, U1KH, U2KH};
 int NLOCAL_TRACERS = sizeof(LOCAL_TRACERS) / sizeof(int);
 
-#if defined(HAVE_TRACERSTATS_MODULE)
-
 char* ginterface_get2Dtracername(void* model, int i);
 int  ginterface_get_max_numbercolumns(void* model);
 
@@ -44,6 +42,8 @@ static int e_nepi;
 static int epi_map[MAXNUMVARS];
 
 int i_get_c(void *model, int b);
+
+#if defined(HAVE_TRACERSTATS_MODULE)
 
 trs_t* trs_create();
 
@@ -2176,25 +2176,6 @@ char* custom_stack_add(custom_function_t* fnc)
 
 #if defined(HAVE_TRACERSTATS_MODULE)
 /* generic domain-functions to add to allow runtime collection of data */
-#if defined(HAVE_MPI)
-void trstat_domain_function_init(hd_data_t* hdata, custom_function_t* fnc)
-{
-}
-
-void trstat_domain_function_gather(custom_function_t* func, hd_data_t* hdata)
-{
-}
-
-void trstat_domain_function_scatter1(custom_function_t* func, hd_data_t* hdata)
-{
-}
-
-void trstat_domain_function_scatter2(custom_function_t* func, hd_data_t* hdata)
-{
-}
-
-#else
-
 void trstat_domain_function_init(hd_data_t* hdata, custom_function_t* fnc)
 {
   emstag(LTRACE,"hd:ginterface:trstat_domain_function_init","attempting Init Domain Function, as: %s ",fnc->name);
@@ -2279,7 +2260,6 @@ void trstat_remove_domain_function(char* name)
     free(fnc);
   }
 }
-#endif
 #endif
 
 #if defined(HAVE_WAVE_MODULE)

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 6138 2019-03-04 01:03:27Z her127 $
+ *  $Id: vel3d.c 6325 2019-09-13 04:36:35Z her127 $
  *
  */
 
@@ -45,6 +45,7 @@ double gridze(geometry_t *geom, int e);
 void set_sur_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vel_tan_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vel_components_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
 /*-------------------------------------------------------------------*/
 /* Window step part 1                                                */
@@ -201,7 +202,7 @@ void mode3d_post_window_p1(master_t *master,   /* Master data        */
   /* Calculate the 3D velocity alert diagnostics                     */
   alerts_w(window, VEL3D);
 
-  /* Check for fatal instabilities                                   */
+  /* Check for fatal instabilties                                   */
   if (check_unstable(window, windat, wincon, VEL3D)) return;
 
   /* Adjust  the  velocities. 3D  fluxes calculated  below must  use */
@@ -442,6 +443,8 @@ void mode3d_prep(geometry_t *geom,      /* Global geometry           */
     bdry_transfer_u1(master, window[n], windat[n]);
     /* Get the vertical pressure integrals.                          */
     pressure_u1(window[n], windat[n], wincon[n]);
+    /* Allow for tidal energy extraction                             */
+    if (wincon[n]->nturb > 0) turbines(window[n], windat[n], wincon[n]);
 
     /* Get the momentum flux OUT of the water due to the wind        */
     for (ee = 1; ee <= wincon[n]->vcs; ee++) {
@@ -514,8 +517,8 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
     if (advect_u1_3d(window, windat, wincon)) return;
   }
   if (wincon->tendf && wincon->tendency)
-    get_tendv(window, wincon->s1, wincon->vc, windat->nu1,
-	      wincon->tendency, windat->u1_adv, windat->u2_adv);
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_ADV], windat->u1_adv, windat->u2_adv);
   debug_c(window, D_U, D_ADVECT);
 
   if (dwe > 0) {
@@ -549,8 +552,8 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
   wincon->hor_mix->u1(window, windat, wincon);
 
   if (wincon->tendf && wincon->tendency)
-    get_tendv(window, wincon->s1, wincon->vc, windat->nu1,
-	      wincon->tendency, windat->u1_hdif, windat->u2_hdif);
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_HDF], windat->u1_hdif, windat->u2_hdif);
   debug_c(window, D_U, D_HDIFF);
 
   /* Reset thin layers                                               */
@@ -580,26 +583,19 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
   if (!(wincon->momsc & RINGLER)) {
     if (!(wincon->u1_f & CORIOLIS))
       coriolis_u1(window, windat, wincon);
-    if (wincon->tendf && wincon->tendency) {
-      get_tendv(window, wincon->s1, wincon->vc, windat->nu1,
-		wincon->tendency, windat->u1_cor, windat->u2_cor);
-      if (wincon->waves & STOKES_DRIFT) {
-	int cc, c;
-	for (cc = 1; cc <= window->b3_t; cc++) {
-	  e = window->w3_t[cc];
-	  windat->u1_cor[c] -= windat->u1_sto[c];
-	  windat->u2_cor[c] -= windat->u2_sto[c];
-	}
-      }
-    }
   }
+
+  /*-----------------------------------------------------------------*/
+  /* Include Stokes forcing                                          */
+  if (!(wincon->u1_f & CORIOLIS))
+    stokes_u1(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
   /* Do the vertical diffusion                                       */
   if (vdiff_u1(window, windat, wincon)) return;
   if (wincon->tendf && wincon->tendency)
-    get_tendv(window, wincon->s1, wincon->vc, windat->nu1,
-	      wincon->tendency, windat->u1_vdif, windat->u2_vdif);
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_VDF], windat->u1_vdif, windat->u2_vdif);
   debug_c(window, D_U, D_VZ);
 
   if (dwe > 0) {
@@ -608,6 +604,24 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
     if(window->nwindows > 1 && window->wn==dwn)
       printf("vdiff %16.14e\n",windat->nu1[dwew]);
   }
+
+  /*-----------------------------------------------------------------*/
+  /* Sum the tendencies                                              */
+  if (!(wincon->compatible & V6257)) {
+    for (ee = 1; ee <= wincon->vc; ee++) {
+      int n;
+      e = wincon->s1[ee];
+      /* Note: T_ADV is not added, as this velocity already is       */
+      /* updated with this tendedcy in momentum advection to account */
+      /* for sub-stepping.                                           */
+      for (n = 1; n < TEND3D; n++)
+	windat->nu1[e] += wincon->tend3d[n][e];
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Allow for tidal energy extraction                               */
+  if (wincon->nturb > 0) turbines(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
   /* Divide the 3D dispersion term by the depth and 3D time-step to  */
@@ -1523,11 +1537,16 @@ int vdiff_u1(geometry_t *window,  /* Window geometry                 */
   /* Note : the velocity at time t-1 is passed to the vertical       */
   /* diffusion routine. This appears to be more stable than passing  */
   /* the velocity at time t+1 (see Science manual).                  */
-
   if (!(wincon->u1_f & VDIFF)) {
-    if (implicit_vdiff(window, windat, wincon, windat->u1b, windat->nu1, Vzav,
-		       windat->dzu1, f_bot, f_top, wincon->s1, wincon->i5,
+    if (wincon->compatible & V6257) {
+      if (implicit_vdiff(window, windat, wincon, windat->u1b, windat->nu1, Vzav,
+			 windat->dzu1, f_bot, f_top, wincon->s1, wincon->i5,
 		       wincon->vcs, wincon->Ds, wincon->Ds, w)) return(1);
+    } else {
+      if (implicit_vdiff(window, windat, wincon, windat->u1b, wincon->tend3d[T_VDF], Vzav,
+			 windat->dzu1, f_bot, f_top, wincon->s1, wincon->i5,
+			 wincon->vcs, wincon->Ds, wincon->Ds, w)) return(1);
+    }
   }
   return(0);
 }
@@ -1538,7 +1557,7 @@ int vdiff_u1(geometry_t *window,  /* Window geometry                 */
 
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
-/* Routine to add the Coriolis term to the u1 velocity               */
+/* Routine to compute the Coriolis tendency                          */
 /*-------------------------------------------------------------------*/
 void coriolis_u1(geometry_t *window,  /* Window geometry             */
                  window_t *windat,    /* Window data                 */
@@ -1547,11 +1566,14 @@ void coriolis_u1(geometry_t *window,  /* Window geometry             */
 {
   int e, ee, es;                /* Sparse coordinates / counters     */
   double *midx;                 /* Total depth at edge               */
-  int v, vv, vs, v1, v2;
-  double d2, iarea;
+  double *tend;
 
   /* Set pointers */
   midx = wincon->d4;            /* Set in pressure_u1()              */
+  if (wincon->compatible & V6257)
+    tend = windat->nu1;
+  else
+    tend = wincon->tend3d[T_COR];
 
   /*-----------------------------------------------------------------*/
   /* Add the Coriolis term to the u1 velocity                        */
@@ -1559,52 +1581,87 @@ void coriolis_u1(geometry_t *window,  /* Window geometry             */
   for (ee = 1; ee <= wincon->vc; ee++) {
     e = wincon->s1[ee];
     es = window->m2de[e];
-    windat->nu1[e] += windat->dt * wincon->u1c5[es] * windat->u2[e] * midx[es];
+    tend[e] += windat->dt * wincon->u1c5[es] * windat->u2[e] * midx[es];
   }
-  if(wincon->waves & STOKES_DRIFT) {
-    double sdc, vf;
-    double *tend;
-    /* Stokes drift                                                  */
-    tend = wincon->w2;
-    memset(tend, 0.0, window->sze * sizeof(double));
-    get_sdc_e1(window, windat, wincon);
-    for (ee = 1; ee <= wincon->vc; ee++) {
-      e = wincon->s1[ee];
-      es = window->m2de[e];
-      sdc = wincon->u1c5[es] * wincon->w1[e] * midx[es];
-      windat->nu1[e] += windat->dt * sdc;
-      wincon->u1inter[es] += sdc * windat->dzu1[e];
-      tend[e] += windat->dt * sdc;
-    }
-    memset(windat->rvor, 0, window->szv * sizeof(double));
-    for (vv = 1; vv <= window->b3_e2; vv++) {
-      v = window->w3_e2[vv];
-      vs = window->m2dv[v];
-      iarea = 1.0 / window->dualarea[vs];
-      for (ee = 1; ee <= window->nve[vs]; ee++) {
-	e = window->v2e[v][ee];
-	d2 = window->h2au1[e] * windat->u1[e];
-	windat->rvor[v] += window->eSv[ee][v] * iarea * d2;
-      }
-    }
 
-    /* Vortex force                                                  */
-    for (ee = 1; ee <= wincon->vc; ee++) {
-      e = wincon->s1[ee];
-      es = window->m2de[e];
-      v1 = window->e2v[e][0];
-      v2 = window->e2v[e][1];
-      sdc = wincon->w1[e] * midx[es] * 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
-      windat->nu1[e] += windat->dt * sdc;
-      wincon->u1inter[es] += sdc * windat->dzu1[e];
-      tend[e] += windat->dt * sdc;
-    }
-    if (wincon->tendf)
-      vel_cen(window, windat, wincon, tend, NULL, windat->u1_sto, windat->u2_sto, NULL, NULL, 0);
+  if (wincon->tendf && wincon->tendency) {
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_COR], windat->u1_cor, windat->u2_cor);
   }
 }
 
 /* END coriolis_u1()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Routine to compute the Stokes Coriolis and vortex forcing         */
+/* tendency.                                                         */
+/*-------------------------------------------------------------------*/
+void stokes_u1(geometry_t *window,  /* Window geometry               */
+	       window_t *windat,    /* Window data                   */
+	       win_priv_t *wincon   /* Window constants              */
+  )
+{
+  int e, ee, es;                /* Sparse coordinates / counters     */
+  double *midx;                 /* Total depth at edge               */
+  int v, vv, vs, v1, v2;
+  double d2, iarea;
+  double sdc, vf;
+  double *tend;
+
+  if(!(wincon->waves & STOKES_DRIFT)) return;
+
+  /* Set pointers */
+  midx = wincon->d4;            /* Set in pressure_u1()              */
+  if (wincon->compatible & V6257)
+    tend = windat->nu1;
+  else
+    tend = wincon->tend3d[T_STK];
+
+  /*-----------------------------------------------------------------*/
+  /* Stokes drift                                                    */
+  get_sdc_e1(window, windat, wincon);
+  for (ee = 1; ee <= wincon->vc; ee++) {
+    e = wincon->s1[ee];
+    es = window->m2de[e];
+    sdc = wincon->u1c5[es] * wincon->w1[e] * midx[es];
+    tend[e] += windat->dt * sdc;
+    wincon->u1inter[es] += sdc * windat->dzu1[e];
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Relative vorticity at vertices                                  */
+  memset(windat->rvor, 0, window->szv * sizeof(double));
+  for (vv = 1; vv <= window->b3_e2; vv++) {
+    v = window->w3_e2[vv];
+    vs = window->m2dv[v];
+    iarea = 1.0 / window->dualarea[vs];
+    for (ee = 1; ee <= window->nve[vs]; ee++) {
+      e = window->v2e[v][ee];
+      d2 = window->h2au1[e] * windat->u1[e];
+      windat->rvor[v] += window->eSv[ee][v] * iarea * d2;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Vortex force                                                    */
+  for (ee = 1; ee <= wincon->vc; ee++) {
+    e = wincon->s1[ee];
+    es = window->m2de[e];
+    v1 = window->e2v[e][0];
+    v2 = window->e2v[e][1];
+    sdc = wincon->w1[e] * midx[es] * 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
+    tend[e] += windat->dt * sdc;
+    wincon->u1inter[es] += sdc * windat->dzu1[e];
+  }
+  if (wincon->tendf)
+    vel_cen(window, windat, wincon, wincon->tend3d[T_STK], NULL, windat->u1_sto, windat->u2_sto, 
+	    NULL, NULL, 0);
+}
+
+/* END stokes_u1()                                                   */
 /*-------------------------------------------------------------------*/
 
 
@@ -1656,7 +1713,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   int *lo_ele;            /* Array of partially wet cell coordinates */
   double *dhdiv;          /* Vertically integrated depth (hlower)    */
   /* double *dhdiu; *//* Vertically integrated depth (hupper)        */
-  double *dd;             /* Vertically integrated pressure gradient */
+  double *dd, *dc;        /* Vertically integrated pressure gradient */
   double *dinter;         /* Pressure gradient for the 2D mode       */
   double *u1inter;        /* Vertical integrals for 2d mode          */
   double *hidens;         /* Density corresponding to coordinate ch  */
@@ -1667,7 +1724,6 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   double *dens;           /* Density ( = windat->dens)               */
   double *dzsum;          /* Sum of dz for dry / partial layers      */
   double *mask;           /* Mask out all fully wet or dry edges     */
-  double *btp;            /* Barotropic pressure tendency            */
   double top;             /* Top cell thickness                      */
   double bot;             /* Bottom cell thickness                   */
   double *midx;           /* Total depth at the cell edge            */
@@ -1676,6 +1732,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   double *corr;           /* Baroclinic correction for sigma         */
   double *ddbc;           /* Baroclinic contribution to u1 velocity  */
   double *ddbt;           /* Barotropic contribution to u1 velocity  */
+  double *tend1, *tend2;  /* Barotropic / baroclinic tendeny         */
 
   /*-----------------------------------------------------------------*/
   /* Set pointers                                                    */
@@ -1686,9 +1743,9 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   dzsum = wincon->w5;
   mask = wincon->w6;
   corr = wincon->w8;
-  btp = wincon->w3;
 
   dd = wincon->d1;
+  dc = wincon->w3;
   dhdiv = wincon->d2;
   u1inter = wincon->d3;
   midx = wincon->d4;
@@ -1705,7 +1762,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   if (wincon->u1_f & PRESS_BC)
     ddbc = wincon->d7;
   else
-    ddbc = dd;
+    ddbc = dc;
   if (wincon->u1_f & PRESS_BT)
     ddbt = wincon->d7;
   else
@@ -1714,6 +1771,26 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
     dinter = wincon->d7;
   else
     dinter = u1inter;
+
+  if (wincon->compatible & V6257) {
+    tend1 = windat->nu1;
+    tend2 = windat->nu1;
+  } else {
+    tend1 = wincon->tend3d[T_BTP];
+    tend2 = wincon->tend3d[T_BCP];
+  }
+
+  /* For the 2D mode when baroclinic pressure is omitted, set        */
+  /* surface and average density to the surface density, and return. */
+  if (wincon->mode2d && wincon->u1av_f & PRESS_BC) {
+    for (ee = 1; ee <= window->b2_e1; ee++) {
+      e = window->w2_e1[ee];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      wincon->densavu1[e] = wincon->topdensu1[e] = 0.5 * (windat->dens[c1] + windat->dens[c2]);
+    }
+    return;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Initialise                                                      */
@@ -1739,7 +1816,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       surgrad[es] = wincon->g * wincon->topdensu1[es] *
         (windat->eta[c1s] - windat->eta[c2s]) +
         (windat->patm[c1s] - windat->patm[c2s]);
-      dd[es] = 0.0;
+      dc[es] = 0.0;
     }
     for (ee = 1; ee <= wincon->vc; ee++) {
       e = wincon->s1[ee];
@@ -1750,17 +1827,21 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
 
       /* Density gradient integral                                   */
       dav[e] = 0.5 * (windat->dens[c1] + windat->dens[c2]);
-      dd[es] +=
+      dc[es] +=
         wincon->g * (windat->dens[c1] -
                      windat->dens[c2]) * windat->dzu1[e];
 
       /* Add term to new u1 value                                    */
+      /*
       windat->nu1[e] +=
-        windat->dt * wincon->u1c6[es] * (surgrad[es] + dd[es]) / dav[e];
+        windat->dt * wincon->u1c6[es] * (surgrad[es] + dc[es]) / dav[e];
+      */
+      tend1[e] += windat->dt * wincon->u1c6[es] * surgrad[es] / dav[e];
+      tend2[e] += windat->dt * wincon->u1c6[es] * dc[es] / dav[e];
 
       /* Integrate internal term for 2d part                         */
       wincon->u1inter[es] +=
-        wincon->u1c6[es] * dd[es] * windat->dzu1[e] / dav[e];
+        wincon->u1c6[es] * dc[es] * windat->dzu1[e] / dav[e];
       wincon->densavu1[es] += dav[e] * windat->dzu1[e];
     }
     for (ee = 1; ee <= wincon->vcs; ee++) {
@@ -1900,8 +1981,8 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
     /* from 0 to -1.                                                 */
     memset(corr, 0, window->sze * sizeof(double));
     memset(dd, 0, window->szeS * sizeof(double));
+    memset(dc, 0, window->szeS * sizeof(double));
     if (wincon->sigma) {
-      int xmzm1;
 
       /* Subtract the mean density                                   */
       for (c = 1; c <= window->enon; c++)
@@ -1919,8 +2000,11 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
           (windat->patm[c1s] - windat->patm[c2s]);
 
 	/* Update velocity                                           */
+	/*
 	windat->nu1[e] +=
 	  midx[es] * windat->dt * wincon->u1c6[es] * dd[es];
+	*/
+	tend1[e] += midx[es] * windat->dt * wincon->u1c6[es] * dd[es];
         e = zm1;
         zm1 = window->zm1e[e];
 
@@ -1939,28 +2023,22 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
             0.5 * (dens[zp1] + dens[zp2] - dens[zm1] - dens[zm2]);
 
           /* Update velocity                                         */
+	  /*
           windat->nu1[e] +=
             midx[es] * windat->dt * wincon->u1c6[es] * dd[es];
+	  */
+          tend1[e] += midx[es] * windat->dt * wincon->u1c6[es] * dd[es];
 
           e = zm1;
           zm1 = window->zm1e[e];
         }
-      }
-      /* Get the barotropic pressure gradient tendency if required   */
-      if (windat->u1_btp) {
-        memset(btp, 0, window->sze * sizeof(double));
-        for (ee = 1; ee <= wincon->vc; ee++) {
-          e = wincon->s1[ee];
-          es = window->m2de[e];
-          btp[e] = midx[es] * windat->dt * wincon->u1c6[es] * dd[es];
-        }
-	vel_cen(window, windat, wincon, btp, NULL, windat->u1_btp, windat->u2_btp, NULL, NULL, 0);
       }
     }
 
     /*---------------------------------------------------------------*/
     /* Initialise vertical integral arrays                           */
     memset(dd, 0, window->szeS * sizeof(double));
+    memset(dc, 0, window->szeS * sizeof(double));
     memset(u1inter, 0, window->szeS * sizeof(double));
     memset(dhdiv, 0, window->szeS * sizeof(double));
 
@@ -1984,7 +2062,11 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       ddbt[es] += wincon->g * dzsum[e] * hupper[e];
 
       /* Update the u1 velocity                                      */
-      windat->nu1[e] += windat->dt * wincon->u1c6[es] * dd[es] / dav[e];
+      /*
+      windat->nu1[e] += windat->dt * wincon->u1c6[es] * (dd[es] + dc[es]) / dav[e];
+      */
+      tend1[e] += windat->dt * wincon->u1c6[es] * dd[es] / dav[e];
+      tend2[e] += windat->dt * wincon->u1c6[es] * dc[es] / dav[e];
 
       /* Integrate surface and average density for 2D mode           */
       wincon->topdensu1[es] += hidens[e] * hupper[e];
@@ -1995,40 +2077,6 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       dhdiv[es] += hlower[e];
     }
     /* mark1 */
-
-    /*---------------------------------------------------------------*/
-    /* Get the barotropic pressure gradient tendency if required.    */
-    if (windat->u1_btp && !wincon->sigma) {
-      memset(wincon->d7, 0, window->szeS * sizeof(double));
-      memset(btp, 0, window->sze * sizeof(double));
-      /* Surface                                                     */
-      for (ee = 1; ee <= wincon->vca; ee++) {
-	e = wincon->s1[ee];
-	es = window->m2de[e];
-	wincon->d7[es] += wincon->g * dzsum[e] * hupper[e];
-	btp[e] = windat->dt * wincon->u1c6[es] * wincon->d7[es] / dav[e];
-      }
-      /* Sub-surface                                                 */
-      for (ee = wincon->vca + 1; ee <= wincon->vc; ee++) {
-	e = wincon->s1[ee];
-	es = window->m2de[e];
-	btp[e] = windat->dt * wincon->u1c6[es] * wincon->d7[es] / dav[e];
-      }
-      if (wincon->means & TENDENCY) {
-	int c, cc;
-	double t = windat->dtf;
-	vel_cen(window, windat, wincon, btp, NULL, wincon->w6, wincon->w7, NULL, NULL, 0);
-	for (cc = 1; cc <= window->b2_t; cc++) {
-	  c = window->w3_t[cc];
-	  cs = window->m2d[c];
-	  windat->u1_btp[c] = (windat->u1_btp[c] * windat->meanc[cs] + 
-			       wincon->w6[c] * t) / (windat->meanc[cs] + t);
-	  windat->u2_btp[c] = (windat->u1_btp[c] * windat->meanc[cs] + 
-			       wincon->w7[c] * t) / (windat->meanc[cs] + t);
-	}
-      } else
-	vel_cen(window, windat, wincon, btp, NULL, windat->u1_btp, windat->u2_btp, NULL, NULL, 0);
-    }
 
     /*---------------------------------------------------------------*/
     /* Integrate the pressure for the wet cell edges                 */
@@ -2045,7 +2093,11 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       dinter[es] += (d1 + corr[e]);
 
       /* Update the u1 velocity                                      */
-      windat->nu1[e] += windat->dt * wincon->u1c6[es] * dd[es] / dav[e];
+      /*
+      windat->nu1[e] += windat->dt * wincon->u1c6[es] * (dd[es] + dc[es]) / dav[e];
+      */
+      tend1[e] += windat->dt * wincon->u1c6[es] * dd[es] / dav[e];
+      tend2[e] += windat->dt * wincon->u1c6[es] * dc[es] / dav[e];
 
       /* Integrate surface and average density for 2D mode           */
       wincon->u1inter[es] +=
@@ -2080,18 +2132,14 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   }
 
   /*-----------------------------------------------------------------*/
-  /* Get the baroclinic pressure gradient tendency if required       */
+  /* Get the pressure gradient tendencies if required.               */
+  if (wincon->tendency && windat->u1_btp) {
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_BTP], windat->u1_btp, windat->u2_btp);
+  }
   if (wincon->tendency && windat->u1_bcp) {
-    int mf = wincon->means;        /* Save the means flag            */
-    if (wincon->means & TENDENCY)  /* Turn mean TENDENCY off         */
-      wincon->means &= ~TENDENCY;
-    /* Get the baroclinic + barotropic tendency and store in w6 & w8 */
-    get_tend(window, wincon->s1, wincon->vc, windat->nu1,
-	     wincon->tendency, wincon->w6);
-    wincon->means = mf;            /* Reset the mean flag            */
-
-    get_tendv(window, wincon->s1, wincon->vc, wincon->w6,
-	      btp, windat->u1_bcp, windat->u2_bcp);
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_BCP], windat->u1_bcp, windat->u2_bcp);
   }
 }
 
@@ -2123,6 +2171,8 @@ void precalc_u1(geometry_t *window, /* Window geometry               */
   /*-----------------------------------------------------------------*/
   /* Copy the current velocities into the update array               */
   memcpy(windat->nu1, windat->u1b, window->sze * sizeof(double));
+  for (n = 0; n < TEND3D; n++)
+    memset(wincon->tend3d[n], 0, window->sze * sizeof(double));
 
   /*-----------------------------------------------------------------*/
   /* Multiply the velocity by the depth at the backward timestep for */
@@ -2227,7 +2277,7 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
   int e, ee, es;
   int c, cs, cc;
   int *vec, nvec, sz;
-  double nu, nv, *ut;
+  double a, nu, nv, *ut;
   geometry_t *geom=master->geom;
 
   /* Set pointers                                                    */
@@ -2295,11 +2345,12 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
     for (ee = 1; ee <= window->npe[cs]; ee++) {
       e = window->c2e[ee][c];
       es = window->m2de[e];
+      a = 0.5 * window->h1au1[es] * window->h2au1[es];
       /* Get the cell centered east and north velocity               */
-      u[c] += (u1[e] * window->costhu1[es] + ut[e] * window->costhu2[es]);
-      nu += 1.0;
-      v[c] += (u1[e] * window->sinthu1[es] + ut[e] * window->sinthu2[es]);
-      nv += 1.0;
+      u[c] += a * (u1[e] * window->costhu1[es] + ut[e] * window->costhu2[es]);
+      nu += a;
+      v[c] += a * (u1[e] * window->sinthu1[es] + ut[e] * window->sinthu2[es]);
+      nv += a;
     }
     u[c] = (nu) ? u[c] / nu : 0.0;
     v[c] = (nv) ? v[c] / nv : 0.0;
@@ -4238,6 +4289,75 @@ void get_sdc_e1(geometry_t *window, /* Window geometry               */
 }
 
 /* END get_sdc_e1()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Tidal energt extraction due to tide turbines                      */
+/*-------------------------------------------------------------------*/
+void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon)
+{
+  int n, j, c, cs, e, ed, es;
+  int jmin;
+  double cext;
+  double r0 = 1024.0;
+  double vel, fe;
+  double *nvel, *u1, *u2;
+  double dir, d, dmin;
+
+  if (wincon->mode2d) {
+    nvel = wincon->w4;
+    u1 = windat->u1av;
+    u2 = windat->u2av;
+  } else {
+    nvel = windat->nu1;
+    u1 = windat->u1;
+    u2 = windat->u2;
+  }
+
+  /* Loop over all turbines in the window                            */
+  for (n = 0; n < wincon->nturb; n++) {
+    c = wincon->turb[n];
+    cs = window->m2d[c];
+    cext = wincon->cturb[n];
+
+    /* Get the direction of the cell cemtered velocity vector        */
+    dir =  fmod(atan2(windat->u[c], windat->v[c]) * 180.0 / M_PI + 180.0, 360.0);
+
+    /* Get the edge which aligns most closely with the cell centered */
+    /* vector.                                                       */
+    dmin = HUGE;
+    for (j = 1; j <= window->npe[cs]; j++) {
+      e = window->c2e[j][c];
+      es = window->m2de[e];
+      d = fabs(window->thetau1[es] - dir);
+      if (d < dmin) {
+	dmin = d;
+	jmin = j;
+      }
+    }
+
+    /* Remove energy from all edges surrounding cell c               */
+    for (j = 1; j <= window->npe[cs]; j++) {
+      /*if (j != jmin) continue;*/
+      e = window->c2e[j][c];
+      es = window->m2de[e];
+      ed = (wincon->mode2d) ? es : e;
+      
+      /* Get the current speed at the edge                           */
+      vel = sqrt(u1[ed] * u1[ed] * u2[ed] * u2[ed]);
+
+      /* Get the energy loss                                         */
+      fe = -0.5 * cext * r0 * vel * u1[ed];
+
+      /* Update the velocity                                         */
+      nvel[e] += windat->dt * fe;
+      wincon->u1inter[es] += fe * windat->dzu1[e];
+    }
+  }
+}
+
+/* END turbines                                                      */
 /*-------------------------------------------------------------------*/
 
 

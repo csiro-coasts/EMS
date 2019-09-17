@@ -1,7 +1,7 @@
 #
 # makefile.in - Input makefile for the configure script.
 #
-# $Id: makefile.in 5996 2018-10-17 04:57:10Z her127 $
+# $Id: makefile.in 6257 2019-08-01 02:37:40Z riz008 $
 #
 
 SHELL=/bin/sh
@@ -126,7 +126,7 @@ PTOBJS = particles/pt.o
 
 SEDOBJS=sediments/sediments.o
 
-SLAVEOBJS= slaves/windows.o slaves/zoom.o slaves/transfers.o
+SLAVEOBJS= slaves/windows.o slaves/zoom.o slaves/transfers.o slaves/any.o
 
 TRACEROBJS= tracers/tracers.o tracers/relaxation.o tracers/reset.o \
 tracers/load_tracer.o tracers/tracer_decay.o tracers/tracer_info.o \
@@ -169,7 +169,7 @@ tests/test5/20layer
 	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(GRIDINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $*.c -o $*.o
 
 .cpp.o:
-	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(MPI_INC) $*.cpp -o $*.o
+	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $*.cpp -o $*.o
 
 all: $(PROGRAMS)
 

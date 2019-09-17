@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 6113 2019-02-26 04:24:10Z her127 $
+ *  $Id: sediments.c 6202 2019-04-18 02:19:09Z riz008 $
  *
  */
 
@@ -263,7 +263,7 @@ double sinterface_getvalueofBtracer(void* hmodel, int n, int c) {
   return ginterface_getvalueofBtracer(hmodel, n, c);
 }
 double *sinterface_getpointerBtracer(void* hmodel, int n, int c) {
-  return sinterface_getpointerBtracer(hmodel, n, c);
+  return ginterface_getpointerBtracer(hmodel, n, c);
 }
 int si_gettracernames(void* hmodel, char **tracername) {
   return gi_gettracernames(hmodel, tracername);
@@ -298,9 +298,11 @@ double sinterface_get_decay(void* model, char *name) {
 void sinterface_get_tracerunits(void* model, char *name, char *units) {
   ginterface_get_tracerunits(model, name, units);
 }
+#if defined(HAVE_OMP)
 int sinterface_get_trans_num_omp(void *model) {
   return ginterface_get_trans_num_omp(model);
 }
+#endif
 void sinterface_gettheta(void* hmodel, double *theta, int ncol) {
   ginterface_gettheta(hmodel, theta, ncol);
 }

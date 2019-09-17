@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: dumpfile.h 6312 2019-09-13 04:31:15Z her127 $
  *
  */
 
@@ -471,6 +471,7 @@ struct dump_file {
   char origname[MAXSTRLEN];     /* Original output filename from prmfile */
   char type[MAXSTRLEN];         /* file type */
   char modulo[MAXSTRLEN];       /* Time modulo type */
+  char irule[MAXSTRLEN];        /* Interpolation rule */
   int bpv;                      /* Bytes per value hint */
   int nvars;                    /* Number of output variables */
   char *vars[MAXNUMVARS];       /* Output variable names */
@@ -495,6 +496,7 @@ struct dump_file {
   int nvertex3;                 /* Unstructured 3D vertex size */
   int finished;                 /* Non-zero if output has finished. */
   int append;                   /* Append */
+  int osl;                      /* Interpolation method */
   double tout;                  /* Next output time */
   double tinc;                  /* Output interval */
   double sinc;                  /* 2-way nest time interval */
