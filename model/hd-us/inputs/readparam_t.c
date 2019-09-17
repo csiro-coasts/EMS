@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6072 2019-02-08 04:10:40Z her127 $
+ *  $Id: readparam_t.c 6272 2019-08-08 04:26:30Z her127 $
  *
  */
 
@@ -315,11 +315,7 @@ FILE *fp;
   prm_read_double(fp, keyword, &params->lnm);
   if (params->lnm != 0.0)
     params->ntrS++;
-  sprintf(keyword, "PROFILE");
-  if (prm_read_char(fp, keyword, buf)) {
-    strcpy(params->nprof, buf);
-    params->ntr += 1;
-  }
+  read_profile(params, fp);
   read_debug(params, fp);
   /* Totals diagnostics */
   read_totals(params, fp);

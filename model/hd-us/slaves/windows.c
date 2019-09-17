@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6165 2019-03-05 05:07:39Z riz008 $
+ *  $Id: windows.c 6328 2019-09-13 04:38:11Z her127 $
  *
  */
 
@@ -66,6 +66,7 @@ int eiw(geometry_t *geom, int e, int *mode);
 int eic(geometry_t *geom, int e, int wn, int *mode);
 int jow(geometry_t *geom, int c, int j);
 int joc(geometry_t *geom, int c, int cn);
+void init_turb(master_t *master, geometry_t **window, win_priv_t **wincon);
 void local_map_build_v2c(geometry_t *geom, int c, int cc, int wn,
 			 int **nmap, int *wsa, int *ac, int nsaux);
 
@@ -156,6 +157,15 @@ int ANY_OMP(int var,      /* Integer variable */
 #define ANYf(x,y,z) ANY(x,y,z)
 #endif
 
+/*
+ * Mapped arrays, definied in any.cpp
+ *   - Will need to move these definitions to proto.h when other files
+ *     start using them
+ */
+void *ANY_map_init(int array[], int ns);
+int  ANY_map_find(void *arr, int var);
+void ANY_map_destroy(void *arr);
+
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
 /* Window to decompose the global domain into windows. This routine  */
@@ -217,6 +227,7 @@ void window_build(geometry_t *geom,     /* Global geometry           */
     for (n = 1; n < nwindows; n++)
       geom->g2wv[n][v] = 0;
   }
+  set_mask(geom);
 
   /*-----------------------------------------------------------------*/
   /* Single window : in this case window arrays point to the global  */
@@ -547,7 +558,9 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 
       /*-------------------------------------------------------------*/
       /* Get the ghost cell vectors                                  */
+      TIMING_SET;
       get_local_ghost(geom, window[n], n);
+      TIMING_DUMP(1, " get_local_ghost");
     }
 
     /*---------------------------------------------------------------*/
@@ -641,7 +654,7 @@ void write_windows(geometry_t *geom,      /* Sparse global geometery */
   int c;                        /* Sparse counters                   */
   int n;                        /* Window counter                    */
   int i, j, k;
-  FILE *op, *fopen();
+  FILE *op;
   short **aa;
 
   if (!windows_log)
@@ -1587,6 +1600,7 @@ void get_local_maps(geometry_t *geom,   /* Global geometry           */
   window->ewetS = wsize2D;
   window->snonS = wsize2D + 1;
   memset(geom->sask, 0, geom->sze * sizeof(int));
+  geom->sask[0] = 1;
 
   for (c = 0; c < geom->szc; c++) {
     wsar[c] = 0;
@@ -1713,7 +1727,8 @@ void get_local_maps(geometry_t *geom,   /* Global geometry           */
     window->wsa[cc] = c;
     
     if (cc <= window->enonS) window->npe[cc] = npe;
-    for(j = 1; j <= npe; j++)
+    /* Go to npem to make sure nothing remains uninitialised */
+    for(j = 1; j <= geom->npem; j++)
       window->c2c[j][cc] = cc;
     for (j = 1; j <= npe; j++)
       window->c2c[j][cc] = nc2c[j][cc];
@@ -2301,7 +2316,8 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
     cgm = map[j][c];
     cgms = geom->m2d[cgm];
     e = geom->c2e[j][c];
-    if (!mask[e]) {
+
+    if (!mask[e] || geom->cask[cgm] & W_GOBC) {
 
       /* Get the local map of the local sparse coordinate            */
       nmap[j][cc] = cax = reset_map(geom, cgm, wn, wsa, ac);
@@ -2323,14 +2339,14 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
 	    cg = cgm;
 	    cgm = map[j][cgm];
 	    e = geom->c2e[j][cg];
-	    if (!mask[e]) {
+	    if (!mask[e] || geom->cask[cgm] & W_GOBC) {
 	      nmap[j][cax] = cl = reset_map(geom, cgm, wn, wsa, ac);
 	      if (cax != nmap[j][cax]) {
 		int cr = (geom->wgst[cg]) ? geom->wgst[cg] : cg;
 		jop = jow(geom, cr, j);
 		nmap[jop][cl] = cax;
 	      }
-	      cax = cl;
+	      cax = cl;      
 	      mask[e] = 1;
 	    }
 	    if (verbose && c == geom->m2d[c])
@@ -2399,8 +2415,8 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
 
       nmap[j1][cax1] = cax2;
       nmap[j2][cax2] = cax1;
+      mask[eoe] = 1;
     }
-    mask[eoe] = 1;
   }
 }
 
@@ -2818,8 +2834,9 @@ void get_local_wsc(geometry_t *geom,    /* Global geometry           */
 	    wntmp[n]++;
 	    if (c == geom->m2d[c]) {
 	      wntmp2D[n]++;
-	      if (wm[cgm] == 0)
+	      if (wm[cgm] == 0) {
 		gc2D[n]++;
+	      }
 	    }
 	    mask[n][ac] = 1;
 	  }
@@ -2968,8 +2985,9 @@ void get_local_wsc(geometry_t *geom,    /* Global geometry           */
       if (wm[cgm] != n) {
 	ac = window[n]->c2c[nf][sc];
 	if (mask[n][ac] == 0) {
-	  if (wm[cgm] == 0)
+	  if (wm[cgm] == 0) {
 	    wsa_cells(window[n], &gc[n], &gc2D[n], ac, mask[n], mode);
+	  }
 	}
       }
     }
@@ -3347,6 +3365,7 @@ void get_local_wse(geometry_t *geom,
 	  if (mask[wn][le] == 0 && le != sc) {
 	    if (msk[e] & E_G) {
 	      window[wn]->w3_e1[gc[wn]] = le;
+	      if (!le) hd_quit("Can't find ghost edge for window %d, global edge %d\n",wn, e);
 	      gc[wn]++;
 	      if (c == cs) {
 		window[wn]->w2_e1[gc2D[wn]] = le;
@@ -3355,6 +3374,7 @@ void get_local_wse(geometry_t *geom,
 	      }
 	    } else {
 	      window[wn]->w3_e1[ec[wn]] = le;
+	      if (!le) hd_quit("Can't find aux edge for window %d, global edge %d\n",wn, e);
 	      ec[wn]++;
 	      if (c == cs) {
 		window[wn]->w2_e1[ec2D[wn]] = le;
@@ -3391,6 +3411,7 @@ void get_local_wse(geometry_t *geom,
 	      if (mask[wn][le] == 0 && le != sc) {
 		if (msk[ge] & E_G) {
 		  window[wn]->w3_e1[gc[wn]] = le;
+	      if (!le) hd_quit("Can't find ghost edge for window %d, global edge %d\n",wn, ge);
 		  gc[wn]++;
 		  if (ee <= nvec2D) {
 		    window[wn]->w2_e1[gc2D[wn]] = le;
@@ -3399,6 +3420,7 @@ void get_local_wse(geometry_t *geom,
 		  }
 		} else {
 		  window[wn]->w3_e1[ec[wn]] = le;
+		  if (!le) hd_quit("Can't find aux edge for window %d, global edge %d\n",wn, e);
 		  ec[wn]++;
 
 		  if (ee <= nvec2D) {
@@ -3424,6 +3446,7 @@ void get_local_wse(geometry_t *geom,
     sc = geom->g2we[wn][e];
     if (msk[e] & E_W && !mask[wn][sc]) {
       window[wn]->w3_e1[wntmp[wn]] = sc;
+      if (!sc) hd_quit("Can't find wet edge for window %d, global edge %d\n",wn, e);
       wntmp[wn]++;
       if (e < geom->szeS) {
 	window[wn]->w2_e1[wntmp2D[wn]] = sc;
@@ -3442,6 +3465,7 @@ void get_local_wse(geometry_t *geom,
     sc = geom->g2we[wn][e];
     if (msk[e] & E_B && !mask[wn][sc]) {
       window[wn]->w3_e1[bc[wn]] = sc;
+      if (!sc) hd_quit("Can't find boundary edge for window %d, global edge %d\n",wn, e);
       bc[wn]++;
       if (e < geom->szeS) {
 	window[wn]->w2_e1[bc2D[wn]] = sc;
@@ -3468,10 +3492,6 @@ void get_local_wse(geometry_t *geom,
     }
   }
 
-  /*
-  if (nwindows == 1) printf("aa %d\n", window[1]->c2e[1][1245]);
-  if (nwindows == 5) printf("aa %d\n", window[4]->c2e[1][350]);
-  */
   /* Get edges used in Smagorinsky missed above                      */
   if (smag != 0.0) {
     for (cc = 1; cc <= geom->b3_t; cc++) {
@@ -3493,6 +3513,7 @@ void get_local_wse(geometry_t *geom,
 	    if (mask[wn][le] == 0) {
 	      if (geom->wgst[cn] || msk[e] & E_G) {
 		window[wn]->w3_e1[gc[wn]] = le;
+		if (!le) hd_quit("Can't find Smag ghost edge for window %d, global edge %d\n",wn, e);
 		gc[wn]++;
 		if (c == cs) {
 		  window[wn]->w2_e1[gc2D[wn]] = le;
@@ -3502,6 +3523,7 @@ void get_local_wse(geometry_t *geom,
 		}
 	      } else {
 		window[wn]->w3_e1[ec[wn]] = le;
+		if (!le) hd_quit("Can't find Smag aux edge for window %d, global edge %d\n",wn, e);
 		ec[wn]++;
 		if (c == cs) {
 		  window[wn]->w2_e1[ec2D[wn]] = le;
@@ -3998,7 +4020,6 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
     for (cc = 1; cc <= open[n]->no3_t; cc++) {
       c = open[n]->obc_t[cc];
       geom->owc[n][geom->fm[c].wn] = n;
-
     }
   }
   for (nn = 1; nn <= nwindows; nn++)
@@ -4009,6 +4030,8 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
         nobc[nn]++;
     }
   }
+  if (nwindows == 1 && geom->us_type & US_IJ && nobc[1] != geom->nobc)
+    hd_quit("Can't find all OBCs; check OUTSIDE cells are set at right and front OBC locations.\n");
 
   /*-----------------------------------------------------------------*/
   /* Allocate memory for the boundary structures in each window      */
@@ -4405,6 +4428,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       window[nn]->open[c1]->omape[window[nn]->open[c1]->no3_e1] = window[nn]->c2c[j];
       /* First boundary ghost cell centre adjacent to this edge      */
       window[nn]->open[c1]->ogc_t[window[nn]->open[c1]->no3_e1] = window[nn]->c2c[j][cl];
+
       /* Get the centre index (cc) corresponding to the edge index.  */
       /* Note: open->no3_t still needs to be decremented, so use <   */
       cy = window[nn]->e2c[window[nn]->c2e[ed][cl]][open[n]->ini[ee]];
@@ -4610,6 +4634,15 @@ void set_sponge_cells(geometry_t *window)
   for (n = 0; n < window->nobc; n++) {
     open_bdrys_t *open = window->open[n];
     if (open->sponge_zone_h) {
+      d1 = 0.0;
+      for (cc = 1; cc <= open->no2_t; cc++) {
+	c = open->obc_t[cc];
+	d1 += sqrt(window->cellarea[c]);
+      }
+      d1 /= (double)open->no2_t;
+      if (d1 > (double)open->sponge_zone_h) 
+	hd_quit("Sponge zone for %s (%5.2f m) is less than mean grid size (%5.2f m). Increase sponge zone.\n",
+		open->name, open->sponge_zone_h, d1);
 
       /*-------------------------------------------------------------*/
       /* Count the cell centres in the zone                          */
@@ -4675,6 +4708,7 @@ void set_sponge_cells(geometry_t *window)
       /* Get the closest boundary cell to sponge cells               */
       for (cc = 1; cc <= open->nspc; cc++) {
 	c = open->spc[cc];
+	if (window->cask) window->cask[c] |= W_SOBC;
 	dmin = HUGE;
 	for (i1 = 1; i1 <= open->no2_t; i1++) {
 	  i2 = open->obc_t[i1];
@@ -4690,7 +4724,6 @@ void set_sponge_cells(geometry_t *window)
 	}
 	mask[c] = 1;
       }
-
       /*-------------------------------------------------------------*/
       /* Find the cells on the outer limit of the zone               */
       nscm = 0;
@@ -4833,6 +4866,7 @@ void set_sponge_cells(geometry_t *window)
 	      if(window->e2e[e][0]==1&&window->s2j[c]==10)
 	      printf("%d %d %d %d %f\n",window->s2i[c],e,ep,open->sne1[open->nspe1],open->swe1[open->nspe1]);
 	    */
+	    if (window->eask) window->eask[e] |= W_SOBC;
 	    open->spe1[open->nspe1++] = e;
 	    mask[e] = 1;
 	  }
@@ -4897,6 +4931,8 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
   int nb, nc, ncS, j;           /* Counters                          */
   int dr;
   int *map;
+  void *any_array;
+  int cin;
 
   if (DEBUG("init_w")) {
     dlog("init_w", "\n");
@@ -4945,19 +4981,21 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
   /* Count the local ghost cells in window n                         */
   window->nbpt = 0;
   window->nbptS = 0;
+  any_array =  ANY_map_init(window->wsa, window->enon);
   for (cc = 1; cc <= geom->nbpt; cc++) {
     c = geom->bpt[cc];          /* Global boundary cell              */
     /* Note : cannot use ANY(c,window->w3_t) here since the cells to */
     /* process vectors do not contain all ghost cells, only those    */
     /* required to specify the fluxes used to update cell centers,   */
     /* i.e. eastern and northern edge ghost cells.                   */
-    lc = ANYf(c, window->wsa, window->enon); /* Local boundary cell  */
+    lc = ANY_map_find(any_array, c); /* Local boundary cell  */
     if (lc) {
       window->nbpt++;
       if (lc <= window->enonS)
         window->nbptS++;
     }
   }
+  ANY_map_destroy(any_array);
 
   /* Allocate memory and initialise counters                         */
   window->bpt = i_alloc_1d(window->nbpt + 1);
@@ -4973,10 +5011,12 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
   window->nbptS = 1;
 
   /* Assign the lateral ghost cells to the boundary vectors          */
+  any_array =  ANY_map_init(window->wsa, window->enon);
   for (cc = 1; cc <= geom->nbpt; cc++) {
     c = geom->bpt[cc];            /* Global boundary cell            */
+    // cin = geom->bin[cc];
     dr = geom->dbin[cc];          /* Direction of bin from bpt       */
-    lc = ANYf(c, window->wsa, window->enon); /* Local boundary cell  */
+    lc = ANY_map_find(any_array, c); /* Local boundary cell  */
     if (lc) {
       ic1 = window->c2c[dr][lc];  /* Interior cell to lc             */
       ic2 = window->c2c[dr][ic1]; /* Interior cell to ic1            */
@@ -4996,21 +5036,25 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
       window->wgst[lc] = ic1;
     }
   }
+  ANY_map_destroy(any_array);
+  
   window->nbpt--;
   window->nbptS--;
 
   /* Assign 2D OBC ghost cells to the window ghost array             */
+  any_array =  ANY_map_init(window->wsa, window->enon);
   for (nb = 0; nb < geom->nobc; nb++) {
     open_bdrys_t *open = geom->open[nb];
     for (ee = 1; ee <= open->no2_e1; ee++) {
       c = open->obc_e2[ee];
-      lc = ANYf(c, window->wsa, window->enon);
+      lc = ANY_map_find(any_array, c); /* Local boundary cell  */
       if (lc) {
 	j = open->outi[ee];
 	window->wgst[window->c2c[j][lc]] = lc;
       }
     }
   }
+  ANY_map_destroy(any_array);
 
   /*-----------------------------------------------------------------*/
   /* Get the lateral ghost vectors for e1 face centered cells.       */
@@ -5048,15 +5092,17 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
   /* Count the local e1 ghost cells in window n                      */
   window->nbpte1 = 0;
   window->nbpte1S = 0;
+  any_array =  ANY_map_init(window->wse, window->sze-1);
   for (ee = 1; ee <= geom->nbpte1; ee++) {
     e = geom->bpte1[ee];        /* Global boundary edge              */
-    le = ANYf(e, window->wse, window->sze-1); /* Local boundary cell */
+    le = ANY_map_find(any_array, e); /* Local boundary cell */
     if (le) {
       window->nbpte1++;
       if (le < window->szeS)
         window->nbpte1S++;
     }
   }
+  ANY_map_destroy(any_array);
 
   /* Allocate memory and initialise counters                         */
   window->bpte1 = i_alloc_1d(window->nbpte1 + 1);
@@ -5072,11 +5118,12 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
   window->nbe1 = window->nbe1S = 0;
 
   /* Assign the lateral ghost cells to the boundary vectors          */
+  any_array =  ANY_map_init(window->wse, window->sze-1);
   for (ee = 1; ee <= geom->nbpte1; ee++) {
     e = geom->bpte1[ee];        /* Global boundary edge              */
     ei = geom->bin[ee];         /* Global interior edge              */
     map = (e == geom->em[ei]) ? window->ep : window->em;
-    le = ANYf(e, window->wse, window->sze-1); /* Local boundary cell */
+    le = ANY_map_find(any_array, e);  /* Local boundary cell */
     if (le) {
       /* It is possible that the lateral ghost cell for e1 faces     */
       /* corresponds to an auxiliary cell in the sparse array (see   */
@@ -5101,6 +5148,8 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
       }
     }
   }
+  ANY_map_destroy(any_array);
+  
   if (nc - 1 != window->nbpte1)
     hd_warn
       ("get_local_ghosts: Incorrect number of 3D e1 ghost cells located, window %d : %d %d\n",
@@ -5446,7 +5495,7 @@ void reorder_gl_map(geometry_t *geom, /* Global geometry             */
 /*-------------------------------------------------------------------*/
 void set_mask(geometry_t *window)
 {
-  int cc, c, ee, e, ci, n;
+  int cc, c, ee, e, ci, n, j;
 
   window->cask = i_alloc_1d(window->szc);
   memset(window->cask, 0, window->szc * sizeof(int));
@@ -5481,7 +5530,19 @@ void set_mask(geometry_t *window)
     for (ee = 1; ee <= open->no3_e1; ee++) {
       c = open->ogc_t[ee];
       window->cask[c] = W_GOBC;
+      for (j = 0; j < open->bgz; j++) {
+	c = open->omape[ee][c];
+	window->cask[c] = W_GOBC;
+      }
     }
+    /* Set in set_sponge_cells
+    if (open->sponge_zone_h) {
+      for (cc = 1; cc <= open->nspc; cc++) {
+	c = open->spc[cc];
+	window->cask[c] |= W_SOBC;
+      }
+    }
+    */
   }
 
   window->eask = i_alloc_1d(window->sze);
@@ -5518,6 +5579,14 @@ void set_mask(geometry_t *window)
       e = open->obc_e1[ee];
       window->eask[e] = W_TOBC;
     }
+    /* Set in set_sponge_cells
+    if (open->sponge_zone_h) {
+      for (ee = 1; ee <= open->nspe1; ee++) {
+	e = open->spe1[ee];
+	window->eask[e] |= W_SOBC;
+      }
+    }
+    */
   }
 }
 
@@ -5994,12 +6063,17 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     /* Vertices                                                      */
 
     /* Other                                                         */
-    if (master->etarlx & (RELAX|ALERT|BOUNDARY)) {
+    if (master->etarlx & (RELAX|ALERT|BOUNDARY|ETA_TPXO)) {
       relax_info_t *relax = master->eta_rlx;
       windat->eta_rlx = relax_info_init(relax->rlxn, relax->rlxtc, 
-					relax->rlxdt, winsize, 0);
-      if ((m = tracer_find_index("oeta", master->ntrS, master->trinfo_2d)) >= 0)
-	windat->eta_rlx->val1 = windat->tr_wcS[m];
+					relax->rlxdt, 0, 0);
+      if (master->etarlx & (RELAX|ALERT|BOUNDARY))
+	if ((m = tracer_find_index("oeta", master->ntrS, master->trinfo_2d)) >= 0)
+	  windat->eta_rlx->val1 = windat->tr_wcS[m];
+      if (master->etarlx & ETA_TPXO)
+	if ((m = tracer_find_index("tpxotide", master->ntrS, master->trinfo_2d)) >= 0)
+	  windat->eta_rlx->val1 = windat->tr_wcS[m];
+      windat->eta_rlx->tctype = relax->tctype;
       windat->eta_rlx->rlx = relax->rlx;
       windat->eta_rlx->dv0 = relax->dv0;
       windat->eta_rlx->dv1 = relax->dv1;
@@ -6143,6 +6217,8 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->avhrr = windat->tr_wcS[m];
       if (strcmp("ghrsst", master->trinfo_2d[m].name) == 0)
         windat->ghrsst = windat->tr_wcS[m];
+      if (strcmp("ghrsste", master->trinfo_2d[m].name) == 0)
+        windat->ghrsste = windat->tr_wcS[m];
       if (strcmp("u1_rad", master->trinfo_2d[m].name) == 0)
         windat->u1_rad = windat->tr_wcS[m];
       if (strcmp("u2_rad", master->trinfo_2d[m].name) == 0)
@@ -6181,10 +6257,34 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->swr_tran = windat->tr_wcS[m];
       if (strcmp("swr_bot_absorb", master->trinfo_2d[m].name) == 0)
         windat->swr_babs = windat->tr_wcS[m];
+      if (strcmp("swreg", master->trinfo_2d[m].name) == 0)
+        windat->swreg = windat->tr_wcS[m];
+      if (strcmp("swrms", master->trinfo_2d[m].name) == 0)
+        windat->swrms = windat->tr_wcS[m];
+      if (strcmp("attn_mean", master->trinfo_2d[m].name) == 0)
+        windat->attn_mean = windat->tr_wcS[m];
+      if (strcmp("tran_mean", master->trinfo_2d[m].name) == 0)
+        windat->tran_mean = windat->tr_wcS[m];
       if (strcmp("flow", master->trinfo_2d[m].name) == 0)
         windat->riverflow = windat->tr_wcS[m];
       if (strcmp("flow_depth", master->trinfo_2d[m].name) == 0)
         windat->riverdepth = windat->tr_wcS[m];
+      if (strcmp("equitide", master->trinfo_2d[m].name) == 0)
+        windat->equitide = windat->tr_wcS[m];
+      if (strcmp("tpxotide", master->trinfo_2d[m].name) == 0)
+        windat->tpxotide = windat->tr_wcS[m];
+      if (strcmp("tpxou", master->trinfo_2d[m].name) == 0)
+        windat->tpxovelu = windat->tr_wcS[m];
+      if (strcmp("tpxov", master->trinfo_2d[m].name) == 0)
+        windat->tpxovelv = windat->tr_wcS[m];
+      if (strcmp("tpxoU", master->trinfo_2d[m].name) == 0)
+        windat->tpxotranu = windat->tr_wcS[m];
+      if (strcmp("tpxoV", master->trinfo_2d[m].name) == 0)
+        windat->tpxotranv = windat->tr_wcS[m];
+      if (strcmp("UAT", master->trinfo_2d[m].name) == 0)
+        windat->uat = windat->tr_wcS[m];
+      if (strcmp("VAT", master->trinfo_2d[m].name) == 0)
+        windat->vat = windat->tr_wcS[m];
       if (strcmp("eta_tc", master->trinfo_2d[m].name) == 0)
         windat->eta_tc = windat->tr_wcS[m];
       if (strcmp("eta_inc", master->trinfo_2d[m].name) == 0)
@@ -6205,7 +6305,6 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->eta_rlx->val1 = windat->tr_wcS[m];*/
     }
   }
-
   /* Single window. The master and the window are the same - point   */
   /* the window to the master data structure arrays.                 */
   else {
@@ -6327,6 +6426,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->odeta = master->odeta;
     windat->avhrr = master->avhrr;
     windat->ghrsst = master->ghrsst;
+    windat->ghrsste = master->ghrsste;
     windat->shwin = master->shwin;
     windat->alert_a = master->alert_a;
     windat->alert_c = master->alert_c;
@@ -6360,12 +6460,22 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->swr_attn1 = master->swr_attn1;
     windat->swr_tran = master->swr_tran;
     windat->swr_babs = master->swr_babs;
+    windat->swreg = master->swreg;
+    windat->swrms = master->swrms;
+    windat->attn_mean = master->attn_mean;
+    windat->tran_mean = master->tran_mean;
     windat->riverflow = master->riverflow;
     windat->riverdepth = master->riverdepth;
+    windat->equitide = master->equitide;
+    windat->tpxotide = master->tpxotide;
+    windat->tpxovelu = master->tpxovelu;
+    windat->tpxovelv = master->tpxovelv;
+    windat->tpxotranu = master->tpxotranu;
+    windat->tpxotranv = master->tpxotranv;
     windat->eta_tc = master->eta_tc;
     windat->sederr = master->sederr;
     windat->ecoerr = master->ecoerr;
-    if (master->etarlx & (RELAX|ALERT|BOUNDARY)) 
+    if (master->etarlx & (RELAX|ALERT|BOUNDARY|ETA_TPXO)) 
       windat->eta_rlx = master->eta_rlx;
 
     /* Diagnostic indicies                                           */
@@ -6414,6 +6524,8 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     memset(windat->sederr, 0, winsize * sizeof(double));
   if (windat->ecoerr)
     memset(windat->ecoerr, 0, winsize * sizeof(double));
+  if (master->smagorinsky) 
+    windat->sde = d_alloc_1d(window->sze);
 
   windat->vd = NULL;
   for (n = 0; n < window->nobc; n++) {
@@ -6453,6 +6565,7 @@ void win_data_clear(window_t *windat  /* Window data structure       */
   d_free_1d(windat->u1b);
   d_free_1d(windat->u2b);
   d_free_1d(windat->waterss);
+  if (windat->sde) d_free_1d(windat->sde);
 
   /* 2D arrays                                                       */
   if (windat->ntrS)
@@ -6609,6 +6722,8 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->c1 = c_alloc_1d(szm);
     wincon[n]->ba = d_alloc_1d(window[n]->npem+1);
     wincon[n]->gmap = i_alloc_1d(szm);
+    wincon[n]->tend3d = d_alloc_2d(window[n]->sze, TEND3D);
+    wincon[n]->tend2d = d_alloc_2d(window[n]->szeS, TEND2D);
     memset(wincon[n]->s1, 0, szm * sizeof(int));
     memset(wincon[n]->s2, 0, szm * sizeof(int));
     if (windat->u1_adv || windat->u1_hdif || windat->u1_vdif ||
@@ -6740,13 +6855,18 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->t12 = d_alloc_1d(szm);
       wincon[n]->t22 = d_alloc_1d(szm);
       wincon[n]->q = (master->q != NULL) ? d_alloc_1d(szc) : NULL;
-      wincon[n]->u1vh = d_alloc_1d(sze);
-
-      if (master->smagcode & (U1_AK|U1_SAK))
-        wincon[n]->u1kh = d_alloc_1d(szc);
+      if (master->smagcode & (U1_A|U1_SA))
+	wincon[n]->u1vh = d_alloc_1d(sze);
       else
-	wincon[n]->u1kh = windat->sdc;
+	wincon[n]->u1vh = windat->sde;
 
+      if (master->smagcode & (U1_AK|U1_SAK)) {
+        wincon[n]->u1kh = d_alloc_1d(szc);
+        wincon[n]->u2kh = d_alloc_1d(sze);
+      } else {
+	wincon[n]->u1kh = windat->sdc;
+	wincon[n]->u2kh = windat->sde;
+      }
 
       /* 2D arrays                                                   */
       szc = window[n]->szcS;
@@ -6785,6 +6905,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->q = master->q;
       wincon[n]->u1vh = master->u1vh;
       wincon[n]->u1kh = master->u1kh;
+      wincon[n]->u2kh = master->u2kh;
 
       /* 2D arrays                                                   */
       wincon[n]->oldeta = master->oldeta;
@@ -6847,8 +6968,10 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->cfl_dt = master->cfl_dt;
     wincon[n]->lnm = master->lnm;
     wincon[n]->nprof = master->nprofn;
+    wincon[n]->nprof2d = master->nprofn2d;
     wincon[n]->vorticity = master->vorticity;
     wincon[n]->numbers = master->numbers;
+    wincon[n]->numbers1 = master->numbers1;
     wincon[n]->compatible = master->compatible;
     wincon[n]->filter = master->filter;
     wincon[n]->porusplate = master->porusplate;
@@ -6856,6 +6979,8 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->robust = master->robust;
     wincon[n]->fatal = master->fatal;
     wincon[n]->mode2d = master->mode2d;
+    wincon[n]->tidef = master->tidef;
+    wincon[n]->tidep = master->tidep;
     wincon[n]->means = master->means;
     wincon[n]->means_dt = master->means_dt;
     wincon[n]->means_next = master->means_next;
@@ -6883,6 +7008,8 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->rampstart = master->rampstart;
     wincon[n]->rampend = master->rampend;
     wincon[n]->hf_ramp = master->hf_ramp;
+    wincon[n]->eqt_alpha = master->eqt_alpha;
+    wincon[n]->eqt_beta = master->eqt_beta;
     wincon[n]->u1vh0 = master->u1vh0;
     wincon[n]->u2vh0 = master->u2vh0;
     wincon[n]->u1kh0 = master->u1kh0;
@@ -6890,6 +7017,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->hmean1 = master->hmean1;
     wincon[n]->hmean2 = master->hmean2;
     wincon[n]->amean = master->amean;
+    wincon[n]->edmean = master->edmean;
     wincon[n]->zs = master->zs;
     wincon[n]->vz0 = master->vz0;
     wincon[n]->kz0 = master->kz0;
@@ -7181,6 +7309,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     for (ee = 1; ee <= window[n]->n3_e1; ee++) {
       e = window[n]->wse[ee];
       wincon[n]->u1vh[ee] = master->u1vh[e];
+      wincon[n]->u2kh[ee] = master->u2kh[e];
       if (ee <= window[n]->n2_e1) {
         wincon[n]->u1c1[ee] = master->u1c1[e];
         wincon[n]->u1c3[ee] = master->u1c3[e];
@@ -7490,6 +7619,8 @@ void win_consts_clear(geometry_t **window, int nwindows)
       d_free_1d(wincon->u1vh);
     if (wincon->u1kh && !(wincon->smagcode & U1_SPK))
       d_free_1d(wincon->u1kh);
+    if (wincon->u2kh && !(wincon->smagcode & U1_SPK))
+      d_free_1d(wincon->u2kh);
     d_free_1d(wincon->t11);
     d_free_1d(wincon->t12);
     d_free_1d(wincon->t22);
@@ -7549,6 +7680,8 @@ void win_consts_clear(geometry_t **window, int nwindows)
     i_free_1d(wincon->i6);
     i_free_1d(wincon->i7);
     i_free_1d(wincon->gmap);
+    d_free_2d(wincon->tend3d);
+    d_free_2d(wincon->tend2d);
     d_free_1d(wincon->tmass);
     d_free_1d(wincon->tsmass);
     i_free_1d(wincon->obcmap);
@@ -7679,12 +7812,23 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
   set_reef_frac(master, window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
+  /* Set the custom tide over the domain if required                 */
+  if (master->numbers1 & TPXO)
+    custom_tide_grid_init(master, window);
+  if (master->numbers1 & (TPXOV|TPXOT)) {
+    custom_tide_grid_init_uv(master, window, TD_NU);
+    custom_tide_grid_init_uv(master, window, TD_NV);
+  }
+  for (n = 1; n <= nwindows; n++) wincon[n]->tidef = master->tidef;
+
+  /*-----------------------------------------------------------------*/
   /* Set sponge zones                                                */
   for (n = 1; n <= nwindows; n++) {
     set_sponge_cells(window[n]);
     set_sponge_c(window[n], wincon[n]->u1kh, windat[n]->dt);
     set_sponge_e(window[n], wincon[n]->u1vh, windat[n]->dt);
-  }
+    set_sponge_e(window[n], wincon[n]->u2kh, windat[n]->dt);    
+    }
 
   /*-----------------------------------------------------------------*/
   /* Vertival velociyu and velocity initialisation                   */
@@ -7707,6 +7851,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
   /*-----------------------------------------------------------------*/
   /* Variable filling and initialisation                             */
   for (n = 1; n <= nwindows; n++) {
+
     win_data_fill_3d(master, window[n], windat[n], master->nwindows);
     win_data_fill_2d(master, window[n], windat[n], master->nwindows);
     compute_ref_density(master, window[n], windat[n], wincon[n]);
@@ -7755,7 +7900,6 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     win_data_empty_3d(master, window[n], windat[n], (VELOCITY|WVEL));
     win_data_empty_2d(master, window[n], windat[n], DEPTH);
 
-
     /* Transport mode initialisation                                 */
     if (master->runmode & TRANS) {
       calc_tmass(window[n], windat[n], wincon[n], 
@@ -7776,6 +7920,17 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     } else {
       if (wincon[n]->trasc & LAGRANGE)
 	wincon[n]->p1 = d_alloc_1d(window[n]->szc);
+    }
+
+    if (wincon[n]->etarlx & ETA_TPXO) {
+      double rr = 0.0;
+      relax_info_t *rlx = windat[n]->eta_rlx;
+      wincon[n]->neweta = wincon[n]->d4;
+      rr = rlx->rate;
+      for (cc = 1; cc <= window[n]->b2_t; cc++) {
+	c = window[n]->w2_t[cc];
+	do_eta_relax(window[n], c, rr, wincon[n]->tide_r);
+      }
     }
 
     /* Semi-Lagrange initialisation                                  */
@@ -7863,8 +8018,10 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
   init_trperc(master, window, windat, wincon);
   init_totals(master, window, wincon);
   init_trans(master, window, wincon);
+  init_turb(master, window, wincon);
   nan_check(window, windat, wincon, nwindows);
   pt_setup(master, window, windat, wincon);
+  swr_params_init(master, window);
 }
 
 /* END pre_run_setup()                                               */
@@ -7952,6 +8109,48 @@ void set_reef_frac(master_t *master,
 }
 
 /* END set_reef_frac()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initialize the tidal energy extraction                            */
+/*-------------------------------------------------------------------*/
+void init_turb(master_t *master, geometry_t **window, win_priv_t **wincon)
+{
+  geometry_t *geom = master->geom;
+  int n, cg, c, wn;
+  int nt[master->nwindows+1];
+
+  if (!master->nturb) return;
+
+  memset(nt, 0, (master->nwindows+1) * sizeof(int));
+  for (n = 0; n < master->nturb; n++) {
+    cg = master->turb[n];
+    if (cg > 0) {
+      wn = geom->fm[cg].wn;
+      nt[wn]++;
+    }
+  }
+  for (n = 1; n <= master->nwindows; n++) {
+    if (nt[n]) {
+      wincon[n]->nturb = nt[n];
+      wincon[n]->turb = i_alloc_1d(nt[n]);
+      wincon[n]->cturb = d_alloc_1d(nt[n]);
+    }
+  }
+  memset(nt, 0, (master->nwindows+1) * sizeof(int));
+  for (n = 0; n < master->nturb; n++) {
+    cg = master->turb[n];
+    if (cg > 0) {
+      wn = geom->fm[cg].wn;
+      c = geom->fm[cg].sc;
+      wincon[wn]->cturb[nt[wn]] = master->cturb[n];
+      wincon[wn]->turb[nt[wn]++] = c;
+    }
+  }
+}
+
+/* END init_turb()                                                   */
 /*-------------------------------------------------------------------*/
 
 
@@ -8082,6 +8281,7 @@ void geom_free_us(master_t *master,  /* Master data structure        */
     d_free_1d(geom->sinthu2);
     d_free_1d(geom->costhu2);
     d_free_1d(geom->cellarea);
+    d_free_1d(geom->edgearea);
     d_free_1d(geom->botz);
     d_free_1d(geom->botzgrid);
     d_free_1d(geom->cellx);
@@ -8201,9 +8401,9 @@ void window_init(geometry_t *geom,    /* Global geometry             */
         window[n]->cellx[cc] = geom->cellx[c];
         window[n]->celly[cc] = geom->celly[c];
 
-	for (m = 1; m <= window[n]->npe[cc]; m++)
+	for (m = 1; m <= window[n]->npe[cc]; m++) {
 	  window[n]->hacell[m][cc] = geom->hacell[m][c];
-
+	}
         /* Sediments                                                 */
         if (geom->sednz > 0) {
           int kk;
@@ -8229,6 +8429,7 @@ void window_init(geometry_t *geom,    /* Global geometry             */
       window[n]->h1acell[ee] = geom->h1acell[e];
       window[n]->h1au1[ee] = geom->h1au1[e];
       window[n]->h2au1[ee] = geom->h2au1[e];
+      window[n]->edgearea[ee] = geom->edgearea[e];
       window[n]->u1x[ee] = geom->u1x[e];
       window[n]->u1y[ee] = geom->u1y[e];
       window[n]->botzu1[ee] = geom->botzu1[e];
@@ -8435,6 +8636,7 @@ void win_geom_clear(geometry_t **window,  /* Window geometry         */
     d_free_1d(window[n]->h2au1);
     d_free_1d(window[n]->h1au2);
     d_free_1d(window[n]->cellarea);
+    d_free_1d(window[n]->edgearea);
     d_free_1d(window[n]->dHde1);
     d_free_1d(window[n]->dHde2);
     d_free_1d(window[n]->cellx);
@@ -8700,14 +8902,15 @@ void aux_maps(geometry_t *geom,       /* Global geometry             */
   /* Generate ghost cell maps in directions that have not already    */
   /* been defined.                                                   */
   if (!geom->fm[c].wn) {            /* Window = 0 => ghost cell      */
-    for (j = 1; j <= geom->npe[cs]; j++) {
-      if (window->c2c[j][cc] == cc) { /* Self pointing ghost cell    */
-      cg = geom->c2c[j][c];     /* Global cell in direction j
-      cl = geom->fm[cg].ac;     /* Auxiliary cell to the next to cc  */
-      if (!cl)
-        cl = geom->fm[cg].sc;   /* Wet cell if aux. cell undefined   */
-      if (cl)
-        window->c2c[j][cc] = cl;
+    for (j = 1; j <= geom->npem; j++) {
+      if (window->c2c[j][cc] == cc && /* Self pointing ghost cell    */
+	  geom->c2c[j][c] !=c) {  /* global not self pointing        */
+	cg = geom->c2c[j][c];     /* Global cell in direction j      */
+	cl = geom->fm[cg].ac;     /* Auxiliary cell to the next to cc  */
+	if (!cl)
+	  cl = geom->fm[cg].sc;   /* Wet cell if aux. cell undefined   */
+	if (cl)
+	  window->c2c[j][cc] = cl;
       }
     }
   }
@@ -9355,14 +9558,14 @@ void edge_centre(geometry_t *window, double *a, double *b, int mode)
   if (mode) {
     vec = window->w3_t;
     nv = window->b3_t;    
-    sz = window->szcS;
+    sz = window->szc;
   } else {
     vec = window->w2_t;
     nv = window->b2_t;    
-    sz = window->szc;
+    sz = window->szcS;
   }
 
-  memset(b, 0, sz *sizeof(double));
+  memset(b, 0, sz * sizeof(double));
   for (cc = 1; cc <= nv; cc++) {
     c = vec[cc];
     cs = window->m2d[c];

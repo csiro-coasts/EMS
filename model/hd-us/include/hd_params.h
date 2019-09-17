@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6066 2019-02-08 04:08:32Z her127 $
+ *  $Id: hd_params.h 6313 2019-09-13 04:31:35Z her127 $
  *
  */
 
@@ -217,6 +217,18 @@
 #define TD_NV           0x0008
 #define TD_TU           0x0010
 #define TD_TV           0x0020
+/* Tide forcing options */
+#define TD_EQT     0x0001     /* Equilibrium tide */
+#define TD_TPXOE   0x0002     /* TPXO elevation diagnostic */
+#define TD_TPXOV   0x0004     /* TPXO velocity diagnostic */
+#define TD_OBCE    0x0008     /* TIDALC elevation OBC */
+#define TD_OBCN    0x0010     /* TIDALC normal 3D velocity OBC */
+#define TD_OBCT    0x0020     /* TIDALC tangential 3D velocity OBC */
+#define TD_OBCNA   0x0040     /* TIDALC normal 2D velocity OBC */
+#define TD_OBCTA   0x0080     /* TIDALC tangential 2D velocity OBC */
+#define TD_VEL     0x0100     /* TPXO velocities (ms-1) supplied */
+#define TD_TRAN    0x0200     /* TPXO transports (m2s-1) supplied */
+#define TD_CSR     0x0400     /* CSR elevation OBC */
 
 /* Open boundary input types */
 #define O_POI  1
@@ -337,6 +349,7 @@
 #define PV_ENEUT      0x200000
 #define PV_ENSCO      0x400000
 #define PV_ENSDS      0x800000
+#define PV_APVM      0x1000000
 
 /* Lagrangian method */
 #define L_LINEAR      0x001
@@ -348,6 +361,7 @@
 #define L_BAYLIN      0x040
 #define L_FG          0x080
 #define L_LSLIN       0x100
+#define L_NRST        0x200
 
 #define TR_FIRST      0x000001
 
@@ -358,6 +372,20 @@
 #define PRESS_BT      16
 #define PRESS_BC      32
 #define CORIOLIS      64
+
+/* 3D momentum tendency flags                                                */
+#define TEND3D        7
+#define TEND2D        6
+#define T_ADV         0
+#define T_HDF         1
+#define T_VDF         2
+#define T_BOT         2
+#define T_COR         3
+#define T_BTP         4
+#define T_BCP         5
+#define T_NLI         5
+#define T_STK         6
+#define T_INT         6
 
 /* Debugging flags */
 #define D_ADVECT      0x000001
@@ -462,6 +490,11 @@
 #define EKPUMP       0x20000000
 #define TIDEFR       0x40000000
 #define U1VHC        0x00000001
+#define TPXO         0x00000002
+#define TPXOV        0x00000004
+#define TPXOT        0x00000008
+#define TRAN2D       0x00000010
+#define MESHUN       0x00000020
 
 /* Wind input */
 #define SPEED         2
@@ -490,6 +523,7 @@
 #define SCALE2D        0x008000  /* Viscosity is scaled for 2D mode */
 #define SCALEBI        0x010000  /* Biharmonic viscosity scaling */
 #define CUBIC          0x020000  /* Cubic viscosity scaling */
+#define AREAL          0x040000  /* Areal scaling */
 
 /* Save input forcing flags */
 #define OTEMP          1
@@ -506,6 +540,7 @@
 #define ETA_RELAX      16
 #define FLUX_ADJUST    32
 #define ETA_ADPT       64
+#define ETA_TPXO       128
 
 /* Horizontal diffusion/viscosity methods */
 #define LAPLACIAN      1
@@ -647,6 +682,7 @@
 #define V1957   0x000080
 #define V4201   0x000100
 #define V5342   0x000200
+#define V6257   0x000400
 
 /* Seasons */
 #define DAILY    -1
@@ -742,6 +778,8 @@
 #define RS_VHSET   0x0200
 #define RS_TSSET   0x0400
 #define RS_PSSSET  0x0800
+#define RS_ORIG    0x1000
+#define RS_PREV    0x2000
 
 /* Process exclusion */
 #define EX_TRAN    0x0001
@@ -871,16 +909,17 @@
 #define O180           4
 
 /* Cell / edge codes */
-#define W_WET     0x001
-#define W_SURF    0x002
-#define W_BOT     0x004
-#define W_SED     0x008
-#define W_GST     0x010
-#define W_INT     0x020
-#define W_NOBC    0x040
-#define W_TOBC    0x080
-#define W_GOBC    0x100
-#define W_AUX     0x200
+#define W_WET     0x001  /* Wet cell */
+#define W_SURF    0x002  /* Surface cell */
+#define W_BOT     0x004  /* Bottom cell */
+#define W_SED     0x008  /* Sediment cell */
+#define W_GST     0x010  /* Ghost cell */
+#define W_INT     0x020  /* Interior to ghost cell */
+#define W_NOBC    0x040  /* Normal OBC */
+#define W_TOBC    0x080  /* Tangential OBC */
+#define W_GOBC    0x100  /* Ghost OBC */
+#define W_AUX     0x200  /* Auxiliary */
+#define W_SOBC    0x400  /* Sponge zone OBC */
 
 /* Lagrange cell codes */
 #define L_WET          1

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 6141 2019-03-04 01:04:56Z her127 $
+ *  $Id: load_tracer.c 6284 2019-08-08 04:33:07Z her127 $
  *
  */
 
@@ -53,6 +53,7 @@ int value_init_sparse2d(master_t *master, double *ret, char *fname,
 			char *vname, char *i_rule);
 int value_init_sparse3d(master_t *master, double *ret, char *fname,
 			char *vname, char *i_rule);
+void filter_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n);
 
 /*------------------------------------------------------------------*/
 /* Loads 3D tracer values                                           */
@@ -137,6 +138,10 @@ void load_wc_tracer_step_3d(parameters_t *params, master_t *master,
   for (t = master->atr; t < master->ntr; ++t)
     scale_tracer(master->trinfo_3d, geom, master->tr_wc, t);
 
+  /* Filtering */
+  for (t = master->atr; t < master->ntr; ++t)
+    filter_tracer(master->trinfo_3d, geom, master->tr_wc, t);
+
   prm_set_errfn(hd_quit);
 
   calc_density(master);
@@ -191,6 +196,113 @@ void scale_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n)
 }
 
 /* END scale_tracer()                                               */
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Filters a tracer                                                 */
+/*------------------------------------------------------------------*/
+void filter_tracer(tracer_info_t *trinfo, geometry_t *geom, double **tr, int n)
+{
+  int c, cc, cp, cm, id, i, m;
+  int *vec, nvec;
+  int flag = trinfo[n].flag;
+  double scale = 0.25;
+  double cval = trinfo[n].scale;
+
+  if (trinfo[n].type & WATER) {
+    vec = geom->w3_t;
+    nvec = geom->b3_t;
+  }
+  if (trinfo[n].type & INTER) {
+    vec = geom->w2_t;
+    nvec = geom->b2_t;
+  }
+
+  if (flag & V_HP) {
+    double f[9];
+    double *b = d_alloc_1d(geom->sgsiz);
+
+    /* Set the boundary conditions (no flux) */
+    for (cc = 1; cc <= geom->nbpt; cc++) {
+      c = geom->bpt[cc];
+      cp = geom->bin[cc];
+      tr[n][c] = tr[n][cp];
+    }
+    for (cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->bot_t[cc];
+      tr[n][geom->zm1[c]] = tr[n][c];
+    }
+    for (m = 0; m < geom->nobc; m++) {
+      open_bdrys_t *open = geom->open[m];
+      for (cc = 1; cc <= open->no3_t; cc++) {
+	c = open->obc_t[cc];
+	cm = (open->type & U1BDRY) ? open->obc_e1[cc] : open->obc_e2[cc];
+	tr[n][cm] = tr[n][c];
+      }
+    }
+
+    /* Set the filter kernal */
+    f[0] = f[2] = -1.0;
+    f[3] = f[4] = f[5] = 0.0;
+    f[6] = f[8] = 1.0;
+    f[1] = -cval;
+    f[7] = cval;
+
+    for (cc = 1; cc <= nvec; cc++) {
+      double a[9];
+      c = vec[cc];
+      cp = geom->zp1[c];
+      cm = geom->zm1[c];
+      /*
+      a[4] = tr[n][c];
+      a[5] = tr[n][geom->xp1[c]];
+      a[3] = tr[n][geom->xm1[c]];
+      a[1] = tr[n][cp];
+      a[2] = tr[n][geom->xp1[cp]];
+      a[0] = tr[n][geom->xm1[cp]];
+      a[7] = tr[n][cm];
+      a[8] = tr[n][geom->xp1[cm]];
+      a[6] = tr[n][geom->xm1[cm]];
+      */
+      b[c] = tr[n][c];
+      for (i = 0; i < 9; i++)
+	b[c] += scale * (a[i] * f[i]);
+    }
+    for (cc = 1; cc <= nvec; cc++) {
+      c = vec[cc];
+      tr[n][c] = b[c];
+    }
+
+    for (cc = 1; cc <= nvec; cc++) {
+      double a[9];
+      c = vec[cc];
+      cp = geom->zp1[c];
+      cm = geom->zm1[c];
+      a[4] = tr[n][c];
+      /*
+      a[5] = tr[n][geom->yp1[c]];
+      a[3] = tr[n][geom->ym1[c]];
+      a[1] = tr[n][cp];
+      a[2] = tr[n][geom->yp1[cp]];
+      a[0] = tr[n][geom->ym1[cp]];
+      a[7] = tr[n][cm];
+      a[8] = tr[n][geom->yp1[cm]];
+      a[6] = tr[n][geom->ym1[cm]];
+      */
+      b[c] = tr[n][c];
+      for (i = 0; i < 9; i++)
+	b[c] += scale * (a[i] * f[i]);
+    }
+    for (cc = 1; cc <= nvec; cc++) {
+      c = vec[cc];
+      tr[n][c] = b[c];
+    }
+     d_free_1d(b);
+  }
+}
+
+/* END filter_tracer()                                              */
 /*------------------------------------------------------------------*/
 
 
@@ -445,7 +557,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
 
   /* Initialise */
   master->alert_a = master->alert_c = NULL;
-  master->avhrr = master->ghrsst = master->shwin = master->layth = NULL;
+  master->avhrr = master->ghrsst = master->ghrsste = master->shwin = master->layth = NULL;
   master->cfl2d = master->cfl3d = master->cour = master->lips = master->ahsb = NULL;
   master->mixl = master->steric = NULL;
   master->av = master->rv = master->pv = NULL;
@@ -464,7 +576,9 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
   master->sederr = master->ecoerr = master->riverflow = master->riverdepth = NULL;
   master->bathy_range_max = master->bathy_range_min = NULL;
   master->bathy_grad_max = master->bathy_grad_min = master->eta_tc = master->eta_inc = NULL;
-  master->cellres = NULL;
+  master->cellres = master->equitide =   master->tpxotide = NULL;
+  master->tpxovelu = master->tpxovelv = master->tpxotranu = master->tpxotranv = NULL;
+  master->uat = master->vat = master->meshun = NULL;
 
   /* Waves */
   master->ustrcw = master->wave_amp = master->wave_Cd = NULL;
@@ -477,7 +591,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
 
   /* SWR */
   master->swr_attn1 = master->swr_tran = NULL;
-  master->swr_babs = NULL;
+  master->swr_babs = master->swreg = master->swrms = master->attn_mean = master->tran_mean = NULL;
   if (params->swr_type & SWR_2D) master->swr_attn = NULL;
 
   /* Assign the 2D pointers.  */
@@ -747,6 +861,18 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (params->numbers1 & MESHUN) {
+    master->meshun = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "mesh_uniformity");
+    strcpy(master->trinfo_2d[tn].long_name, "Mesh uniformity index");
+    strcpy(master->trinfo_2d[tn].units, "%");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 100;
     master->trinfo_2d[tn].n = tn;
     tn++;
   }
@@ -1246,6 +1372,31 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     master->trinfo_2d[tn].n = tn;
     tn++;
   }
+  if (params->etarlx & ETA_TPXO) {
+    /*
+    strcpy(master->trinfo_2d[tn].name, "oeta");
+    strcpy(master->trinfo_2d[tn].long_name, "Relaxation elevation");
+    strcpy(master->trinfo_2d[tn].units, "metre");
+    master->trinfo_2d[tn].fill_value_wc = 0.0;
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].diagn = 1;
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e35;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e35;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    */
+    master->eta_tc = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "eta_tc");
+    strcpy(master->trinfo_2d[tn].long_name, "Relaxation eta time constant");
+    strcpy(master->trinfo_2d[tn].units, "days");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
   /* AVHRR SST */
   if (params->avhrr) {
     master->avhrr = master->tr_wcS[tn];
@@ -1271,10 +1422,19 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    if (params->ghrsst == 2)
-      strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
-    else
-      strcpy(master->trinfo_2d[tn].reset_file, "ghrsst_list.mnc(ghrsst=analysed_sst)");
+    strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
+    strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->ghrsste = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "ghrsst_error");
+    strcpy(master->trinfo_2d[tn].long_name, "GHRSST L4 SST error");
+    strcpy(master->trinfo_2d[tn].units, "degrees C");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
+    strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
     strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
     master->trinfo_2d[tn].n = tn;
     tn++;
@@ -1556,6 +1716,48 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     master->trinfo_2d[tn].n = tn;
     tn++;
   }
+ if (strlen(params->swr_regions)) {
+    master->swreg = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "swreg");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR param estimation regions");
+    strcpy(master->trinfo_2d[tn].units, "");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->swrms = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "swrms");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR param estimation RMSE");
+    strcpy(master->trinfo_2d[tn].units, "degrees C");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->swrms = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "attn_mean");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR mean attenuation");
+    strcpy(master->trinfo_2d[tn].units, "m-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->swrms = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tran_mean");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR mean transmission");
+    strcpy(master->trinfo_2d[tn].units, " ");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
   if (params->riverflow) {
     master->riverflow = master->tr_wcS[tn];
     strcpy(master->trinfo_2d[tn].name, "flow");
@@ -1579,6 +1781,96 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
       master->trinfo_2d[tn].n = tn;
       tn++;
     }
+  }
+  if (params->tidep) {
+    master->equitide = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "equitide");
+    strcpy(master->trinfo_2d[tn].long_name, "Equilibrium tide");
+    strcpy(master->trinfo_2d[tn].units, "m");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (params->numbers1 & TPXO) {
+    master->tpxotide = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tpxotide");
+    strcpy(master->trinfo_2d[tn].long_name, "TPXO tide");
+    strcpy(master->trinfo_2d[tn].units, "m");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (params->numbers1 & TPXOV) {
+    master->tpxovelu = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tpxou");
+    strcpy(master->trinfo_2d[tn].long_name, "TPXO x velocity");
+    strcpy(master->trinfo_2d[tn].units, "ms-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->tpxovelv = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tpxov");
+    strcpy(master->trinfo_2d[tn].long_name, "TPXO v velocity");
+    strcpy(master->trinfo_2d[tn].units, "ms-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (params->numbers1 & TPXOT) {
+    master->tpxotranu = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tpxoU");
+    strcpy(master->trinfo_2d[tn].long_name, "TPXO x transport");
+    strcpy(master->trinfo_2d[tn].units, "m2s-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->tpxotranv = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tpxoV");
+    strcpy(master->trinfo_2d[tn].long_name, "TPXO v transport");
+    strcpy(master->trinfo_2d[tn].units, "m2s-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (params->numbers1 & TRAN2D) {
+    master->uat = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "UAT");
+    strcpy(master->trinfo_2d[tn].long_name, "Eastward 2D transport");
+    strcpy(master->trinfo_2d[tn].units, "m2s-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->vat = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "VAT");
+    strcpy(master->trinfo_2d[tn].long_name, "Northward 2D transport");
+    strcpy(master->trinfo_2d[tn].units, "m2s-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
   }
   if (params->decf & DEC_ETA) {
     master->decv1 = master->tr_wcS[tn];

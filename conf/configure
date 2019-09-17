@@ -706,6 +706,7 @@ infodir
 docdir
 oldincludedir
 includedir
+runstatedir
 localstatedir
 sharedstatedir
 sysconfdir
@@ -785,6 +786,7 @@ datadir='${datarootdir}'
 sysconfdir='${prefix}/etc'
 sharedstatedir='${prefix}/com'
 localstatedir='${prefix}/var'
+runstatedir='${localstatedir}/run'
 includedir='${prefix}/include'
 oldincludedir='/usr/include'
 docdir='${datarootdir}/doc/${PACKAGE}'
@@ -1037,6 +1039,15 @@ do
   | -silent | --silent | --silen | --sile | --sil)
     silent=yes ;;
 
+  -runstatedir | --runstatedir | --runstatedi | --runstated \
+  | --runstate | --runstat | --runsta | --runst | --runs \
+  | --run | --ru | --r)
+    ac_prev=runstatedir ;;
+  -runstatedir=* | --runstatedir=* | --runstatedi=* | --runstated=* \
+  | --runstate=* | --runstat=* | --runsta=* | --runst=* | --runs=* \
+  | --run=* | --ru=* | --r=*)
+    runstatedir=$ac_optarg ;;
+
   -sbindir | --sbindir | --sbindi | --sbind | --sbin | --sbi | --sb)
     ac_prev=sbindir ;;
   -sbindir=* | --sbindir=* | --sbindi=* | --sbind=* | --sbin=* \
@@ -1174,7 +1185,7 @@ fi
 for ac_var in	exec_prefix prefix bindir sbindir libexecdir datarootdir \
 		datadir sysconfdir sharedstatedir localstatedir includedir \
 		oldincludedir docdir infodir htmldir dvidir pdfdir psdir \
-		libdir localedir mandir
+		libdir localedir mandir runstatedir
 do
   eval ac_val=\$$ac_var
   # Remove trailing slashes.
@@ -1327,6 +1338,7 @@ Fine tuning of the installation directories:
   --sysconfdir=DIR        read-only single-machine data [PREFIX/etc]
   --sharedstatedir=DIR    modifiable architecture-independent data [PREFIX/com]
   --localstatedir=DIR     modifiable single-machine data [PREFIX/var]
+  --runstatedir=DIR       modifiable per-process data [LOCALSTATEDIR/run]
   --libdir=DIR            object code libraries [EPREFIX/lib]
   --includedir=DIR        C header files [PREFIX/include]
   --oldincludedir=DIR     C header files for non-gcc [/usr/include]
@@ -4280,6 +4292,41 @@ $as_echo "$as_me: WARNING: 'JIGSAW library not found - linking disabled'" >&2;}
    JIGSAWRPATH=
    JIGSAWDIR=
 else
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -std=c++11" >&5
+$as_echo_n "checking whether C compiler accepts -std=c++11... " >&6; }
+if ${ax_cv_check_cflags___std_cpp11+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS  -std=c++11"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags___std_cpp11=yes
+else
+  ax_cv_check_cflags___std_cpp11=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags___std_cpp11" >&5
+$as_echo "$ax_cv_check_cflags___std_cpp11" >&6; }
+if test "x$ax_cv_check_cflags___std_cpp11" = xyes; then :
+  :
+else
+  as_fn_error $? "'This version of gcc does not support the 2011 C++ standard'" "$LINENO" 5
+fi
+
    $as_echo "#define HAVE_JIGSAWLIB 1" >>confdefs.h
 
       JIGSAWINC=-I../../${JIGSAW_PATH}/inc
@@ -5343,6 +5390,8 @@ $as_echo "$ac_cv_prog_c_openmp" >&6; }
       { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: '(MPI) Could not find OpenMP support on this machine'" >&5
 $as_echo "$as_me: WARNING: '(MPI) Could not find OpenMP support on this machine'" >&2;}
    fi
+   $as_echo "#define HAVE_OMP 1" >>confdefs.h
+
    includedir=$oldincludedir
    libdir=$oldlibdir
 fi
@@ -5397,9 +5446,6 @@ else
 fi
 
 if test "$USE_OMP"; then
-      if test "$MPI_ROOT"; then
-      as_fn_error $? "'Specifying OpenMP with MPI is currently not supported'" "$LINENO" 5
-   fi
 
   OPENMP_CFLAGS=
   # Check whether --enable-openmp was given.

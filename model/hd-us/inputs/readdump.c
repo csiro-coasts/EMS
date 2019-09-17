@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 6133 2019-03-04 00:59:12Z her127 $
+ *  $Id: readdump.c 6317 2019-09-13 04:33:03Z her127 $
  *
  */
 
@@ -43,7 +43,6 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 double smooth_bathy(unsigned long ***flag, int nz, int i, int j, int **xm, int **xp, 
 		    int **ym, int **yp, double **bathy, double bmin, double bmax);
 double bathy_smooth_us(mesh_t *m, double *bathy, int cc);
-
 
 
 /*-------------------------------------------------------------------*/
@@ -691,7 +690,7 @@ int dump_re_read(master_t *master, /* Master data structure */
 {
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
-  int c, cc, i, j, k, n;
+  int c, cc, cs, e, ee, i, j, k, n;
   size_t ndumps;
   size_t start[4];
   size_t count[4];
@@ -705,6 +704,12 @@ int dump_re_read(master_t *master, /* Master data structure */
   memset(ftimeunits,0,MAXSTRLEN);
   oset = (dumpdata->start_index) ? 0 : 1;
 
+  /*-----------------------------------------------------------------*/
+  /* Dimensions and initialise                                       */
+  nc_inq_dimlen(cdfid, ncw_dim_id(cdfid, "nMesh2_face"), &nMesh2_face);
+  nc_inq_dimlen(cdfid, ncw_dim_id(cdfid, "nMesh2_edge"), &nMesh2_edge);
+  nc_inq_dimlen(cdfid, ncw_dim_id(cdfid, "nMesh2_node"), &nMesh2_node);
+
   /* Check that the requested dump exists */
   nc_inq_dimlen(cdfid, ncw_dim_id(cdfid, "record"), &ndumps);
   if (ti > (int)(ndumps - 1)) {
@@ -714,6 +719,23 @@ int dump_re_read(master_t *master, /* Master data structure */
 
   if (DEBUG("dump"))
     dlog("dump", "Reading dump %d.\n", ti);
+
+  /*-----------------------------------------------------------------*/
+  /* Make the reverse maps                                           */
+  k2c = i_alloc_2d(geom->szcS, geom->nz);
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    c = geom->w3_t[cc];
+    k = geom->s2k[c];
+    cs = geom->m2d[c];
+    k2c[k][cs-oset] = c;
+  }
+  k2e = i_alloc_2d(geom->szeS, geom->nz);
+  for (ee = 1; ee <= geom->n3_e1; ee++) {
+    e = geom->w3_e1[ee];
+    k = geom->e2k[e];
+    cs = geom->m2de[e];
+    k2e[k][cs-oset] = e;
+  }
 
   start[0] = 0;
   start[1] = 0;
@@ -815,6 +837,9 @@ int dump_re_read(master_t *master, /* Master data structure */
     }
     d_free_3d(d1);
   }
+
+  i_free_2d(k2c);
+  i_free_2d(k2e);
 
   return (1);
 }
@@ -1052,7 +1077,6 @@ int dumpdata_read_3d_us(dump_data_t *dumpdata, int id, char *name,
   }
 
   nc_get_vara_double(id, vid, start, count, in[0]);
-
   for (k = 0; k < nz; k++) {
     for (ii = istart; ii < ni; ii++) {
       i = map[ii];
@@ -1164,6 +1188,7 @@ int dumpdata_read_2d0_us(dump_data_t *dumpdata, int id, char *name,
 /*-------------------------------------------------------------------*/
 void set_bathy_us(parameters_t *params)
 {
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
   int cc, c;
   int i, j, k, n, m;            /* Counters                          */
   int is, ie, ip, im;           /* Limits of grid                    */
@@ -1175,11 +1200,14 @@ void set_bathy_us(parameters_t *params)
   double *mincelldz;            /* Minimum layer thickness           */
   double *layers;               /* Layer spacing array               */
   double maxgrad;               /* Maximum allowable bottom gradient */
+  double maxdiff;               /* Maximum bottom difference         */
   double mdh;                   /* Max bottom gradient found in file
                                    topo */
   double d1, d2;                /* Dummies                           */
   double dist = 0.0;            /* Grid spacing                      */
   double x, y;                  /* Coordinate distances              */
+  int dodiff = 0;               /* Difference / median filtering     */
+  int dthr;                     /* Difference threshold              */
   int ic = 0;                   /* Grid position at maximum bottom   */
                                 /* gradient.                         */
   int nps = 0;                  /* Smoothing passes to reduce bottom */
@@ -1213,6 +1241,18 @@ void set_bathy_us(parameters_t *params)
     else
       mincelldz[k] = min_cell_thickness;
   }
+  if (strlen(params->maxdiff)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    dodiff = parseline(params->maxdiff, fields, MAXNUMARGS);
+    dthr = 0;
+    maxdiff = HUGE;
+    if (strcmp(fields[0], "median") == 0) 
+      dodiff *= -1;
+    else
+      maxdiff = fabs(atof(fields[0]));
+    if (dodiff == 2)
+      dthr = atoi(fields[1]);
+  }
 
   /*-----------------------------------------------------------------*/
   /* Read the bathymetry array                                       */
@@ -1227,7 +1267,7 @@ void set_bathy_us(parameters_t *params)
     else
       bathylimit = 1;
   }
-  memcpy(bathy, params->bathy, ns2 * sizeof(double));
+  memcpy(bathy, params->bathy, (ns2 + 1) * sizeof(double));
 
   /*-----------------------------------------------------------------*/
   /* Adjust for limits                                               */
@@ -1311,10 +1351,48 @@ void set_bathy_us(parameters_t *params)
 
   /* Single block - gradient or single value */
   mdh = 0.0;
+  if (prm_read_char(params->prmfd, "BATHY_MASK_VAL", buf)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    n = parseline(buf, fields, MAXNUMARGS);
+    if (n == 1) {
+      mdh = atof(fields[0]);
+      maskf = 3;
+      if (mdh > 0.0) mdh *= -1.0;
+    }
+    /* path input: find the closest cell to each location in the     */
+    /* path, and set the bathymetry value at that cell to the        */
+    /* BATHY_MASK_VAL.                                               */
+    if (n == 2) {
+      FILE *fp;
+      mdh = atof(fields[0]);
+      if ((fp = fopen(fields[1], "r"))) {
+	n = 0;
+	while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+	  double d, dm = HUGE;
+	  n = parseline(buf, fields, MAXNUMARGS);
+	  x = atof(fields[0]);
+	  y = atof(fields[1]);
+	  for (cc = 1; cc <= ns2; cc++) {
+	    d1 = mesh->xloc[mesh->eloc[0][cc][0]] - x;
+	    d2 = mesh->yloc[mesh->eloc[0][cc][0]] - y;
+	    d = sqrt(d1 * d1 + d2 * d2);
+	    if (d < dm) {
+	      dm = d;
+	      c = cc;
+	    }
+	  }
+	  bathy[c] = -fabs(mdh);
+	}
+	fclose(fp);
+      }
+    }
+  }
+  /*
   if (prm_read_double(params->prmfd, "BATHY_MASK_VAL", &mdh)) {
     maskf = 3;
     if (mdh > 0.0) mdh *= -1.0;
   }
+  */
   if (maskf) {
     int *bmi, *bmj;
     int mode = read_blocks(params->prmfd, "BATHY_MASK", &n, &bmi, &bmj);
@@ -1337,7 +1415,69 @@ void set_bathy_us(parameters_t *params)
     int mode;
     for (ip = 0; ip < im; ip++) {
       mdh = 0.0;
-      sprintf(buf, "BATHY_MASK_VAL%d", ip);
+      sprintf(key, "BATHY_MASK_VAL%d", ip);
+      if (prm_read_char(params->prmfd, key, buf)) {
+	char *fields[MAXSTRLEN * MAXNUMARGS];
+	m = parseline(buf, fields, MAXNUMARGS);
+	if (m == 1) {
+	  mdh = atof(fields[0]);
+	  if (mdh > 0.0) mdh *= -1.0;
+	  sprintf(buf, "BATHY_MASK%d", ip);
+	  mode = read_blocks(params->prmfd, buf, &n, &bmi, &bmj);
+	  if (mode & (B_LISTC|B_BLOCKC)) {
+	    for (k = 1; k <= n; k++) {
+	      cc = bmi[k];
+	      bathy[cc] = mdh;
+	    }
+	  }
+	}
+	/* path input: find the closest cell to each location in the */
+	/* path, and set the bathymetry value at that cell to the    */
+	/* BATHY_MASK_VAL.                                           */
+	if (m == 2) {
+	  FILE *fp;
+	  mdh = atof(fields[0]);
+	  if ((fp = fopen(fields[1], "r"))) {
+	    n = 0;
+	    while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+	      double d, dm = HUGE;
+	      n = parseline(buf, fields, MAXNUMARGS);
+	      x = atof(fields[0]);
+	      y = atof(fields[1]);
+	      for (cc = 1; cc <= ns2; cc++) {
+		d1 = mesh->xloc[mesh->eloc[0][cc][0]] - x;
+		d2 = mesh->yloc[mesh->eloc[0][cc][0]] - y;
+		d = sqrt(d1 * d1 + d2 * d2);
+		if (d < dm) {
+		  dm = d;
+		  c = cc;
+		}
+	      }
+	      bathy[c] = -fabs(mdh);
+	    }
+	  }
+	  fclose(fp);
+	}
+	if (m == 3 && strcmp(fields[0], "poly") == 0) {
+	  FILE *fp;
+	  poly_t *pl = poly_create();
+	  mdh = atof(fields[1]);
+	  if ((fp = fopen(fields[2], "r")) != NULL) {
+	    m = poly_read(pl, fp);
+	    for (cc = 1; cc <= ns2; cc++) {
+	      if (poly_contains_point(pl, mesh->xloc[mesh->eloc[0][cc][0]], 
+				          mesh->yloc[mesh->eloc[0][cc][0]])) {
+		if (bathy[cc] != LANDCELL && bathy[cc] != NOTVALID) {
+		  bathy[cc] = -fabs(mdh);
+		}
+	      }
+	    }
+	    fclose(fp);
+	  }
+	  poly_destroy(pl);
+	}
+      }
+      /*
       if (prm_read_double(params->prmfd, buf, &mdh))
 	if (mdh > 0.0) mdh *= -1.0;
       sprintf(buf, "BATHY_MASK%d", ip);
@@ -1348,6 +1488,44 @@ void set_bathy_us(parameters_t *params)
 	  bathy[cc] = mdh;
 	}
       }
+      */
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Replace cells with a median value for maximum bathymetry        */
+  /* difference > maxdiff. If maxdiff = 'median' then median         */
+  /* filtering is performed for all cells.                           */
+  if (dodiff) {
+    for (cc = 1; cc <= ns2; cc++) {
+      int dod = 0;
+      int dth = min(mesh->npe[cc], dth);
+      if (bathy[cc] != LANDCELL && bathy[cc] != NOTVALID) {
+	double v[mesh->mnpe+2];
+	/* Check the difference in bathymetry between cell cc and    */
+	/* surrounding cells. If all surrounding cells have a        */
+	/* difference > maxdiff (i.e. dod == npe) then replace cell  */
+	/* cc with the median of surrounding cells (note; if dthr!=0 */
+	/* then median filtering is dine if dod==npe-dthr).          */
+	n = 0;
+	for (j = 1; j <= mesh->npe[cc]; j++) {
+	  if ((c = mesh->neic[j][cc])) {
+	    if (bathy[c] != LANDCELL && bathy[c] != NOTVALID) {
+	      v[n++] = bathy[c];
+	      if (fabs(bathy[c] - bathy[cc]) > maxdiff) dod += 1;
+	    }
+	  }
+	}
+	/* Get the median value                                      */
+	if (dodiff < 0 || dod >= mesh->npe[cc] - dth) {
+	  if (dodiff < 0) v[n++] = bathy[cc];
+	  for (i = 0; i < n - 1; i++)
+	    for (j = n - 1; i < j; --j)
+	      order(&v[j-1], &v[j]);
+	  n = floor(n / 2);
+	  bathy[cc] = v[n];
+	}
+      }
     }
   }
 
@@ -1355,9 +1533,49 @@ void set_bathy_us(parameters_t *params)
   /* Smooth the bathymetry with a convolution filter if required.    */
   /* Smoothing over a selected area.                                 */
   if(params->smooth) {
+    int gsf = 1;
+
+    /* Smooth bathy within a series of polygons                      */
+    if (prm_read_char(params->prmfd, "SMOOTH_POLY", key)) {
+      FILE *fp;
+      int np;
+      double *xp, *yp;
+      double *nbthy = d_alloc_1d(ns2+1);
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+
+      gsf = 0;
+      np = parseline(key, fields, MAXNUMARGS);
+      for (k = 0; k < np; k++) {
+	poly_t *pl = poly_create();
+	if ((fp = fopen(fields[k], "r")) != NULL) {
+	  m = poly_read(pl, fp);
+	  n = params->smooth; 
+	  while(n) {
+	    memcpy(nbthy, bathy, (ns2+1) * sizeof(double));
+	    for (cc = 1; cc <= ns2; cc++) {
+	      if (poly_contains_point(pl, mesh->xloc[mesh->eloc[0][cc][0]], 
+				          mesh->yloc[mesh->eloc[0][cc][0]])) {
+		if (bathy[cc] != LANDCELL && bathy[cc] != NOTVALID) {
+		  bathy[cc] = bathy_smooth_us(mesh, nbthy, cc);
+		  bathy[cc] = min(bathy[cc], -bmin);
+		  bathy[cc] = max(bathy[cc], -bmax);
+		}
+	      }
+	    }
+	    n--;
+	  }
+	  fclose(fp);
+	}
+	poly_destroy(pl);
+      }
+      d_free_1d(nbthy);
+    }
+    /* Smooth bathy at a list of cell indices                        */
     if (prm_read_int(params->prmfd, "SMOOTH_MASK", &m)) {
       double *nbthy = d_alloc_1d(ns2+1);
       double kk;
+      gsf = 0;
+      m = atoi(key);
       n = params->smooth; 
       while(n) {
 	prm_flush_line(params->prmfd);
@@ -1384,12 +1602,12 @@ void set_bathy_us(parameters_t *params)
 	n--;
       }
       d_free_1d(nbthy);
-    } else {
-      /* Smoothing over a the whole domain.                          */
+    }
+    /* Smoothing over a the whole domain                             */
+    if (gsf) {
       double *nbthy = d_alloc_1d(ns2+1);
       double kk;
       n = params->smooth;
-
       while(n) {
 	for (cc = 1; cc <= ns2; cc++) {
 	  if (bathy[cc] != LANDCELL && bathy[cc] != NOTVALID) {
@@ -1500,11 +1718,12 @@ void set_bathy_us(parameters_t *params)
   for (n = 0; n < params->nobc; n++) {
     open_bdrys_t *open = params->open[n];
     if (open->bathycon) {
-      int cn, jj[mesh->mnpe];
+      int cn, jj[mesh->mnpe+1];
       double bathyb;
       /* Loop into the last non-ghost cell bathycon cells into the   */
       /* interior and get the bathymetry at this cell.               */
-      for (n = 0; n < mesh->nobc; n++) {
+      /*for (n = 0; n < mesh->nobc; n++) {*/
+
 	for (i = 1; i <= mesh->npts[n]; i++) {
 	  cc = mesh->loc[n][i];
 	  /* Get the direction (median) of the interior              */
@@ -1517,12 +1736,14 @@ void set_bathy_us(parameters_t *params)
 	    }
 	  }
 	  j = jj[m/2];
+
 	  /* Map into the interior in this direction bathycon cells  */
 	  /* and get the bathymetry at the final cell.               */
 	  c = cc;
 	  for (k = 0; k < open->bathycon; k++)
 	    c = mesh->neic[j][c];
 	  bathyb = bathy[c];
+
 	  /* Set bathycon cells in this direction from the boundary  */
 	  /* to bathyb.                                              */
 	  c = cc;
@@ -1531,7 +1752,7 @@ void set_bathy_us(parameters_t *params)
 	    c = mesh->neic[j][c];
 	  }
 	}
-      }
+	/*}*/
     }
   }
 
@@ -1542,7 +1763,7 @@ void set_bathy_us(parameters_t *params)
     if (open->smooth_z && open->smooth_n) {
       double *nbthy = d_alloc_1d(ns2+1);
       int np;
-      int cn, jj[mesh->mnpe];
+      int cn, jj[mesh->mnpe+1];
       double bathyb;
       for (np = 0; np < open->smooth_n; np++) {
 	for (n = 0; n < mesh->nobc; n++) {
@@ -1577,14 +1798,25 @@ void set_bathy_us(parameters_t *params)
       d_free_1d(nbthy);
     }
   }
-  memcpy(params->bathy, bathy, ns2 * sizeof(double));
+  memcpy(params->bathy, bathy, (ns2 + 1) * sizeof(double));
 
   d_free_1d(bathy);
 }
 
 /* END set_bathy_us()                                                */
 /*-------------------------------------------------------------------*/
-
+/*
+int pnpoly(int nvert, double *vertx, double *verty, double xin, double yin)
+{
+  int i, j, c = 0;
+  for (i = 0, j = nvert-1; i < nvert; j = i++) {
+    if ( ((verty[i]>yin) != (verty[j]>yin)) &&
+     (xin < (vertx[j]-vertx[i]) * (yin-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+       c = !c;
+  }
+  return c;
+}
+*/
 
 /*-------------------------------------------------------------------*/
 /* Modifies the bathymetry for structured meshes                     */

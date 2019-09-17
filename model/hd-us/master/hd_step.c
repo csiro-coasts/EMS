@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_step.c 5915 2018-09-05 03:30:40Z riz008 $
+ *  $Id: hd_step.c 6251 2019-07-31 05:21:06Z riz008 $
  *
  */
 
@@ -178,6 +178,12 @@ void hd_step(hd_data_t *hd_data, double tstop)
     /*---------------------------------------------------------------*/
     /* Do the post 3D mode calculations                              */
     mode3d_post(geom, master, window, windat, wincon, master->nwindows);
+#ifdef HAVE_MPI
+    /* Compare velocity solution between single and multiwindows */
+    if (mpi_check_multi_windows_velocity(geom, master, window, windat,
+					 FLUX))
+      hd_quit("Single and multli-windows u1flux3d post mismatch\n");
+#endif
 
     /*---------------------------------------------------------------*/
     /* Set the tracer lateral boundary conditions (no-flux)          */
@@ -193,6 +199,11 @@ void hd_step(hd_data_t *hd_data, double tstop)
     TIMING_SET;
     tracer_step(master, window, windat, wincon, master->nwindows);
     TIMING_DUMP(1," tracer_step");
+#ifdef HAVE_MPI
+    /* Compare single tracer solution between single and multiwindows */
+    if (mpi_check_multi_windows_tracer(geom, master, window, windat))
+      hd_quit("Single and multli-windows tracer mismatch\n");
+#endif
     if (master->crf == RS_RESTART) return;
 
     /* call any cyustom steps - always at the end!*/

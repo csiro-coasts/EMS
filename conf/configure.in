@@ -217,6 +217,7 @@ if test -z "$JIGSAW_PATH" ; then
    JIGSAWRPATH=
    JIGSAWDIR=
 else
+   AX_CHECK_COMPILE_FLAG([-std=c++11],[],[AC_MSG_ERROR('This version of gcc does not support the 2011 C++ standard')])
    AC_DEFINE(HAVE_JIGSAWLIB)
    dnl Make this all relative to model/hd-us
    JIGSAWINC=-I../../${JIGSAW_PATH}/inc
@@ -567,6 +568,7 @@ if test "$MPI_ROOT"; then
    if test -z "$OPENMP_CFLAGS"; then
       AC_MSG_WARN('(MPI) Could not find OpenMP support on this machine')
    fi
+   AC_DEFINE(HAVE_OMP)
    includedir=$oldincludedir
    libdir=$oldlibdir
 fi
@@ -601,9 +603,10 @@ dnl ###########################################################################
 AC_ARG_ENABLE(omp, [  --enable-omp              enables building with OpenMP], USE_OMP=yes, USE_OMP=)
 if test "$USE_OMP"; then
    dnl bail out if also MPI
-   if test "$MPI_ROOT"; then
-      AC_MSG_ERROR('Specifying OpenMP with MPI is currently not supported')
-   fi
+   dnl xxx
+   dnl if test "$MPI_ROOT"; then
+   dnl    AC_MSG_ERROR('Specifying OpenMP with MPI is currently not supported')
+   dnl fi
    AC_OPENMP
    if test -z "$OPENMP_CFLAGS"; then
       AC_MSG_ERROR('Cannot find OpenMP support on this machine')

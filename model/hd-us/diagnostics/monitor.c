@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 6128 2019-03-04 00:57:29Z her127 $
+ *  $Id: monitor.c 6342 2019-09-17 10:41:17Z riz008 $
  *
  */
 
@@ -57,7 +57,6 @@ double calc_min_cfl_3d(geometry_t *window, window_t *windat,
 		       win_priv_t *wincon, int *cl);
 void remove_tide(geometry_t *window, double *eta);
 void print_total_mass(master_t *master);
-void order (double *a, double *b);
 void psorts(double *a, int *c, int n);
 void porders(double *p, double *q, int *i, int *j);
 void sound_channel(geometry_t *window, window_t *windat, win_priv_t *wincon);
@@ -569,58 +568,39 @@ void get_tend(geometry_t *window, /* Window geometry                 */
 void get_tendv(geometry_t *window, /* Window geometry                */
 	       int *vec,           /* Vector of cells to process     */
 	       int eb,             /* End index for vec              */
-	       double *vel,        /* Velocity array after process   */
-	       double *ovel,       /* Velocity array before process  */
+	       double *tend,       /* Tendency                       */
 	       double *tend1,      /* East tendency of process       */
 	       double *tend2       /* North tendency of process      */
   )
 {
   int c, cs, cc, e, es, ee;       /* Counters                        */
-  double t;
+  double t, area;
   win_priv_t *wincon = window->wincon;
   window_t *windat = window->windat;
-  double *tend = wincon->w1;
 
   /* Set the tendency if required                                    */
   if (tend1 && tend2) {
-    memset(tend, 0, window->sze * sizeof(double));
-    for (ee = 1; ee <= eb; ee++) {
-      e = vec[ee];
-      tend[e] += (vel[e] - ovel[e]);
-    }
     if (!(wincon->means & TENDENCY)) {
       /* Rotate into east and north cell centered components         */
       vel_cen(window, windat, wincon, tend, NULL, tend1, tend2, NULL, NULL, 0);
     } else {
+      double *ut = wincon->w4;
+      double *vt = wincon->w5;
+      vel_cen(window, windat, wincon, tend, NULL, ut, vt, NULL, NULL, 0);
       t = windat->dtf;
       for (cc = 1; cc <= window->b3_t; cc++) {
-	int ee, e;
-	double ut, vt, nu, nv;
         c = window->w3_t[cc];
 	cs = window->m2d[c];
-	ut = vt = 0.0;
-	/* Rotate into east and north cell centered components       */
-	for (ee = 1; ee <= window->npe[cs]; ee++) {
-	  e = window->c2e[ee][c];
-	  es = window->m2de[e];
-	  ut += tend[e] * window->costhu1[es];
-	  nu += ceil(fabs(window->costhu1[es]));
-	  vt += tend[e] * window->sinthu1[es];
-	  nv += ceil(fabs(window->sinthu1[es]));
-	}
-	ut = (nu) ? ut / nu : 0.0;
-	vt = (nv) ? vt / nv : 0.0;
+
 	/* Update the cell centered mean                             */
 	if (windat->meanc[cs] > 0)
-	  tend1[c] = (tend1[c] * windat->meanc[cs] + ut * t) / 
+	  tend1[c] = (tend1[c] * windat->meanc[cs] + ut[c] * t) / 
 	    (windat->meanc[cs] + t);
-	  tend2[c] = (tend2[c] * windat->meanc[cs] + vt * t) / 
+	  tend2[c] = (tend2[c] * windat->meanc[cs] + vt[c] * t) / 
 	    (windat->meanc[cs] + t);
       }
     }
   }
-  /* Reset the velocity after this process                           */
-  memcpy(ovel, vel, window->sze * sizeof(double));
 }
 
 /* END get_tend()                                                    */
@@ -2538,6 +2518,13 @@ void nor_vert_prof(geometry_t *window,       /* Window geometry       */
       windat->nprof[c] = trs;
     } 
   }
+  if (wincon->nprof2d >= 0) {
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      cs = window->m2d[c];
+      windat->nprof[c] *= windat->tr_wcS[wincon->nprof2d][cs];
+    }
+  }
 }
 
 /* END nor_vert_prof()                                               */
@@ -2584,6 +2571,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
   double *P = wincon->w8;
   double d1, d2;
 
+  /* Cell centered horizontal viscosity                              */
   if (windat->u1vhc) {
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
@@ -2593,15 +2581,67 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
       for (ee = 1; ee <= window->npe[cs]; ee++) {
 	e = window->c2e[ee][c];
 	es = window->m2de[e];
-	d2 = window->h1au1[es];
-	if (wincon->diff_scale & NONLIN) d2 = d2 * d2;
-	if (wincon->diff_scale & CUBIC) d2 = d2 * d2 * d2;
+	d2 = window->edgearea[es];
+	if (wincon->diff_scale & LINEAR) d2 = sqrt(d2);
+	if (wincon->diff_scale & CUBIC) d2 = d2 * sqrt(d2);
 	windat->u1vhc[c] += (d2 * wincon->u1vh[e]);
 	d1 += d2;
       }
       windat->u1vhc[c] /= d1;
       if (wincon->diff_scale & SCALEBI)
 	windat->u1vhc[c] /= (0.125 * window->cellarea[cs]);
+    }
+  }
+
+  /* Tidal elevation from TPXO model                                 */
+  if (windat->tpxotide) {
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      double gmt = windat->t - wincon->tz;
+      double ramp = (wincon->rampf & (TIDALH|TIDALC)) ? 	
+	windat->rampval : 1.0;
+      c = window->w2_t[cc];
+      windat->tpxotide[c] = ramp * csr_tide_eval(&wincon->tc, c, gmt);
+    }
+  }
+  if (wincon->numbers1 & (TPXOV|TPXOT)) {
+    double gmt = windat->t - wincon->tz;
+    double u1, u2, t1, t2;
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      c = window->w2_t[cc];
+      u1 = u2 = d1 = 0.0;
+      for (ee = 1; ee <= window->npe[c]; ee++) {
+	e = window->c2e[ee][c];
+	d2 = window->h1au1[e];
+	u1 += d2 * csr_tide_eval(&wincon->tcu, e, gmt);
+	u2 += d2 * csr_tide_eval(&wincon->tcv, e, gmt);
+	t1 = u1 * window->botzu1[e];
+	t2 = u2 * window->botzu1[e];
+	d1 += d2;
+      }
+      if (windat->tpxovelu) windat->tpxovelu[c] = u1 / d1;
+      if (windat->tpxovelv) windat->tpxovelv[c] = u1 / d1;
+      if (windat->tpxotranu) windat->tpxotranu[c] = t1 / d1;
+      if (windat->tpxotranv) windat->tpxotranv[c] = t2 / d1;
+    }
+  }
+  if (wincon->numbers1 & TRAN2D) {
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      c = window->w2_t[cc];
+      d1 = 0.0;
+      windat->uat[c] = windat->uat[c] = 0.0;
+      for (ee = 1; ee <= window->npe[c]; ee++) {
+	e = window->c2e[ee][c];
+	d2 = window->h1au1[e];
+	windat->uat[c] += (windat->u1av[e] * window->costhu1[e] + 
+			   windat->u2av[e] * window->costhu2[e]) *
+	  window->botzu1[e];
+	windat->vat[c] += (windat->u1av[e] * window->sinthu1[e] + 
+			   windat->u2av[e] * window->sinthu2[e]) *
+	  window->botzu1[e];
+	d1 += d2;
+      }
+      windat->uat[c] /= d1;
+      windat->vat[c] /= d1;
     }
   }
 
@@ -2672,6 +2712,33 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     }
   }
 
+  if (windat->speed_2d || windat->tfront) {
+    for (ee = 1; ee <= window->b3_e1; ee++) {
+      e = window->w2_e1[ee];
+	wincon->d1[e] = sqrt(windat->u1av[e] * windat->u1av[e] +
+			     windat->u2av[e] * windat->u2av[e]);
+    }
+    /* Use natural neighbours to interpolate edge speed onto the     */
+    /* cell centre.                                                  */
+    /*
+    interp_edge_us(window, wincon->d1, window->b2_t, window->w2_t, 
+		   window->cellx, window->celly, windat->speed_2d, "nn_non_sibson");
+    */
+    /* Use area weighted average to interpolate edge speed onto the  */
+    /* cell centre.                                                  */
+    memset(windat->speed_2d, 0, window->szcS * sizeof(double));
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      double sum = 0.0;
+      c = window->w2_t[cc];
+      for (ee = 1; ee <= window->npe[cs]; ee++) {
+	e = window->c2e[ee][c];
+	windat->speed_2d[c] += window->edgearea[e] * wincon->d1[e];
+	sum += window->edgearea[e];
+      }
+      windat->speed_2d[c] /= sum;;
+    }
+  }
+
   for (cc = 1; cc <= window->b3_t; cc++) {
     c = window->w3_t[cc];
     cs = window->m2d[c];
@@ -2683,10 +2750,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     speed = sqrt(windat->u[c] * windat->u[c] +
 		 windat->v[c] * windat->v[c]);
     if (windat->speed_3d) windat->speed_3d[c] = speed;
-    if (windat->speed_2d || windat->tfront)
-      windat->speed_2d[cs] = sqrt(windat->uav[cs] * windat->uav[cs] +
-				  windat->vav[cs] * windat->vav[cs]);
-
+    
     /* Get the Brunt Vaisala frequency                               */
     /* N2 = -(g/rho)(drho/dz) (s-1)                                  */
     N2 = buoyancy_frequency2(window, windat, wincon, c);
@@ -4438,6 +4502,15 @@ double con_velmax(double vel, double velmax)
 /* END con_velmax()                                                  */
 /*-------------------------------------------------------------------*/
 
+void order (double *a, double *b)
+{
+  double val;
+  if (*a > *b) {
+    val = *a;
+    *a = *b;
+    *b = val;
+  }
+}
 
 /*-------------------------------------------------------------------*/
 /* Returns the median velocity in the vicinity of the cell for       */
@@ -4480,16 +4553,6 @@ double con_median(geometry_t *window,     /* Window geometry         */
   i_free_1d(st);
   d_free_1d(v);
   return(ret);
-}
-
-void order (double *a, double *b)
-{
-  double val;
-  if (*a > *b) {
-    val = *a;
-    *a = *b;
-    *b = val;
-  }
 }
 
 /* END con_median()                                                  */

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryfuncs.c 6127 2019-03-04 00:57:12Z her127 $
+ *  $Id: bdryfuncs.c 6306 2019-09-13 04:16:26Z her127 $
  *
  */
 
@@ -563,6 +563,8 @@ tsfiles_t *tsfiles_alloc(master_t *master, bdry_details_t *data)
       strcpy(data->args[i], buf);
     }
   }
+  if (endswith(data->args[0], ".mpk"))
+    hd_warn("Attempting to read file %s for OBC function %s variable %s\n", data->args[0], data->custom_tag, data->name);
 
   tsf->ntsfiles = data->nargs;
   tsf->tsfiles = hd_ts_multifile_read(master, data->nargs, data->args);

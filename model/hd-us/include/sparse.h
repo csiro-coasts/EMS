@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6131 2019-03-04 00:58:32Z her127 $
+ *  $Id: sparse.h 6315 2019-09-13 04:32:17Z her127 $
  *
  */
 
@@ -223,6 +223,7 @@ typedef struct {
   int *jloc;               /* j location (optional) */
   int **neic;              /* Cell neighbour map */
   int **neij;              /* Cell neighbor index map */
+  int *map;               /* Dummy mapping function */
 } mesh_t;
 
 typedef struct {
@@ -309,6 +310,8 @@ struct win_priv {
   double vz0;                   /* Background vertical viscosity (m2s-2) */
   double kz0;                   /* Background vertical diffusivity  */
   double *eta_rlx3d;            /* Eta relaxation flux for 3d mode */
+  double **tend3d;              /* 3D tendencies */
+  double **tend2d;              /* 2D tendencies */
 
   double tstart;                /* Start time of the simulation */
   double rampstart;             /* Start time of ramp period */
@@ -328,6 +331,8 @@ struct win_priv {
   double wave_alpha;            /* Alpha parameter for waves */
   double wave_hf;               /* Scaling factor for significant wave height */
   double wave_b1;               /* b1 parameter for waves */
+  double eqt_alpha;             /* Constant for tidal self attraction / loading */
+  double eqt_beta;              /* Constant for tidal body force */
   int smooth_VzKz;              /* Shuman smoothing of Vz and Kz */
   int fcf;                      /* Flag for k-w Wilcox (1988)/(1998) models */
   int trasc;                    /* Advection scheme type flag (tracers) */
@@ -354,6 +359,8 @@ struct win_priv {
   int nonlinear;                /* Non-linearity flag */
   int calc_dens;                /* Calculate density flag */
   int mode2d;                   /* Run in 2D mode */
+  int tidef;                    /* Tidal forcing options */
+  int tidep;                    /* Include tidal potential */
   int heatflux;                 /* Type of heatflux specification */
   int saltflux;                 /* Type of saltflux specification */
   int cfl;                      /* CFL time-step diagnostic */
@@ -378,6 +385,7 @@ struct win_priv {
   int means;                    /* Mean velocity diagnostic */
   int da;                       /* Data assimilation */
   int nprof;                    /* Normalized profile flag */
+  int nprof2d;                  /* Surface tracer for profiles */
   double means_dt;              /* Mean velocity averaging interval */
   double means_next;            /* Next time for zeroing means */
   double means_os;              /* Offset for restarts */
@@ -406,7 +414,8 @@ struct win_priv {
   int waves;                    /* Include wave enhanced bottom friction */
   double hmean1;                /* Mean grid spacing between centres (m) */
   double hmean2;                /* Mean grid spacing of edges (m) */
-  double amean;                 /* Mean area (m^2) */
+  double amean;                 /* Mean cell area (m^2) */
+  double edmean;                /* Mean edge area (m^2) */
   double u1vh0;                 /* Horizontal e1 viscosity (m2s-1) */
   double u2vh0;                 /* Horizontal e2 viscosity (m2s-1) */
   double u1kh0;                 /* Horizontal e1 diffusivity (m2s-1) */
@@ -426,7 +435,15 @@ struct win_priv {
   int trout;                    /* Transport file output flag */
   int swr_type;                 /* Type of attenuation */
   int dhwf;                     /* Degree heating diagnostic */
+
   double albedo;                /* Albedo for swr */
+  int nswreg;                   /* Number of swr estimation regions */
+  int *swmap;                   /* Mapping of swr region to index */
+  int swr_data;                 /* Short wave estimation data */
+  double swr_depth;             /* Short wave estimation depth */
+  double *swC;                  /* Matrix term for vertical diffusion */
+  double swr_next;              /* Next swr estimation event */
+  double swr_dt;                /* swr estimation time increment */
 
   /* Alert thresholds */
   double amax;
@@ -640,6 +657,13 @@ struct win_priv {
 
   /* Tidal harmonic structure */
   tidal_consts_t tc;
+  tidal_consts_t tcu;
+  tidal_consts_t tcv;
+
+  /* Tidal energy extraction */
+  int nturb;
+  int *turb;
+  double *cturb;
 
   /* Multi-grid transport variables */
   int tmode;                /* Transport mode */
@@ -944,6 +968,7 @@ struct geometry {
   double *h2au1;                /* e1 centered e2 grid spacing (m) */
   double *h1au2;                /* e2 centered e1 grid spacing (m) */
   double *cellarea;             /* Cell area (m2) */
+  double *edgearea;             /* Edge area (m2) */
   double *dHde1;                /* Bottom slope in the x direction */
   double *dHde2;                /* Bottom slope in the y direction */
   double *cellx;                /* x co-ordinates of eta points (m) */
@@ -1087,6 +1112,7 @@ typedef struct {
   int ncx, ncy;                 /* Gridded dimensions */
   delaunay *d;                  /* Delaunay data structure */
   char i_rule[MAXSTRLEN];       /* Unstructured interpolation method */
+  char cookiecut[MAXSTRLEN];    /* Mesh cookie cut */
   point *pin;                   /* Points for triangulation */
   int np;                       /* Number of triangulation points */
   int *sin;                     /* Triangulation segments */
@@ -1131,6 +1157,8 @@ typedef struct {
   int calc_dens;                /* Calculate density flag */
   char densname[MAXSTRLEN];     /* Name of density tracer */
   int mode2d;                   /* Run in 2D mode */
+  int tidef;                    /* Tidal forcing options */
+  int tidep;                    /* Include tidal potential */
   int cfl;                      /* CFL time-step diagnostic */
   char cfl_dt[MAXSTRLEN];       /* Time for active cfl specification */
   int mixlayer;                 /* Mixed layer depth diagnostic */
@@ -1151,6 +1179,7 @@ typedef struct {
   char trtend[MAXSTRLEN];       /* Tracer tendency flag */
   int means;                    /* Mean velocity diagnostic */
   char means_dt[MAXSTRLEN];     /* Mean velocity averaging interval */
+  char means_mc[MAXSTRLEN];     /* Counter for MONTHLY, SEASONAL means */
   char means_os[MAXSTRLEN];     /* Offset for restarts */
   char means_tra[MAXSTRLEN];    /* Offset for restarts */
   char regions[MAXSTRLEN];      /* Name of regions file */
@@ -1189,6 +1218,7 @@ typedef struct {
   char avhrr_path[MAXSTRLEN];   /* AVHRR SST data path */
   int ghrsst;                   /* Include GHRSST SST */
   char ghrsst_path[MAXSTRLEN];  /* GHRSST SST data path */
+  char ghrsst_opt[MAXSTRLEN];   /* GHRSST SST data options */
   char alert[MAXSTRLEN];        /* Create alert log */
   char alert_dt[MAXSTRLEN];     /* Time step for alert ts file */
   int eta_f;                    /* Alert action on elevation          */
@@ -1216,6 +1246,7 @@ typedef struct {
   double smax;                  /* Maximum shear (ms-1)               */
   double emean;                 /* Mean eta mean                      */
   double maxgrad;               /* Maximum bathymetry gradient        */
+  char maxdiff[MAXSTRLEN];      /* Maximum bathymetry difference      */
   int bathyfill;                /* Unstructured land filling method   */
   double bvel;                  /* Velocity for bathymetry check      */
   double lnm;                   /* Level of no motion for steric height */
@@ -1246,6 +1277,7 @@ typedef struct {
   int gint_errfcn;              /* Generic interface error handling flag */
   int riverflow;                /* Include river flow diagnostic tracer */
   char nprof[MAXSTRLEN];        /* Normalized profile flag */
+  char nprof2d[MAXSTRLEN];      /* Surface field for normalized profile */
   /* DATA ASSIM */
   int da;                       /* Data assimilation */
   double da_dt;                 /* Data assimilation time step */
@@ -1256,6 +1288,8 @@ typedef struct {
   int *lande1;                  /* e1 list of defined land cells */
   int *lande2;                  /* e2 list of defined land cells */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
+  char particles[MAXSTRLEN];    /* Auto particle sources */
+  char addquad[MAXSTRLEN];      /* Add quad grid to a mesh */
   int data_infill;              /* Use cascade search on input file data */
   char *da_anom_file;           /* File name for the anomaly fields */
   char *da_anom_states;         /* State names to read from the anomaly fields */
@@ -1292,6 +1326,8 @@ typedef struct {
   double u1kh;                  /* Horizontal diffusivity, e1 direction */
   double u2kh;                  /* Horizontal diffusivity, e2 direction */
   double z0;                    /* Bottom roughness */
+  double eqt_alpha;             /* Constant for tidal self attraction / loading */
+  double eqt_beta;              /* Constant for tidal body force */
   double *z0s;                  /* Spatial bottom roughness */
   double *coriolis;             /* Coriolis parameter */
   double *surface;              /* Initial surface height */
@@ -1462,6 +1498,9 @@ typedef struct {
   double zref;                  /* Reference height */
   double albedo;                /* Albedo */
   double albedo_l;              /* Albedo for light */
+  char swr_regions[MAXSTRLEN];  /* Short wave estimation regions file */
+  char swr_data[MAXSTRLEN];     /* Short wave estimation data */
+  double swreg_dt;              /* Short wave estimation time increment */
   int hfadf;                    /* Advection flag */
   int bulkf;                    /* Bulk scheme for heatflux */
   char hftemp[MAXSTRLEN];       /* Heat flux temperature filename */
@@ -1510,6 +1549,11 @@ typedef struct {
   int nemy, *kty, *kby;
   int *emisy, *emidy;
   int *emjsy, *emjdy;
+
+  /* Tidal energy extraction */
+  int nturb;
+  char **turbs;
+  double **turbv;
 
   /* Process exclude */
   int prex, *prxi, *prxj, *prxf;
@@ -1563,6 +1607,8 @@ struct master {
   int nonlinear;                /* Non-linearity flag */
   int calc_dens;                /* Calculate density flag */
   int mode2d;                   /* Run in 2D mode */
+  int tidef;                    /* Tidal forcing options */
+  int tidep;                    /* Include tidal potential */
   int cfl;                      /* CFL time-step diagnostic */
   double cfl_dt;                /* Time for active cfl specification */
   double lnm;                   /* Level of no motion for steric height */
@@ -1647,6 +1693,7 @@ struct master {
   double hmean1;                /* Mean grid spacing between centres (m) */
   double hmean2;                /* Mean grid spacing of edges (m) */
   double amean;                 /* Mean area (m^2) */
+  double edmean;                /* Mean edge area (m^2) */
   double minres;                /* Minimum resolution (m) */
   double maxres;                /* Maximum resolution (m) */
   int minrese;                  /* Location of minimum resolution */
@@ -1669,6 +1716,8 @@ struct master {
   double rampstart;             /* Start time of ramp period */
   double rampend;               /* End time of ramp period */
   double rampval;               /* Ramp value for forcing */
+  double eqt_alpha;             /* Constant for tidal self attraction / loading */
+  double eqt_beta;              /* Constant for tidal body force */
   double *Cd;                   /* Drag coefficient */
   double *coriolis;             /* Coriolis parameter */
   double *u1c1;                 /* e1 advection term constant */
@@ -1737,6 +1786,14 @@ struct master {
   double *riverflow;            /* River flow diagnostic */
   double *riverdepth;           /* River depth diagnostic */
   double *riversalt;            /* River ghost salinity diagnostic */
+  double *equitide;             /* Equilibrium tide */
+  double *tpxotide;             /* TPXO tidal elevation */
+  double *tpxovelu;             /* TPXO tidal elevation x velocity */
+  double *tpxovelv;             /* TPXO tidal elevation y velocity */
+  double *tpxotranu;            /* TPXO tidal elevation x transport */
+  double *tpxotranv;            /* TPXO tidal elevation y transport */
+  double *uat;                  /* Eastward 2D transport (m2s-1) */
+  double *vat;                  /* Northward 2D transport (m2s-1) */
   double *stream;               /* 2D streamfunction */
   double *brunt;                /* Brunt Vaisala (buoyancy) frequency (s-1) */
   double *int_wave;             /* Internal wave speed (ms-1) */
@@ -1758,6 +1815,7 @@ struct master {
   double *obc_phase;            /* OBC phase speed (m/s) */
   double *nprof;                /* Normalized profile */
   int nprofn;                   /* Tracer to normalize */
+  int nprofn2d;                 /* Surface tracer for profiles */
   double *sound;                /* Speed of sound */
   double *schan;                /* Sound channel depth */
   double *sonic;                /* Sonic layer depth */
@@ -1779,6 +1837,7 @@ struct master {
   double *eta_inc;              /* Relaxation eta increment */
   double *avhrr;                /* AVHRR SST */
   double *ghrsst;               /* GHRSST SST */
+  double *ghrsste;              /* GHRSST SST error */
   double *shwin;                /* Window partitioning */
   double *alert_a;              /* Actual alert diagnostic */
   double *alert_c;              /* Cumulative alert diagnostic */
@@ -1806,6 +1865,7 @@ struct master {
   double *dhwc;                 /* Degree heating week climatology */
   double *dhw;                  /* Degree heating week */
   double *cellres;              /* Mean cell resolution */
+  double *meshun;               /* Mesh uniformity indicator */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   double *bathy_range_max;
   double *bathy_range_min;
@@ -2004,6 +2064,10 @@ struct master {
   int swr_type;                 /* Type of attenuation */
   double *swr_attn;             /* Short wave attenuation (for red) */
   double *swr_attn1;            /* Short wave attenuation for blue-green */
+  double *swreg;                /* swr estimation regions */
+  double *swrms;                /* RMS error from swr estimation */
+  double *attn_mean;            /* Mean swr attenuation */
+  double *tran_mean;            /* Mean swr transmission */
 
   /* Heat flux variables */
   int heatflux;                 /* Type of heatflux specification */
@@ -2038,7 +2102,8 @@ struct master {
   double *u2vh;                 /* Horizontal e2 viscosity (m2s-1) */
   double *u1kh;                 /* Horizontal e1 diffusivity (m2s-1) */
   double *u2kh;                 /* Horizontal e2 diffusivity (m2s-1) */
-  double *sdc;                  /* Smagorinsky horizontal diffusion */
+  double *sdc;                  /* Smagorinsky horizontal diffusion, cell centrered */
+  double *sde;                  /* Smagorinsky horizontal diffusion, edge centered */
   double *t11;                  /* Horizontal stress tensor, (x,x) */
   double *t12;                  /* Horizontal stress tensor, (x,y) */
   double *t22;                  /* Horizontal stress tensor, (y,y) */
@@ -2330,6 +2395,11 @@ struct master {
   int ***i1, ***i2;
   double *d2, *d3;
 
+  /* Tidal energy extraction */
+  int nturb;
+  int *turb;
+  double *cturb;
+
   /* Function to calculate Vz and Kz.  */
   void (*calc_closure) (geometry_t *, window_t *, win_priv_t *);
   void (*s_func) (double aN, double aM, double *cmu, double *cmu_d);
@@ -2382,7 +2452,8 @@ struct window {
   double *sal;                  /* Salinity */
   int tno;                      /* Tracer number for temperature */
   int sno;                      /* Tracer number for salinity */
-  double *sdc;                  /* Smagorinsky horizontal diffusion */
+  double *sdc;                  /* Smagorinsky horizontal diffusion, cell centered */
+  double *sde;                  /* Smagorinsky horizontal diffusion, edge centered */
   double t;                     /* Simulation time (s) */
   double dt;                    /* Time step for the 3D mode (s) */
   double dtu1;                  /* Time step for the 3D u1 velocity (s) */
@@ -2510,6 +2581,7 @@ struct window {
   double *lwro;                 /* Long wave output radiation */
   double *avhrr;                /* AVHRR SST */
   double *ghrsst;               /* GHRSST SST */
+  double *ghrsste;              /* GHRSST SST error */
   double *shwin;                /* Window partitioning */
   double *alert_a;              /* Actual alert diagnostic */
   double *alert_c;              /* Cumulative alert diagnostic */
@@ -2519,6 +2591,11 @@ struct window {
   double *swr_attn1;            /* Short wave attenuation for blue-green */
   double *swr_tran;             /* Short wave surface transmission */
   double *swr_babs;             /* Short wave bottom absorption */
+  double *swreg;                /* swr estimation regions */
+  double *swrms;                /* RMS error from swr estimation */
+  double *attn_mean;            /* Mean swr attenuation */
+  double *tran_mean;            /* Mean swr transmission */
+  double swrc;                  /* swr mean counter */
 
   /* To keep track of heatflux diagnostics */
   int lwrn;                     /* Tracer number for lwr */
@@ -2578,6 +2655,14 @@ struct window {
   double *riverflow;            /* River flow diagnostic */
   double *riverdepth;           /* River depth diagnostic */
   double *riversalt;            /* River ghost salinity diagnostic */
+  double *equitide;             /* Equilibrium tide */
+  double *tpxotide;             /* TPXO tidal elevation */
+  double *tpxovelu;             /* TPXO tidal elevation x velocity */
+  double *tpxovelv;             /* TPXO tidal elevation y velocity */
+  double *tpxotranu;            /* TPXO tidal elevation x transport */
+  double *tpxotranv;            /* TPXO tidal elevation y transport */
+  double *uat;                  /* Eastward 2D transport (m2s-1) */
+  double *vat;                  /* Northward 2D transport (m2s-1) */
   double *steric;               /* Steric height diagnostic */
   double *fltr;                 /* Pointer to flushing tracer */
   double *agetr;                /* Pointer to age tracer */

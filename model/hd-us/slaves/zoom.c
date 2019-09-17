@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zoom.c 5913 2018-09-05 02:35:27Z her127 $
+ *  $Id: zoom.c 6328 2019-09-13 04:38:11Z her127 $
  *
  */
 
@@ -91,15 +91,20 @@ void smooth3(master_t *master, /* Model data structure               */
   )
 {
   geometry_t *geom = master->geom;
-  int c, ci, cc;
+  int c, ci, cc, j;
   double* aa;
 
   aa = d_alloc_1d(sz);
   memcpy(aa, A, sz * sizeof(double));
   for (cc = 1; cc <= nctp; cc++) {
-    ci = ctp[cc];
-    c = (!edge) ? ci : geom->c2e[edge][ci];
-    aa[c] = cvol1(master, A, ci, edge);
+    ci = c = ctp[cc];
+    if (edge) {
+      for (j = 1; j <= geom->npe[geom->m2d[ci]]; j++) {
+	c = geom->c2e[j][ci];
+	aa[c] = cvol1(master, A, ci, j);
+      }
+    } else
+      aa[c] = cvol1(master, A, ci, 0);
   }
   memcpy(A, aa, sz * sizeof(double));
 
@@ -107,6 +112,44 @@ void smooth3(master_t *master, /* Model data structure               */
 }
 
 /* END smooth3()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Smooths an edge array using area weighted eSe[]                   */
+/*-------------------------------------------------------------------*/
+void smooth3e(master_t *master, /* Model data structure              */
+	      double *A,        /* Array to smooth                   */
+	      int *ctp,         /* Cells to process array            */
+	      int nctp,         /* Size of ctp                       */
+	      int sz            /* Size of A                         */
+  )
+{
+  geometry_t *geom = master->geom;
+  int e, es, ee, j, eoe;
+  double *aa, d1;
+
+  aa = d_alloc_1d(sz);
+  memcpy(aa, A, sz * sizeof(double));
+  for (ee = 1; ee <= nctp; ee++) {
+    e = ctp[ee];
+    es = geom->m2de[e];
+    d1 = 0.0;
+    for (j = 1; j <= geom->nee[e]; j++) {
+      eoe = geom->eSe[j][e];
+      es = geom->m2de[eoe];
+      if (eoe) {
+	aa[e] += A[eoe] * geom->edgearea[es];
+	d1 += geom->edgearea[es];
+      }
+    }
+    aa[e] /= d1;
+  }
+  memcpy(A, aa, sz * sizeof(double));
+  d_free_1d(aa);
+}
+
+/* END smooth3e()                                                     */
 /*-------------------------------------------------------------------*/
 
 

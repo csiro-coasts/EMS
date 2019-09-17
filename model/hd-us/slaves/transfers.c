@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6112 2019-02-22 01:42:17Z riz008 $
+ *  $Id: transfers.c 6281 2019-08-08 04:29:06Z her127 $
  *
  */
 
@@ -2549,7 +2549,7 @@ void window_reset(master_t *master,      /* Master data              */
       windat->wbot[cc] = master->wbot[c];
       windat->patm[cc] = master->patm[c];
       if (master->show_win)
-	master->shwin[window->wsa[cc]] = windat->shwin[cc] = (double)n;
+	master->shwin[window->wsa[cc]] = windat->shwin[cc] = (double)window->wn;
       
       if (master->ntrS) {
 	for (tn = 0; tn < windat->ntrS; tn++) {
@@ -2565,12 +2565,12 @@ void window_reset(master_t *master,      /* Master data              */
     }
   }
   /* Edge arrays                                                     */
-  for (ee = 1; ee <= window->szeS; ee++) {
+  for (ee = 1; ee < window->szeS; ee++) {
     e = window->wse[ee];
     windat->u1[ee] = master->u1[e];
     wincon->u1vh[ee] = master->u1vh[e];
   }
-  for (ee = 1; ee <= window->szeS; ee++) {
+  for (ee = 1; ee < window->szeS; ee++) {
     e = window->wse[ee];
     windat->u1av[ee] = master->u1av[e];
     windat->wind1[ee] = master->wind1[e];
@@ -2962,21 +2962,28 @@ int mpi_check_multi_windows_velocity(geometry_t *geom, master_t *master,
 
   /* Set up sizes and arrays for this process */
   if (flag == VEL2D) {
-    v_size = geom->v2_e1;
+    v_size = geom->b2_e1;
     w_e1   = geom->w2_e1;
     vel    = master->u1av; // same as windat[1]->u1av
     vel_sz = geom->szeS;
   } else
     if (flag == VEL3D) {
       /* 3D */
-      v_size = geom->v3_e1;
+      v_size = geom->b3_e1;
       w_e1   = geom->w3_e1;
       vel    = master->u1; // same as windat[1]->u1
       vel_sz = geom->sze;
-    } else {
-      printf("mpi_check unsupported flag\n");
-      return(1);
-    }
+    } else
+      if (flag == FLUX) {
+	/* 3D */
+	v_size = geom->b3_e1;
+	w_e1   = geom->w3_e1;
+	vel    = master->u1flux3d;
+	vel_sz = geom->sze;
+      } else {
+	printf("mpi_check unsupported flag\n");
+	return(1);
+      }
   
   /* Construct unique file name */
   sprintf(fname, "check_vel_%d.txt", mpi_rank);
@@ -2991,8 +2998,7 @@ int mpi_check_multi_windows_velocity(geometry_t *geom, master_t *master,
   
   fprintf(fp,"MPI Multi window check invoded\n");
   fprintf(fp,"------------------------------\n");
-  fprintf(fp,"t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->t, mpi_rank,
-	 master->nwindows, prmname);
+  fprintf(fp,"nstep = %d, t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->nstep, master->t, mpi_rank,	 master->nwindows, prmname);
   fprintf(fp,"\n");
   
   /*
@@ -3008,24 +3014,31 @@ int mpi_check_multi_windows_velocity(geometry_t *geom, master_t *master,
     MPI_Recv(&vel_o[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
 
     /* Print header */
-    fprintf(fp,"es\te\tk\tle\twn\tvel_w\t\tvel_m\n");
+    fprintf(fp,"es\te\tk\tle\twn\tvel_w\t\tvel_m\t\tdiff\n");
 
     /* Check array */
     for (n = 1; n <= master->nwindows; n++) {
       if (flag == VEL2D) {
-	win_v_size = window[n]->v2_e1;
+	win_v_size = window[n]->b2_e1;
 	win_w_e1   = window[n]->w2_e1;
 	win_vel    = windat[n]->u1av;
-      } else {
-	win_v_size = window[n]->v3_e1;
-	win_w_e1   = window[n]->w3_e1;
-	win_vel    = windat[n]->u1;
-      }
+      } else
+	if (flag == VEL3D) {
+	  win_v_size = window[n]->b3_e1;
+	  win_w_e1   = window[n]->w3_e1;
+	  win_vel    = windat[n]->u1;
+	} else {
+	  // FLUX
+	  win_v_size = window[n]->b3_e1;
+	  win_w_e1   = window[n]->w3_e1;
+	  win_vel    = windat[n]->u1flux3d;
+	}
       for (ee = 1; ee <= win_v_size; ee++) {
 	int le = win_w_e1[ee];
 	int e  = window[n]->wse[le];
 	/* Compare results within epsilon of double precision */
 	if (fabs(win_vel[le] - vel_o[e]) > DBL_EPSILON) {
+	//if (fabs(win_vel[le] - vel_o[e]) > 1e-13) {
 	  int es = geom->m2de[e];
 	  int k  = geom->e2k[e];
 	  fprintf(fp,"%d\t%d\t%d\t%d\t%d\t%.3e\t%.3e\t%.3e\n", es, e, k, le, n,
@@ -3144,10 +3157,128 @@ int mpi_check_multi_windows_Vz(geometry_t *geom, master_t *master,
 	int c  = window[n]->wsa[lc];
 	/* Compare results within epsilon of double precision */
 	if (fabs(win_vel[lc] - vel_o[c]) > DBL_EPSILON) {
+	//if (fabs(win_vel[lc] - vel_o[c]) > 1e-8) {
 	  int cs = geom->m2d[c];
 	  int k  = geom->s2k[c];
-	  fprintf(fp,"%d\t%d\t%d\t%d\t%d\t%.3e\t%.3e\t%.3e\n", cs, c, k, lc, n,
-		  win_vel[lc], vel_o[c], fabs(win_vel[lc]-vel_o[c]));
+	  fprintf(fp,"%d\t%d\t%d\t%d\t%d\t%.3e\t%.3e\t%.3e\t%f\t%f\n", cs, c, k, lc, n,
+		  win_vel[lc], vel_o[c], fabs(win_vel[lc]-vel_o[c]), geom->cellx[cs], geom->celly[cs]);
+	  ret = 1;
+	}
+	sz++;
+      }
+    }
+    fprintf(fp,"------------------------------\n\n");
+    
+    /* Make sure we got everything */
+    if (sz != v_size) {
+      fprintf(fp,"Not all edges accounted for %d vs %d\n",sz, v_size);
+      ret = 1;
+    }
+    
+    d_free_1d(vel_o);
+    
+    /* Send flag for a clean exit */
+    MPI_Send(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD);
+    
+  } else {
+    fprintf(fp,"Host sends\n\n");
+    
+    /* Send velocity array itself */
+    MPI_Send(&vel[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD);
+
+    /* Receive exit status from dst */
+    MPI_Recv(&ret, 1, MPI_INT, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+  }
+  
+  fclose(fp);
+  
+#endif
+  
+  return(ret);
+}
+
+/*
+ * Rank 0 assumes host
+ * Rank 1 assumes remote
+ */
+int mpi_check_multi_windows_tracer(geometry_t *geom, master_t *master,
+				   geometry_t **window, window_t **windat)
+{
+  int ret = 0;
+  
+#ifdef HAVE_MPI
+  static int first = 1;
+  int mpi_rank_other = (mpi_rank == 0 ? 1 : 0);
+  FILE *fp;
+  char fname[MAXSTRLEN];
+  
+  /* global */
+  int v_size, *w_t, vel_sz;
+  double *vel;
+
+  /* windows */
+  int win_v_size, *win_w_t;
+  double *win_vel;
+  
+  /* Only works for exactly 2 processes */
+  if (mpi_size != 2)
+    return(0);
+
+  /* Set up sizes and arrays for this process */
+  /* 3D */
+  v_size = geom->v3_t;
+  w_t    = geom->w3_t;
+  vel    = master->tr_wc[master->sno]; // same as windat[1]->Vz
+  vel_sz = geom->szc;
+
+  /* Construct unique file name */
+  sprintf(fname, "check_tr_%d.txt", mpi_rank);
+  
+  /* Open file the first time around */
+  if (first)
+    fp = fopen(fname, "w");
+  else {
+    fp = fopen(fname, "a");
+    first = 0;
+  }
+  
+  fprintf(fp,"MPI Multi window check invoded\n");
+  fprintf(fp,"------------------------------\n");
+  fprintf(fp,"nstep = %d, t = %.5f, mpi_rank = %d, nwindows = %d, prmname = %s\n", master->nstep, master->t, mpi_rank,
+	 master->nwindows, prmname);
+  fprintf(fp,"\n");
+
+  /*
+   * Multiple windows receives from single window
+   */
+  if (master->nwindows > 1) {
+    double *vel_o;   /* _o for other */
+    int sz = 0, n, cc;
+    
+    fprintf(fp,"Remote receives and compares\n\n");
+
+    vel_o = d_alloc_1d(vel_sz);
+    MPI_Recv(&vel_o[1], vel_sz-1, MPI_DOUBLE, mpi_rank_other, 0, MPI_COMM_WORLD, NULL);
+    
+    /* Print header */
+    fprintf(fp,"cs\tc\tk\tlc\twn\ttr_w\t\ttr_m\n");
+    
+    /* Check array */
+    for (n = 1; n <= master->nwindows; n++) {
+      win_v_size = window[n]->v3_t;
+      win_w_t    = window[n]->w3_t;
+      win_vel    = windat[n]->tr_wc[windat[n]->sno];
+      
+      for (cc = 1; cc <= win_v_size; cc++) {
+	int lc = win_w_t[cc];
+	int c  = window[n]->wsa[lc];
+	/* Compare results within epsilon of double precision */
+	if (fabs(win_vel[lc] - vel_o[c]) > DBL_EPSILON) {
+	//if (fabs(win_vel[lc] - vel_o[c]) > 1e-8) {
+	  int cs = geom->m2d[c];
+	  int k  = geom->s2k[c];
+	  fprintf(fp,"%d\t%d\t%d\t%d\t%d\t%.3e\t%.3e\t%.3e\t%f\t%f\n", cs, c, k, lc, n,
+		  win_vel[lc], vel_o[c], fabs(win_vel[lc]-vel_o[c]), geom->cellx[cs], geom->celly[cs]);
 	  ret = 1;
 	}
 	sz++;
