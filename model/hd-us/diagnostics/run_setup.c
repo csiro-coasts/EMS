@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 6310 2019-09-13 04:30:28Z her127 $
+ *  $Id: run_setup.c 6129 2019-03-04 00:57:53Z her127 $
  *
  */
 
@@ -237,8 +237,6 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "PRE-V4201 compatibility: Define all netcdf files as netCDF classic\n");
   if (params->compatible & V5342)
     fprintf(fp, "PRE-V5342 compatibility: Turbulence closure quantities vertically diffused in both closure and vertical diffusion schemes.\n");
-  if (params->compatible & V6257)
-    fprintf(fp, "PRE-V6257 compatibility: Momentum tendencies added sequentially to velocity.\n");
 
   if (params->stab & NONE)
     fprintf(fp, "No stability compensation\n");
@@ -524,8 +522,6 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "  Vorticity computed using enstrophy conserving formulation.\n");
     if (params->momsc & PV_ENSDS)
       fprintf(fp, "  Vorticity computed using enstrophy dissipating formulation.\n");
-    if (params->momsc & PV_APVM)
-      fprintf(fp, "  Vorticity computed using Anticipated Potential Vorticity Method (APVM).\n");
   }
   if (params->momsc & WIMPLICIT)
     fprintf(fp, "  Implicit vertical momentum advection.\n");
@@ -625,9 +621,6 @@ void write_run_setup(hd_data_t *hd_data)
     else if (params->diff_scale & NONLIN)
       fprintf(fp, "Horizontal diffusion = %5.3f : non-linearly scaled\n",
             params->u1kh);
-    else if (params->diff_scale & AREAL)
-      fprintf(fp, "Horizontal diffusion = %5.3f : areal scaling\n",
-            params->u1kh);
     else if (params->diff_scale & NONE)
       fprintf(fp, "Horizontal diffusion = %5.3f : un-scaled\n",
             params->u1kh);
@@ -651,8 +644,6 @@ void write_run_setup(hd_data_t *hd_data)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : linearly scaled\n", ah, ahl);
       else if (params->diff_scale & NONLIN)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : non-linearly scaled\n", ah, ahl);
-      else if (params->diff_scale & AREAL)
-	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : areal scaling\n", ah, ahl);
       else if (params->diff_scale & CUBIC)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : cubic scaling\n", ah, ahl);
       else if (params->diff_scale & NONE)
@@ -664,8 +655,6 @@ void write_run_setup(hd_data_t *hd_data)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : linearly scaled\n", ah);
       else if (params->diff_scale & NONLIN)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : non-linearly scaled\n", ah);
-      else if (params->diff_scale & AREAL)
-	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : areal scaling\n", ah);
       else if (params->diff_scale & CUBIC)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : cubic scaling\n", ah);
       else if (params->diff_scale & NONE)
@@ -689,7 +678,6 @@ void write_run_setup(hd_data_t *hd_data)
   fprintf(fp, "Minimum horizontal distance between centres = %8.2f m\n", master->minres);
   fprintf(fp, "Maximum horizontal distance between centres = %8.2f m\n", master->maxres);
   fprintf(fp, "Mean cell area = %5.4e m^2\n", master->amean);
-  fprintf(fp, "Mean edge area = %5.4e m^2\n", master->edmean);
   if (params->smag_smooth) {
     fprintf(fp, "Smagorinsky clipping and smoothing (%d passes)\n", params->smag_smooth);
     fprintf(fp, "Viscosity limited to %5.2f\n", -master->u1vh0);
@@ -957,11 +945,10 @@ void write_run_setup(hd_data_t *hd_data)
 	  fprintf(fp, "      Input data %s read in every %s\n", 
 		  params->etarlxn, otime(params->etarlxdt, bname));
 	else {
-	  bcname(open->bcond_ele, bname);
 	  if (open->file_dt)
-	    fprintf(fp, "      eta read from boundary data using %s every %s\n",bname, otime(open->file_dt, bname));
+	    fprintf(fp, "      eta read from boundary data using FILEIN every %s\n",otime(open->file_dt, bname));
 	  else
-	    fprintf(fp, "      eta read from boundary data using %s\n", bname);
+	    fprintf(fp, "      eta read from boundary data using FILEIN\n");
 	}
       }
       if (open->linear_zone_nor) {
@@ -975,8 +962,6 @@ void write_run_setup(hd_data_t *hd_data)
         fprintf(fp, "    Tangential velocity is linear for %d interior boundary cells\n",
 		open->linear_zone_tan);
       }
-      if (strlen(open->tide_con))
-        fprintf(fp, "    Custom tidal constituents used: %s\n", open->tide_con);
       if (open->spf) {
         fprintf(fp, "    Phase speed smoothing using factor %3.1f applied to elevation\n", open->spf);
       }
@@ -1220,12 +1205,6 @@ void write_run_setup(hd_data_t *hd_data)
           fprintf(fp, "  Short wave radiation albedo = %4.2f\n", params->albedo);
         if (master->swr_babs)
           fprintf(fp, "  Short wave radiation bottom absorption parameter = %4.2f\n", master->swr_babs[1]);
-	if (strlen(params->swr_regions)) {
-	  fprintf(fp, "  Short wave radiation parameter estimation:\n");
-	  fprintf(fp, "    Regions = %s\n", params->swr_regions);
-	  fprintf(fp, "    Update dt = %5.1f hours\n", params->swr_dt / 3600.0);
-	  fprintf(fp, "    Data = %s\n", params->swr_data);
-	}
       }
       if (params->heatflux & ADVANCED) {
         fprintf(fp, "Heat flux calculated : bulk formulation\n");
@@ -1301,7 +1280,7 @@ void write_run_setup(hd_data_t *hd_data)
    } else
     fprintf(fp, "No salt flux specified\n\n");
 
-  if(master->etarlx & (RELAX|ETA_TPXO)) {
+  if(master->etarlx & RELAX) {
     relax_info_t *rlx = master->eta_rlx;
     fprintf(fp, "Elevation relaxation performed.\n");
     fprintf(fp, "  Input data %s read in every %s\n", params->etarlxn,
@@ -1392,11 +1371,6 @@ void write_run_setup(hd_data_t *hd_data)
   if (params->waves & STOKES_MIX && strcmp("harcourt", params->mixsc) == 0)
     fprintf(fp, "Wave enhanced vertical mixing (Langmuir) invoked\n");
   fprintf(fp,"\n");
-  if (params->tidep) {
-    fprintf(fp, "Tidal body force included.\n");
-    fprintf(fp, "  Tidal self-attraction / loading (SAL) constant = %5.2f\n", params->eqt_alpha);
-    fprintf(fp, "  Tidal body force constant constant = %5.2f\n\n", params->eqt_beta);
-  }
 
   /*-----------------------------------------------------------------*/
   /* Output files                                                    */
@@ -1512,26 +1486,6 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "\n");
     }
     fprintf(fp, "\n");
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Tidal energy extraction                                         */
-  if (master->nturb) {
-    FILE *op;
-    int cs;
-    op = fopen("turb.site", "w");
-    fprintf(fp, "Tidal extraction using %d turbines\n", master->nturb);
-    for (n = 0; n < master->nturb; n++) {
-      fprintf(fp, "Turbine%d @ %d[%f %f], %f m, Cext=%f", n, master->turb[n],
-	      params->turbv[0][n], params->turbv[1][n], 
-	      params->turbv[2][n], master->cturb[n]);
-      /*fprintf(op, "%f %f t%d", params->turbv[0][n], params->turbv[1][n], n);*/
-      c = master->turb[n];
-      cs = geom->m2d[c];
-      fprintf(op, "%f %f t%d", geom->cellx[cs], geom->celly[cs]);
-    }
-    fprintf(fp, "\n");
-    fclose(op);
   }
 
   /*-----------------------------------------------------------------*/

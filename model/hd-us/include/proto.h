@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6314 2019-09-13 04:31:55Z her127 $
+ *  $Id: proto.h 6163 2019-03-05 05:06:46Z riz008 $
  *
  */
 
@@ -54,7 +54,6 @@ void read_hdiff(parameters_t *params, FILE *fp, int mode);
 int read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj);
 void set_default_param(parameters_t *params);
 void params_write(parameters_t *params, dump_data_t *dumpdata);
-void cookie_cut(master_t *master, parameters_t *params);
 void z0_init(parameters_t *params);
 void create_avhrr_list(parameters_t *params);
 void create_ghrsst_list(parameters_t *params);
@@ -99,7 +98,6 @@ void bathy_compare(master_t *master);
 void read_compatible(parameters_t *params, FILE *fp);
 void read_means(parameters_t *params, FILE *fp, int mode);
 void read_debug(parameters_t *params, FILE *fp);
-void read_profile(parameters_t *params, FILE *fp);
 void read_explicit_maps(parameters_t *params, FILE *fp);
 void get_output_path(parameters_t *params, FILE *fp);
 void vel_init(geometry_t *geom, parameters_t *params, master_t *master);
@@ -299,11 +297,6 @@ double vertex_mean(geometry_t *window, double *a, int c);
 void edge_centre(geometry_t *window, double *a, double *b, int mode);
 void vertex_centre(geometry_t *window, double *a, double *b, int mode);
 void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc);
-void interp_us(geometry_t *geom, double *vals, int nvec, int *vec, 
-	       double *locx, double *locy, double *ret);
-void interp_edge_us(geometry_t *geom, double *vals, int nvec, int *vec, 
-		    double *locx, double *locy, double *ret, char *i_rule);
-int is_index(geometry_t *geom, int cc, int c);
 
 /*------------------------------------------------------------------*/
 /* Open boundary routines                                           */
@@ -393,9 +386,7 @@ void reset_sponge_zone(geometry_t *window);
 void set_sponge_cells(geometry_t *window);
 void csr_tide_init(master_t *master, geometry_t **window);
 void csr_tide_grid_init(master_t *master, geometry_t **window);
-void csr_tide_grid_init_uv(master_t *master, geometry_t **window, int mode);
 double csr_tide_eval(tidal_consts_t *tc, int cc, double jd);
-void equ_tide_eval(geometry_t *window, window_t *windat, win_priv_t *wincon, double *equitide);
 void custom_tide_init(master_t *master, geometry_t **window, int mode);
 double bc_tidal(geometry_t *window, window_t *windat, win_priv_t *wincon,
                 tide_details_t *tide, int c);
@@ -420,7 +411,7 @@ void upstrm(geometry_t *window,  window_t *windat, win_priv_t *wincon, open_bdry
 void average_OBC_corner(geometry_t *window, open_bdrys_t *open, double *var, int mode);
 void reset_bdry_eta(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		    open_bdrys_t *open, double *eta);
-void reset_obc_adjust(geometry_t *geom, double dt);
+
 
 /*------------------------------------------------------------------*/
 /* Distributed tranfer routines                                     */
@@ -491,9 +482,7 @@ int mpi_check_multi_windows_velocity(geometry_t *geom,master_t *master, geometry
 				     window_t **windat, int flag);
 int mpi_check_multi_windows_Vz(geometry_t *geom,master_t *master, geometry_t **window,
 			       window_t **windat);
-int mpi_check_multi_windows_tracer(geometry_t *geom,master_t *master, geometry_t **window,
-				     window_t **windat);
-int mpi_check_multi_windows_sparse_arrays(geometry_t *geom);
+
 
  /*------------------------------------------------------------------*/
 /* Transport routines                                               */
@@ -600,8 +589,8 @@ void monitor(master_t *master, geometry_t **window, int mode);
 void mass_diag(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void get_tend(geometry_t *window, int *vec, int eb, double *vel,
               double *ovel, double *tendency);
-void get_tendv(geometry_t *window, int *vec, int eb,
-	       double *tend, double *tend1, double *tend2);
+void get_tendv(geometry_t *window, int *vec, int eb, double *vel,
+	       double *ovel, double *tend1, double *tend2);
 void alerts(master_t *master);
 void alerts_w(geometry_t *window, int mode);
 void alerts_init(master_t *master, geometry_t **window);
@@ -829,9 +818,6 @@ int regulate_init(sched_event_t *event);
 double regulate_event(sched_event_t *event, double time);
 void regulate_cleanup(sched_event_t *event, double t);
 
-void swr_params_init(master_t *master, geometry_t **window);
-double swr_params_event(geometry_t *window, window_t *windat, win_priv_t *wincon, int n);
-
 /*------------------------------------------------------------------*/
 /* Data Assimilation routines                                       */
 /*------------------------------------------------------------------*/
@@ -910,6 +896,7 @@ void set_sponge_zoom(geometry_t *window, window_t *windat, win_priv_t *wincon,
 void set_flux_scale(geometry_t *geom, geometry_t *window);
 void set_blend_zones(master_t *master, geometry_t *window, win_priv_t *wincon);
 
+
 /*------------------------------------------------------------------*/
 /* Tracer subroutines                                               */
 /*------------------------------------------------------------------*/
@@ -961,7 +948,7 @@ void implicit_vdiff_at_cc(geometry_t *window, window_t *windat,
 			  double *dzcell, double *dzface, double *fb,
 			  double *ft, int *ctp, int *cbt, int cc,
 			  double *Splus, double *Sminus, double *scale,
-			  double *C, double *Cp1, double *Cm1, double dt);
+			  double *C, double *Cp1, double *Cm1);
 void mode2d_tracer_init(geometry_t *window, window_t *windat,
                         win_priv_t *wincon);
 void tr_diag_reset_w(geometry_t *window, window_t *windat,
@@ -1089,8 +1076,8 @@ void set_lateral_bc_eta(double *eta, int sgbpt, int *bpt, int *bin,
                         int *bin2, int mode);
 void vel_u1av_update(geometry_t *window, window_t *windat,
                      win_priv_t *wincon);
-void vel_u1av_update_seq(geometry_t *window, window_t *windat,
-			 win_priv_t *wincon);
+void vel_u2av_update(geometry_t *window, window_t *windat,
+                     win_priv_t *wincon);
 void set_map_e1(geometry_t *window);
 void advect_u1_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void advect_u1_2d_ang_adv_f(geometry_t *window, window_t *windat,
@@ -1233,17 +1220,24 @@ void hvisc_u1_3dus(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_u1_3dusb(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void hvisc_u1_3d_simple(geometry_t *window, window_t *windat,
                         win_priv_t *wincon);
+void hvisc_u2_3d_simple(geometry_t *window, window_t *windat,
+                        win_priv_t *wincon);
 void hvisc_null(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void reset_hdiff(geometry_t *window, int cl);
 void set_hdiff(geometry_t *window, double *AH, double AH0);
 void reset_hor_diff(master_t *master, double u1vh, int flag);
 int *stencil(geometry_t *window, int cl, int *size, int type, int edge);
 void pressure_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void pressure_u2(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void coriolis_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void stokes_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void coriolis_u2(geometry_t *window, window_t *windat, win_priv_t *wincon);
 int vdiff_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
+int vdiff_u2(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void bdry_u1_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void bdry_u2_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void extract_u1_3d(geometry_t *window, window_t *windat,
+                   win_priv_t *wincon);
+void extract_u2_3d(geometry_t *window, window_t *windat,
                    win_priv_t *wincon);
 void leapfrog_update_3d(geometry_t *window, window_t *windat,
                         win_priv_t *wincon);
@@ -1251,6 +1245,8 @@ void init_sigma(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void velocity_adjust(geometry_t *window, window_t *windat,
                      win_priv_t *wincon);
 void set_new_cells_u1(geometry_t *window, window_t *windat,
+                      win_priv_t *wincon);
+void set_new_cells_u2(geometry_t *window, window_t *windat,
                       win_priv_t *wincon);
 void vel_w_update(geometry_t *window, window_t *windat,
                   win_priv_t *wincon);
@@ -1732,7 +1728,6 @@ void shapiro(geometry_t *window, double *a, double *buf, int *vec,
 	     int nvec, int order, int mode, int dir);
 void shapiro_smooth(geometry_t *window, double *a, int cl, int mode);
 void smooth3(master_t *master, double *A, int *ctp, int nctp, int sz, int edge);
-void smooth3e(master_t *master, double *A, int *ctp, int nctp, int sz);
 void smooth(master_t *master, double *A, int *ctp, int nctp);
 void free1ds(short *p);
 int ANY(int var, int array[], int ns);

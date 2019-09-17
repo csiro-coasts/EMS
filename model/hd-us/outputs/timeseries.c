@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timeseries.c 6280 2019-08-08 04:28:53Z her127 $
+ *  $Id: timeseries.c 6081 2019-02-08 04:13:43Z her127 $
  *
  */
 
@@ -33,9 +33,9 @@
 // local functions
 static int depth2c(master_t *master, ts_point_t ts, double depth, 
 		   int mode, int cs);
-void read_ts_data_init(FILE *fp, int n, master_t *master, ts_point_t *ts);
 int stencil_size(geometry_t *geom, int kernal, int c);
 static int d2c(master_t *master, double depth, int mode, int cs);
+void read_ts_data_init(FILE *fp, int n, master_t *master, ts_point_t *ts);
 int read_ts_data(master_t *master, ts_point_t ts, double t, int c);
 double average_glider_data(master_t *master, ts_point_t *tslist, double t, int c, int tn, 
 			   int *cu, int *cd, double *tu, double *td, double *nvals);

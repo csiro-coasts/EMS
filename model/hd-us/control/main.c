@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 6249 2019-07-31 05:19:07Z riz008 $
+ *  $Id: main.c 5915 2018-09-05 03:30:40Z riz008 $
  *
  */
 
@@ -417,16 +417,13 @@ int main(int argc, char *argv[])
 {
   time_t now;
   FILE *prmfd;
-  int mpi_prov;
-  
+
   killed = 0;
   model_running = 0;
 
 #ifdef HAVE_MPI
   /* Must come early in the program */
-  MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &mpi_prov);
-  if (mpi_prov != MPI_THREAD_FUNNELED)
-    fprintf(stderr, "MPI init thread error\n");
+  MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 #endif
@@ -463,6 +460,7 @@ int main(int argc, char *argv[])
   fprintf(stderr, "\nMPI support is *only* for debugging purposes\n");
 #endif
 
+  // sleep(15);
 /* Open/Read in the parameter files and setup a scheduler
  */
   if ((prmfd = fopen(prmname, "r")) == NULL)
@@ -482,9 +480,7 @@ int main(int argc, char *argv[])
  * Maintain order.
  */
   schedule = sched_init(prmfd, now);
-  TIMING_SET;
   hd_data = hd_init(prmfd);
-  TIMING_DUMP(0, "hd_init");
 
   /* 
    * Start the main loop

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommix.c 6323 2019-09-13 04:35:45Z her127 $
+ *  $Id: mommix.c 6076 2019-02-08 04:12:04Z her127 $
  *
  */
 
@@ -21,7 +21,7 @@
 #include "hd.h"
 #include "tracer.h"
 
-void scale_hdiff(geometry_t *window, double *AH, double AH0, double smag, int mode);
+void scale_hdiff(geometry_t *window, double *AH, double smag, int mode);
 void bihar_tend(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		double *div, double *rvor, double dt, double *u1vh, double *nu1,
 		int mode);
@@ -121,7 +121,6 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
   double *t12;                /* Horizontal stress tensor, (x,y)     */
   double *t22;                /* Horizontal stress tensor, (y,y)     */
   double c1;                  /* Constant for e1 diffusion           */
-  double sf = 1.0;           /* Smagorinsky scaling factor          */
 
   if (wincon->smagorinsky == 0.0) return;
 
@@ -147,11 +146,7 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
     e1 = window->m2d[window->e2c[e][0]];
     e2 = window->m2d[window->e2c[e][1]];
     c1 = 0.5 * (wincon->Ds[e1] + wincon->Ds[e2]);
-    /*
-    t11[e] *= (c1 * sf * wincon->smagorinsky);
-    t22[e] *= (c1 * sf * wincon->smagorinsky);
-    t12[e] = c1 * wincon->smagorinsky * (wincon->w5[e] + wincon->w6[e]);
-    */
+
     t11[e] *= c1;
     t22[e] *= c1;
     t12[e] = c1 * (wincon->w5[e] + wincon->w6[e]);
@@ -162,33 +157,18 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
   if (wincon->smagorinsky != 0.0) {
     if (!windat->sdc)
       hd_quit("Smagorinsky diffusion requires tracer called smag\n");
-    memset(windat->sdc, 0, window->szc*sizeof(double));
-    memset(windat->sde, 0, window->sze*sizeof(double));
-    for (ee = 1; ee <= window->a3_e1; ee++) {
-      e = window->w3_e1[ee];
-      windat->sde[e] = (sqrt(t11[e] * t11[e] +
-			     0.5 * t12[e] * t12[e] +
-			     t22[e] * t22[e]));
-    }
+    memset(windat->sdc, 0, window->sgsiz*sizeof(double));
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
       cs = window->m2d[c];
       for (n = 1; n <= window->npe[cs]; n++) {
 	e = window->c2e[n][c];
-	windat->sdc[c] += windat->sde[e];
-	/*
+	es = window->m2de[e];
 	windat->sdc[c] += (sqrt(t11[e] * t11[e] +
 				0.5 * t12[e] * t12[e] +
 				t22[e] * t22[e]));
-	*/
-
       }
-      windat->sdc[c] *= (wincon->smagorinsky * window->cellarea[cs] / (double)window->npe[cs]);
-    }
-    for (ee = 1; ee <= window->a3_e1; ee++) {
-      e = window->w3_e1[ee];
-      es = window->m2de[e];
-      windat->sde[e] *= (wincon->smagorinsky * window->h1au1[es] * window->h2au1[es]);
+      windat->sdc[c] *= (window->cellarea[cs] * wincon->smagorinsky / (double)window->npe[cs]);
     }
   }
 
@@ -279,33 +259,18 @@ void hvisc_setup_pre2d(geometry_t *window,  /* Window geometry       */
   if (wincon->smagorinsky != 0.0) {
     if (!windat->sdc)
       hd_quit("Smagorinsky diffusion requires tracer called smag\n");
-    memset(windat->sdc, 0, window->szc*sizeof(double));
-    memset(windat->sde, 0, window->sze*sizeof(double));
-    for (ee = 1; ee <= window->a3_e1; ee++) {
-      e = window->w3_e1[ee];
-      windat->sde[e] = (sqrt(t11[e] * t11[e] +
-			     0.5 * t12[e] * t12[e] +
-			     t22[e] * t22[e]));
-    }
+    memset(windat->sdc, 0, window->sgsiz*sizeof(double));
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
       cs = window->m2d[c];
       for (n = 1; n <= window->npe[cs]; n++) {
 	e = window->c2e[n][c];
 	es = window->m2de[e];
-	windat->sdc[c] += windat->sde[e];
-	/*
 	windat->sdc[c] += (sqrt(t11[es] * t11[es] +
 				0.5 * t12[es] * t12[es] +
 				t22[es] * t22[es]));
-	*/
       }
       windat->sdc[c] *= (window->cellarea[cs] * wincon->smagorinsky / (double)window->npe[cs]);
-    }
-    for (ee = 1; ee <= window->a3_e1; ee++) {
-      e = window->w3_e1[ee];
-      es = window->m2de[e];
-      windat->sde[e] *= (wincon->smagorinsky * window->h1au1[es] + window->h2au1[es]);
     }
   }
 
@@ -389,12 +354,6 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
 
     /* Adjust the Smagorinsky coefficient for active alert actions   */
     /* and horizontal sponge zones.                                  */
-    /* smagcode = U1_A  : No Smagorinsky; u1vh allocated             */
-    /* smagcode = U1_AK : No Smagorinsky; u1kh, u2kh allocated       */
-    /* smagcode = U1_SP : Smagorinsky; u1vh = sde, no sponges        */
-    /* smagcode = U1_SPK: Smagorinsky; u1kh=sdc, u2kh=sde no sponges */
-    /* smagcode = U1_SA : Smagorinsky; u1vh allocated, uses sponges  */
-    /* smagcode = U1_SAK: Smagorinsky; u1kh, u2kh allocated, sponges */
 
     /* If smagcode & U1_A|U1_AK then the relevant mixing  array is   */
     /* allocated and filled with (grid weighted) constant            */
@@ -404,8 +363,8 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
     /* points to sdc, set in windows.c.                              */
 
     /* Set the flag for re-defining sponge zones                     */
-    if (wincon->smagcode & U1_SA) sf = 1;
-    if (wincon->smagcode & U1_A) {
+    if (wincon->smagcode & (U1_SA|U2_SA)) sf = 1;
+    if (wincon->smagcode & (U1_A|U2_A)) {
       if (wincon->alertf & (LEVEL1_U|LEVEL1_V|LEVEL1_UA|LEVEL1_VA))
 	sf = 1;
     }
@@ -423,24 +382,20 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
     /* Copy Smagorinsky diffusion to horizontal diffusion. This is   */
     /* not subject to LEVEL1 alerts or sponge zones.                 */
     if (wincon->smagcode & U1_SAK) {
-      memcpy(wincon->u1kh, windat->sdc, window->szc * sizeof(double));
-      scale_hdiff(window, wincon->u1kh, wincon->bkue1, wincon->kue1, 3);
-      memcpy(wincon->u2kh, windat->sde, window->sze * sizeof(double));
-      scale_hdiff(window, wincon->u2kh, wincon->bkue1, wincon->kue1, 1);
+      memcpy(wincon->u1kh, windat->sdc, window->sgsiz * sizeof(double));
+      scale_hdiff(window, wincon->u1kh, wincon->kue1, 3);
     }
 
     /* Copy Smagorinsky diffusion to horizontal viscosity. This is   */
     /* subject to LEVEL1 alerts and separate sponge zones.           */
-    if (wincon->smagcode & U1_SA) {
-      /*
+    if (wincon->smagcode & (U1_SP|U1_SA)) {
       for (ee = 1; ee <= window->n3_e1; ee++) {
 	e = window->w3_e1[ee];
 	wincon->u1vh[e] = 0.5 * (windat->sdc[window->e2c[e][0]] +
 				 windat->sdc[window->e2c[e][1]]);
       }
-      */
-      memcpy(wincon->u1vh, windat->sde, window->sze * sizeof(double));
-      scale_hdiff(window, wincon->u1vh, wincon->bsue1, wincon->sue1, 1);
+      if (wincon->smagcode & U1_SA)
+	scale_hdiff(window, wincon->u1vh, wincon->sue1, 1);
     }
     /* Reset diffusion throughout the water column for active alerts */
     /* Alerts at 3d locations.                                       */
@@ -502,8 +457,7 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
 	}
       }
       if (wincon->u1vh0 < 0.0) {
-	/*double fact = (wincon->diff_scale & SCALEBI) ? 0.125 * wincon->hmean1 * wincon->hmean1 : 1.0;*/
-	double fact = (wincon->diff_scale & SCALEBI) ? 0.125 * wincon->edmean : 1.0;
+	double fact = (wincon->diff_scale & SCALEBI) ? 0.125 * wincon->hmean1 * wincon->hmean1 : 1.0;
 	for (ee = 1; ee <= window->n3_e1; ee++) {
 	  e = window->w3_e1[ee];
 	  wincon->u1vh[e] = min(-fact * wincon->u1vh0, wincon->u1vh[e]);
@@ -567,13 +521,8 @@ void hvisc_u1_3dus(geometry_t *window,  /* Window geometry           */
   int cc, c, cs;
   int vv, v, vs;
   double d2, iarea;
-  double *tend;
 
   dtu = windat->dtf + windat->dtb;
-  if (wincon->compatible & V6257)
-    tend = windat->nu1;
-  else
-    tend = wincon->tend3d[T_HDF];
 
   /*-----------------------------------------------------------------*/
   /* Divergence is given by Eq. 21, Ringler et al, 2010.             */
@@ -623,8 +572,7 @@ void hvisc_u1_3dus(geometry_t *window,  /* Window geometry           */
     v2 = window->e2v[e][1];
     d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] + 
       (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es];
-    /*windat->nu1[e] += windat->dt * wincon->u1vh[e] * d1;*/
-    tend[e] += windat->dt * wincon->u1vh[e] * d1;
+    windat->nu1[e] += windat->dt * wincon->u1vh[e] * d1;
   }
 }
 
@@ -649,7 +597,7 @@ void hvisc_u1_3dusb(geometry_t *window,  /* Window geometry          */
 		    )
 {
   int e, ee;                  /* Edge coordinate / counter           */
-  int n, es;                  /* Surface edge coordinates            */
+  int es;                     /* Surface edge coordinates            */
   int c1, c2;                 /* Cells adjacent to e                 */
   int v1, v2;                 /* Vertices adjacent to e              */
   double d1;                  /* Dummy                               */
@@ -657,13 +605,8 @@ void hvisc_u1_3dusb(geometry_t *window,  /* Window geometry          */
   int cc, c, cs;
   int vv, v, vs;
   double d2, iarea;
-  double *tend;
 
   dtu = windat->dtf + windat->dtb;
-  if (wincon->compatible & V6257)
-    tend = windat->nu1;
-  else
-    tend = wincon->tend3d[T_HDF];
 
   /*-----------------------------------------------------------------*/
   /* Divergence is given by Eq. 21, Ringler et al, 2010.             */
@@ -704,31 +647,9 @@ void hvisc_u1_3dusb(geometry_t *window,  /* Window geometry          */
   }
 
   /*-----------------------------------------------------------------*/
-  /* Do Laplacian mixing in any sponge zones                         */
-  for (n = 0; n < window->nobc; n++) {
-    open_bdrys_t *open = window->open[n];
-    if (open->sponge_zone_h) {
-      for (ee = 1; ee <= open->nspe1; ee++) {
-	e = open->spe1[ee];
-	es = window->m2de[e];
-	while (e != window->zm1e[e]) {
-	  c1 = window->e2c[e][0];
-	  c2 = window->e2c[e][1];
-	  v1 = window->e2v[e][0];
-	  v2 = window->e2v[e][1];
-	  d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] + 
-	    (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es];
-	  tend[e] += windat->dt * wincon->u1vh[e] * d1 / (0.125 * window->edgearea[es]);
-	  e = window->zm1e[e];
-	}
-      }
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
   /* Compute the horizontal mixing tendency                          */
   bihar_tend(window, windat, wincon, windat->div, windat->rvor, 
-	     windat->dt, wincon->u1vh, tend, 1);
+	     windat->dt, wincon->u1vh, windat->nu1, 1);
 
 }
 
@@ -842,8 +763,7 @@ void bihar_tend(geometry_t *window,  /* Window geometry              */
     v2 = window->e2v[e][1];
     d1 = (div[c1] - div[c2]) / window->h2au1[es] +
       s3 * (rvor[v2] - rvor[v1]) / window->h1au1[es] ;
-    if (!(window->eask[es] & W_SOBC))
-      nu1[e] -= dt * f * u1vh[e] * d1;
+    nu1[e] -= dt * f * u1vh[e] * d1;
   }
 }
 
@@ -1118,7 +1038,6 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
   int cc, c, cs;
   int vv, v, vs;
   double d2, iarea;
-  double *tend;
   double *AH = wincon->w2;    /* Set in set_viscosity_2d()           */
   double f = (wincon->diff_scale & SCALE2D) ? (double)windat->iratio : 1.0;
 
@@ -1126,10 +1045,6 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
   /* Get the sub-timestep                                            */
   d1 = windat->dt / windat->dtf2;   /* iratio for this step          */
   dtu = windat->dtu1 / d1;          /* 2D forward time-step          */
-  if (wincon->compatible & V6257)
-    tend = windat->nu1av;
-  else
-    tend = wincon->tend2d[T_HDF];
 
   /*-----------------------------------------------------------------*/
   /* Divergence is given by Eq. 21, Ringler et al, 2010.             */
@@ -1177,7 +1092,7 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
     v2 = window->e2v[e][1];
     d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] +
       (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es] ;
-    tend[e] += windat->dt2d * AH[e] * f * d1;
+    windat->nu1av[e] += windat->dt2d * AH[e] * f * d1;
   }
 }
 
@@ -1202,7 +1117,7 @@ void hvisc_u1_2dusb(geometry_t *window,  /* Window geometry          */
 		    double *tzp          /* Pointer to surface level */
 		    )
 {
-  int e, ee, n;               /* Edge coordinate / counter           */
+  int e, ee;                  /* Edge coordinate / counter           */
   int es;                     /* Surface edge coordinates            */
   int c1, c2;                 /* Cells adjacent to e                 */
   int v1, v2;                 /* Vertices adjacent to e              */
@@ -1212,17 +1127,11 @@ void hvisc_u1_2dusb(geometry_t *window,  /* Window geometry          */
   int vv, v, vs;
   double d2, iarea;
   double *AH = wincon->w2;    /* Set in set_viscosity_2d()           */
-  double *tend;
-  double f = (wincon->diff_scale & SCALE2D) ? (double)windat->iratio : 1.0;
 
   /*-----------------------------------------------------------------*/
   /* Get the sub-timestep                                            */
   d1 = windat->dt / windat->dtf2;   /* iratio for this step          */
   dtu = windat->dtu1 / d1;          /* 2D forward time-step          */
-  if (wincon->compatible & V6257)
-    tend = windat->nu1av;
-  else
-    tend = wincon->tend2d[T_HDF];
 
   /*-----------------------------------------------------------------*/
   /* Divergence is given by Eq. 21, Ringler et al, 2010.             */
@@ -1260,28 +1169,9 @@ void hvisc_u1_2dusb(geometry_t *window,  /* Window geometry          */
   }
 
   /*-----------------------------------------------------------------*/
-  /* Do Laplacian mixing in any sponge zones                         */
-  for (n = 0; n < window->nobc; n++) {
-    open_bdrys_t *open = window->open[n];
-    if (open->sponge_zone_h) {
-      for (ee = 1; ee <= open->nspe1; ee++) {
-	e = open->spe1[ee];
-	es = window->m2de[e];
-	c1 = window->e2c[e][0];
-	c2 = window->e2c[e][1];
-	v1 = window->e2v[e][0];
-	v2 = window->e2v[e][1];
-	d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] + 
-	  (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es];
-	tend[e] += windat->dt2d * AH[e] * f * d1 / (0.125 * window->edgearea[es]);
-      }
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
   /* Compute the horizontal mixing tendency                          */
   bihar_tend(window, windat, wincon, windat->div, windat->rvor, windat->dt2d, 
-	     AH, tend, 0);
+	     AH, windat->nu1av, 0);
 
 }
 
@@ -1486,7 +1376,6 @@ void set_hdiff(geometry_t *window,      /* Window geometry           */
 /*-------------------------------------------------------------------*/
 void scale_hdiff(geometry_t *window,      /* Window geometry         */
 		 double *AH,              /* Mixing coefficient      */
-		 double AH0,              /* Base mixing coefficient */
 		 double smag,             /* Smagorinsky coefficient */
 		 int mode                 /* 1 = edges, 3 = centres  */
 		 )
@@ -1497,70 +1386,37 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
   int cc, c, c2;                        /* Counters, cell locations  */
   int nv;                               /* Stencil size              */
   int *vec;                             /* Cells to process          */
+  double AH0;                           /* Constant mixing           */
   int scalef;                           /* Constant mixing scaling   */
-  double *area = wincon->w6;            /* Area for scaling          */
   int *m2d;
   int ee, e;
-  int etype = 1;     /* 0 : use h1au1 as the edge length             */
-                     /* 1 : use sqrt(edgearea) as the edge length    */
-                     /* 2 : use sqrt(cellarea) of common cells       */
 
   if (smag == 1.0 && wincon->smagorinsky != 0.0) return;
 
   /* Assign pointers                                                 */
   scalef = wincon->diff_scale;
   if (mode == 1) {
+    h1 = window->h1au1;
+    hm = wincon->hmean1;
     nv = window->n3_e1;
     vec = window->w3_e1;
+    AH0 = wincon->bsue1;
     m2d = window->m2de;
-    if (scalef & AREAL) {
-      h1 = window->edgearea;
-      hm = wincon->edmean;
-    } else {
-      if (etype == 0) {
-	h1 = window->h1au1;
-	hm = wincon->hmean1;
-      } else if (etype == 1) {
-	hm = sqrt(wincon->edmean);
-	for (cc = 1; cc <= window->b2_e1; cc++) {
-	  area[c] = sqrt(window->edgearea[c]);
-	}
-	h1 = area;
-      } else if (etype == 2) {
-	hm = sqrt(wincon->amean);
-	for (cc = 1; cc <= window->b2_e1; cc++) {
-	  int c1, c2;
-	  c = window->w2_e1[cc];
-	  c1 = window->e2c[c][0];
-	  c2 = window->e2c[c][1];
-	  area[c] = sqrt(0.5 * (window->cellarea[c1] + window->cellarea[c2]));
-	}
-	h1 = area;
-      }
-    }
   } else if (mode == 3) {
-    if (scalef & AREAL) {
-      h1 = window->cellarea;
-      hm = wincon->amean;
-    } else {
-      h1 = window->h2au1;
-      hm = wincon->hmean2;
-    }
     h1 = window->cellarea;
-    hm = (scalef & AREAL) ? wincon->amean : sqrt(wincon->amean);
+    hm = sqrt(wincon->amean);
     nv = window->n3_t;
     vec = window->w3_t;
+    AH0 = wincon->bkue1;
     m2d = window->m2d;
   }
 
   /* Perform the scaling                                             */
   for (cc = 1; cc <= nv; cc++) {
-    double len;
     c = vec[cc];
     c2 = m2d[c];
-    len = h1[c2];
-    /* Note; wincon->smagorinsky = 1 for this option, and smag=sue1  */
-    /* for mode=1, and smag=kue1 for mode=3.                         */
+    double len = (mode == 1) ? h1[c2] : sqrt(h1[c2]);
+
     AH[c] = smag * AH[c];
     if (scalef & NONE)
       AH[c] += fabs(AH0);
@@ -1568,18 +1424,13 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
       AH[c] += fabs(AH0 * len / hm);
     if (scalef & NONLIN)
       AH[c] += fabs(AH0 * len * len / (hm * hm));
-    if (scalef & AREAL)
-      AH[c] += fabs(AH0 * len / hm);
-    
     if (scalef & CUBIC && AH == wincon->u1vh)
       AH[c] += fabs(AH0 * len * len * len / (hm * hm * hm));
     /* Scale the Laplacian viscosity to a biharmonic value, see      */
     /* Griffies and Hallberg (2000) Mon. Wea. Rev. 128. Section 2a   */
     /* where we use h1au1^2 for del^2.                               */
-    if (scalef & SCALEBI && AH == wincon->u1vh) {
-      /*AH[c] *= (0.125 * len * len);*/
-      AH[c] *= (0.125 * window->edgearea[c2]);
-    }
+    if (scalef & SCALEBI && AH == wincon->u1vh)
+      AH[c] *= (0.125 * len * len);
   }
 
   if (scalef & CUBIC && AH == wincon->u1vh) {
@@ -1678,60 +1529,60 @@ void reset_hor_diff(master_t *master, double u1vh, int flag)
   geometry_t *geom = master->geom;
   double vh1, vh2;
   int c, cc, c2;
-  int e, ee, es;
 
   master->u1vh0 = u1vh;
-  if(flag & AUTO) {
+  if(flag == AUTO) {
     double hf = 0.05;             /* Factor for horizontal diffusion */
     double step = 1;              /* Integral step of diffusion > 1  */
     double hmax = 1e10;
     double d1, d2;
     int u1khf = 0, u1vhf = 0, i1, cs;
     if (u1vh <= 0.0) u1vhf = 1;      
-    for (ee = 1; ee <= geom->n3_e1; ee++) {
-      e = geom->w3_t[ee];
-      es = geom->m2de[e];
-      hmax = 1.0 / ((2.0 / geom->edgearea[es]) * 4.0 * params->grid_dt);
+    for (cc = 1; cc <= geom->n3_t; cc++) {
+      c = geom->w3_t[cc];
+      cs = geom->m2d[c];
+      hmax = 1.0 / ((1.0 / (geom->h1acell[cs] * geom->h1acell[cs]) +
+		     1.0 / (geom->h2acell[cs] * geom->h2acell[cs])) * 4.0 *
+		    master->grid_dt);
       i1 = (int)hmax / (int)step;
       hmax = step * (double)i1;
-      d1 = 0.01 * geom->edgearea[es] / master->grid_dt;
+      d1 = 0.01 * geom->h1acell[cs] * geom->h1acell[cs] / master->grid_dt;
+      d2 = 0.01 * geom->h2acell[cs] * geom->h2acell[cs] / master->grid_dt;
       i1 = (int)d1 / (int)step;
       if (u1vhf)
-	master->u1vh[e] = step * (double)i1;
+	master->u1vh[c] = step * (double)i1;
       i1 = (int)d2 / (int)step;
       /* Set limits */
       if (u1vhf) {
-	if (master->u1vh[e] > hmax)
-	  master->u1vh[e] = hmax;
-	if (master->u1vh[e] < hf * hmax) {
+	if (master->u1vh[c] > hmax)
+	  master->u1vh[c] = hmax;
+	if (master->u1vh[c] < hf * hmax) {
 	  i1 = (int)(hf * hmax) / (int)step;
-        master->u1vh[e] = step * (double)i1;
+        master->u1vh[c] = step * (double)i1;
 	}
       }
     }
-    smooth3(master, master->u1vh, geom->w3_e1, geom->b3_e1, geom->sze, -1);
+    smooth3(master, master->u1vh, geom->w3_e1, geom->n3_e1, geom->sze, -1);
   } else {
     if (u1vh > 0.0)
       vh1= u1vh;
     else
-      vh1 = 0.01 * master->edmean / master->grid_dt;
-    for (ee = 1; ee <= geom->n3_e1; ee++) {
-      e = geom->w3_e1[ee];
-      es = geom->m2de[e];
+      vh1 = 0.01 * master->hmean1 * master->hmean1 / master->grid_dt;
+    for (cc = 1; cc <= geom->n3_e1; cc++) {
+      c = geom->w3_e1[cc];
+      c2 = geom->m2d[c];
       if (flag & NONE)
-	master->u1vh[e] = fabs(vh1);
+	master->u1vh[c] = fabs(vh1);
       if (flag & LINEAR)
-	master->u1vh[e] = fabs(vh1 * geom->h1au1[es] / master->hmean1);
+	master->u1vh[c] = fabs(vh1 * geom->h1au1[c2] / master->hmean1);			       
       if (flag & NONLIN)
-	master->u1vh[e] = fabs(vh1 * geom->h1au1[es] * geom->h1au1[es] /
+	master->u1vh[c] = fabs(vh1 * geom->h1au1[c2] * geom->h1au1[c2] /
 			       (master->hmean1 * master->hmean1));
-      if (flag & AREAL)
-	master->u1vh[e] = fabs(vh1 * geom->edgearea[es] / master->edmean);
       if (flag & CUBIC)
-	master->u1vh[e] = fabs(vh1 * geom->h1au1[es] * geom->h1au1[es] * geom->h1au1[es] /
+	master->u1vh[c] = fabs(vh1 * geom->h1au1[c2] * geom->h1au1[c2] * geom->h1au1[c2] /
 			       (master->hmean1 * master->hmean1 * master->hmean1));
       if (flag & SCALEBI)
-	master->u1vh[c] *= (0.125 * geom->edgearea[es]);
+	master->u1vh[c] *= (0.125 * geom->h1au1[c2] * geom->h1au1[c2]);
     }
   }
 }

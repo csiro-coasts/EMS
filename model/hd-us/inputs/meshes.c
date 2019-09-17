@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 6316 2019-09-13 04:32:39Z her127 $
+ *  $Id: meshes.c 6164 2019-03-05 05:07:19Z riz008 $
  *
  */
 
@@ -66,7 +66,6 @@ int SortCornersClockwise(double x0, double y0, double x1, double y1, double rx, 
 int find_mesh_vertex(int c, double x, double y, double **xloc, double **yloc, int *mask, int ns2, int *npe);
 void order_c(double *a, double *b, int *c1, int *c2);
 void sort_circle(delaunay *d, int *vedge, int nedge, int dir);
-void sort_circle_g(double *x, double *y, int nedge, int dir);
 int find_mindex(double slon, double slat, double *lon, double *lat, int nsl, double *d);
 void mesh_init_OBC(parameters_t *params, mesh_t *mesh);
 void tria_ball_2d(double *bb, double *p1, double *p2, double *p3);
@@ -110,7 +109,6 @@ void xyz_to_lonlat(double *ee, double *pp, double rr);
 void tri_cen(int centref, int geogf, double *p1, double *p2, double *p3, double *po);
 void edge_cen(int centref, int geogf, double *v1, double *v2, double *po);
 int in_tri(double *po, double *p0, double *p1, double *p2);
-void add_quad_grid(parameters_t *params, char *iname);
 
 /*-------------------------------------------------------------------*/
 /* Compute the geographic metrics on the sphere using a false pole   */
@@ -1777,93 +1775,6 @@ void sort_circle(delaunay *d, int *vedge, int nedge, int dir)
   }
 }
 
-
-void sort_circle_g(double *x, double *y, int nedge, int dir)
-{
-  double a[nedge+1];
-  int vedge[nedge+1];
-  int vmask[nedge+1];
-  double xr = x[0], yr = y[0];
-  double xc[nedge+1];
-  double yc[nedge+1];
-  int m, i, j;
-  double eps = 1e-10;
-  double epsm = HUGE;
-  double ysw = 1e10;
-
-  /* Get the atan2 values                                            */
-  for(m = 1; m <= nedge; m++) {
-    xc[m] = x[m];
-    yc[m] = y[m];
-    vedge[m] = m;
-    vmask[m] = 0;
-    a[m] = atan2(y[m] - yr, x[m] - xr);
-    if (a[m] < 0.0) a[m] += 2.0 * PI;
-  }
-
-  /* Order the angles                                                */
-  for (i = 1; i <= nedge; i++)
-    for (j = nedge; i < j; --j)
-      order_c(&a[j-1], &a[j], &vedge[j-1], &vedge[j]);
-
-  for (m = 1; m <= nedge; m++) {
-    x[m] = xc[vedge[m]];
-    y[m] = yc[vedge[m]];
-  }
-
-  if (dir = 1) {
-    for (m = 1; m <= nedge; m++) {
-      xc[m] = x[m];
-      yc[m] = y[m];
-    }
-    i = 1;
-    for(m = nedge; m >= 1; m--) {
-      x[i] = xc[m];
-      y[i++] = yc[m];
-    }
-  }
-
-
-  /* Get the most westerly                                           */
-  /* Get the tolerance based on grid size                            */
-  for (m = 1; m <= nedge; m++) {
-    double xm = x[m];
-    for (j = 1; j <= nedge; j++) {
-      double xn = x[j];
-      if (fabs(xm-xn) > eps) eps = fabs(xm-xn);
-      if (fabs(xm-xn) < epsm) epsm = fabs(xm-xn);
-    }
-    xc[m] = x[m];
-    yc[m] = y[m];
-  }
-  eps = max(0.25 * eps, epsm);
-
-  /* Mask all vertices with distance differences > tolerance         */
-  for (m = 1; m <= nedge; m++) {
-    double xm = x[m];
-    for (j = 0; j < nedge; j++) {
-      double xn = x[j];
-      if (xn < xm && fabs(xn-xm) > eps) vmask[m] = 1;
-    }
-  }
-
-  /* Get the most southerly of un-masked vertices                    */
-  for (m = 1; m <= nedge; m++) {
-    double ym = y[m];
-    if (!vmask[m] && ym < ysw) {
-      ysw = ym;
-      i = m;
-    }
-  }
-
-  /* Re-order                                                        */
-  for (m = 1; m <= nedge; m++) {
-    x[m] = xc[i];
-    y[m] = yc[i];
-    i = (i == nedge) ? 1 : i + 1;
-  }
-}
-
 /* END sort_circle()                                                 */
 /*-------------------------------------------------------------------*/
 
@@ -2434,33 +2345,15 @@ void meshstruct_us(parameters_t *params)
   /* If an unstructured mesh configuration is input from file, then  */
   /* the mesh structure is populated in read_mesh_us(), so return.   */
   if (params->us_type & US_IUS) {
+    if (params->runmode & (AUTO | DUMP)) set_bathy_us(params);
     mesh_init_OBC(params, params->mesh);
-    m = params->mesh;
     cmap = i_alloc_1d(params->ns2+1);
-    for (cc = 1; cc <= params->ns2; cc++) {
-      cmap[cc] = cc;
-      if (m->map) cmap[cc] = m->map[cc];
-    }
-    /* Note: open boundary indices have not been adjusted for mesh   */
-    /* reductions at this stage, so use the mapping cmap to account  */
-    /* for this when the mesh structure is populated with            */
-    /* params->open information.                                     */
+    for (cc = 1; cc <= params->ns2; cc++) cmap[cc] = cc;
     for (n = 0; n < params->nobc; n++) {
       convert_obc_list(params, params->open[n], n, NULL, cmap);
     }
-    if (params->runmode & (AUTO | DUMP)) set_bathy_us(params);
     i_free_1d(cmap);
     return;
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Merge the mesh with a curvilinear qrid if required              */
-  if (strlen(params->addquad)) {
-    char *fields[MAXSTRLEN * MAXNUMARGS];
-    n = parseline(params->addquad, fields, MAXNUMARGS);
-    for (i = 0; i < n; i++) {
-      add_quad_grid(params, fields[i]);
-    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -2491,7 +2384,6 @@ void meshstruct_us(parameters_t *params)
     } else if (params->bathyfill & B_MINIMUM) {
       if (params->bathy[cc] == LANDCELL || params->bathy[cc] == NOTVALID) 
 	params->bathy[c] = -params->bmin;
-      cmap[cc] = cc;
     }
     /* Bathymetry filling using surrounding average (B_AVERAGE)      */
     /* computed below after neighbour maps have been created.        */
@@ -2511,25 +2403,54 @@ void meshstruct_us(parameters_t *params)
   /*-----------------------------------------------------------------*/
   /* Open boundaries                                                 */
   if (m->nobc) {
+    int oldcode = 0;
     for (n = 0; n < params->nobc; n++) {
       open_bdrys_t *open = params->open[n];
-      /* For mesh reductions, OBCs cell centres are referenced to    */
-      /* the indices and need to be remapped. The edge locations are */
-      /* referenced directly to the coordinates and do not.          */
-      if (open->intype & (O_UPI|O_UPC)) {
-	for (cc = 0; cc < open->npts; cc++) {
-	  c = open->locu[cc];	
-	  for (j = 1; j <= params->nland; j++) {
-	    cco = params->lande1[j];
-	    if (c >= cco) {
-	      open->locu[cc]--;
-	      hd_warn("Boundary cell remapping due to NLAND: %s %d->%d\n",open->name,c,open->locu[cc]);
-	    }
+      convert_obc_list(params, open, n, NULL, cmap);
+      if (oldcode) {
+      if (open->posx == NULL || open->posy == NULL) continue;
+      for (cc = 0; cc < open->npts; cc++) {
+	/* Note: open->npts loops from 0:npts-1, m->npts loops from */
+	/* 1:npts.                                                  */
+	double xb1 = open->posx[cc][0];
+	double yb1 = open->posy[cc][0];
+	double xb2 = open->posx[cc][1];
+	double yb2 = open->posy[cc][1];
+	cco = open->locu[cc];	
+	c = cmap[cco];
+	if(xb2 == NOTVALID && yb2 == NOTVALID) {
+	  /* Open boundaries are specified with mesh indices. Set   */
+	  /* the mesh structure directly. Note: obc indices do not  */
+	  /* need to be remapped in convert_mesh_input(); set       */
+	  /* m->loc[n][0] = NOTVALID to indicate this.              */
+	  m->loc[n][cc+1] = c;
+	  m->obc[n][cc+1][0] = (int)xb1;
+	  m->obc[n][cc+1][1] = (int)yb1;
+	  m->loc[n][0] = NOTVALID;
+	  if (verbose) printf("OBC%d %d : cc=%d (%d %d)\n",n, cc+1, cco, 
+			      m->obc[n][cc+1][0], m->obc[n][cc+1][1]);
+	  continue;
+	}
+	for (j = 1; j <= params->npe2[c]; j++) {
+	  double x1, y1, x2, y2;
+	  double eps = 1e-6;    /* Precision for OBC comparisons    */
+	  x1 = params->x[c][j];
+	  y1 = params->y[c][j];
+	  jj = (j == m->npe[c]) ? 1 : j + 1;
+	  x2 = params->x[c][jj];
+	  y2 = params->y[c][jj];
+	  if ((fabs(xb1-x1) < eps && fabs(yb1-y1) < eps && 
+	       fabs(xb2-x2) < eps && fabs(yb2-y2) < eps) ||
+	      (fabs(xb1-x2) < eps && fabs(yb1-y2) < eps && 
+	       fabs(xb2-x1) < eps && fabs(yb2-y1) < eps)) {
+	    m->loc[n][cc+1] = c;
+	    m->obc[n][cc+1][0] = j;
+	    m->obc[n][cc+1][1] = jj;
+	    if (verbose) printf("OBC%d %d : cc=%d (%d %d)\n",n, cc+1, cco, j, jj); 
 	  }
 	}
       }
-      /* Set the open boundaries in the mesh structure               */
-      convert_obc_list(params, open, n, NULL, cmap);
+      }
     }
   }
 
@@ -2798,7 +2719,6 @@ void free_mesh(mesh_t *mesh)
     }
     if (mesh->iloc) i_free_1d(mesh->iloc);
     if (mesh->jloc) i_free_1d(mesh->jloc);
-    if (mesh->map) i_free_1d(mesh->map);
     free((mesh_t *)mesh);
   }
 }
@@ -2810,21 +2730,13 @@ void free_mesh(mesh_t *mesh)
 /*-------------------------------------------------------------------*/
 /* Creates a list of segments locations at the grid perimeter        */
 /* corresponding to OBC locations.                                   */
-/* WARNING: If an OBC is specified on a different segment to the     */
-/* major segment (e.g. a river boundary on an island within the main */
-/* domain) then the OBCs will not be specified properly. Ideally we  */
-/* need a perimeter computed for every OBC using it's START_LOC as   */
-/* the first point.                                                  */
-/* NOTE: OBCs specified without a mid location (start location only  */
-/* or start + end location only) are processed regardless of which   */
-/* perimeter they reside on.                                         */
 /*-------------------------------------------------------------------*/
 int get_mesh_obc(parameters_t *params, 
 		 int **neic
 		 )
 {
   FILE *fp, *op;
-  int n, m, cc, c, cn, cs, i, j, jj, jn, js, jss;
+  int n, m, cc, c, cn, cs, i, j, jj, jn, js;
   int np;               /* Size of the perimeter array               */
   int *perm;            /* Mesh indices of the perimeter             */
   double *lon, *lat;    /* Coordinates of the perimeter              */
@@ -2836,58 +2748,35 @@ int get_mesh_obc(parameters_t *params,
   int *dir;             /* Direction to traverse the perimeter       */
   int mobc = 0;         /* Maximum points in the OBCs                */
   int *mask;            /* Mask for perimeter cells visited          */
-  int *donef;           /* Flag for completed obcs                   */
   int isclosed = 0;     /* Set for closed perimeters                 */
   mesh_t *mesh = params->mesh;
-  double x, y, d, dist = HUGE;
 
   if (!params->nobc) return(0);
 
   for (n = 0; n < params->nobc; n++) {
     open_bdrys_t *open = params->open[n];
-    if (open->slat == NOTVALID || open->slon == NOTVALID) {
-      /*open->elat == NOTVALID || open->elon == NOTVALID)*/
+    if (open->slat == NOTVALID || open->slon == NOTVALID ||
+	open->elat == NOTVALID || open->elon == NOTVALID)
       dof = 0;
-    }
   }
   if (!dof) return(0);
 
   mesh->nobc = params->nobc;
   mesh->npts = i_alloc_1d(mesh->nobc);
-  donef = i_alloc_1d(mesh->nobc);
-  memset(donef, 0, mesh->nobc * sizeof(int));
 
   /*-----------------------------------------------------------------*/
   /* Make a path of cells at the perimeter of the mesh               */
   /* First perimeter cell                                            */
   for (cc = 1; cc <= mesh->ns2; cc++) {
-    if ((jss = has_neighbour(cc, mesh->npe[cc], neic)))
+    if ((js = has_neighbour(cc, mesh->npe[cc], neic)))
       break;
-  }
-
-  for (n = 0; n < params->nobc; n++) {
-    open_bdrys_t *open = params->open[n];
-    if (open->slon != NOTVALID && open->slat != NOTVALID) {
-      for (c = 1; c <= mesh->ns2; c++) {
-	x = mesh->xloc[mesh->eloc[0][c][0]];
-	y = mesh->yloc[mesh->eloc[0][c][0]];
-	d = sqrt((x - open->slon) * (x - open->slon) + 
-		 (y - open->slat) * (y - open->slat));
-	if (d < dist && (jss = has_neighbour(c, mesh->npe[c], neic))) {
-	  dist = d;
-	  cc = c;
-	}
-      }
-      break;
-    }
   }
   cs = cn = cc;
   n = 1;
-  jn = jss;
+  jn = js;
   mask = i_alloc_1d(mesh->ns2+1);
   memset(mask, 0, (mesh->ns2+1) * sizeof(int));
   /*mask[cs] = 1;*/
-
   /* Count the number of perimeter cells                             */
   for (cc = 1; cc <= mesh->ns2; cc++) {
     int found = 0;
@@ -2929,24 +2818,26 @@ int get_mesh_obc(parameters_t *params,
       break;
     }
   }
-  if (!isclosed) {
-    hd_warn("get_mesh_obc: Can't make a closed perimeter for mesh (%d != %d).\n", cs, cn);
-    hd_warn("              Proceeding with partial perimeter: not all OBC's may be accounted for.\n");
-  }
+  if (!isclosed) hd_quit("get_mesh_obc: Can't make a closed perimeter for mesh (%d != %d).\n", cs, cn);
   np = n;
-
   /* Allocate                                                        */
   lon = d_alloc_1d(np+1);
   lat = d_alloc_1d(np+1);
   perm = i_alloc_1d(np+1);
   if (filep)
     fp = fopen("perimeter.txt", "w");
-
   /* Get the perimeter path                                          */
   memset(mask, 0, (mesh->ns2+1) * sizeof(int));
   n = 1;
   cn = cs;
-  jn = jss;
+  /*
+  lon[n] = mesh->xloc[mesh->eloc[0][cn][0]];
+  lat[n] = mesh->yloc[mesh->eloc[0][cn][0]];
+  perm[n] = cn;
+  mask[cn] = 1;
+  n++;
+  */
+  jn = js;
   for (cc = 1; cc <= mesh->ns2; cc++) {
     int found = 0;
     j = jn;
@@ -2998,19 +2889,9 @@ int get_mesh_obc(parameters_t *params,
   ei = i_alloc_1d(mesh->nobc);
   for (m = 0; m < mesh->nobc; m++) {
     open_bdrys_t *open = params->open[m];
-
-    if (open->slat != NOTVALID && open->slon != NOTVALID) {
-      if (open->mlat == NOTVALID && open->mlon == NOTVALID) {
-	donef[m] = 1;
-	if (open->elat != NOTVALID && open->elon != NOTVALID) donef[m] = 2;
-      }
-    }
-    /*
     if (open->slat == NOTVALID || open->slon == NOTVALID ||
 	open->elat == NOTVALID || open->elon == NOTVALID)
       continue;
-    */
-    if (donef[m]) continue;
     /* Get the indices of start, med and end locations               */
     mesh->npts[m] = 0;
     si[m] = find_mindex(open->slon, open->slat, lon, lat, np, NULL);
@@ -3081,113 +2962,16 @@ int get_mesh_obc(parameters_t *params,
     mesh->loc = i_alloc_2d(mobc+1, mesh->nobc);
     mesh->obc =  i_alloc_3d(2, mobc+1, mesh->nobc);
   }
-  fp = fopen("boundary.txt", "w");
-  op = fopen("obc_spec.txt", "w");
-
-  /*-----------------------------------------------------------------*/
-  /* Set boundaries without a mid point. These are included          */
-  /* regardless of on which perimeter they lie.                      */
-  for (m = 0; m < mesh->nobc; m++) {
-    open_bdrys_t *open = params->open[m];
-    if (donef[m]) {
-      /* Get the information for the start location                  */
-      dist = HUGE;
-      mesh->npts[m] = 0;
-      for (c = 1; c <= mesh->ns2; c++) {
-	x = mesh->xloc[mesh->eloc[0][c][0]];
-	y = mesh->yloc[mesh->eloc[0][c][0]];
-	d = sqrt((x - open->slon) * (x - open->slon) + 
-		 (y - open->slat) * (y - open->slat));
-	if (d < dist) {
-	  dist = d;
-	  cs = c;
-	}
-      }
-    }
-    /* Get the information for the end location                      */
-    if (donef[m] == 2) {
-      dist = HUGE;
-      for (c = 1; c <= mesh->ns2; c++) {
-	x = mesh->xloc[mesh->eloc[0][c][0]];
-	y = mesh->yloc[mesh->eloc[0][c][0]];
-	d = sqrt((x - open->elon) * (x - open->elon) + 
-		 (y - open->elat) * (y - open->elat));
-	if (d < dist) {
-	  dist = d;
-	  cn = c;
-	}
-      }
-      /* Find which vertex is common to the two edges and set the    */
-      /* obc to the two common edges.                                */
-      dof = 1;
-      for (js = 1; js <= mesh->npe[cs] && dof; js++) {
-	if (neic[js][cs]) continue;
-	for (jn = 1; jn <= mesh->npe[cn] && dof; jn++) {
-	  if (neic[jn][cn]) continue;
-	  if (mesh->eloc[0][cs][js] == mesh->eloc[1][cn][jn] ||
-	      mesh->eloc[1][cs][js] == mesh->eloc[0][cn][jn]) {
-	    dof = 0;	    
-	    break;
-	  }
-	}
-      }
-      if (dof) hd_warn("get_mesh_obc(): Can't find boundary cell for OBC%d %s\n", m, open->name);
-      js--;
-      mesh->npts[m] = 2;
-      mesh->loc[m][1] = cs;
-      mesh->obc[m][1][0] = mesh->eloc[0][cs][js];
-      mesh->obc[m][1][1] = mesh->eloc[1][cs][js];
-      mesh->loc[m][2] = cn;
-      mesh->obc[m][2][0] = mesh->eloc[0][cn][jn];
-      mesh->obc[m][2][1] = mesh->eloc[1][cn][jn];
-    }
-    /* Set the obc to all edges that map outside the domain if only  */
-    /* the start coordinate was supplied.                            */
-    if (donef[m] == 1) {
-      mesh->npts[m] = 1;
-      for (j = 1; j <= mesh->npe[cs]; j++) {
-	if (!neic[j][cs]) {
-	  mesh->loc[m][mesh->npts[m]] = cs;
-	  mesh->obc[m][mesh->npts[m]][0] = mesh->eloc[0][cs][j];
-	  mesh->obc[m][mesh->npts[m]][1] = mesh->eloc[1][cs][j];
-	  mesh->npts[m]++;
-	}
-      }
-      mesh->npts[m]--;
-      if (!mesh->npts[m]) hd_warn("get_mesh_obc(): Can't find boundary cell for OBC%d %s\n", m, open->name);
-    }
-    if (donef[m]) {
-      /* File output if required                                     */
-      if (filef) {
-	if (fp != NULL) {
-	  for (cc = 1; cc <= mesh->npts[m]; cc++) {
-	    fprintf(fp, "%f %f\n", mesh->xloc[mesh->obc[m][cc][0]], mesh->yloc[mesh->obc[m][cc][0]]);
-	    fprintf(fp, "%f %f\n", mesh->xloc[mesh->obc[m][cc][1]], mesh->yloc[mesh->obc[m][cc][1]]);
-	  }
-	  fprintf(fp, "NaN NaN\n");
-	}
-      }
-      if (op  != NULL) {
-	fprintf(op, "\nBOUNDARY%d.UPOINTS     %d\n", m, mesh->npts[m]);
-	for (cc = 1; cc <= mesh->npts[m]; cc++) {
-	  fprintf(op, "%d (%lf,%lf)-(%lf,%lf)\n", mesh->loc[m][cc], 
-		  mesh->xloc[mesh->obc[m][cc][0]], mesh->yloc[mesh->obc[m][cc][0]],
-		  mesh->xloc[mesh->obc[m][cc][1]], mesh->yloc[mesh->obc[m][cc][1]]);
-	}
-      }
-    }
-  }
 
   /*-----------------------------------------------------------------*/
   /* Save the OBC locations to the mesh structure                    */
+  fp = fopen("boundary.txt", "w");
+  op = fopen("obc_spec.txt", "w");
   for (m = 0; m < mesh->nobc; m++) {
     open_bdrys_t *open = params->open[m];
-    /*
     if (open->slat == NOTVALID || open->slon == NOTVALID ||
 	open->elat == NOTVALID || open->elon == NOTVALID)
       continue;
-    */
-    if (donef[m]) continue;
 
     /* Save to mesh                                                  */
     n = si[m];
@@ -3248,7 +3032,6 @@ int get_mesh_obc(parameters_t *params,
   i_free_1d(ei);
   i_free_1d(dir);
   i_free_1d(perm);
-  i_free_1d(donef);
   d_free_1d(lon);
   d_free_1d(lat);
   return(1);
@@ -3267,42 +3050,19 @@ int perimeter_mask(parameters_t *params,
 {
   FILE *fp;
   mesh_t *mesh = params->mesh;
-  char buf[MAXSTRLEN], keyword[MAXSTRLEN];
   int n, m, cc, c, cn, cs, i, j, jj, jn, js, np;
   int *mask;
   int verbose = 0;
   int isclosed = 0;
-  int found = 0;
 
   fp = fopen("perimeter.txt", "w");
 
   /*-----------------------------------------------------------------*/
   /* Make a path of cells at the perimeter of the mesh               */
   /* First perimeter cell                                            */
-  for (n = 0; n < params->nobc; n++) {
-    open_bdrys_t *open = params->open[n];
-    double d, xd, yd, dmin = HUGE;
-    if (open->slon != NOTVALID && open->slat != NOTVALID) {
-      for (cc = 1; cc <= mesh->ns2; cc++) {
-	xd = mesh->xloc[mesh->eloc[0][cc][0]] - open->slon;
-	yd = mesh->yloc[mesh->eloc[0][cc][0]] - open->slat;
-	d = sqrt(xd * xd + yd * yd);
-	if (d < dmin) {
-	  cn = cc;
-	  dmin = d;
-	}
-      }
-      cc = cn;
-      js = has_neighbour(cc, mesh->npe[cc], neic);
-      found = 1;
+  for (cc = 1; cc <= mesh->ns2; cc++) {
+    if ((js = has_neighbour(cc, mesh->npe[cc], neic)))
       break;
-    }
-  }
-  if (!found) {
-    for (cc = 1; cc <= mesh->ns2; cc++) {
-      if ((js = has_neighbour(cc, mesh->npe[cc], neic)))
-	break;
-    }
   }
 
   /* Set the mask for all cells surrounded by other cells            */
@@ -3594,12 +3354,10 @@ int read_mesh_us(parameters_t *params)
     hd_quit("read_mesh_us: Too few entries (%d) for grid topology (indicies required).\n", n);
     
   /* Read the entries                                                */
-  /*
   fprintf(op, "\nCoordinates\n");
   for (n = 1; n <= mesh->ns; n++) {
     fprintf(op, "%d %f %f\n", n, mesh->xloc[n], mesh->yloc[n]);
   }
-  */
 
   prm_skip_to_end_of_key(op, "Coordinates");
   if (verbose) printf("\nCoordinates\n");
@@ -7789,7 +7547,7 @@ void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
 {
   mesh_t *mesh = params->mesh;
   int cc, c, cn, cs, j, n, ns, ns2i;
-  int ni, *mask;
+  int ni, *film, *mask;
   int verbose = 0;
   int **neic;
   int *n2o, *o2n;
@@ -7821,8 +7579,8 @@ void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
   /* Note; the coordinates remain unchanged, with some redundant   */
   /* information.                                                  */
   cn = 1;
-  mesh->map = i_alloc_1d(ns);
-  memset(mesh->map, 0, ns * sizeof(int));
+  film = i_alloc_1d(ns);
+  memset(film, 0, ns * sizeof(int));
   for (cc = 1; cc <= mesh->ns2; cc++) {
     if (!mask[cc]) {
       mesh->npe[cn] = mesh->npe[cc];
@@ -7838,7 +7596,7 @@ void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
 	n2o[cn] = cc;
 	o2n[cc] = cn;
       }
-      mesh->map[cn++] = cc;
+      film[cn++] = cc;
     } else {
       if (verbose) printf("%d %f %f\n",cc, mesh->xloc[mesh->eloc[0][cc][0]],
 			  mesh->yloc[mesh->eloc[0][cc][0]]);
@@ -7859,18 +7617,16 @@ void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
 
   hd_warn("mesh_reduce: %d cells eliminated\n", ns2i - mesh->ns2);
 
-  /* OBCs cell centres are referenced to the indices and need to be  */
-  /* remapped. The edge locations are referenced directly to the     */
-  /* coordinates and do not.                                         */
-  if (mesh->nobc) {
-    for (n = 0; n < mesh->nobc; n++) {
-      for (cc = 1; cc <= mesh->npts[n]; cc++) {
-	c = mesh->loc[n][cc];
-	mesh->loc[n][cc] = mesh->map[c];
-      }
+  /* OBCs cell centres are referenced to the indices and need to     */
+  /* be remapped. The edge locations are referenced directly to      */
+  /* the coordinates and do not.                                     */
+  for (n = 0; n < mesh->nobc; n++) {
+    for (cc = 1; cc <= mesh->npts[n]; cc++) {
+      c = mesh->loc[n][cc];
+      mesh->loc[n][cc] = film[c];
     }
-    i_free_1d(mesh->map);
   }
+  i_free_1d(film);
 }
 
 /* END mesh_reduce()                                                 */
@@ -8246,198 +8002,6 @@ delaunay*  make_dual(geometry_t *geom, int kin)
   return d;
 }
 
-/*-------------------------------------------------------------------*/
-
-
-
-/*-------------------------------------------------------------------*/
-/* Merges a quadrilateral grid with an unstructured mesh at a user   */
-/* defined location.                                                 */
-/*-------------------------------------------------------------------*/
-void add_quad_grid(parameters_t *params, char *iname)
-{
-  FILE *fp;
-  char buf[MAXSTRLEN];
-  int i, j, n, nc, ns2, ncells, nce1, nce2;
-  double *x, *y;
-  double **lat, **lon;
-  double **xc, **yc;
-  double *bathy, nbathy = NOTVALID;
-  double xr1, yr1, xr2, yr2, d, dist1, dist2;
-  int *npe2, ir, jr1, jr2;
-  int verbose = 0;
-  int dirf = 1;    /* Coordinates are ordered across the river       */
-  int sortdir = 1; /* Sort verices; 1=clockwise, -1=anticlockwise    */
-
-  /*-----------------------------------------------------------------*/
-  /* Open the file to merge and read the merge location              */
-  if ((fp = fopen(iname, "r")) == NULL) return;
-  if (prm_read_char(fp, "MERGE_LOC", buf))
-    sscanf(buf, "(%lf %lf)-(%lf %lf)", &xr1, &yr1, &xr2, &yr2);
-  else {
-    hd_warn("Can't find MERGE_LOC: no mesh merging.\n");
-    return;
-  }
-  prm_read_double(fp, "BATHYVAL", &nbathy);
-  if (prm_read_char(fp, "MERGE_DIR", buf))
-    dirf = is_true(buf);
-
-  /* The merge location is set to the closest vertices in the mesh.  */
-  /* Also make a copy of the current mesh.                           */
-  dist1 = dist2 = HUGE;
-  npe2 = i_alloc_1d(params->ns2+1);
-  bathy = d_alloc_1d(params->ns2+1);
-  xc = d_alloc_2d(params->npe+1, params->ns2+1);
-  yc = d_alloc_2d(params->npe+1, params->ns2+1);
-  for (i = 1; i <= params->ns2; i++) {
-    npe2[i] = params->npe2[i];
-    bathy[i] = params->bathy[i];
-    for (j = 0; j <= params->npe2[i]; j++) {
-      xc[i][j] = params->x[i][j];
-      yc[i][j] = params->y[i][j];
-      d = sqrt((xc[i][j] - xr1) * (xc[i][j] - xr1) + (yc[i][j] - yr1) * (yc[i][j] - yr1));
-      if (j > 0 && d < dist1) {
-	dist1 = d;
-	ir = i;
-	jr1 = j;
-      }
-    }
-  }
-  xr1 = xc[ir][jr1];
-  yr1 = yc[ir][jr1];
-  for (j = 0; j <= params->npe2[ir]; j++) {
-    d = sqrt((xc[ir][j] - xr2) * (xc[ir][j] - xr2) + (yc[ir][j] - yr2) * (yc[ir][j] - yr2));
-    if (j > 0 && j != jr1 && d < dist2) {
-      dist2 = d;
-      jr2 = j;
-    }
-  }
-  xr2 = xc[ir][jr2];
-  yr2 = yc[ir][jr2];
-  if (nbathy == NOTVALID) nbathy = bathy[ir];
-
-  /* Read and save the vertices and centre of the quadrilateral grid */
-  prm_read_int(fp, "NCE1", &nce1);
-  prm_read_int(fp, "NCE2", &nce2);
-  if (nce1 != 1 && nce2 != 1) hd_warn("One of NCE1 or NCE2 must = 1: no mesh merging.\n");
-  ncells = nce1 * nce2;
-  prm_read_int(fp, "XCOORDS", &nc);
-  if (nc != (2 * nce1 + 1) * (2 * nce2 + 1)) hd_quit("add_quad_grid: %s wrong grid size: (%d,%d) != %d\n", iname, i, j, nc);
-  x = d_alloc_1d(nc);
-  for (i = 0; i < nc; i++) fscanf(fp, "%lf", &x[i]);
-  prm_read_int(fp, "YCOORDS", &nc);
-  y = d_alloc_1d(nc);
-  for (i = 0; i < nc; i++) fscanf(fp, "%lf", &y[i]);
-  lon = d_alloc_2d(5, ncells);
-  lat = d_alloc_2d(5, ncells);
-  n = 0;
-  dist1 = dist2 = HUGE;
-  if (verbose) printf("file=%s ncells=%d nc=%d dir=%d\n", iname, ncells, nc, dirf);
-
-  if (dirf) {
-    for (i = 0; i < ncells; i++) {
-      n = i * 6;
-      lon[i][0] = x[n+4];
-      lat[i][0] = y[n+4];
-      lon[i][1] = x[n];
-      lat[i][1] = y[n];
-      lon[i][2] = x[n+2];
-      lat[i][2] = y[n+2];
-      lon[i][3] = x[n+6];
-      lat[i][3] = y[n+6];
-      lon[i][4] = x[n+8];
-      lat[i][4] = y[n+8];
-      if(verbose && i==0)for(n=0; n<=4; n++)printf("%f %f y%d\n",lon[i][n],lat[i][n],n);
-    }
-  } else {
-    for (i = 0; i < ncells; i++) {
-      n = i * 2;
-      lon[i][0] = x[nc/3+n+1];
-      lat[i][0] = y[nc/3+n+1];
-      lon[i][1] = x[n];
-      lat[i][1] = y[n];
-      lon[i][2] = x[n+2];
-      lat[i][2] = y[n+2];
-      lon[i][3] = x[2*nc/3+n];
-      lat[i][3] = y[2*nc/3+n];
-      lon[i][4] = x[2*nc/3+n+2];
-      lat[i][4] = y[2*nc/3+n+2];
-      if(verbose && i==0)for(n=0; n<=4; n++)printf("%f %f n%d\n",lon[i][n],lat[i][n],n);
-    }
-  }
-  for (i = 0; i < ncells; i++) {
-    sort_circle_g(lon[i], lat[i], 4, sortdir);
-    for (j = 1; j <= 4; j++) {
-      d = sqrt((lon[i][j] - xr1) * (lon[i][j] - xr1) + (lat[i][j] - yr1) * (lat[i][j] - yr1));
-      if (d < dist1) {
-	dist1 = d;
-	ir = i;
-	jr1 = j;
-      }
-    }
-  }
-
-  /* Set the merge location to the closest vertices in the grid      */
-  lon[ir][jr1] = xr1;
-  lat[ir][jr1] = yr1;
-  xr1 = xc[ir][jr1];
-  yr1 = yc[ir][jr1];
-  for (j = 0; j <= 4; j++) {
-    d = sqrt((lon[ir][j] - xr2) * (lon[ir][j] - xr2) + (lat[ir][j] - yr2) * (lat[ir][j] - yr2));
-    if (j > 0 && j != jr1 && d < dist2) {
-      dist2 = d;
-      jr2 = j;
-    }
-  }
-  lon[ir][jr2] = xr2;
-  lat[ir][jr2] = yr2;
-  hd_warn("Curvilinear grid %s added at (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
-
-  /* Reallocate and reset the (x,y) arrays, including the points in  */
-  /* the grid.                                                       */
-  ns2 = params->ns2;
-  params->ns2 += ncells;
-  i_free_1d(params->npe2);
-  d_free_1d(params->bathy);
-  d_free_2d(params->x);
-  d_free_2d(params->y);
-  params->npe2 = i_alloc_1d(params->ns2+1);
-  params->bathy = d_alloc_1d(params->ns2+1);
-  params->x = d_alloc_2d(params->npe+1, params->ns2+1);
-  params->y = d_alloc_2d(params->npe+1, params->ns2+1);
-  n = 1;
-  for (i = 1; i <= ns2; i++) {
-    params->npe2[n] = npe2[n];
-    params->bathy[n] = bathy[n];
-    for (j = 0; j <= params->npe2[n]; j++) {
-      params->x[n][j] = xc[n][j];
-      params->y[n][j] = yc[n][j];
-    }
-    n++;
-  }
-  for (i = 0; i < ncells; i++) {
-    params->npe2[n] = 4;
-    params->bathy[n] = -fabs(nbathy);
-    for (j = 0; j <= params->npe2[n]; j++) {
-      params->x[n][j] = lon[i][j];
-      params->y[n][j] = lat[i][j];
-    }
-    n++;
-  }
-
-  fclose(fp);
-  d_free_1d(x);
-  d_free_1d(y);
-  d_free_1d(bathy);
-  i_free_1d(npe2);
-  d_free_2d(lon);
-  d_free_2d(lat);
-  d_free_2d(xc);
-  d_free_2d(yc);
-
-}
-
-/* END add_quad_grid()                                               */
 /*-------------------------------------------------------------------*/
 
 /*

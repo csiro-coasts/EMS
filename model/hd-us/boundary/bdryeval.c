@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryeval.c 6328 2019-09-13 04:38:11Z her127 $
+ *  $Id: bdryeval.c 5873 2018-07-06 07:23:48Z riz008 $
  *
  */
 
@@ -54,7 +54,7 @@ void bdry_init_m(master_t *master)
     if (open[n]->datau1.explct && (open[n]->bcond_nor & FILEIN ||
 				   open[n]->bcond_tan & FILEIN))
       hd_warn("WARNING : Use the CUSTOM specification for boundary %d\n", n);		
-
+    
     /* Normal CUSTOM forcing on a boundary                           */
     if (open[n]->datau1.init_m != NULL)
       open[n]->datau1.init_m(master, open[n], &open[n]->datau1);
@@ -74,7 +74,7 @@ void bdry_init_m(master_t *master)
 			    open[n]->filenames, open[n]->datau2.name,
 			    schedule->start_time, schedule->stop_time);
     }
-
+    
     /* u1av (2D) boundary data                                       */
     if (open[n]->datau1av.explct && (open[n]->bcond_nor2d & FILEIN ||
 				     open[n]->bcond_tan2d & FILEIN))

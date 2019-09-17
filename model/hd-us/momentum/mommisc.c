@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommisc.c 6322 2019-09-13 04:35:22Z her127 $
+ *  $Id: mommisc.c 5918 2018-09-05 05:07:40Z her127 $
  *
  */
 
@@ -45,7 +45,6 @@ void set_sponge_c(geometry_t *window, /* Window geometry             */
 	while (c != window->zm1[c]) {
 	  vp = AH[cp];
 	  vm = sfact * window->cellarea[cs] / (4.0 * dt);
-	  vm = 1.0 / ((2.0 / window->cellarea[cs]) * 4.0 * dt);
 	  if (open->sponge_f)
 	    vb = open->sponge_f * vp;
 	  else {
@@ -73,7 +72,6 @@ void set_sponge_e(geometry_t *window, /* Window geometry             */
   double vb, vp, vm;            /* Diffusivities                     */
   double sfact = 0.9;           /* Safety factor                     */
   int  n;                       /* Boundary counter                  */
-  double bif, a;
 
   for (n = 0; n < window->nobc; ++n) {
     int cb, cp;
@@ -81,24 +79,18 @@ void set_sponge_e(geometry_t *window, /* Window geometry             */
     if (open->sponge_zone_h) {
       for (ee = 1; ee <= open->nspe1; ee++) {
 	e = es = open->spe1[ee];
-	a = 1.0 / (0.125 * window->edgearea[es]);
 	eb = open->sne1[ee];
 	ep = open->sme1[ee];
-	bif = (window->wincon->diff_scale & SCALEBI) ? 0.125 * window->edgearea[es] : 1.0;
 	while (e != window->zm1e[e]) {
 	  vp = AH[ep];
-
 	  vm = 1.0 / (window->h1au1[es] * window->h1au1[es]) +
 	    1.0 / (window->h2au1[es] * window->h2au1[es]);
-	  vm = sfact * bif / (4.0 * vm * dt);
-
+	  vm = sfact / (4.0 * vm * dt);
 	  if (open->sponge_f)
 	    vb = open->sponge_f * vp;
 	  else
 	    vb = vm;
-
 	  AH[e] = min(vm, open->swe1[ee] * (vp - vb) + vb);
-
 	  e = window->zm1e[e];
 	  eb = window->zm1e[eb];
 	  if (eb == window->zm1e[eb]) eb = window->zp1e[eb];

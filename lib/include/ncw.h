@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ncw.h 6297 2019-08-28 02:28:37Z riz008 $
+ *  $Id: ncw.h 5834 2018-06-27 00:55:37Z riz008 $
  */
 
 #if !defined(_NCW_H)
@@ -97,5 +97,4 @@ int ncw_var_find(int fid, int nvdims, int *vdims, const char *attr,
 int ncw_var_size(int fid, int vid);
 void ncw_var_read(int fid, char *name, int size, long *start, long *count,
                   void *buf);
-void ncw_def_var_chunking(const char fname[], int ncid, int varid, size_t *chunksize);
 #endif

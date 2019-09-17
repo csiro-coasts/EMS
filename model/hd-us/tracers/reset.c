@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 6286 2019-08-08 04:33:36Z her127 $
+ *  $Id: reset.c 5873 2018-07-06 07:23:48Z riz008 $
  *
  */
 
@@ -136,6 +136,8 @@ void tracer_reset_init(master_t *master)
 
 	/* Check if the input file is sparse format                  */
 	reset->in_type = XYZ_TINT;
+	if (strcmp(master->trinfo_2d[t].name, "ghrsst") == 0)
+	  reset->in_type |= GHRSST;
 	if(check_sparse_dumpfile(geom, reset->ntsfiles, 
 				 reset->tsfiles, reset->tsnames) == 0)
 	  reset->in_type = SP_TINT;
@@ -327,8 +329,6 @@ void tracer_reset2d_init(master_t *master)
 	if(check_sparse_dumpfile(geom, reset->ntsfiles, 
 				 reset->tsfiles, reset->tsnames) == 0)
 	  reset->in_type = SP_TINT;
-	if (strcmp(master->trinfo_2d[t].name, "ghrsst") == 0)
-	  reset->in_type |= GHRSST;
 
         sched_register(schedule, schedName,
                        tr_reset_init, tr_reset2d_event, tr_reset_cleanup,

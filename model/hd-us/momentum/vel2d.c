@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 6324 2019-09-13 04:36:09Z her127 $
+ *  $Id: vel2d.c 6137 2019-03-04 01:02:43Z her127 $
  *
  */
 
@@ -20,8 +20,6 @@
 #include <string.h>
 #include "hd.h"
 #include "tracer.h"
-
-#define RADIUS 6370997.0
 
 /*-------------------------------------------------------------------*/
 /* Routines contained in this module                                 */
@@ -45,13 +43,7 @@ void set_viscosity_2d(geometry_t *window);
 void precalc_u1_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vel_tan_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vel_components_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
-double est_bot_stress(geometry_t *window, window_t *windat, win_priv_t *wincon,
-		      int e, double botu1, double val, double pgt, double cot, double uin);
-double tpxo_error(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void pressure_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void coriolis_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void bottom_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void nonlinear_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
+
 
 /*-------------------------------------------------------------------*/
 /* 2D window step part 1                                             */
@@ -68,10 +60,7 @@ void mode2d_step_window_p1(master_t *master,
 
   /*-----------------------------------------------------------------*/
   /* Update the 2D velocity                                          */
-  if (wincon->compatible & V6257)
-    vel_u1av_update_seq(window, windat, wincon);
-  else
-    vel_u1av_update(window, windat, wincon);
+  vel_u1av_update(window, windat, wincon);
 
   /* Set sources of momentum                                         */
   ss_momentum(window, windat, wincon, VEL2D);
@@ -315,318 +304,11 @@ void mode2d_step(geometry_t *geom,    /* Global geometry             */
 
 
 /*-------------------------------------------------------------------*/
-/* Update the 2D velocities                                          */
 /*-------------------------------------------------------------------*/
 void vel_u1av_update(geometry_t *window,  /* Window geometry         */
                      window_t *windat,    /* Window data             */
                      win_priv_t *wincon   /* Window constants        */
 		     )
-{
-  int e, ee;                    /* Edge coordinate / counter         */
-  int c1, c2, n;                /* Cell coordinate / counter         */
-  double val;                   /* Dummy                             */
-  double midx;                  /* Water depth at the edge           */
-  double *tzp;                  /* Surface height array              */
-  int dbc;                      /* Debugging coordinate              */
-  int dbj;                      /* Debugging edge direction          */
-  double *depth = windat->depth_e1;
-
-  dbc = (wincon->dbc) ? window->m2d[wincon->dbc] : 0;
-  dbj = wincon->dbj;
-
-  /* tzp is a pointer which points to either topz[][] or eta[][].  */
-  /* topz[][] only gets updated once every 3d step. For the non- */
-  /* linear case, we need to use eta instead, which gets updated */
-  /* every 2d step. This value is only used to calculate transport */
-  /* (nothing to do with the surface slope term, which always uses */
-  /* eta).  */
-  tzp = (wincon->nonlinear && !wincon->sigma) ? windat->eta : windat->topz;
-
-  /*-----------------------------------------------------------------*/
-  /* Precalculate variables required for the u1 calculation          */
-  precalc_u1_2d(window, windat, wincon);
-
-  /*-----------------------------------------------------------------*/
-  /* Do the horizontal advection                                     */
-  if (wincon->momsc2d & RINGLER) {
-    if (nonlin_coriolis_2d(window, windat, wincon)) return;
-  } else {
-    if (!(wincon->u1av_f & ADVECT))
-      advect_u1_2d(window, windat, wincon);
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Do horizontal diffusion (with metrics included)                 */
-  wincon->hor_mix->setup_av(window, windat, wincon, tzp);
-  wincon->hor_mix->u1av(window, windat, wincon, tzp);
-
-  /*-----------------------------------------------------------------*/
-  /* Get the horizontal pressure gradient                            */
-  pressure_u1av(window, windat, wincon);
-
-  /*-----------------------------------------------------------------*/
-  /* Get the Coriolis force                                          */
-  coriolis_u1av(window, windat, wincon);
-
-  /*-----------------------------------------------------------------*/
-  /* Get the bottom stress                                           */
-  bottom_u1av(window, windat, wincon);
-
-  /*-----------------------------------------------------------------*/
-  /* Get the non-linear terms and radiation stresses                 */
-  nonlinear_u1av(window, windat, wincon);
-
-  /*-----------------------------------------------------------------*/
-  /* Sum the tendencies                                              */
-  for (ee = 1; ee <= wincon->vcs; ee++) {
-    e = wincon->s3[ee];
-    /* Note: T_ADV is not added, as the velocity is already updated  */
-    /* with this tendedcy in momentum advection to account for       */
-    /* sub-stepping.                                                 */
-    for (n = 1; n < TEND2D; n++) {
-      double dt = (n == T_HDF || n == T_ADV) ? 1.0 : windat->dt2d;
-      midx = (n == T_BTP || n == T_COR) ? wincon->mdx[e] : 1.0;
-      windat->nu1av[e] += dt * midx * wincon->tend2d[n][e];
-    }
-    windat->nu1av[e] += windat->dt2d * wincon->u1inter[e];
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Restrict flow if column nearly dry                              */
-  for (ee = 1; ee <= window->v2_e1; ee++) {
-    e = window->w2_e1[ee];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-    if (windat->nu1av[e] > 0.0 &&
-        (val = (tzp[c2] - window->botz[c2])) < wincon->hmin)
-      windat->nu1av[e] *= max(val, 0.0) / wincon->hmin;
-    else if (windat->nu1av[e] < 0.0 &&
-             (val = (tzp[c1] - window->botz[c1])) < wincon->hmin)
-      windat->nu1av[e] *= max(val, 0.0) / wincon->hmin;
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Calculate u1av boundary values                                  */
-  bdry_u1_2d(window, windat, wincon);
-  debug_c(window, D_UA, D_BDRY);
-
-  /*-----------------------------------------------------------------*/
-  /* Debugging                                                       */
-  if (dbc) {
-    for (ee = 1; ee <= wincon->vcs; ee++) {
-      e = wincon->s3[ee];
-      if (window->e2e[e][0] == dbj && window->e2c[e][dbj] == dbc) {
-	wincon->b1 = wincon->tend2d[T_BTP][e];
-	wincon->b2 = wincon->tend2d[T_COR][e];
-	wincon->b3 = wincon->tend2d[T_BOT][e];
-      }
-    }
-  }
-  if (wincon->mode2d) debug_c(window, D_INIT, D_POST);
-  debug_c(window, D_UA, D_POST);
-  /* Get the bottom stress from the 2D mode if required              */
-  if (wincon->mode2d && wincon->numbers & BOTSTRESS) {
-    memcpy(wincon->w8, wincon->tend2d[T_BOT], window->szeS * sizeof(double));
-    vel_cen(window, windat, wincon, wincon->w8, NULL, windat->tau_be1, windat->tau_be2,
-	    windat->tau_bm, NULL, 1);
-  }
-}
-
-/* END vel_u1av_update()                                             */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* 2D pressure tendency                                              */
-/*-------------------------------------------------------------------*/
-void pressure_u1av(geometry_t *window,    /* Window geometry         */
-		   window_t *windat,      /* Window data             */
-		   win_priv_t *wincon     /* Window constants        */
-		   )
-{
-  int e, ee;
-  int c1, c2;
-  double alpha = 1.0;           /* Tide SAL constant                 */
-  double beta = 0.0;            /* Body tide effect constant         */
-
-  if (wincon->u1av_f & PRESS_BT) return;
-
-  /* Set the tidal potential term if required                        */
-  if (wincon->tidep) {
-    equ_tide_eval(window, windat, wincon, windat->equitide);
-    alpha = wincon->eqt_alpha;
-    beta = wincon->eqt_beta;
-    for (ee = 1; ee <= wincon->vcs; ee++) {
-      e = wincon->s3[ee];
-      c1 = window->e2c[e][0];
-      c2 = window->e2c[e][1];
-
-      /* Equilibrium tide body force                                 */
-      wincon->tend2d[T_BTP][e] -= beta * (windat->equitide[c1] - windat->equitide[c2]) * 
-	wincon->topdensu1[e] / wincon->densavu1[e];
-    }
-  }
-
-  /* Pressure gradient term.                                         */
-  for (ee = 1; ee <= wincon->vcs; ee++) {
-    e = wincon->s3[ee];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-
-    wincon->tend2d[T_BTP][e] -= (alpha * (windat->eta[c1] - windat->eta[c2]) * 
-				 wincon->topdensu1[e] +
-				 (windat->patm[c1] - windat->patm[c2])) / 
-      wincon->densavu1[e];
-  }
-}
-
-/* END pressure_u1av()                                               */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* 2D coriolis tendency                                              */
-/*-------------------------------------------------------------------*/
-void coriolis_u1av(geometry_t *window,    /* Window geometry         */
-		   window_t *windat,      /* Window data             */
-		   win_priv_t *wincon     /* Window constants        */
-		   )
-{
-  int e, ee;
-
-  if (wincon->u1av_f & CORIOLIS || wincon->momsc & RINGLER) return;
-
-  for (ee = 1; ee <= wincon->vcs; ee++) {
-    e = wincon->s3[ee];
-    wincon->tend2d[T_COR][e] = wincon->u1c5[e] * windat->u2av[e];
-  }
-}
-
-/* END coriolis_u1av()                                               */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* 2D bottom friction tendency                                       */
-/*-------------------------------------------------------------------*/
-void bottom_u1av(geometry_t *window,      /* Window geometry         */
-		 window_t *windat,        /* Window data             */
-		 win_priv_t *wincon       /* Window constants        */
-		 )
-{
-  int n, e, ee, eoe;
-  int c1, c2;
-  double val;                   /* Dummy                             */
-  double *depth;                /* Depth of the water column         */
-  double midx;                  /* Water depth at the edge           */
-  double u2au1;                 /* Tangential velocity               */
-  double botu1;                 /* Normal bottom velocity            */
-  double botu2;                 /* Tangential Bottom velocity        */
-  double Cdu1;                  /* Bottom drag coeff at the edge     */
-
-  depth = windat->depth_e1;
-
-  for (ee = 1; ee <= wincon->vcs; ee++) {
-    e = wincon->s3[ee];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-    midx = wincon->mdx[e];
-
-    u2au1 = botu2 = 0;
-    for (n = 1; n <= window->nee[e]; n++) {
-      eoe = window->eSe[n][e];
-      if (!eoe) continue;
-      u2au1 += window->wAe[n][e] * windat->u1avb[eoe];
-      botu2 += window->wAe[n][e] * windat->u1bot[eoe];
-    }
-    botu1 = windat->u1avb[e] + windat->u1bot[e];
-    botu2 = u2au1 + botu2;
-
-    Cdu1 = 0.5 * (wincon->Cd[c1] + wincon->Cd[c2]);
-    val = sqrt(botu1 * botu1 + botu2 * botu2);
-    val = Cdu1 * max(wincon->uf, val);
-    /* Truncate to ensure stability                                  */
-    if (val > depth[e] * midx / windat->dt2d)
-      val = depth[e] * midx / windat->dt2d;
-    /* Note: depth=1 in the sigma case                               */
-    wincon->tend2d[T_BOT][e] = -val * botu1 / depth[e];
-  }
-}
-
-/* END bottom_u1av()                                                 */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* 2D non-linear tendency. Radiation stresses are also added if      */
-/* required.                                                         */
-/*-------------------------------------------------------------------*/
-void nonlinear_u1av(geometry_t *window,   /* Window geometry         */
-		    window_t *windat,     /* Window data             */
-		    win_priv_t *wincon    /* Window constants        */
-		    )
-{
-  int n, e, ee, eoe;
-  int c1, c2;
-  double *depth;                /* Depth of the water column         */
-  double rst = 0.0;             /* Radiation stress term             */
-  double rho0 = 1024.0;         /* Reference density                 */
-
-  depth = windat->depth_e1;
-
-  /*-----------------------------------------------------------------*/
-  /* Add the non-linear terms                                        */
-  /* SIGMA : No extra terms to include for the sigma case.           */
-  if (wincon->nonlinear && !wincon->sigma) {
-    for (ee = 1; ee <= window->v2_e1; ee++) {
-      e = window->w2_e1[ee];
-      c1 = window->e2c[e][0];
-      c2 = window->e2c[e][1];
-
-      wincon->tend2d[T_NLI][e] -= windat->u1av[e] * (windat->detadt[c1] + windat->detadt[c2]) /
-        (2.0 * max(depth[e], wincon->hmin));
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Add the radiation stresses (radiation stresses are cell         */
-  /* centered).                                                      */
-  if (wincon->waves & WAVE_FOR) {
-    double fe;
-    for (ee = 1; ee <= wincon->vcs; ee++) {
-      e = wincon->s3[ee];
-      fe = vel_c2e(window, windat->wave_Fx, windat->wave_Fy, e);
-      rst = windat->dt2d * fe / (rho0 * max(depth[e], wincon->hmin));
-      if (windat->u1_rad) windat->u1_rad[e] = rst;
-      wincon->tend2d[T_NLI][e] += rst;
-    }
-  }
-  /* Not implemented for unstructured
-  else if (wincon->waves & TAN_RAD) {
-    for (ee = 1; ee <= wincon->vcs; ee++) {
-      e = wincon->s3[ee];
-      c1 = window->e2c[e][0];
-      c2 = window->e2c[e][1];
-      rst = windat->dt2d * (windat->wave_Sxy[c1] - windat->wave_Sxy[c2]) / 
-	window->h2au1[e];
-      if (windat->u1_rad) windat->u1_rad[e] = rst;
-      wincon->tend2d[T_NLI][e] += rst;
-      }
-    }
-  */
-}
-
-/* END nonlinear_u1av()                                              */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Update the 2D velocities seqentially (without using tendencies)   */
-/*-------------------------------------------------------------------*/
-void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
-			 window_t *windat,    /* Window data         */
-			 win_priv_t *wincon   /* Window constants    */
-			 )
 {
   int e, ee, ep, em, eoe;       /* Edge coordinate / counter         */
   int c1, c2;                   /* Cell coordinate / counter         */
@@ -646,8 +328,6 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
   double rho0 = 1024.0;         /* Reference density                 */
   int dbc;                      /* Debugging coordinate              */
   int dbj;                      /* Debugging edge direction          */
-  double alpha = 1.0;           /* Tide SAL constant                 */
-  double beta = 0.0;            /* Body tide effect constant         */
 
   dbc = (wincon->dbc) ? window->m2d[wincon->dbc] : 0;
   dbj = wincon->dbj;
@@ -680,14 +360,6 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
   wincon->hor_mix->u1av(window, windat, wincon, tzp);
 
   /*-----------------------------------------------------------------*/
-  /* Set the tidal potential term if required                        */
-  if (wincon->tidep) {
-    alpha = wincon->eqt_alpha;
-    beta = wincon->eqt_beta;
-    equ_tide_eval(window, windat, wincon, windat->equitide);
-  }
-
-  /*-----------------------------------------------------------------*/
   /* Add the body forces and step forward in time                    */
   for (ee = 1; ee <= wincon->vcs; ee++) {
     e = wincon->s3[ee];
@@ -698,17 +370,11 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
     /*---------------------------------------------------------------*/
     /* Pressure gradient term. Note : differences bracketed to       */
     /* preserve accuracy.  */
-    if (!(wincon->u1av_f & PRESS_BT)) {
-      pgt = -(alpha * (windat->eta[c1] - windat->eta[c2]) * 
+    if (!(wincon->u1av_f & PRESS_BT))
+     pgt = -((windat->eta[c1] - windat->eta[c2]) * 
 	      wincon->topdensu1[e] +
 	      (windat->patm[c1] - windat->patm[c2])) / 
 	wincon->densavu1[e];
-
-      if (wincon->tidep) {
-	pgt -= beta * (windat->equitide[c1] - windat->equitide[c2]) * 
-	  wincon->topdensu1[e] / wincon->densavu1[e];
-      }
-    }
 
     /*---------------------------------------------------------------*/
     /* Coriolis                                                      */
@@ -748,9 +414,8 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
     windat->nu1av[e] +=
       windat->dt2d * (midx * (pgt + cot) + bft + wincon->u1inter[e]);
   }
-
-  if (wincon->mode2d) debug_c(window, D_INIT, D_POST);
   debug_c(window, D_UA, D_POST);
+
   /* Get the bottom stress from the 2D mode if required              */
   if (wincon->mode2d && wincon->numbers & BOTSTRESS) {
     memcpy(wincon->w8, windat->tau_be1, window->szeS * sizeof(double));
@@ -819,7 +484,7 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
   debug_c(window, D_UA, D_BDRY);
 }
 
-/* END vel_u1av_update_seq()                                         */
+/* END vel_u1av_update()                                             */
 /*-------------------------------------------------------------------*/
 
 
@@ -1054,8 +719,6 @@ void precalc_u1_2d(geometry_t *window,  /* Window geometry           */
 
   /* Copy the current velocities into the update array               */
   memcpy(windat->nu1av, windat->u1avb, window->szeS * sizeof(double));
-  for (n = 0; n < TEND2D; n++)
-    memset(wincon->tend2d[n], 0, window->szeS * sizeof(double));
 
   /* Eliminate dry cells from the cells to process list              */
   /* Multiply the velocity by the depth at the backward timestep for */
@@ -1223,10 +886,12 @@ void eta_step(geometry_t *window,   /* Window geometry               */
   int n, ee, e;                 /* Edge coordinates, counters        */
   double colflux;               /* Velocity transport divergence     */
   double *u1flux = wincon->d2;  /* Flux in e1 direction              */
+  double *u2flux = wincon->d3;  /* Flux in e2 direction              */
 
   /*-----------------------------------------------------------------*/
   /* Get the fluxes at time t over the whole window                  */
   memset(u1flux, 0, window->szeS * sizeof(double));
+  memset(u2flux, 0, window->szeS * sizeof(double));
   /* Calculate the flux at e1 wet and boundary cells                 */
   for (ee = 1; ee <= window->b2_e1; ee++) {
     e = window->w2_e1[ee];
@@ -1294,7 +959,7 @@ void eta_step(geometry_t *window,   /* Window geometry               */
     /* Calculate new etat value                            (etamark) */
     wincon->neweta[c] = max(windat->etab[c] - colflux / window->cellarea[c],
 			    window->botz[c]);
-
+ 
     /* Rate of change of eta                                         */
     windat->detadt[c] =
       (wincon->neweta[c] - windat->etab[c]) / windat->dt2d;
@@ -1303,10 +968,10 @@ void eta_step(geometry_t *window,   /* Window geometry               */
 
   /*-----------------------------------------------------------------*/
   /* Adjust the updated elevation due to eta relaxation.             */
-  if (wincon->etarlx & (RELAX|ALERT|ETA_TPXO)) {
+  if (wincon->etarlx & (RELAX|ALERT)) {
     double rr = 0.0;
     /*if (wincon->etarlx & RELAX) rr = windat->etarlxtc;*/
-    if (wincon->etarlx & (RELAX|ETA_TPXO)) {
+    if (wincon->etarlx & RELAX) {
       relax_info_t *rlx = windat->eta_rlx;
       if (rlx->tctype & (RLX_CONS|RLX_FILE))
 	rr = rlx->rate;
@@ -1446,13 +1111,13 @@ void bdry_eta(geometry_t *window,   /* Window geometry               */
 	imap = open[n]->nmape[e];
 	bn = 1;
 	while (c != imap[c] && bn <= nr) {
-	  /* Linear */
-	  rc = (double)(bn - 1) * (ri - rb) / (double)(nr - 1) + rb;
-	  /* Hyperbolic tangent */
-	  /* rc = (1 - tanh(0.5 * (double)(bn - 1))) * rb; */
-	  do_eta_relax(window, c, rc, wincon->tide_r);
-	  c = imap[c];
-	  bn++;
+	/* Linear */
+	rc = (double)(bn - 1) * (ri - rb) / (double)(nr - 1) + rb;
+	/* Hyperbolic tangent */
+        /* rc = (1 - tanh(0.5 * (double)(bn - 1))) * rb; */
+	do_eta_relax(window, c, rc, wincon->tide_r);
+        c = imap[c];
+        bn++;
 	}
       }
     }
@@ -2001,37 +1666,20 @@ void get_depths(geometry_t *window,   /* Window geometry             */
   /*-----------------------------------------------------------------*/
   /* Set the total depth on the boundary                             */
   for (n = 0; n < window->nobc; n++) {
-    /* For TIDALC velocity OBCs with TPXO transport input, revert to */
-    /* the transport provided by the custom tide file (i.e. do not   */
-    /* account for elevation in the total depth).                    */
-    if (open[n]->bcond_nor2d & TIDALC && wincon->tidef & TD_TRAN) {
-      for (ee = 1; ee <= open[n]->no2_e1; ee++) {
-	e = open[n]->obc_e1[ee];
-	depth[e] = -window->botzu1[e];
-      }
-    } else {
-      for (ee = 1; ee <= open[n]->no2_e1; ee++) {
-	e = open[n]->obc_e1[ee];
-	c = open[n]->obc_e2[ee];
-	depth[e] = tzp[c] - window->botzu1[e];
-      }
+    for (ee = 1; ee <= open[n]->no2_e1; ee++) {
+      e = open[n]->obc_e1[ee];
+      c = open[n]->obc_e2[ee];
+      depth[e] = tzp[c] - window->botzu1[e];
     }
   }
 
   for (n = 0; n < window->nobc; n++) {
-    if (open[n]->bcond_tan2d & TIDALC && wincon->tidef & TD_TRAN) {
-      for (ee = open[n]->no3_e1 + 1; ee <= open[n]->to2_e1; ee++) {
-	e = open[n]->obc_e1[ee];
-	depth[e] = -window->botzu1[e];
-      }
-    } else {
-      for (ee = open[n]->no3_e1 + 1; ee <= open[n]->to2_e1; ee++) {
-	e = open[n]->obc_e1[ee];
-	c1 = window->e2c[e][0];
-	c2 = window->e2c[e][1];
-	top = max(tzp[c1], tzp[c2]);
-	depth[e] = top - window->botzu1[e];
-      }
+    for (ee = open[n]->no3_e1 + 1; ee <= open[n]->to2_e1; ee++) {
+      e = open[n]->obc_e1[ee];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      top = max(tzp[c1], tzp[c2]);
+      depth[e] = top - window->botzu1[e];
     }
   }
 
@@ -2174,42 +1822,26 @@ int check_unstable(geometry_t *window, /* Window geometry            */
       c = window->w2_t[cc];
 
       if (fabs(wincon->neweta[c]) > wincon->etamax) {
-	if (window->nwindows > 1) {
-	  write_site(window, window->cellx[c], window->celly[c], "eta");
-	  if (window->us_type & US_IJ)
-	    hd_quit_and_dump
-	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(i=%d j=%d [%f %f]) cg=%d wn=%d t=%8.3f days\n",
-	       wincon->neweta[c], c, window->s2i[c], window->s2j[c],
-	       window->cellx[c], window->celly[c], window->wsa[c], window->wn, windat->t / 86400);
-	  else
-	    hd_quit_and_dump
-	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(c2cc=%d cg=%d [%f %f]) wn=%d t=%8.3f days\n",
-	       wincon->neweta[c], c, window->s2i[c], window->wsa[c], 
-	       window->cellx[c], window->celly[c], window->wn, windat->t / 86400);
-	} else {
-	  write_site(window, window->cellx[c], window->celly[c], "eta");
-	  if (window->us_type & US_IJ)
-	    hd_quit_and_dump
-	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(i=%d j=%d [%f %f]) t=%8.3f days\n",
-	       wincon->neweta[c], c, window->s2i[c], window->s2j[c],
-	       window->cellx[c], window->celly[c], windat->t / 86400);
-	  else
-	    hd_quit_and_dump
-	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(c2cc=%d cg=%d [%f %f]) t=%8.3f days\n",
-	       wincon->neweta[c], c, window->s2i[c], window->wsa[c],
-	       window->cellx[c], window->celly[c], windat->t / 86400);
-	  return(1);
-	}
+	if (window->nwindows > 1)
+	  hd_quit_and_dump
+	    ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(%d %d [%f %f]) cg=%d wn=%d t=%8.3f days\n",
+	     wincon->neweta[c], c, window->s2i[c], window->s2j[c],
+	     window->cellx[c], window->celly[c], window->wsa[c], window->wn, windat->t / 86400);
+	else
+	  hd_quit_and_dump
+	    ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(%d %d [%f %f]) t=%8.3f days\n",
+	     wincon->neweta[c], c, window->s2i[c], window->s2j[c],
+	     window->cellx[c], window->celly[c], windat->t / 86400);
+
+	return(1);
       }
       if (wincon->fatal & NANF) {
 	if(isnan(wincon->neweta[c])) {
 	  if (window->nwindows == 1) {
-	    write_site(window, window->cellx[c], window->celly[c], "eta NaN");
 	    hd_quit_and_dump("etastep: NaN at %d (%d %d) t=%8.3f days\n", c,
 			     window->s2i[c], window->s2j[c], windat->t / 86400);
 	    return(1);
 	  } else {
-	    write_site(window, window->cellx[c], window->celly[c], "eta NaN");
 	    hd_quit_and_dump("etastep: NaN at %d (%ld %d) t=%8.3f days : window %d\n",
 			     c, window->s2i[c], window->s2j[c], 
 			     windat->t / 86400, window->wn);
@@ -2226,7 +1858,6 @@ int check_unstable(geometry_t *window, /* Window geometry            */
       e = window->w2_e1[ee];
       c = window->e2c[e][0];
       if (fabs(windat->u1av[e]) > wincon->velmax2d) {
-	write_site(window, window->u1x[e], window->u1y[e], "u1av");
 	hd_quit_and_dump
 	  ("vel2d: u1av velocity exceeded velmax (%f) at %d(%d %d) t=%8.3f days\n",
 	   windat->u1av[e], e, window->s2i[c], window->s2j[c], windat->t / 86400);
@@ -2235,13 +1866,11 @@ int check_unstable(geometry_t *window, /* Window geometry            */
       if (wincon->fatal & NANF) {
 	if(isnan(windat->u1av[e])) {
 	  if (window->nwindows == 1) {
-	    write_site(window, window->u1x[e], window->u1y[e], "u1av NaN");
 	    hd_quit_and_dump("vel2d: u1av NaN at %d(%d %d) t=%8.3f days\n",
 			     e, window->s2i[c], window->s2j[c], 
 			     windat->t / 86400);
 	    return(1);
 	  } else {
-	    write_site(window, window->u1x[e], window->u1y[e], "u1av NaN");
 	    hd_quit_and_dump("vel2d: u1av NaN at %d (%d %d) t=%8.3f days : window %d\n",
 			     e, window->s2i[c], window->s2j[c], 
 			     windat->t / 86400, window->wn);
@@ -2258,7 +1887,6 @@ int check_unstable(geometry_t *window, /* Window geometry            */
       e = window->w3_e1[ee];
       c = window->e2c[e][0];
       if (fabs(windat->u1[e]) > wincon->velmax) {
-	write_site(window, window->u1x[window->m2de[e]], window->u1y[window->m2de[e]], "u1");
 	hd_quit_and_dump
 	  ("vel3d: u1 velocity exceeded velmax (%f) at %d(%d %d %d) t=%8.3f days\n",
 	   windat->u1[e], e, window->s2i[c], window->s2j[c], window->s2k[c], 
@@ -2305,7 +1933,6 @@ int check_unstable(geometry_t *window, /* Window geometry            */
       c = window->w3_t[cc];
 
       if (isnan(windat->temp[c])) {
-	write_site(window, window->cellx[window->m2d[c]], window->celly[window->m2d[c]], "temp");
 	hd_quit_and_dump
 	  ("temp: NaN found  at (%d %d %d) t=%8.3f days : window %d\n",
 	   window->s2i[c], window->s2j[c], window->s2k[c],
@@ -2313,7 +1940,6 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	return(1);
       }
       if (isnan(windat->sal[c])) {
-	write_site(window, window->cellx[window->m2d[c]], window->celly[window->m2d[c]], "salt");
 	hd_quit_and_dump
 	  ("salt: NaN found  at (%d %d %d) t=%8.3f days : window %d\n",
 	   window->s2i[c], window->s2j[c], window->s2k[c],
@@ -2326,140 +1952,4 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 }
 
 /* END check_unstable()                                              */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Estimates the bottom stress for tidal flows, where an ensemble of */
-/* bottom drag is created and velocities at the next time-step are   */
-/* optimized against TPXO tidal velocity.                            */
-/*-------------------------------------------------------------------*/
-double est_bot_stress(geometry_t *window, /* Window geometry         */
-		      window_t *windat,   /* Window data             */
-		      win_priv_t *wincon, /* Window constants        */
-		      int e,
-		      double botu1,
-		      double val,
-		      double pgt,
-		      double cot,
-		      double uin
-		      )
-{
-  int e2 = window->m2de[e];
-  int c1 = window->e2c[e2][0];
-  int c2 = window->e2c[e2][1];
-  double ux, uy, ut, nut;
-  double *depth = windat->depth_e1;
-  double midx = wincon->mdx[e2];
-  double bd, bft, u, v, nu;
-  double bds = 0.0;      /* Ensemble start bottom drag               */
-  double bde = 0.0001;   /* Bottom drag increment                    */
-  double Cd, rmse, rm;
-  double gmt = windat->t + windat->dt2d - wincon->tz;
-  int nb = 50;
-  int i;
-  /* Get the TPXO edge tidal velocity at the next time-step          */
-  /*
-  ux = 0.5 * (windat->tpxotideu[c1] + windat->tpxotideu[c2]);
-  uy = 0.5 * (windat->tpxotidev[c1] + windat->tpxotidev[c2]);
-  */
-  ux = csr_tide_eval(&wincon->tcu, e2, gmt);
-  uy = csr_tide_eval(&wincon->tcv, e2, gmt);
-  ut = (ux * window->costhu1[e2] + uy * window->sinthu1[e2]);
-
-  /* Get the velocity (minus bottom friction at the next time-step   */
-  nu = uin + windat->dt2d * (midx * (pgt + cot) + wincon->u1inter[e]);
-
-  /* Create the ensemble and optimize                                */
-  rm = HUGE;
-  for (i = 1; i <= 50; i++) {
-    bd = bds + (double)i * bde;
-    v = bd * max(wincon->uf, val);
-    /* Truncate to ensure stability                                  */
-    if (v > depth[e] * midx / windat->dt2d)
-      v = depth[e] * midx / windat->dt2d;
-    /* Note: depth=1 in the sigma case                               */
-    bft = -v * botu1 / depth[e];
-    u = nu + windat->dt2d * bft;
-    rmse = sqrt((u-ut) * (u-ut));
-    if (rmse < rm) {
-      rm = rmse;
-      nut = u;
-      Cd = bd;
-    }
-  }
-  wincon->d2[e] = rm;
-  wincon->d3[e] = Cd;
-  return(Cd);
-}
-
-/* END est_bot_stress()                                              */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Computs the error from TPXO velocity divergence relative to the   */
-/* TPXO surface height.                                              */
-/*-------------------------------------------------------------------*/
-double tpxo_error(geometry_t *window, /* Window geometry             */
-		  window_t *windat,   /* Window data                 */
-		  win_priv_t *wincon  /* Window constants            */
-		  )
-{
-  int cc, c, ee, e, n;
-  double ux, uy, ut;
-  double eta, oeta, neta, colflux, depth;
-  double *u1flux = wincon->d2;
-  double gmt0 = windat->t - wincon->tz;
-  double gmt1 = windat->t + windat->dt2d - wincon->tz;
-
-  /* Get the TPXO velocities                                         */
-  memset(u1flux, 0, window->szeS * sizeof(double));
-  for (ee = 1; ee <= window->a2_e1; ee++) {
-    e = window->w2_e1[ee];
-    depth = windat->depth_e1[e];
-    ux = csr_tide_eval(&wincon->tcu, e, gmt0);
-    uy = csr_tide_eval(&wincon->tcv, e, gmt0);
-    ut = (ux * window->costhu1[e] + uy * window->sinthu1[e]);
-    u1flux[e] = ut * depth * window->h1au1[e] * wincon->mdx[e] * windat->dt2d;
-  }
-
-  for (cc = 1; cc <= window->b2_t; cc++) {
-    c = window->w2_t[cc];
-
-    /*---------------------------------------------------------------*/
-    /* Get the divergence of velocity transport                      */
-    colflux = 0.0;
-    for (n = 1; n <= window->npe[c]; n++) {
-      e = window->c2e[n][c];
-      colflux += window->eSc[n][c] * u1flux[e];
-    }
-
-    /* Calculate new etat value                            (etamark) */
-    oeta = csr_tide_eval(&wincon->tc, c, gmt0);
-    neta = csr_tide_eval(&wincon->tc, c, gmt1);
-    eta = max(oeta - colflux / window->cellarea[c], window->botz[c]);
-    windat->dum2[c] = neta - eta;
-  }
-}
-
-/* END tpxo_error()                                                  */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Writes a site file for the location of instabilities.             */
-/*-------------------------------------------------------------------*/
-void write_site(geometry_t *window, double x, double y, char *tag)
-{
-  FILE *fp;
-  char buf[MAXSTRLEN];
-
-  sprintf(buf, "%scrash.site", master->opath); 
-  if ((fp = fopen(buf, "w")) == NULL) return;
-  fprintf(fp, "%f %f %s\n", x, y, tag);
-  fclose(fp);
-}
-
-/* END write_site()                                                  */
 /*-------------------------------------------------------------------*/

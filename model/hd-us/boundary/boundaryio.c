@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 6307 2019-09-13 04:17:20Z her127 $
+ *  $Id: boundaryio.c 5943 2018-09-13 04:39:09Z her127 $
  *
  */
 
@@ -400,14 +400,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     sprintf(keyword, "BOUNDARY%1d.T_CONSTITUENTS", n);
     prm_read_char(fp, keyword, open->tide_con);
     prm_set_errfn(hd_silent_warn);
-    if(open->bcond_ele & TIDALC) params->tidef |= TD_OBCE;
-    if(open->bcond_nor & TIDALC) params->tidef |= TD_OBCN;
-    if(open->bcond_tan & TIDALC) params->tidef |= TD_OBCT;
-    if(open->bcond_nor2d & TIDALC) params->tidef |= TD_OBCNA;
-    if(open->bcond_tan2d & TIDALC) params->tidef |= TD_OBCTA;
   }
-  if(open->bcond_ele & TIDALH) params->tidef |= TD_CSR
-;
   if (open->bcond_ele & FLATHR) {
     open->bcond_ele &= ~FLATHR;
     open->bcond_ele |= FLATHE;
@@ -754,7 +747,6 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   memset(open->rtra_i, 0, open->ntr * sizeof(double));
   memset(open->clampv, 0, open->ntr * sizeof(int));
   memset(open->trpc, 0, open->ntr * sizeof(double));
-  sprintf(open->tide_con, "%c", '\0');
   open->bstdf = -1;
   open->nbstd = 0;
   open->bstd = (char **)malloc(NBSTD * sizeof(char *));
@@ -1501,7 +1493,6 @@ void bdry_custom_m(parameters_t *params,  /* Input parameter data    */
     strcpy(open->bflow, io->bflow);
     if (io->bhc == NOTVALID) io->bhc = open->meandep;
     open->bhc = io->bhc;
-
     bdry_custom_init(master, open, tracer, io->custype);
 
     /*---------------------------------------------------------------*/
@@ -1537,16 +1528,10 @@ void bdry_custom_init(master_t *master, open_bdrys_t *open,
     
     open->filenames =
       (cstring *) malloc(sizeof(cstring) * open->ntsfiles);
-
-    if (open->ntsfiles == 1 && (t = tracer_find_index(files[0], master->ntr, master->trinfo_3d)) >= 0) {
-      open->ntsfiles = 0;
-      strcpy(open->filenames[0], files[0]);
-    } else {
-      for (t = 0; t < open->ntsfiles; ++t)
-	strcpy(open->filenames[t], ((char **)files)[t]);
+    for (t = 0; t < open->ntsfiles; ++t)
+      strcpy(open->filenames[t], ((char **)files)[t]);
       open->tsfiles = hd_ts_multifile_read(master, open->ntsfiles,
                                            open->filenames);
-    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -1611,22 +1596,22 @@ int read_bdry_custom(open_bdrys_t *open,  /* Open boundary structure */
 
   /*-----------------------------------------------------------------*/
   /* Set the edge name according to the specified forcing            */
-  if (open->type & (U1BDRY|U2BDRY) && strcmp(name, "u1") == 0 &&       
+  if (open->type & U1BDRY && strcmp(name, "u1") == 0 &&       
       open->bcond_nor & (FILEIN | CUSTOM)) {            /* u1 NOR    */
     strcpy(data->name, "u1");
     data->type = NOR;
   }
-  else if (open->type & (U1BDRY|U2BDRY) && strcmp(name, "u2") == 0 && 
+  else if (open->type & U1BDRY && strcmp(name, "u2") == 0 && 
 	   open->bcond_tan & (FILEIN | CUSTOM)) {       /* u2 TAN    */
     strcpy(data->name, "u2");
     data->type = TAN;
   }
-  else if (open->type & (U1BDRY|U2BDRY) && strcmp(name, "u1av") == 0 && 
+  else if (open->type & U1BDRY && strcmp(name, "u1av") == 0 && 
 	   open->bcond_nor2d & (FILEIN | CUSTOM)) {     /* u1av NOR  */
     strcpy(data->name, "u1av");
     data->type = NOR;
   }
-  else if (open->type & (U1BDRY|U2BDRY) && strcmp(name, "u2av") == 0 && 
+  else if (open->type & U1BDRY && strcmp(name, "u2av") == 0 && 
 	   open->bcond_tan2d & (FILEIN | CUSTOM)) {     /* u2av TAN  */
     strcpy(data->name, "u2av");
     data->type = TAN;
@@ -2486,9 +2471,9 @@ void get_obc_list(open_bdrys_t *open, FILE *fp, int n, char *key) {
       if (prm_read_char(fp, key5, buf)) {
 	sscanf(buf, "%lf %lf", &open->mlon, &open->mlat);
       }
-    } /* else {
-	 hd_quit("params_read: cannot find %s in OBC%d (%s)\n", key5, n, open->name);
-	 }*/
+    } else {
+      hd_quit("params_read: cannot find %s in OBC%d (%s)\n", key5, n, open->name);
+    }
   } else {
     hd_quit("params_read: cannot find %s%d (%s) , UPOINTS, POINTS, RANGE or START_LOC.\n", key, n, open->name);
   }
@@ -2622,7 +2607,6 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
       yb2 = open->posy[cc][1];
       cco = open->locu[cc];	
       c = cmap[cco];
-
       if (open->intype & O_UPI) {
 	/* OBC indices do not need to be remapped in                 */
 	/* convert_mesh_input(); set mesh->loc[n][0] = NOTVALID to   */
@@ -2674,49 +2658,26 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
   }
 
   if (open->intype & (O_POI|O_RAN)) {
-    int i, j;
-    double x1, y1, x2, y2;
     mesh->npts[n] = open->no2_t;
     for (cc = 1; cc <= open->no2_t; cc++) {
       c = open->obc_t[cc];
       cco = geom->c2cc[c];
       mesh->loc[n][cc] = cco;
-      i = geom->s2i[c];
-      j = geom->s2j[c];
       if (open->type & U1BDRY && open->ocodex == L_EDGE) {
 	mesh->obc[n][cc][0] = 1;
 	mesh->obc[n][cc][1] = 2;
-	x1 = params->x[j*2][i*2];
-	y1 = params->y[j*2][i*2];
-	x2 = params->x[(j+1)*2][i*2];
-	y2 = params->y[(j+1)*2][i*2];
       }
       if (open->type & U2BDRY && open->ocodey == B_EDGE) {
 	mesh->obc[n][cc][0] = 4;
-	mesh->obc[n][cc][1] = 1;
-	x1 = params->x[j*2][(i+1)*2];
-	y1 = params->y[j*2][(i+1)*2];
-	x2 = params->x[j*2][i*2];
-	y2 = params->y[j*2][i*2];
+	  mesh->obc[n][cc][1] = 1;
       }
       if (open->type & U1BDRY && open->ocodex == R_EDGE) {
 	mesh->obc[n][cc][0] = 3;
 	mesh->obc[n][cc][1] = 4;
-	x1 = params->x[(j+1)*2][(i+1)*2];
-	y1 = params->y[(j+1)*2][(i+1)*2];
-	x2 = params->x[(j+1)*2][i*2];
-	y2 = params->y[(j+1)*2][i*2];
       }
       if (open->type & U2BDRY && open->ocodey == F_EDGE) {
 	mesh->obc[n][cc][0] = 2;
 	mesh->obc[n][cc][1] = 3;
-	x1 = params->x[(j+1)*2][i*2];
-	y1 = params->y[(j+1)*2][i*2];
-	x2 = params->x[(j+1)*2][(i+1)*2];
-	y2 = params->y[(j+1)*2][(i+1)*2];
-      }
-      if (obcf) {
-	fprintf(sp, "%d (%lf,%lf)-(%lf,%lf)\n", mesh->loc[n][cc], x1, y1, x2, y2);
       }
     }
   }
@@ -3045,14 +3006,8 @@ void std_bdry(open_bdrys_t *open,
       strcpy(cusu1, "hdstd_to_u1");
       strcpy(cusu2, "hdstd_to_u2");
     }
-    if (endswith(file[nfiles-2], ".mpk"))
-      sprintf(open->cusname_u1, "%s %s", cusu1, file[nfiles-2]);
-    else
-      sprintf(open->cusname_u1, "%s %s_uv_nor.mpk", cusu1, file[nfiles-2]);
-    if (endswith(file[nfiles-1], ".mpk"))
-      sprintf(open->cusname_u2, "%s %s", cusu2, file[nfiles-1]);
-    else
-      sprintf(open->cusname_u2, "%s %s_uv_tan.mpk", cusu2, file[nfiles-1]);
+    sprintf(open->cusname_u1, "%s %s_uv_nor.mpk", cusu1, file[nfiles-2]);
+    sprintf(open->cusname_u2, "%s %s_uv_tan.mpk", cusu2, file[nfiles-1]);
     if (do_baro) {
       strcpy(cusu1, "uvav_to_u1av");
       strcpy(cusu2, "uvav_to_u2av");
@@ -3309,21 +3264,3 @@ void std_bdry(open_bdrys_t *open,
 /* END std_bdry()                                                    */
 /*-------------------------------------------------------------------*/
 
-/*-------------------------------------------------------------------*/
-/* Sets the flux adjustment time-scale for the open boundaries       */
-/*-------------------------------------------------------------------*/
-void reset_obc_adjust(geometry_t *geom, double dt)
-{
-  open_bdrys_t *open;
-  double fact = 1.2;
-  int n;
-
-  for (n = 0; n < geom->nobc; n++) {
-    open = geom->open[n];
-    if (open->adjust_flux > 0.0)
-      open->adjust_flux = fact * dt;
-  }
-}
-
-/* END reset_obc_adjust()                                            */
-/*-------------------------------------------------------------------*/

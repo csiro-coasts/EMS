@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 6321 2019-09-13 04:35:01Z her127 $
+ *  $Id: advect.c 6075 2019-02-08 04:11:42Z her127 $
  *
  */
 
@@ -45,7 +45,6 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
   int n, j;                 /* Genereal counters                     */
   double d1, d2, d3;        /* Dummies                               */
   double iarea;             /* 1 / area                              */
-  double fs = 1.0;          /* Flux scaling                          */
   double *dzv = wincon->w1;
   double *vel;              /* Velocity to use in spatial gradients  */
   double dtu, dtm;
@@ -191,23 +190,8 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 	v2 = window->e2v[e][1];
 	windat->nrvore[e] = 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
 	windat->npvore[e] = 0.5 * (windat->npvor[v1] + windat->npvor[v2]);
-
-
       }
-      /* Get the upstream bias (Ringler et al, (2010) Eq. 81          */
-      if (wincon->momsc & PV_APVM) {
-	for (ee = 1; ee <= window->n3_e1; ee++) {
-	  e = window->w3_e1[ee];
-	  es = window->m2de[e];
-	  v1 = window->e2v[e][0];
-	  v2 = window->e2v[e][1];
-	  d1 = fabs(windat->nrvor[v1] - windat->nrvor[v2]) / window->h1au1[es];
-	  windat->nrvore[e] -= -0.5 * windat->u2[e] * d1 * dtu;
-	  d1 = (windat->npvor[v1] - windat->npvor[v2]) / window->h1au1[es];
-	  windat->npvore[e] -= -0.5 * windat->u2[e] * d1 * dtu;
-	}
-      }
-
+      
       /*-------------------------------------------------------------*/
       /* Compute the normalized relative and planetary vorticity at  */
       /* cell centres.                                               */
@@ -270,20 +254,11 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 	  /* Ringler et, al. (2010) Eq. 49                           */
 	  /*d3 = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);*/
 	  d3 = wincon->pv_calc(windat, e, eoe, window->e2v[e][0], window->e2v[e][1]);
-	  /* Note: adjust the weight for cell geometry (Thuburn et   */
-	  /* al. (2009) Eq. 8 and Ringler et al. (2010) Eq. 24).     */
-	  fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
-	  /* Note : need to subtract tangential velocity * vorticity */
-	  /* to get the tendency term, however the weights are       */
-	  /* negative to deliver tangential velocity in the k x u    */
-	  /* direction, so we add the terms.                         */
-	  d2 += fs * window->wAe[n][e] * vel[eoe] * d3 * windat->dzu1[eoe];
+	  d2 += window->wAe[n][e] * vel[eoe] * d3 * windat->dzu1[eoe];
 	}
 	d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;
 	wincon->u1inter[es] += (d3 * dtm * windat->dzu1[e]);
-	wincon->tend3d[T_ADV][e] = d3 * dtu;
-	windat->nu1[e] += wincon->tend3d[T_ADV][e];
-	/*windat->nu1[e] += d3 * dtu;*/
+	windat->nu1[e] += d3 * dtu;
       }
       if (wincon->u1_f & ADVECT)
 	memset(wincon->u1inter, 0, window->szeS * sizeof(double));
@@ -1046,7 +1021,6 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
   int n, j;                 /* Genereal counters                     */
   double d1, d2, d3;        /* Dummies                               */
   double iarea;             /* 1 / area                              */
-  double fs = 1.0;          /* Flux scaling                          */
   double *dzv = wincon->w1;
   double dtu, dtm, lr;
   double *vel;              /* Velocity to use in spatial gradients  */
@@ -1136,18 +1110,6 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
 	windat->nrvore[e] = 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
 	windat->npvore[e] = 0.5 * (windat->npvor[v1] + windat->npvor[v2]);
       }
-      /* Get the upstream bias (Ringler et al, (2010) Eq. 81          */
-      if (wincon->momsc & PV_APVM) {
-	for (ee = 1; ee <= window->n3_e1; ee++) {
-	  e = window->w3_e1[ee];
-	  v1 = window->e2v[e][0];
-	  v2 = window->e2v[e][1];
-	  d1 = fabs(windat->nrvor[v1] - windat->nrvor[v2]) / window->h1au1[e];
-	  windat->nrvore[e] -= -0.5 * windat->u2av[e] * d1 * dtu;
-	  d1 = (windat->npvor[v1] - windat->npvor[v2]) / window->h1au1[e];
-	  windat->npvore[e] -= -0.5 * windat->u2av[e] * d1 * dtu;
-	}
-      }
 
       /*-------------------------------------------------------------*/
       /* Compute the normalized relative and planetary vorticity at  */
@@ -1235,14 +1197,11 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
 	  if (!eoe) continue;
 	  /*d3 = 0.5 * (windat->nrvore[e] + windat->npvore[e] + windat->nrvore[eoe] + windat->npvore[eoe]);*/
 	  d3 = wincon->pv_calc(windat, e, eoe, window->e2v[e][0], window->e2v[e][1]);
-	  fs = window->h1au1[eoe] / window->h2au1[es];
-	  d2 += fs * window->wAe[n][e] * windat->u1av[eoe] * d3 * windat->depth_e1[eoe];
+	  d2 += window->wAe[n][e] * windat->u1av[eoe] * d3 * windat->depth_e1[eoe];
 	}
 	d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;
 	wincon->u1adv[e] -= (dtm * d3);
-	wincon->tend2d[T_ADV][e] = (dtu * d3);
-	windat->nu1av[e] += wincon->tend2d[T_ADV][e];
-	/*windat->nu1av[e] += (dtu * d3);*/
+	windat->nu1av[e] += (dtu * d3);
       }
       if (wincon->u1_f & ADVECT)
 	memset(wincon->u1adv, 0, window->szeS * sizeof(double));      

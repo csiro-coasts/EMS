@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdrycond.c 6259 2019-08-08 04:21:53Z her127 $
+ *  $Id: bdrycond.c 6126 2019-03-04 00:56:11Z her127 $
  *
  */
 
@@ -275,17 +275,13 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       newval[e] = sum[e] / max(depth[e] * md[window->m2de[e]], wincon->hmin);
     }
     /* Set the depth at OBC auxiliary cells */
-    /*
-      xxx - Not correct, get_local_obc_a is cell centred and here
-      we're treating them as edges.
-      for (ee = 1; ee <= open->no2_a; ee++) {
+    for (ee = 1; ee <= open->no2_a; ee++) {
       e = open->obc_a[ee];
       c1 = window->m2d[window->e2c[e][0]];
       c2 = window->m2d[window->e2c[e][1]];
       depth[e] = (max(windat->topz[c1], windat->topz[c2]) - 
-      bottom[e]);
-      }
-    */
+		  bottom[e]);
+    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -335,16 +331,6 @@ void set_OBC(geometry_t *window,   /* Processing window              */
 	fvx = (ramp * csr_tide_eval(&open->tut, ee, gmt));
 	fvy = (ramp * csr_tide_eval(&open->tvt, ee, gmt));
 	fval[e] += (fvx * window->costhu1[e2] + fvy * window->sinthu1[e2]);
-      }
-    }
-    if (wincon->tidep && code & (U1BDRY|U2BDRY)) {
-      for (ee = sb; ee <= eb; ee++) {
-	e = obc[ee];
-	e2 = window->m2de[e];
-	c1 = window->e2c[e][0];
-	c2 = window->e2c[e][1];
-	fval[e] -= windat->dt2d * wincon->eqt_beta * wincon->g * (windat->equitide[c1] - windat->equitide[c2]) /
-	  window->h1au1[e2];
       }
     }
   }

@@ -19,7 +19,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: eta_relax.c 6311 2019-09-13 04:30:50Z her127 $
+ *  $Id: eta_relax.c 5873 2018-07-06 07:23:48Z riz008 $
  *
  */
 
@@ -50,7 +50,7 @@ int eta_relax_init(sched_event_t *event)
 
   prm_set_errfn(hd_silent_warn);
 
-  if (master->etarlx & (RELAX|ALERT|BOUNDARY|ETA_TPXO)) {
+  if (master->etarlx & (RELAX|ALERT|BOUNDARY)) {
 
     /* Set the input time step, and time constant */
     strcpy(fname, rlx->rlxn);
@@ -64,7 +64,7 @@ int eta_relax_init(sched_event_t *event)
     relax->tc = NULL;
     if (strlen(rlx->rlxtc)) {
       char tu0[MAXSTRLEN], tu1[MAXSTRLEN];
-      double r0, r1, d0, d1, s1, s2;
+      double r0, r1, d0, d1;
       if (sscanf(rlx->rlxtc, "%lf %s", &tconst, buf) == 2) {
 	tm_scale_to_secs(rlx->rlxtc, &tconst);
 	rlx->tctype = RLX_CONS;
@@ -72,14 +72,8 @@ int eta_relax_init(sched_event_t *event)
 			buf, &d0, &r0, tu0, &d1, &r1, tu1) == 7) {
 	if(strcmp(buf, "linear") == 0) {
 	  hd_warn("Linear adaptive relaxation performed on elevation.\n");
-	  if(d1 > d0) {
-	    s1 = d1; s2 = r1;
-	    d1 = d0; r1 = r0;
-	    d0 = s1; r0 = s2;
-	  }
 	  tconst = 1.0;
 	  rlx->dv0 = d0;
-	  rlx->dv1 = d1;
 	  sprintf(buf, "%f %s", r0, tu0);
 	  tm_scale_to_secs(buf, &r0);
 	  sprintf(buf, "%f %s", r1, tu1);
@@ -197,20 +191,12 @@ int eta_relax_init(sched_event_t *event)
     /* Populate and register the scheduler events. */
     relax->dt = dt;
     if (tconst)relax->rate = rlx->rate = tconst;
-    if (master->etarlx & ETA_TPXO) {
-      int tn;
-      if ((tn = tracer_find_index("tpxotide", master->ntrS, master->trinfo_2d)) >= 0)
-	rlx->val1 = master->tr_wcS[tn];
-      else
-	hd_quit("eta_relax_init: Can't find tpxotide: use NUMBERS TPXO.\n");
-    } else {
-      relax->ts = hd_ts_read(master, fname, 1);
-      relax->vid =
-	ts_get_index(relax->ts, fv_get_varname(fname, "eta", buf));
-      if (relax->vid < 0) {
-	hd_quit("eta_relax_init: The file '%s' does not contain 'eta'\n",
-		fname);
-      }
+    relax->ts = hd_ts_read(master, fname, 1);
+    relax->vid =
+      ts_get_index(relax->ts, fv_get_varname(fname, "eta", buf));
+    if (relax->vid < 0) {
+      hd_quit("eta_relax_init: The file '%s' does not contain 'eta'\n",
+              fname);
       return 0;
     }
 
@@ -230,17 +216,13 @@ double eta_relax_event(sched_event_t *event, double t)
   eta_relax_data_t *relax = (eta_relax_data_t *)schedGetPrivateData(event);
   relax_info_t *rlx = master->eta_rlx;
 
-  if (relax->vid < 0) return;
-
   /* Check whether the current time exceeds the next update time */
   if (t >= (event->next_event - SEPS)) {
     int cc, c = 0;
-    if (!(master->etarlx & ETA_TPXO)) {
-      for (cc = 1; cc <= geom->b2_t; cc++) {
-	c = geom->w2_t[cc];
-	rlx->val1[c] = ts_eval_xy(relax->ts, relax->vid, t,
-				  geom->cellx[c], geom->celly[c]);
-      }
+    for (cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->w2_t[cc];
+      rlx->val1[c] = ts_eval_xy(relax->ts, relax->vid, t,
+				      geom->cellx[c], geom->celly[c]);
     }
 
     /* Get the relaxation time constant */
@@ -298,8 +280,6 @@ void do_eta_relax(geometry_t *window,  /* Window geometry            */
   double tide = 0.0;
   double colflux;
 
-  if (isnan(rlx->val1[c])) return;
-
   /* Get an estimate of tidal height via csr tide model              */
   if (tidef == CSR_R && wincon->tc.nt) {
     double gmt = windat->t - wincon->tz;
@@ -317,14 +297,10 @@ void do_eta_relax(geometry_t *window,  /* Window geometry            */
   /* Get the difference between eta and the relaxation value         */
   colflux = (eta[c] - tide - rlx->val1[c]);
   /* Adaptive relaxation                                             */
-  if (rlx->tctype & RLX_LINR) {
-    double d = max(min(fabs(colflux), rlx->dv0), rlx->dv1);
-    relax_rate = (d - rlx->dv0) * rlx->slope + rlx->tc0;
-  }
-  if (rlx->tctype & RLX_EXP) {
-    double d = 1000.0 * 86400.0;
-    relax_rate = min(exp(rlx->dv0 / fabs(colflux)), d);
-  }
+  if (rlx->tctype & RLX_LINR)
+    relax_rate = (fabs(colflux) - rlx->dv0) * rlx->slope + rlx->tc0;
+  if (rlx->tctype & RLX_EXP)
+    relax_rate = exp(rlx->dv0 / fabs(colflux));
   if (rlx->tctype & RLX_TIME)
     relax_rate = min((windat->days - rlx->dv0) * rlx->slope + rlx->tc0, rlx->tc1);
   if (rlx->tctype & RLX_DEP) {

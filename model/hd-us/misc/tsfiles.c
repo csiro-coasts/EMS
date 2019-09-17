@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tsfiles.c 6275 2019-08-08 04:27:29Z her127 $
+ *  $Id: tsfiles.c 5873 2018-07-06 07:23:48Z riz008 $
  *
  */
 
@@ -35,12 +35,8 @@ double df_eval_sparse(datafile_t *df, df_variable_t *v, double r, int cc);
 int dump_choose_multifile(datafile_t *df, double t);
 int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz);
 double median(geometry_t *geom, double *a, int sz, int c);
-double s_median(geometry_t *geom, double *a, int sz, int c);
 void order (double *a, double *b);
 int count_leap(char *d, double t);
-void process_ghrsst(master_t *master);
-int read_ghrsst(master_t *master, int ntsfiles, timeseries_t **tsfiles,
-		cstring * names, double t);
 
 /* check that time step won't violate CFL condition */
 void cfl_sp(master_t *master)
@@ -546,7 +542,6 @@ void hd_ts_multifile_eval(master_t *master,
     if (mode & VEL2D) {
       if (mode & GHRSST) {
 	double x, kelvin = 273.0;
-
 	for (cc = 1; cc <= nvec; cc++) {
 	  c = vec[cc];
 	  x = (v == master->ghrsst && geom->cellx[c] > 180.0) ? geom->cellx[c] - 360.0 : geom->cellx[c];
@@ -554,9 +549,6 @@ void hd_ts_multifile_eval(master_t *master,
 						 names, var, t,
 						 x, geom->celly[c]) - kelvin;
 	}
-	/*read_ghrsst(master, ntsfiles, tsfiles, names, t);*/
-	process_ghrsst(master);
-
       } else {
 	for (cc = 1; cc <= nvec; cc++) {
 	  c = vec[cc];
@@ -1236,222 +1228,6 @@ int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz)
   }
   return(1);
 }
-
-
-/*-------------------------------------------------------------------*/
-/* Routine to perform a global fill and smooth the GHRSST SST data.  */
-/*-------------------------------------------------------------------*/
-void process_ghrsst(master_t *master  /* Master data                 */
-		    )
-{
-  geometry_t *geom = master->geom;
-  double sfact = 1.0;                /* Scaing for std_dev threshold */
-  double tol = 1.0;                  /* Error tolerance              */
-  int c, c1, cc, n, sn;
-  double *sst = master->ghrsst;
-  double *sste = master->ghrsste;
-  double mean_sst, std_dev, ms;
-  GRID_SPECS *gs = NULL;
-  double *x, *y, *z;
-  char *i_rule = "nn_sibson";
-
-  /*-----------------------------------------------------------------*/
-  /* Get the mean sst                                                */
-  mean_sst = 0.0;
-  std_dev = 0.0;
-  n = 0;
-  for(cc = 1; cc <= geom->b2_t; cc++) {
-    c = geom->w2_t[cc];    
-    if (fabs(sste[c]) <= tol) {
-      mean_sst += sst[c];
-      std_dev += sst[c] * sst[c];
-      n += 1;
-    }
-  }
-  if (n) {
-    std_dev = (std_dev - mean_sst * mean_sst / (double)n) / (double)(n - 1);
-    std_dev = 2.0 * sqrt(std_dev);
-    mean_sst /= (double)n;
-  }
-  else
-    hd_warn("No valid SST values in GHRSST file, time %f\n", master->t/86400);
-
-  /*-----------------------------------------------------------------*/
-  /* Perform a global fill on the data at land locations             */
-  n = 0;
-  x = d_alloc_1d(geom->b2_t);
-  y = d_alloc_1d(geom->b2_t);
-  z = d_alloc_1d(geom->b2_t);
-  for(cc = 1; cc <= geom->b2_t; cc++) {
-    c = geom->w2_t[cc];
-    if (fabs(sste[c]) <= tol) {
-      x[n] = geom->cellx[c];
-      y[n] = geom->celly[c];
-      z[n] = sst[c];
-      n++;
-    }
-  }
-  /* Initiliase the grid specs struct                                */
-  gs = grid_interp_init(x, y, z, n, i_rule);
-
-  /* Do the interpolation                                            */
-  for (cc = 1; cc <= geom->b2_t; cc++) {
-    c = geom->w2_t[cc];
-    if (fabs(sste[c]) > tol)
-      sst[c] = grid_interp_on_point(gs, geom->cellx[c], geom->celly[c]);
-	    
-    /* Check for nan's                                               */
-    if (isnan(sst[c])) sst[c] = mean_sst;
-  }
-	  
-  /* Cleanup                                                         */
-  grid_specs_destroy(gs);
-  d_free_1d(x);
-  d_free_1d(y);
-  d_free_1d(z);
-}
-
-/* END process_ghrsst()                                              */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Reads structured 2D tracer values from a netCDF file, packs into  */
-/* a vector and interpolates onto an unstructured mesh.              */
-/*-------------------------------------------------------------------*/
-int read_ghrsst(master_t *master,       /* Master data               */
-		int ntsfiles,           /* Number of ts files        */
-		timeseries_t **tsfiles, /* Timeseries structures     */
-		cstring * names,        /* File names                */
-		double t                /* Time                      */
-		)
-{
-  geometry_t *geom = master->geom;
-  char buf[MAXSTRLEN];
-  GRID_SPECS *gs = NULL;
-  int nvar;
-  double *x, *y, *v, **cellx, **celly, **sst, **sste;
-  double vmean, mv;
-  int fid;
-  int ncerr;
-  size_t start[4];
-  size_t count[4];
-  size_t nce1;
-  size_t nce2;
-  int ti, index;
-  int n, i, j, c, cc;
-  int bverbose = 0;
-  char *i_rule = "nn_sibson";
-  char *vname = "analysed_sst";
-  char *ename = "analysis_error";
-  double tol = 1.0;                  /* Error tolerance              */
-
-  /*-----------------------------------------------------------------*/
-  /* Open the dump file for reading                                  */
-  if (ntsfiles > 0) {
-    double t = ti;
-    start[1] = 0;
-    count[0] = 1L;
-
-    for (i = 0; i < ntsfiles; ++i) {
-      timeseries_t *ts = tsfiles[i];
-      if ((t >= ts->t[0]) && (t <= ts->t[ts->nt - 1]))
-	break;
-    }
-    index = i;
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Open the dump file for reading                                  */
-  if ((ncerr = nc_open(names[index], NC_NOWRITE, &fid)) != NC_NOERR) {
-    hd_warn("read_ghrsst: Can't find input file %s\n", names[index]);
-    return(1);
-  }
-
-  /* Get dimensions                                                  */
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "lat"), &nce2);
-  nc_inq_dimlen(fid, ncw_dim_id(fid, "lon"), &nce1);
-
-  /* Get the time index                                              */
-  ti = dump_choose_by_time_m(master, fid, t);
-  if (ti == -1) return(1);
-
-  /* Allocate and read                                               */
-  cellx = d_alloc_2d(nce1, nce2);
-  celly = d_alloc_2d(nce1, nce2);
-  sst = d_alloc_2d(nce1, nce2);
-  sste = d_alloc_2d(nce1, nce2);
-  start[0] = 0L;
-  start[1] = 0L;
-  start[2] = 0L;
-  start[3] = 0L;
-  count[0] = nce2;
-  count[1] = nce1;
-  count[2] = 0;
-  count[3] = 0;
-  nc_get_vara_double(fid, ncw_var_id(fid, "lon"), start, count, cellx[0]);
-  nc_get_vara_double(fid, ncw_var_id(fid, "lat"), start, count, celly[0]);
-  start[0] = ti;
-  start[1] = 0L;
-  start[2] = 0L;
-  start[3] = 0L;
-  count[0] = 1L;
-  count[1] = nce2;
-  count[2] = nce1;
-  count[3] = 0;
-  nc_get_vara_double(fid, ncw_var_id(fid, vname), start, count, sst[0]);
-  nc_get_vara_double(fid, ncw_var_id(fid, ename), start, count, sste[0]);
-
-  /*-----------------------------------------------------------------*/
-  /* Set the wet GHRSST vector (to interpolate from)                 */
-  nvar = n = 0;
-  for (j = 0; j < nce2; j++) {
-    for (i = 0; i < nce1; i++) {
-      if (fabs(sste[j][i]) <= tol) nvar++;
-    }
-  }
-  if (nvar) {
-    x = d_alloc_1d(nvar);
-    y = d_alloc_1d(nvar);
-    v = d_alloc_1d(nvar);
-  } else
-    hd_quit("read_ghrsst: Can't find valid %s values in file %s.\n", vname, names[index]);
-
-  vmean = 0.0;
-  for (j = 0; j < nce2; j++) {
-    for (i = 0; i < nce1; i++) {
-      if (fabs(sste[j][i]) <= tol) {
-	x[n] = cellx[j][i];
-	y[n] = celly[j][i]; 
-	v[n] = sst[j][i];
-	vmean += v[n];
-	n++;
-      }
-    }
-  }
-
-  if (n) vmean /= (double)n;
-  d_free_2d(cellx);
-  d_free_2d(celly);
-  d_free_2d(sst);
-  d_free_2d(sste);
-  nc_close(fid);
-
-  /*-----------------------------------------------------------------*/
-  /* Interpolate the tracer value                                    */
-  gs = grid_interp_init(x, y, v, nvar, i_rule);
-  for (cc = 1; cc <= geom->b2_t; cc++) {
-    c = geom->w2_t[cc];
-    master->ghrsst[c] = grid_interp_on_point(gs, geom->cellx[c], geom->celly[c]);
-    if (isnan(master->ghrsst[c])) master->ghrsst[c] = vmean;
-    if (bverbose) printf("%d %f : %f %f\n",c, master->ghrsst[c], geom->cellx[c], geom->celly[c]);
-  }
-  grid_specs_destroy(gs);
-  return(0);
-}
-
-/* END read_ghrsst()                                                 */
-/*-------------------------------------------------------------------*/
 
 
 double s_median(geometry_t *geom,       /* Window geometry         */

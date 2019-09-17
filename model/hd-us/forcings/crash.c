@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: crash.c 6264 2019-08-08 04:23:54Z her127 $
+ *  $Id: crash.c 6017 2018-11-07 02:29:15Z her127 $
  *
  */
 
@@ -35,7 +35,6 @@ typedef struct {
   double tnext;                 /* Next event time                  */
   char rsfname[MAXSTRLEN];      /* Restart file name                */
   int flag;                     /* Control flag                     */
-  int cm;                       /* Timestep reduction method        */
   double odt;                   /* Original timestep                */
   double ou1vh;                 /* Original u1vh                    */ 
   double ou2vh;                 /* Original u2vh                    */ 
@@ -69,11 +68,9 @@ void crash_recovery_init(hd_data_t *hd_data)
   }
   if (master->u1vh0 > 0.0) crash->ou1vh = master->u1vh0;
   if (master->u1vh0 > 0.0) crash->ou2vh = master->u2vh0;
-  crash->cm = RS_PREV;
   master->crf = crash->flag = NONE;
   crash->odt = master->grid_dt;
   crash->fact = 5.0;
-  if (crash->cm & RS_PREV) crash->fact = 2.0;
   crash->ncr = 0;
   tm_scale_to_secs(params->stop_time, &crash->stop);
   crash->tnext = crash->stop;
@@ -146,16 +143,13 @@ double crash_event(sched_event_t *event, double t)
       hd_quit("Can't recover from instability: %d attempts at %5.1f days\n", crash->ncr, master->days);
     }
     reset_hor_diff(master, 0.0, master->diff_scale);
-    reset_obc_adjust(master->geom, master->grid_dt / master->iratio);
     crash->ncr++;
+    hd_warn("CRASHED: Recovery #%d; restarting at %5.1f days, timestep = %5.2f\n", crash->ncr, newt, master->grid_dt);
 
     /* Set the time when normal simulation commences                  */
     master->crf = crash->flag = (RS_RESUME|RS_WINSET);
     /*event->next_event = schedule->t + crash->dt;*/
     crash->tnext = schedule->t + crash->dt;
-
-    hd_warn("CRASHED: Recovery #%d; restarting at %5.1f days, timestep = %5.2f, resume = %5.1f days\n", 
-	    crash->ncr, newt, master->grid_dt, crash->tnext / 86400.0);
 
     /* Reset the windows                                              */
     for (i = 1; i <=master->nwindows; i++)
@@ -164,29 +158,16 @@ double crash_event(sched_event_t *event, double t)
   } else if (master->crf == RS_RESUME && t >= (crash->tnext - SEPS)) {
     newt = t;
     tm_change_time_units(master->timeunit, master->output_tunit, &newt, 1);
+    hd_warn("RECOVERY: Crash recovery %d complete : commencing at %5.1f days\n", crash->ncr, newt);
 
     /* Reset the timestep and friction                                */
-    if (crash->cm == RS_ORIG)
-      master->grid_dt = crash->odt;
-    else {
-      master->grid_dt = min(crash->odt,  master->grid_dt * crash->fact);
-      crash->tnext = schedule->t + crash->dt;
-      master->crf = crash->flag = (RS_RESUME|RS_WINSET);
-    }
+    master->grid_dt = crash->odt;
     reset_hor_diff(master, master->u1vh0, master->diff_scale);
-    reset_obc_adjust(master->geom, master->grid_dt / master->iratio);
-    if (master->grid_dt == crash->odt) {
-      master->crf = crash->flag = (NONE|RS_RESET);
-      crash->ncr = 0;
-      crash->tnext = crash->stop;
-    }
+    master->crf = crash->flag = (NONE|RS_RESET);
+    crash->ncr = 0;
+    crash->tnext = crash->stop;
     for (i = 1; i <=master->nwindows; i++)
       window_reset(master, hd_data->window[i], hd_data->windat[i], hd_data->wincon[i], RS_VH);
-
-    if (crash->cm == RS_ORIG)
-      hd_warn("RECOVERY: Crash recovery %d complete : commencing at %5.1f days\n", crash->ncr, newt);
-    else
-      hd_warn("RECOVERY: Crash recovery %d complete : commencing at %5.1f days with dt=%f\n", crash->ncr, newt, master->grid_dt);
   } else {
     /*hd_warn("crash: no action @ %f, next = %f\n",master->days,crash->tnext/86400.0);*/
   }

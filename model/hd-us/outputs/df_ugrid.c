@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_ugrid.c 6326 2019-09-13 04:36:59Z her127 $
+ *  $Id: df_ugrid.c 6139 2019-03-04 01:03:43Z her127 $
  *
  */
 
@@ -499,7 +499,7 @@ void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
   if ((vid = ncw_var_id(cdfid, "u1kh")) >= 0) {
     write_text_att(cdfid, vid, "units", "metre2 second-1");
     write_text_att(cdfid, vid, "long_name",
-                   "horizontal diffusivity at centre");
+                   "horizontal viscosity at centre");
     write_text_att(cdfid, vid, "coordinates", "t, Mesh2_face_x, Mesh2_face_y, Mesh2_layers");
   }
 
@@ -973,7 +973,7 @@ void write_dump_attributes_ugrid3(dump_data_t *dumpdata, int cdfid,
   if ((vid = ncw_var_id(cdfid, "u1kh")) >= 0) {
     write_text_att(cdfid, vid, "units", "metre2 second-1");
     write_text_att(cdfid, vid, "long_name",
-                   "horizontal diffusivity at centre");
+                   "horizontal viscosity at centre");
     write_text_att(cdfid, vid, "coordinates", "t, Mesh3_face_x, Mesh3_face_y, Mesh3_layers");
   }
 
@@ -1174,33 +1174,13 @@ void *df_ugrid_create(dump_data_t *dumpdata, dump_file_t *df)
 
   df_ugrid_init_data(dumpdata, df, cdfid);
   data = (df_ugrid_data_t *)df->private_data;
-
-  /*
-   * Set chunksizes to be a single horizontal layer
-   */
   for (n = 0; n < df->nvars; n++) {
-    size_t chunksize[] = {1,1,1};
     if (data->vars[n].ndims == 1) {
       df_ugrid_get_dimids(cdfid, data->vars[n], &dims[1], NULL);
       ncw_def_var2(df->name,cdfid, df->vars[n], data->vars[n].type, 2, dims, &vid, df->compress);
-#ifdef NC_NETCDF4
-      if (nc_mode & NC_NETCDF4) {
-	chunksize[0] = 1;
-	(void)nc_inq_dimlen(cdfid, dims[1], &chunksize[1]);
-	ncw_def_var_chunking(df->name, cdfid, vid, chunksize);
-      }
-#endif
     } else if (data->vars[n].ndims == 2) {
       df_ugrid_get_dimids(cdfid, data->vars[n], &dims[2], &dims[1]);
       ncw_def_var2(df->name,cdfid, df->vars[n], data->vars[n].type, 3, dims, &vid, df->compress);
-#ifdef NC_NETCDF4
-      if (nc_mode & NC_NETCDF4) {
-	chunksize[0] = 1;
-	chunksize[1] = 1;
-	(void)nc_inq_dimlen(cdfid, dims[2], &chunksize[2]);
-	ncw_def_var_chunking(df->name, cdfid, vid, chunksize);
-      }
-#endif
     } else {
       hd_quit
         ("dumpfile_create: Unable to create variable, incorrect number of dimensions '%d'",
@@ -2376,7 +2356,7 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   int cdfid, n, c;
   size_t start[4] = {0, 0, 0, 0};
   size_t count[4] = {0, 0, 0, 0};
-  int dims[4];
+  int dims[2];
   int vid;
   long t;
   /* dimension ids */
@@ -2563,8 +2543,7 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   /* window->bpt[nbpt]                                               */
   /* window->bin[nbpt]                                               */
   /* window->bin2[nbpt]                                              */
-  /* window->cellarea[szcS]                                          */
-  
+
   /* Max 3D centres */
   ct = window[1]->szc;
   for (n=2; n<=nwins; n++)
@@ -2591,12 +2570,7 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
   write_text_att(cdfid, vid, "long_name", "Centres surrounding a cell");
   write_text_att(cdfid, vid, "units", "");
   write_text_att(cdfid, vid, "cartesian_axis", "C2D");
-  /* cell area */
-  ncw_def_var2(name, cdfid, "cellarea", NC_DOUBLE, 2, dims, &vid, 1);
-  write_text_att(cdfid, vid, "long_name", "Cell area");
-  write_text_att(cdfid, vid, "units", "m2");
-  write_text_att(cdfid, vid, "cartesian_axis", "C2D");
-  
+
   /* Max a2_t */
   ct = window[1]->a2_t+1;
   for (n=2; n<=nwins; n++)
@@ -3179,7 +3153,6 @@ void dump_windows_us(master_t *master, geometry_t **window, char *name, char *in
 
     count[1] = window[n]->szcS;
     ncw_put_vara_int(name, cdfid, ncw_var_id(cdfid, "npe"), start, count, window[n]->npe);
-    ncw_put_vara_double(name, cdfid, ncw_var_id(cdfid, "cellarea"), start, count, window[n]->cellarea);
 
     count[1] = window[n]->npem+1;
     count[2] = window[n]->szc;
@@ -3742,7 +3715,7 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
 void check_window_map_us(geometry_t **window, char *name)
 {
   geometry_t **win;
-  int e, ee, n, nn, j, c, c2, cc, v;
+  int e, ee, n, nn, j, c, c2, cc;
 
   win = (geometry_t **)p_alloc_1d(window[1]->nwindows);
   read_windows_us(geom, win, name);
@@ -3762,7 +3735,7 @@ void check_window_map_us(geometry_t **window, char *name)
 	printf("w2_t %d %d:%d\n", cc, window[n]->w2_t[cc], win[n]->w2_t[cc]);
       c = window[n]->w2_t[cc];
       if (window[n]->npe[c] != win[n]->npe[c]) printf ("npe error\n");
-      for (nn = 1; nn <= window[n]->npem; nn++) {
+      for (nn = 1; nn <= window[n]->npe[c]; nn++) {
 	if (window[n]->c2c[nn][c] != win[n]->c2c[nn][c]) printf("c2c error\n");
 	if (window[n]->c2e[nn][c] != win[n]->c2e[nn][c]) printf("c2e error\n");
 	if (window[n]->c2v[nn][c] != win[n]->c2v[nn][c]) printf("c2v error\n");
@@ -3777,14 +3750,6 @@ void check_window_map_us(geometry_t **window, char *name)
       if (window[n]->e2e[e][1] != win[n]->e2e[e][1]) printf("e2e[1] error\n");
       if (window[n]->e2v[e][0] != win[n]->e2v[e][0]) printf("e2v[0] error\n");
       if (window[n]->e2v[e][1] != win[n]->e2v[e][1]) printf("e2v[1] error\n");
-      if (window[n]->ep[e] != win[n]->ep[e]) printf("ep error\n");
-      if (window[n]->zm1e[e] != win[n]->zm1e[e]) printf("zm1e error\n");
-      if (window[n]->zp1e[e] != win[n]->zp1e[e]) printf("zp1e error\n");
-      if (window[n]->m2de[e] != win[n]->m2de[e]) printf("m2de error\n");
-      for (nn = 1; nn <= window[n]->neem; nn++) {
-	if (window[n]->eSe[nn][e] != win[n]->eSe[nn][e]) printf("eSe error\n");
-	if (window[n]->wAe[nn][e] != win[n]->wAe[nn][e]) printf("wAe error\n");
-      }
     }
 
     /* 3D */
@@ -3793,15 +3758,7 @@ void check_window_map_us(geometry_t **window, char *name)
     for (cc = 1; cc <= window[n]->b3_t; cc++) {
       if (window[n]->w3_t[cc] != win[n]->w3_t[cc])
 	printf("w3_t %d %d:%d\n", cc, window[n]->w3_t[cc], win[n]->w3_t[cc]);
-    }
-
-    /* Vertices */
-    for (v = 1; v < window[n]->szv; v++) {
-      if (window[n]->m2dv[v] != win[n]->m2dv[v]) printf("m2dv error\n");
-      if (window[n]->wsv[v]  != win[n]->wsv[v])  printf("wsv error\n");
-      if (window[n]->zp1v[v] != win[n]->zp1v[v]) printf("zp1v error\n");
-      if (window[n]->zm1v[v] != win[n]->zm1v[v]) printf("zm1v error\n");
-    }
+    } 
   }
   /* unlink(name); */
   hd_quit("done check_window\n");
@@ -3842,15 +3799,21 @@ void read_mean_atts(master_t *master, int fid)
 {
   geometry_t *geom = master->geom;
   parameters_t *params = master->params;
+  char buf[MAXSTRLEN];
   double d1;
-  int cc;
+  int i, cc;
 
   if (!(params->means & NONE)) {
     nc_get_att_double(fid, NC_GLOBAL, "mean_c", &d1);
     for (cc = 1; cc < geom->szcS; cc++)
       master->meanc[cc] = d1;
     nc_get_att_double(fid, NC_GLOBAL, "mean_next", &master->means_next);
-    if (nc_get_att_text(fid, NC_GLOBAL, "mean_mc", params->means_mc) != NC_NOERR)
-      sprintf(params->means_mc, "%c", '\0');
+    if (master->means_dt == SEASONAL || master->means_dt == MONTHLY || master->means_dt == DAILY) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      nc_get_att_text(fid, NC_GLOBAL, "mean_mc", buf);
+      cc = parseline(buf, fields, MAXNUMARGS);
+      for (i = 1; i <= cc; i++)
+	master->meancs[i] = atof(fields[i-1]);
+    }
   }
 }

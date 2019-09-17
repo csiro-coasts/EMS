@@ -13,14 +13,12 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timing.h 6187 2019-03-25 06:11:22Z riz008 $
+ *  $Id: timing.h 5873 2018-07-06 07:23:48Z riz008 $
  *
  */
 
 #ifndef _TIMING_H
 #define _TIMING_H
-
-#include <sys/time.h>
 
 /*
  * Macros and function prototypes are only defined when DO_TIMING is

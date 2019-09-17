@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 6320 2019-09-13 04:34:39Z her127 $
+ *  $Id: pp_us.c 6136 2019-03-04 01:02:01Z her127 $
  *
  */
 
@@ -238,7 +238,6 @@ void build_sparse_grid_us(parameters_t *params,
   int ewetS;         /* Number of 2D wet cells                       */
   int sigma = 0;     /* Set to 1 for sigma model                     */
   int laus = 2;      /* Ghost cells adjacent to OBCs                 */
-  int rtype = 2;     /* Type of Thuburn (2009) weights               */
   int *cc2s;         /* Input list to sparse array map               */
   int *e2ee;         /* Edge to index map                            */
   int *c2cc;         /* Cell to index map                            */
@@ -246,7 +245,6 @@ void build_sparse_grid_us(parameters_t *params,
   int **neic;
   int **neij;
   int *dume;
-  double *len, **rw;
   double **locx, **locy;
   double *olayers;
   int **v2e, **v2c;
@@ -261,8 +259,7 @@ void build_sparse_grid_us(parameters_t *params,
   double printlocy = NOTVALID;
   int newcode = 1;
   int newvert = 1;
-  int *wgsts;
-  
+
   if (DEBUG("init_m"))
     dlog("init_m", "\nStart unstructured preprocessor\n");
 
@@ -724,8 +721,6 @@ void build_sparse_grid_us(parameters_t *params,
 
   /* Get the cell to cell mapping.                                   */
   c1 = 1;	         /* Ghost vector counter                     */
-  wgsts = i_alloc_1d(sgrid->sgsizS + 1); /* work array */
-  memset(wgsts, 0, (sgrid->sgsizS + 1) * sizeof(int));
   for (k = nz - 1; k >= 0; k--) {
     gc = end_wet[k] + num_bdy[k] + 1;  /* 1st ghost cell in layer k  */
     c2 = end_wet[nz - 1] + num_bdy[nz - 1] + 1; /* Surface ghost     */
@@ -749,14 +744,7 @@ void build_sparse_grid_us(parameters_t *params,
 	  /* are required to choose a direction for the ghost that   */
 	  /* maps to the interior; the convention we choose is jo(). */
 	  sgrid->c2c[jo(j, npe)][gc] = c;
-	  if (cns)
-	    sgrid->m2d[gc] = cns;
-	  else {
-	    if (wgsts[cs])
-	      sgrid->m2d[gc] = wgsts[cs];
-	    else
-	      wgsts[cs] = sgrid->m2d[gc] = c2;
-	  }
+	  sgrid->m2d[gc] = (cns) ? cns: c2;
 	  sgrid->m2d[c] = cs;
 	  sgrid->wgst[gc] = c;
 	  if (k == nz - 1) sgrid->npe[gc] = sgrid->npe[c];
@@ -815,9 +803,6 @@ void build_sparse_grid_us(parameters_t *params,
       }
     }
   }
-  /* Free temp array */
-  i_free_1d(wgsts);
-  
   for (cc = 1; cc <= sgrid->nbpt; cc++) {
     c = sgrid->bpt[cc];
     c2 = sgrid->bin[cc];
@@ -1157,6 +1142,7 @@ void build_sparse_grid_us(parameters_t *params,
 	  /* Edges between OBC cells and land (normal OBC cells)     */
 	  if ((ei = is_obce(cc, j, m)) >= 0) {
 	    /*if (is_obc(cc, m->nobc, m->npts, m->loc)) {*/
+
 	    if (k == nz - 1) {
 	      sgrid->w2_e1[c2] = e;
 	      if (pe) printf("nor obc c=%d gc=%d counter=%d edge=%d j=%d\n",c,gc,c2,e,j);
@@ -1455,7 +1441,6 @@ void build_sparse_grid_us(parameters_t *params,
   sgrid->h2au1 = d_alloc_1d(sgrid->szeS);
   sgrid->h1au1 = d_alloc_1d(sgrid->szeS);
   sgrid->cellarea = d_alloc_1d(sgrid->n2_t + 1);
-  sgrid->edgearea = d_alloc_1d(sgrid->szeS);
   sgrid->h1acell = d_alloc_1d(sgrid->szeS);
   sgrid->hacell = d_alloc_2d(sgrid->n2_t + 1, sgrid->npem + 1);
   sgrid->thetau1 = d_alloc_1d(sgrid->szeS);
@@ -1523,7 +1508,6 @@ void build_sparse_grid_us(parameters_t *params,
   }
 
   /* Cell area                                                       */
-  memset(sgrid->edgearea, 0, sgrid->szeS * sizeof(double));
   for (cc = 1; cc <= sgrid->b2_t; cc++) {
     c = sgrid->w2_t[cc];
     c1 = sgrid->c2cc[c];
@@ -1531,8 +1515,6 @@ void build_sparse_grid_us(parameters_t *params,
     sgrid->cellarea[c] = 0.0;
     for (j = 1; j <= npe; j++) {
       e = sgrid->c2e[j][c];
-      /* Edge area : Ringler et al, (2010) Eq. 48                    */
-      sgrid->edgearea[e] = 0.5 * (sgrid->h1au1[e] * sgrid->h2au1[e]);
       sgrid->cellarea[c] += 0.5 * (sgrid->h1au1[e] * params->h2[c1][j-1]);
     }
   }
@@ -2265,6 +2247,93 @@ void build_sparse_grid_us(parameters_t *params,
     }
   }
 
+  /* Get the edges surrounding an edge map and weights.              */
+  /* Uses Thuburn et al, (2009) J. Comp. Phys., 228 Eq. 33.          */
+  sgrid->nee = i_alloc_1d(sgrid->sze);
+  sgrid->eSe = i_alloc_2d(sgrid->sze, sgrid->neem + 1);
+  sgrid->wAe = d_alloc_2d(sgrid->sze, sgrid->neem + 1);
+  sgrid->wSe = d_alloc_2d(sgrid->szeS, sgrid->neem + 1);
+  dume = i_alloc_1d(sgrid->sze);
+  for (ee = 1; ee <= sgrid->n2_e1; ee++) {
+    e = sgrid->w2_e1[ee];
+    c1 = sgrid->e2c[e][0];
+    c2 = sgrid->e2c[e][1];
+    sgrid->nee[e] = sgrid->npe[c1] + sgrid->npe[c2] - 1;
+  }
+  for (ee = 1; ee <= sgrid->n3_e1; ee++) {
+    e = sgrid->w3_e1[ee];
+    dume[e] = 0;
+    for (j = 1; j <= sgrid->neem; j++) 
+      sgrid->wAe[j][e] = 0.0;
+  }
+  for (j = 1; j <= sgrid->neem; j++) 
+    sgrid->wAe[j][0] = 0.0;
+
+  for (cc = 1; cc <= sgrid->b3_t; cc++) {
+    int nn;
+    double r;
+    double rsum;
+    c = sgrid->w3_t[cc];
+    cs = sgrid->m2d[c];
+    npe = sgrid->npe[cs];
+    r = 1.0 / (double)npe;
+    for (n = 1; n <= npe; n++) {
+      e = sgrid->c2e[n][c];
+      if (dume[e] == 0) {
+	dume[e]++;
+	sgrid->eSe[dume[e]][e] = e;
+	sgrid->wAe[dume[e]][e] = 0.0;
+      }
+      rsum = r;
+      e2 = e;
+      nn = (n + 1 > npe) ? 1 : n + 1;
+      while (nn != n) {
+	e1 = sgrid->c2e[nn][c];	
+	for (j = 0; j <= 1; j++) {
+	  v1 = sgrid->e2v[e2][j];
+	  for (jj = 0; jj <= 1; jj++) {
+	    v2 = sgrid->e2v[e1][jj];
+	    if (v1 == v2) v = v1;
+	  }
+	}
+	vs = sgrid->m2dv[v];
+	/*
+	for (j = 1; j <= sgrid->nve[vs]; j++) {
+	  if(e==39467&&dume[e]==3)printf("b %d %d %d %d %d\n",j,e1,v,sgrid->v2e[v][j],sgrid->eSv[j][sgrid->m2dv[v]]);
+	  if(e==32181&&dume[e]==3)printf("a %d %d %d %d %d\n",j,e1,v,sgrid->v2e[v][j],sgrid->eSv[j][sgrid->m2dv[v]]);
+	}
+	*/
+	for (j = 1; j <= sgrid->nve[vs]; j++) {
+	  if (e1 == sgrid->v2e[v][j]) break;
+	}
+	dume[e]++;
+	sgrid->eSe[dume[e]][e] = e1;
+	/*
+	if (sgrid->eSv[j][sgrid->m2dv[v]])
+	  sgrid->wAe[dume[e]][e] = (rsum - 0.5) * sgrid->eSc[n][cs] / sgrid->eSv[j][sgrid->m2dv[v]];
+	*/
+	if (sgrid->eSv[j][v])
+	  sgrid->wAe[dume[e]][e] = (rsum - 0.5) * sgrid->eSc[n][cs] / sgrid->eSv[j][v];
+	
+	/*if(sgrid->e2k[e]==nz-1&&e==6671)printf("%d c=%d e=%d %d e1=%d %f v=%d r=%f nei=%d tev=%d %d %d\n",sgrid->e2k[e],c,e,dume[e],e1,sgrid->wAe[dume[e]][e],v,rsum,sgrid->eSc[n][cs],sgrid->eSv[j][v],sgrid->v2e[v][j],j);*/
+	
+	rsum += r;
+	e2 = e1;
+	nn = (nn + 1 > npe) ? 1 : nn + 1;
+      }
+    }
+  }
+  i_free_1d(dume);
+
+  /*
+  for (ee = 1; ee <= sgrid->n2_e1; ee++) {
+    e = sgrid->w2_e1[ee];
+    for (n = 1; n <= sgrid->nee[e]; n++)
+      if(e==3)
+	printf("%d %d %d %f\n",e,n,sgrid->eSe[n][e],sgrid->wAe[n][e]);
+  }
+  */
+
   /* Get the area of the dual cell                                   */
   sgrid->dualarea = d_alloc_1d(sgrid->szvS);
   sgrid->dualareap = d_alloc_2d(sgrid->nvcm + 1, sgrid->szvS);
@@ -2304,249 +2373,6 @@ void build_sparse_grid_us(parameters_t *params,
       sgrid->dualarea[v] += sgrid->dualareap[v][j];
     }
   }
-
-  /* Get the edges surrounding an edge map and weights.              */
-  /* Uses Thuburn et al, (2009) J. Comp. Phys., 228 Eq. 33.          */
-  /* Note that k x u rotates the velocity vector by 90 degrees in    */
-  /* clockwise direction (Ringler: Momentum, vorticity and transport */
-  /* Considerations in the design of a finite-volume dynamical core) */
-  /* p31. Here we need the tangential velocity component in the      */
-  /* direction -k x u (Thuburn (2009), p8324).                       */
-  sgrid->nee = i_alloc_1d(sgrid->sze);
-  sgrid->eSe = i_alloc_2d(sgrid->sze, sgrid->neem + 1);
-  sgrid->wAe = d_alloc_2d(sgrid->sze, sgrid->neem + 1);
-  sgrid->wSe = d_alloc_2d(sgrid->szeS, sgrid->neem + 1);
-  dume = i_alloc_1d(sgrid->sze);
-  len = d_alloc_1d(sgrid->szcS);
-  rw = d_alloc_2d(sgrid->szcS, npem + 1);
-  memset(len, 0, sgrid->szcS * sizeof(double));
-
-  for (ee = 1; ee <= sgrid->n2_e1; ee++) {
-    e = sgrid->w2_e1[ee];
-    c1 = sgrid->e2c[e][0];
-    c2 = sgrid->e2c[e][1];
-    sgrid->nee[e] = sgrid->npe[c1] + sgrid->npe[c2] - 1;
-  }
-  for (ee = 1; ee <= sgrid->n3_e1; ee++) {
-    e = sgrid->w3_e1[ee];
-    dume[e] = 0;
-    for (j = 1; j <= sgrid->neem; j++) 
-      sgrid->wAe[j][e] = 0.0;
-  }
-  for (j = 1; j <= sgrid->neem; j++) 
-    sgrid->wAe[j][0] = 0.0;
-  /* Perimeter of each cell                                          */
-  for (cc = 1; cc <= sgrid->b2_t; cc++) {
-    c = sgrid->w2_t[cc];
-    for (n = 1; n <= sgrid->npe[c]; n++) {
-      e = sgrid->c2e[n][c];
-      len[c] += sgrid->h1au1[e];
-      rw[n][c] = 0.0;
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Compute the cell weights used in the Thuburn et al. (2009)      */
-  /* algorithm.                                                      */
-  /* Thuburn (2009) Section 4 equally distributes rw across vertices */
-  /* for quad and hex examples (i.e. rtype=0).                       */
-  /* Ringler et al. (2010) p 3073 states rw should be the area of    */
-  /* intersection between primal and dual mesh normalized by the     */
-  /* primal mesh area (i.e. rtype=2).                                */
-  /* rtype = 0 : Equally distributed over vertices                   */
-  /* rtype = 1 : Scaled by edge length                               */
-  /* rtype = 2 : Scaled by partial cell area                         */
-  /* rtype = 3 : Includes contributions of all cells common to a     */
-  /*             vertex.                                             */
-  for (cc = 1; cc <= sgrid->b2_t; cc++) {
-    double d1 = 0.0, d2 = 0.0;
-    c = sgrid->w2_t[cc];
-    npe = sgrid->npe[c];
-    for (j = 1; j <= npe; j++) {
-      e = sgrid->c2e[j][c];
-      if (rtype == 0)
-	rw[j][c] = 1.0 / (double)npe;
-      else if (rtype == 1) {
-	rw[j][c] = 0.5 * sgrid->h1au1[e] / len[c];
-	n = (j == 1) ? npe : j - 1;
-	e = sgrid->c2e[n][c];
-	rw[j][c] += 0.5 * sgrid->h1au1[e] / len[c];
-      } else if (rtype == 2) {
-	c1 = sgrid->c2cc[c];
-	rw[j][c] += (0.25 * sgrid->h1au1[e] * params->h2[c1][j-1]) / sgrid->cellarea[c];
-	n = (j == 1) ? npe : j - 1;
-	e = sgrid->c2e[n][c];
-	rw[j][c] += (0.25 * sgrid->h1au1[e] * params->h2[c1][j-1]) / sgrid->cellarea[c];
-      } else if (rtype == 3) {
-	v = sgrid->c2v[j][c];
-	for (vv = 1; vv <= sgrid->nvc[v]; vv++) {
-	  c1 = sgrid->v2c[v][vv];
-	  rw[j][c] += 1.0 / ((double)sgrid->npe[c1] * (double)sgrid->nvc[v]);
-	}
-      }
-      d1 += rw[j][c];
-    }
-    /* Normalize sum of rw to 1                                      */
-    for (j = 1; j <= npe; j++) rw[j][c] /= d1; 
-  }
-
-  /* Loop over all cell centres and consider edges surrounding that  */
-  /* centre individually.                                            */
-  for (cc = 1; cc <= sgrid->b3_t; cc++) {
-    double u, vt, d1;
-    int de = 0;             /* Debugging edge index                  */
-    double rsum;            /* Sum of rw around the cell             */
-
-    c = sgrid->w3_t[cc];
-    cs = sgrid->m2d[c];
-    npe = sgrid->npe[cs];   /* Number of edges for this centre       */
-
-    /* Loop over edges                                               */
-    for (n = 1; n <= npe; n++) {
-      e = sgrid->c2e[n][c];    /* Cell edge                          */
-
-      /* The first weight for this edge is always zero; see Thuburn  */
-      /* (2009) p8324.                                               */
-      if (dume[e] == 0) {      
-	dume[e]++;
-	sgrid->eSe[dume[e]][e] = e;
-	sgrid->wAe[dume[e]][e] = 0.0;
-	vt = 0.0;
-      }
-
-      /* Loop over edges in a clockwise direction until the original */
-      /* edge e is encountered.                                      */
-      ee = (n + 1 > npe) ? 1 : n + 1;
-
-      /* Find the last vertex traversing from e1 to e. This is the   */
-      /* first vertex from e to e1, or the vertex at the current ee. */
-      v = sgrid->c2v[ee][c];
-      vs = sgrid->m2dv[v];
-
-      /* Find the index of vertex v corresponding to edge e          */
-      for (vv = 1; vv <= sgrid->nve[vs]; vv++) {
-	if (e == sgrid->v2e[v][vv]) break;
-      }
-
-      /* Initialize the sum of vertex weights to rw at vertex v      */
-      rsum = rw[ee][cs];
-
-      while (ee != n) {
-	e1 = sgrid->c2e[ee][c];	
-
-	/* Include the edge e1 in the array and compute the weight.  */
-	/* Note: the weights of Thuburn (2008) deliver tangential    */
-	/* velocities in the -k x ne direction (p8324). i.e. rotated */
-	/* clockwise from the normal component. We take the negative */
-	/* of this to deliver the tangential velocity in the k x ne  */
-	/* direction (rotated anti-clockwise). This means we must    */
-	/* add the nonlinear Coriolis tendency (Ringler (2010)       */
-	/* Eq. 24) in nonlin_coriolis_3d() to restore the correct    */
-	/* direction of tangential velocity in this term (-k x u).   */
-	dume[e]++;
-	sgrid->eSe[dume[e]][e] = e1;
-	if (sgrid->eSv[vv][v])
-	  sgrid->wAe[dume[e]][e] = -((rsum - 0.5) * (double)sgrid->eSc[ee][cs]) / (double)sgrid->eSv[vv][v];
-
-	if (de == e) {
-	  printf("ee=%d eoe=%d rsum=%f %f : eSc=%d eSv=%d sgn=%f : w=%f\n",dume[e],e1,rsum,rsum-0.5,sgrid->eSc[ee][cs],sgrid->eSv[vv][v],-(double)sgrid->eSc[ee][cs] / (double)sgrid->eSv[vv][v],sgrid->wAe[dume[e]][e]);
-	}
-
-	/* Move on to the next edge; increment the edge counter, and */
-	/* add rw to sum of vertex weights.                          */
-	ee = (ee + 1 > npe) ? 1 : ee + 1;
-	rsum += rw[ee][cs];
-      }
-    }
-  }
-
-
-  /* Oldcode
-  for (ee = 1; ee <= sgrid->n3_e1; ee++) {
-    e = sgrid->w3_e1[ee];
-    dume[e] = 0;
-    for (j = 1; j <= sgrid->neem; j++) 
-      sgrid->wAe[j][e] = 0.0;
-  }
-  for (cc = 1; cc <= sgrid->b3_t; cc++) {
-    int nn;
-    double r;
-    double rsum;
-    c = sgrid->w3_t[cc];
-    cs = sgrid->m2d[c];
-    npe = sgrid->npe[cs];
-    r = 1.0 / (double)npe;
-    for (n = 1; n <= npe; n++) {
-      e = sgrid->c2e[n][c];
-      if (dume[e] == 0) {
-	dume[e]++;
-	sgrid->eSe[dume[e]][e] = e;
-	sgrid->wAe[dume[e]][e] = 0.0;
-      }
-      rsum = r;
-      e2 = e;
-      nn = (n + 1 > npe) ? 1 : n + 1;
-      while (nn != n) {
-	e1 = sgrid->c2e[nn][c];	
-	for (j = 0; j <= 1; j++) {
-	  v1 = sgrid->e2v[e2][j];
-	  for (jj = 0; jj <= 1; jj++) {
-	    v2 = sgrid->e2v[e1][jj];
-	    if (v1 == v2) v = v1;
-	  }
-	}
-	vs = sgrid->m2dv[v];
-	for (j = 1; j <= sgrid->nve[vs]; j++) {
-	  if (e1 == sgrid->v2e[v][j]) break;
-	}
-	dume[e]++;
-	sgrid->eSe[dume[e]][e] = e1;
-	if (sgrid->eSv[j][v])
-	  sgrid->wAe[dume[e]][e] = (rsum - 0.5) * sgrid->eSc[n][cs] / sgrid->eSv[j][v];
-
-	rsum += r;
-	e2 = e1;
-	nn = (nn + 1 > npe) ? 1 : nn + 1;
-      }
-    }
-  }
-  */
-
-  i_free_1d(dume);
-  d_free_1d(len);
-  d_free_2d(rw);
-
-  /*
-  for (cc = 1; cc <= sgrid->b2_t; cc++) {
-  double d1, u, vt;
-    c = sgrid->w2_t[cc];
-    for (n = 1; n <= sgrid->npe[c]; n++) {
-      if (n==3&&c == sgrid->cc2s[17422]) {
-	FILE *op = fopen("e.site", "w");
-	e = sgrid->c2e[n][c];
-	for (ee = 1; ee <= sgrid->nee[e]; ee++) {
-	  es = sgrid->eSe[ee][e];	  
-	  d1 = sgrid->thetau1[sgrid->m2de[es]] - sgrid->thetau1[sgrid->m2de[e]];
-	  u = 1.0 * cos(d1) + 0.0 * sin(d1);
-	  vt += u * sgrid->wAe[ee][e];
-
-	  printf("6s c=%d: n=%d e=%d eoe%d=%d : %f %f %f\n",c,n,e,ee,es,sgrid->wAe[ee][e],u,vt);
-	  fprintf(op, "%f %f e%d\n",sgrid->u1x[es],sgrid->u1y[es],ee);
-	}
-	fclose(op);
-      }
-    }
-  }
-
-  for (ee = 1; ee <= sgrid->n2_e1; ee++) {
-    e = sgrid->w2_e1[ee];
-    for (n = 1; n <= sgrid->nee[e]; n++)
-
-      if(e==7)
-	printf("%d %d %d %f\n",e,n,sgrid->eSe[n][e],sgrid->wAe[n][e]);
-  }
-  */
-
   if (DEBUG("init_m"))
     dlog("init_m", "\nDual mappings created OK\n");
 
@@ -3312,7 +3138,7 @@ void build_sparse_grid_us(parameters_t *params,
     for (n = 0; n < sgrid->nobc; n++) {
       open_bdrys_t *open = sgrid->open[n];
       for (i = 1; i <= open->no3_e1; i++) {
-	c1 = open->ogc_t[i];
+	c1= open->ogc_t[i];
 	if (c1 == c) found = 1;
       }
     }
@@ -3435,10 +3261,7 @@ void build_sparse_grid_us(parameters_t *params,
 
   /*-----------------------------------------------------------------*/
   /* Set up the windows                                              */
-  TIMING_SET;
   window_build(sgrid, params);
-  TIMING_DUMP(1, "  window_build");
-  
   if (params->us_type & US_IJ)
     write_windows(sgrid, flag);
 
@@ -4130,10 +3953,12 @@ int e2eo(geometry_t *sgrid, int e, int j)
     npe = sgrid->npe[cs];
     n = jo(n, npe);
   }
+  printf("%d\n",n);
   cn = sgrid->c2c[j][c];
   cs = sgrid->m2d[cn];
   n = min(n, sgrid->npe[cs]);
   en = sgrid->c2e[n][cn];
+  printf("a2 %d %d %d\n",n,cn,en);
   /*
   int i = (e == sgrid->c2e[j][c]) ? 1 : 0;
   ret = sgrid->c2e[j][sgrid->e2c[e][i]];
@@ -4751,7 +4576,6 @@ void alloc_geom_us(geometry_t *geom, /* Model geometry structure */
     geom->h2au1 = d_alloc_1d(geom->szeS);
     geom->h1au1 = d_alloc_1d(geom->szeS);
     geom->h1acell = d_alloc_1d(geom->szeS);
-    geom->edgearea = d_alloc_1d(geom->szeS);
     geom->thetau1 = d_alloc_1d(geom->szeS);
     geom->thetau2 = d_alloc_1d(geom->szeS);
     geom->u1x = d_alloc_1d(geom->szeS);
@@ -4850,7 +4674,6 @@ void point_geom_us(geometry_t *window, /* Window geometry structure */
   window->h1au1 = geom->h1au1;
   window->h2au1 = geom->h2au1;
   window->cellarea = geom->cellarea;
-  window->edgearea = geom->edgearea;
   window->dHde1 = geom->dHde1;
   window->botz = geom->botz;
   window->botzu1 = geom->botzu1;
@@ -5000,10 +4823,6 @@ void create_delaunay_cell(geometry_t *geom, parameters_t *params)
   geom->tri2c = i_alloc_1d(d->ntriangles);
   geom->c2tri = i_alloc_1d(geom->szcS);
   memset(geom->tri2c, 0, d->ntriangles * sizeof(int));
-  TIMING_SET;
-#if defined(HAVE_OMP)
-#pragma omp parallel for private(c,n)
-#endif
   for (cc = 1; cc <= geom->b2_t; cc++) {
     double x, y;
     c = geom->w2_t[cc];
@@ -5021,7 +4840,6 @@ void create_delaunay_cell(geometry_t *geom, parameters_t *params)
       }
     }
   }
-  TIMING_DUMP(1, "  create_deluanay nested loop");
 
   if (inc_gst) {
     for (cc = 1; cc <= geom->nbptS; cc++) {
@@ -5380,7 +5198,7 @@ void create_delaunay_cent(geometry_t *geom, parameters_t *params)
 void interp_us(geometry_t *geom,    /* Model geometry                */
 	       double *vals,        /* Cell centre values            */
 	       int nvec,            /* Number of values to interp    */
-	       int *vec,            /* Locations to store values     */
+	       double *vec,         /* Locations to store values     */
 	       double *locx,        /* x locations to interp         */
 	       double *locy,        /* y locations to interp         */
 	       double *ret          /* Array of interpolated values  */
@@ -5395,46 +5213,13 @@ void interp_us(geometry_t *geom,    /* Model geometry                */
   /* Interpolate the given points                                    */
   for (cc = 1; cc <= nvec; cc++) {
     c = vec[cc];
-    ret[c] = grid_interp_on_point(gs, locx[c], locy[c]);
+    ret[c] = grid_interp_on_point(gs, locx[cc], locy[cc]);
   }
 
   grid_specs_destroy(gs);
 }
 
 /* END interp_us()                                                   */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Interpolates unstructued edge data horizontally onto a set of     */
-/* points using the i_rule method.                                   */
-/*-------------------------------------------------------------------*/
-void interp_edge_us(geometry_t *geom, /* Model geometry              */
-		    double *vals,     /* Cell edge values            */
-		    int nvec,         /* Number of values to interp  */
-		    int *vec,         /* Locations to store values   */
-		    double *locx,     /* x locations to interp       */
-		    double *locy,     /* y locations to interp       */
-		    double *ret,      /* Interpolated values         */
-		    char *i_rule
-		    )
-{
-  GRID_SPECS *gs = NULL;
-  int cc, c;
-
-  /* Initialise                                                      */
-  gs = grid_interp_init(geom->u1x, geom->u1y, vals, geom->b2_e1, i_rule);
-
-  /* Interpolate the given points                                    */
-  for (cc = 1; cc <= nvec; cc++) {
-    c = vec[cc];
-    ret[c] = grid_interp_on_point(gs, locx[c], locy[c]);
-  }
-
-  grid_specs_destroy(gs);
-}
-
-/* END interp_edge_us()                                              */
 /*-------------------------------------------------------------------*/
 
 
@@ -5619,29 +5404,6 @@ int get_bind(geometry_t *sgrid, int c, int *mask)
 }
 
 /* END get_bind()                                                    */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Returns 1 is the sparse coordinate corresponds to the mesh index  */
-/*-------------------------------------------------------------------*/
-int is_index(geometry_t *geom,     /* Window or global geometry      */
-	     int cc,               /* Mesh index                     */
-	     int c                 /* Sparse cell centre coordinate  */
-	     )
-{
-  geometry_t *ggeom = master->geom;
-  int ret = 0;
-
-  if (geom == ggeom) {
-    if (c == ggeom->cc2s[cc]) ret = 1;
-  } else {
-    if (geom->wsa[c] == ggeom->cc2s[cc]) ret = 1;
-  }
-  return(ret);
-}
-
-/* END is_index()                                                    */
 /*-------------------------------------------------------------------*/
 
 
