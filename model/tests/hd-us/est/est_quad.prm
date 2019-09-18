@@ -188,7 +188,7 @@ TRACER1.diffuse      1
 TRACER1.diagn        0
 
 # Forcing
-WIND_TS               /home/her127/work/meco/closed_chan.ts
+WIND_TS               closed_chan.ts
 WIND_INPUT_DT         10.0   days
 WIND_SPEED_SCALE      0.1
 DRAG_LAW_V0           10.0  

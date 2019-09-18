@@ -28,7 +28,7 @@ file0.vars           ALL
 # Flags
 WINDOWS              2
 SHOW_WINDOWS         YES
-DUMP_WIN_MAP         win2.nc
+#DUMP_WIN_MAP         win2.nc
 #READ_WIN_MAP         win2.nc
 DP_MODE              openmp
 NONLINEAR            YES

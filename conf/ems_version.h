@@ -1,4 +1,4 @@
-#define EMS_VERSION "v1.1.2"
+#define EMS_VERSION "v1.2.1"
 
 #define EMS_IS_RELEASE 1
 
