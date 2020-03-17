@@ -25,8 +25,8 @@
 /* Version information                                              */
 /*------------------------------------------------------------------*/
 #define COMPAS_MAJOR_VERSION 1
-#define COMPAS_MINOR_VERSION 1
-#define COMPAS_PATCH_VERSION 3
+#define COMPAS_MINOR_VERSION 2
+#define COMPAS_PATCH_VERSION 0
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */

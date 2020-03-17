@@ -21,8 +21,8 @@
 
 /* Release verions and getters */
 #define ECOLOGY_MAJOR_VERSION 1
-#define ECOLOGY_MINOR_VERSION 1
-#define ECOLOGY_PATCH_VERSION 1
+#define ECOLOGY_MINOR_VERSION 2
+#define ECOLOGY_PATCH_VERSION 0
 
 int get_ecology_major_vers(void);
 int get_ecology_minor_vers(void);

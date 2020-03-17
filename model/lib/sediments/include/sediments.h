@@ -41,7 +41,7 @@ extern sedlogtag sedtag;
 /* Release verions and getters */
 #define SEDIMENTS_MAJOR_VERSION 1
 #define SEDIMENTS_MINOR_VERSION 1
-#define SEDIMENTS_PATCH_VERSION 0
+#define SEDIMENTS_PATCH_VERSION 1
 
 int get_sediments_major_vers(void);
 int get_sediments_minor_vers(void);
