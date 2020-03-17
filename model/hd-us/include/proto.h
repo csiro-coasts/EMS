@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6343 2019-09-17 10:43:14Z riz008 $
+ *  $Id: proto.h 6459 2020-02-18 23:42:59Z her127 $
  *
  */
 
@@ -45,6 +45,7 @@ void auto_params_roam_post2(FILE * fp, parameters_t *params);
 void auto_params_roam_post3(FILE * fp, parameters_t *params);
 void auto_params_roam_post4(FILE * fp, parameters_t *params);
 void auto_params_roam_post5(FILE * fp, parameters_t *params);
+void auto_params_roam_post6(FILE * fp, parameters_t *params);
 void auto_params_recom_post1(FILE * fp, parameters_t *params);
 void auto_params_recom_post2(FILE * fp, parameters_t *params);
 double get_restart_time(char *filename, char *iunits);
@@ -65,6 +66,7 @@ void read_totals(parameters_t *params, FILE *fp);
 void read_exclude_points(parameters_t *params, FILE *fp);
 void read_trfilter(parameters_t *params, FILE *fp);
 void read_decorr(parameters_t *params, FILE *fp, int mode);
+void read_monotone(parameters_t *params, FILE *fp, int mode);
 int read_dhw(parameters_t *params, FILE *fp);
 void read_trflux(parameters_t *params, FILE *fp);
 void tracer_setup(parameters_t *params, FILE *fp);
@@ -154,6 +156,8 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 			void *jmsh);
 void mesh_ofile_name(parameters_t *params, char *key);
 delaunay *make_dual(geometry_t *geom, int kin);
+int mesh_expand_w(geometry_t *window, int *vec);
+int mesh_expand_3d(geometry_t *window, double *u1);
 
 /*------------------------------------------------------------------*/
 /* Window subroutines                                               */
@@ -186,6 +190,8 @@ void window_cells_zoom(geometry_t *geom, parameters_t *params,
 			int nwindows, int *zmfe1, int *zmfe2, int **ws2, 
 			int *wsizeS);
 void window_cells_grouped(geometry_t *geom, int nwindows, int **ws2, int *wsizeS);
+void window_cells_region(geometry_t *geom, int nwindows, int **ws2, int *wsizeS, char *fname);
+void window_cells_metis(geometry_t *geom, int nwindows, int **ws2, int *wsizeS);
 void window_cells_linear_e1(geometry_t *geom, int nwindows, int **ws2,
 			    int *wsizeS);
 void window_cells_linear_e2(geometry_t *geom, int nwindows, int **ws2,
@@ -278,18 +284,6 @@ int get_mesh_obc(parameters_t *params, int **neic);
 int get_mesh_obc_limit(parameters_t *params, int **neic);
 void convert_mesh_input(parameters_t *params, mesh_t *mesh, double **xc, double **yc, 
 			double *bathy, int wf);
-#ifdef HAVE_JIGSAWLIB
-void create_jigsaw_mesh(coamsh_t *cm, jigsaw_msh_t *J_mesh, jigsaw_msh_t *J_hfun,
-			int powf, int stproj);
-void create_bounded_mesh(int npts, double *x, double *y, double rmin,
-			 double rmax, jigsaw_msh_t *J_mesh);
-void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh_t *J_hfun);
-void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode);
-void create_hex_radius(double crad, double x00, double y00,
-		       double rmin, double rmax, double gscale,
-		       jigsaw_msh_t *J_mesh, int powf);
-void neighbour_finder_j(jigsaw_msh_t *msh, int ***neic);
-#endif
 void set_params_mesh(parameters_t *params, mesh_t *mesh, double **x, double **y);
 mesh_t *mesh_init(parameters_t *params, int ns2, int npe);
 void free_mesh(mesh_t *mesh);
@@ -594,7 +588,7 @@ void make_cycled(geometry_t *geom, open_bdrys_t *open,
 		 unsigned long ***flag);		 
 int isvalidc(int c, int sz, char *warn);
 void set_map_bdry(geometry_t *geom);
-
+void get_filter(geometry_t *geom);
 
 /*------------------------------------------------------------------*/
 /* Diagnostic routines                                              */
@@ -623,6 +617,7 @@ double get_profile_rms(double *a1, double *a2, int cs, int *zm1);
 void total_mass(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void steric(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vorticity(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void calc_monotonic(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void diag_numbers(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void nor_vert_prof(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void ekman_pump_e1(geometry_t *window, window_t *windat, win_priv_t *wincon,
@@ -641,7 +636,9 @@ void calc_flushing(master_t *master, geometry_t **window, window_t **windat,
 		   win_priv_t **wincon);
 void reset_means(geometry_t *window, window_t *windat, win_priv_t *wincon,
                  int mode);
+void reset_means_m_o(master_t *master);
 void reset_means_m(master_t *master);
+void init_means(master_t *master, parameters_t *params);
 void get_means_w(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void get_means_m(geometry_t *geom, master_t *master,
                  dump_data_t *dumpdata);
@@ -698,6 +695,7 @@ void region_write(master_t *master, region_t *region);
 void region_print(master_t *master, region_t *region);
 void read_region_info(parameters_t *params, FILE *fp);
 int read_regioni(master_t *master, char *rname, double *regionid);
+int read_region_us(geometry_t *geom, char *name, double *regionid);
 double con_velmax(double vel, double velmax);
 double con_mean(geometry_t *window, double *vel, double velmax, int c, int mode);
 double con_median(geometry_t *window, double *vel, double velmax, int c, int mode);
@@ -1014,8 +1012,18 @@ void van_leer_tr(double *F, double *tr, double *vel, double *cn,
 int intersect(geometry_t *window, int c, int j, double xn, double yn,
 	      double xs, double ys, double *xi, double *yi);
 void ffsl_init(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void ffsl_trans_prep(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void ffsl_trans_post(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void prep_ff_sl(geometry_t *window, window_t *windat, win_priv_t *wincon,
+	       double dt);
+void ff_sl_do_vert(double *vel, double dt, double *h, int ss,
+	     int se, int *sdo, int *fmap, int *bmap, int *cl, double *crf);
+void ff_sl_van_leer(double *F, double *tr, double *vel, double *crf,
+		   int *cl, int ss, int se, int *sdo, int *fmap, int *bmap);
 void ffsl_do(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	     double *tr, double *Fx, double *Fz, double dtu);
+void ffsl_don(geometry_t *window, window_t *windat, win_priv_t *wincon,
+	      double *tr, double *Fx, double *Fz, double dtu);
 double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, double z, 
 		       int c, int co, int vid);
 void clip_ffsl(geometry_t *window, window_t *windat, win_priv_t *wincon,
@@ -1040,6 +1048,8 @@ void get_linear_metrics(geometry_t *window, window_t *windat, win_priv_t *wincon
 void get_linear_limit(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr);
 double get_linear_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, int co,
 			double x, double y, double z);
+void get_local_bounds(geometry_t *window, window_t *windat, win_priv_t *wincon, double tr, double *trv,
+		      int e, int co, double *smin, double *smax, int mode);
 void get_wet_cells(geometry_t *window, win_priv_t *wincon);
 void calc_courant(geometry_t *window, window_t *windat, win_priv_t *wincon,
                   double dt);
@@ -1258,9 +1268,11 @@ void set_new_cells_u1(geometry_t *window, window_t *windat,
                       win_priv_t *wincon);
 void vel_w_update(geometry_t *window, window_t *windat,
                   win_priv_t *wincon);
+void vel_w_trans(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void ff_sl_w_update(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void init_wvel_bounds(geometry_t *geom, master_t *master);
 void vel_w_bounds(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void vel_w_bounds_tran(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void bdry_w(geometry_t *window, window_t *windat, win_priv_t *wincon);
 int implicit_vdiff(geometry_t *window, window_t *windat,
 		   win_priv_t *wincon, double *var, double *nvar,
@@ -1283,6 +1295,7 @@ void vel_grad(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	      double *u1, double *u2, double *ung, double *utg, int mode);
 void tra_grad(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	      double *tr, double *ung, double *utg, int mode);
+void vel_tan_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double vel_c2e(geometry_t *geom, double *u, double *v, int e);
 
 /*------------------------------------------------------------------*/
@@ -1501,6 +1514,7 @@ void df_sp_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_mom_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 int ts_init(sched_event_t *event);
 int get_glider_loc(master_t *master, ts_point_t *tslist, timeseries_t *loc_ts, double t);
+void init_2way(master_t *master, geometry_t **window, window_t **windat, win_priv_t **wincon);
 
 /*------------------------------------------------------------------*/
 /* NetCDF convienience utilities                                    */
@@ -1760,6 +1774,11 @@ double intpf(double a, double b, double xs, double xe, double x);
 /*------------------------------------------------------------------*/
 void i_set_error(void* hmodel, int col, int errorf, char *text);
 int i_get_error(void* hmodel, int col);
+void ginterface_moonvars(void *hmodel, int c,
+			 double *mlon, double *mlat,
+			 double *dist_earth_sun, double *dist_moon_earth,
+			 double *lunar_angle, double *sun_angle,double *moon_phase,double *lunar_dec);
+double ginterface_get_cloud(void *hmodel, int c);
 
 
 /*------------------------------------------------------------------*/

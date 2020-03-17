@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 6321 2019-09-13 04:35:01Z her127 $
+ *  $Id: advect.c 6399 2019-11-21 22:59:19Z her127 $
  *
  */
 
@@ -48,7 +48,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
   double fs = 1.0;          /* Flux scaling                          */
   double *dzv = wincon->w1;
   double *vel;              /* Velocity to use in spatial gradients  */
-  double dtu, dtm;
+  double dtu, dtm;          /* Leapfrog and forward sub-step         */
   double trem;              /* Time remaining in leapfrog step       */
   double tremf;             /* Time remaining in forward step        */
   int itermax = 20;         /* Maximum number of substeps            */
@@ -1222,8 +1222,13 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
       }
       if (wincon->u1av_f & CORIOLIS)
 	memset(windat->npvore, 0, window->szeS * sizeof(double));
+    /*
       for (ee = 1; ee <= window->v2_e1; ee++) {
 	e = window->w2_e1[ee];
+    */
+      for (ee = 1; ee <= wincon->vcs; ee++) {
+	e = wincon->s3[ee];
+
 	es = window->m2de[e];
 	c1 = window->e2c[e][0];
 	c2 = window->e2c[e][1];

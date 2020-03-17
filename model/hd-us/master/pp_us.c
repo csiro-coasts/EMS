@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 6320 2019-09-13 04:34:39Z her127 $
+ *  $Id: pp_us.c 6398 2019-11-21 22:59:02Z her127 $
  *
  */
 
@@ -2906,6 +2906,30 @@ void build_sparse_grid_us(parameters_t *params,
       omapc[cs] = oedge(sgrid->npe[c], j);
     else
       omapc[cs] = jocw(sgrid, c, j);
+
+    /* Regular quad grids U1 boundary                                */
+    if (params->us_type & US_IJ) {
+      if(sgrid->wgst[sgrid->c2c[1][cs]]) {
+	imapc[cs] = 3;
+	omapc[cs] = 1;
+      }
+      if(sgrid->wgst[sgrid->c2c[3][cs]]) {
+	imapc[cs] = 1;
+	omapc[cs] = 3;
+      }
+    }
+    /* Regular hex grids U1 boundary                                 */
+    if (params->us_type & US_HEX) {
+      if(sgrid->wgst[sgrid->c2c[1][cs]]) {
+	imapc[cs] = 4;
+	omapc[cs] = 1;
+      }
+      if(sgrid->wgst[sgrid->c2c[4][cs]]) {
+	imapc[cs] = 1;
+	omapc[cs] = 4;
+      }
+    }
+
     /* Find the direction that maps to the interior for this centre  */
     /*
     jj = 0; i = 0;
@@ -2942,6 +2966,7 @@ void build_sparse_grid_us(parameters_t *params,
       }
     }
   }
+
   for (n = 0; n < sgrid->nobc; n++) {
     open_bdrys_t *open = sgrid->open[n];
     open->no2_t--;
@@ -3171,6 +3196,12 @@ void build_sparse_grid_us(parameters_t *params,
       c = sgrid->open[n]->obc_t[cc];
       cs = sgrid->m2d[c];
       sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+      /* Move outwards an extra cell                                 */
+      if (params->us_type & US_HEX) 
+	sgrid->open[n]->cyc_t[cc] = sgrid->c2c[omapc[cs]][sgrid->open[n]->cyc_t[cc]];
+      /*
+      if(n==0&&c==cs)printf("%f %f %f %f\n",sgrid->cellx[cs],sgrid->celly[cs],sgrid->cellx[sgrid->open[n]->cyc_t[cc]],sgrid->celly[sgrid->open[n]->cyc_t[cc]]);
+      */
     }
 
     /* Normal velocity component                                              */
@@ -3179,20 +3210,26 @@ void build_sparse_grid_us(parameters_t *params,
       c = sgrid->open[n]->obc_e2[ee];
       es = sgrid->m2de[e];
       cs = sgrid->m2d[c];
-      j = sgrid->e2e[e][0];
+      j = (sgrid->open[n]->ceni[ee]) ? sgrid->e2e[e][1] : sgrid->e2e[e][0];
       c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+      if (params->us_type & US_HEX)
+	c1 = sgrid->c2c[omapc[cs]][c1];
+      if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
       sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
     }
 
     /* Tangential velocity component                                          */
-    for (cc = sgrid->open[n]->no3_e1 + 1; cc <= sgrid->open[n]->to3_e1; cc++) {
-      e = sgrid->open[n]->obc_e1[cc];
+    for (ee = sgrid->open[n]->no3_e1 + 1; ee <= sgrid->open[n]->to3_e1; ee++) {
+      e = sgrid->open[n]->obc_e1[ee];
       es = sgrid->m2de[e];
       c = sgrid->open[n]->obc_e2[ee];
       cs = sgrid->m2d[c];
       j = sgrid->e2e[e][0];
       c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
-      sgrid->open[n]->cyc_e1[cc] = sgrid->c2e[j][c1];
+      if (params->us_type & US_HEX)
+	c1 = sgrid->c2c[omapc[cs]][c1];
+      if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
+      sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
     }
 
     /* Get the bottom coordinate vector                              */
@@ -3452,6 +3489,7 @@ void build_sparse_grid_us(parameters_t *params,
   geom = sgrid;
   master->geom = sgrid;
   master->sgrid = sgrid;
+  get_filter(geom);
   if (DEBUG("init_m"))
     dlog("init_m", "\nMaster data created OK\n");
 
@@ -5584,6 +5622,7 @@ int get_bind(geometry_t *sgrid, int c, int *mask)
       jj = min(jj, npe);
       co = sgrid->c2c[jj][c];
       if (!mask[cns] && sgrid->wgst[co]) ret = j;
+
       /* If an interior map can't be found, then find the direction  */
       /* of a non-ghost cell whose opposite is a ghost.              */
       if (sgrid->wgst[co]) retn = j;
@@ -5596,6 +5635,7 @@ int get_bind(geometry_t *sgrid, int c, int *mask)
 	retg = jocw(sgrid, c, j);
     }
   }
+
   if (!ret) ret = retn;
   /* If the interior direction is still a ghost cell, use the        */
   /* average of non OBC, non ghost directions.                       */

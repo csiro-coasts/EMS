@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 6316 2019-09-13 04:32:39Z her127 $
+ *  $Id: meshes.c 6461 2020-02-18 23:43:48Z her127 $
  *
  */
 
@@ -22,6 +22,10 @@
 #include <string.h>
 #include <math.h>
 #include "hd.h"
+/* JIGSAW grid generation */
+#ifdef HAVE_JIGSAWLIB
+#include "lib_jigsaw.h"
+#endif
 
 #define DEG2RAD(d) ((d)*M_PI/180.0)
 #define RAD2DEG(r) ((r)*180.0/M_PI)
@@ -82,6 +86,7 @@ double is_obtuse(double *p0, double *p1, double *p2);
 void init_J_jig(jigsaw_jig_t *J_jig);
 double coast_dist(msh_t *msh, double xloc, double yloc);
 double point_dist(int npoints, point *p, double xloc, double yloc);
+double poly_dist(int npoly, poly_t **pl, double hmin, double xloc, double yloc);
 double bathyset(double b, double bmin, double bmax, double hmin,
 		double hmax, double expf);
 static void st_transform(jigsaw_msh_t *J_msh, ST3PROJ kind,
@@ -111,6 +116,12 @@ void tri_cen(int centref, int geogf, double *p1, double *p2, double *p3, double 
 void edge_cen(int centref, int geogf, double *v1, double *v2, double *po);
 int in_tri(double *po, double *p0, double *p1, double *p2);
 void add_quad_grid(parameters_t *params, char *iname);
+void create_bounded_mesh(int npts,     /* Number of perimeter points */
+			 double *x,    /* Perimeter x coordinates    */
+			 double *y,    /* Perimeter y coordinates    */
+			 double rmin,  /* Min. resolution in m       */
+			 double rmax,  /* Max. resolution in m       */
+			 jigsaw_msh_t *J_mesh);
 
 /*-------------------------------------------------------------------*/
 /* Compute the geographic metrics on the sphere using a false pole   */
@@ -1093,6 +1104,8 @@ delaunay *create_tri_mesh(int np, point *pin, int ns, int *sin, int nh, double *
     printf("Voronoi has %d points\n", d->nvoints);
   }
 
+  npin = malloc(d->npoints * sizeof(point));
+
   /*-----------------------------------------------------------------*/
   /* Iterate to improve the triangulation                            */
   for (m = 0; m < iterations; m++) {
@@ -1118,6 +1131,7 @@ delaunay *create_tri_mesh(int np, point *pin, int ns, int *sin, int nh, double *
       if (verbose) printf("triangle %d %d %d %d\n",n, t->vids[0], t->vids[1], t->vids[2]);
     }
     area /= (double)d->ntriangles;
+
     for (n = 0, j = 0; n < d->nedges-1; n++) {
       if (verbose) printf("edge %d %d %d\n",n, d->edges[j], d->edges[j+1]);
       j += 2;
@@ -1130,6 +1144,7 @@ delaunay *create_tri_mesh(int np, point *pin, int ns, int *sin, int nh, double *
       point* p = &d->voints[i];
       if (verbose) printf("Voronoi points %d: %f %f\n", i, p->x, p->y);
     }
+
     for (n = 0, j = 0; n < d->nvdges; n++) {
       if (verbose) printf("Voronoi edge %d %d %d\n",n, d->vdges[j], d->vdges[j+1]);
       j += 2;
@@ -1147,6 +1162,7 @@ delaunay *create_tri_mesh(int np, point *pin, int ns, int *sin, int nh, double *
       printf("Voronoi has %d points\n\n", d->nvoints);
     }
   }
+  free((point *)npin);
   return(d);
 }
 
@@ -1181,6 +1197,7 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
   int debug = -1;  /* Debugging information for points index         */
   int isdedge = 0; /* Debugging location is an edge (not a point)    */
   int edqu = 0;    /* 1 = exit if closed cells can't be made         */
+  int regadj = 0;  /* Adjustment for regular hex meshes              */
   int nn;
   int vd;
 
@@ -1196,6 +1213,7 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
     donpe = 0;
     mode = 1;
   }
+  if (params->us_type & US_HEX) regadj = 1;
 
   /*-----------------------------------------------------------------*/
   /* Get the centre and edges of each Voronoi cell. The centre is a  */
@@ -1229,6 +1247,8 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
     npe++;
   }
 
+  /*-----------------------------------------------------------------*/
+
   /* Convert debug edges to a point                                  */
   if (debug >= 0 && isdedge) {
     debug = d->edges[2*debug];
@@ -1252,6 +1272,37 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
 	nvedge[n]++;
       }
       j += 2;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Adjust regular meshes by removing triangles where the           */
+  /* triangulation has produced 'flipped' triangles with valence     */
+  /* less than 6. These can occur on boundary edges using HEX_DX.    */
+  /* For non-uniform meshes turn this off.                           */
+  if (regadj) {
+    double md;
+    double area = 0;
+    for (n = 0; n < d->ntriangles; n++) {
+      triangle* t = &d->triangles[n];
+      area += triarea(d->points[t->vids[0]].x, d->points[t->vids[0]].y,
+		      d->points[t->vids[1]].x, d->points[t->vids[1]].y,
+		      d->points[t->vids[2]].x, d->points[t->vids[2]].y);
+    }
+    area /= (double)d->ntriangles;
+    for (n = 0; n < d->ntriangles; n++) {
+      triangle* t = &d->triangles[n];
+      md = triarea(d->points[t->vids[0]].x, d->points[t->vids[0]].y,
+		   d->points[t->vids[1]].x, d->points[t->vids[1]].y,
+		   d->points[t->vids[2]].x, d->points[t->vids[2]].y);
+      
+      if (md < area) {
+	for (i = 0; i < 3; i++) {
+	  if (d->n_point_triangles[t->vids[i]] <= 6) {
+	    nvedge[t->vids[i]] = 0;
+	  }
+	}
+      }
     }
   }
 
@@ -3866,7 +3917,7 @@ void create_hex_radius(double crad,   /* Radius in metres     */
 /*-------------------------------------------------------------------*/
 /* Reads a bathymetry file and creates a hfun file                   */
 /*-------------------------------------------------------------------*/
-void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh_t *J_hfun)
+void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode)
 {
   FILE *fp = params->prmfd, *ef, *bf, *hf;
   char buf[MAXSTRLEN], key[MAXSTRLEN];
@@ -3905,7 +3956,8 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 
   /*-----------------------------------------------------------------*/
   /* Get the interpolation method                                    */
-  if(endswith(fname,".nc")) {
+  /*if(endswith(fname,".nc")) {*/
+  if(mode & H_NC) {
     size_t ncx, ncy;
     /* Open the dump file for reading                                */
     if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
@@ -3938,9 +3990,11 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
       imeth = (I_NC|I_GRID);
     else
       imeth = (I_NC|I_MESH);
-  } else if (endswith(fname,".bty")) {
+  } else if (mode & H_BTY) {
+    /*else if (endswith(fname,".bty")) {*/
     imeth = (I_BTY|I_MESH);
-  } else if (endswith(fname,".msh")) {
+  } else if (mode & H_MSH) {
+    /*else if (endswith(fname,".msh")) {*/
     imeth = I_MSH;
   } else {
     double d1, d2, d3;
@@ -4759,18 +4813,33 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   int perimf = 0; /* Set hfun perimeter to maximum resolution        */
   int npass = 0;
   int npoints;
+  int npoly;
   point *p;
+  poly_t **pl;
   double *hmx, *hmn, *bmx, *bmn, *exf;
   msh_t *msh = cm->msh;
 
   /*-----------------------------------------------------------------*/
   /* Get the seed points if required                                 */
-  if (mode == 1) {
+  if (mode & H_POINT) {
     prm_read_int(fp, "HFUN_POINTS", &npoints);
     p = malloc(npoints * sizeof(point));
     for(n = 0; n < npoints; n++) {
       if (fscanf(fp, "%lf %lf", &p[n].x, &p[n].y) != 2)
 	hd_quit("hfun_from_coast: Format for HFUN_POINTS is 'lon lat'.\n");
+    }
+  }
+  if (mode & H_POLY) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    prm_read_char(fp, "HFUN_POLY", buf);
+    npoly = parseline(buf, fields, MAXNUMARGS);
+    pl = (poly_t **)malloc(npoly * sizeof(poly_t));
+    for (n = 0; n < npoly; n++) {
+      pl[n] = poly_create();
+      if ((hf = fopen(fields[n], "r")) != NULL) {
+	m = poly_read(pl[n], hf);
+	fclose(hf);
+      }
     }
   }
 
@@ -4895,10 +4964,13 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
       xloc = hfx->_data[i];
       for (j = 0; j < nce2; j++) {
 	yloc = hfy->_data[j];
-	if (mode == 0) 
-	  b[n] = coast_dist(msh, xloc, yloc);
-	else
-	  b[n] = point_dist(npoints, p, xloc, yloc);
+	b[n] = HUGE;
+	if (mode & H_CST) 
+	  b[n] = min(b[n], coast_dist(msh, xloc, yloc));
+	if (mode & H_POINT)
+	  b[n] = min(b[n], point_dist(npoints, p, xloc, yloc));
+	if (mode & H_POLY)
+	  b[n] = min(b[n], poly_dist(npoly, pl, bmin, xloc, yloc));
 	if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
 	n++;
       }
@@ -4908,10 +4980,13 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
     for (n = 0; n < nhfun; n++) {
       xloc = J_hfun->_vert2._data[n]._ppos[0];
       yloc = J_hfun->_vert2._data[n]._ppos[1];
-      if (mode == 0)
-	b[n] = coast_dist(msh, xloc, yloc);
-      else
-	b[n] = point_dist(npoints, p, xloc, yloc);
+      b[n] = HUGE;
+      if (mode & H_CST) 
+	b[n] = min(b[n], coast_dist(msh, xloc, yloc));
+      if (mode & H_POINT)
+	b[n] = min(b[n], point_dist(npoints, p, xloc, yloc));
+      if (mode & H_POLY)
+	b[n] = min(b[n], poly_dist(npoly, pl, bmin, xloc, yloc));
       if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
     }
     J_hfun->_flags = JIGSAW_EUCLIDEAN_MESH;
@@ -4950,7 +5025,6 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
 
     if (dof) {
     if (expf > 0.0) {
-
 
       /* Exponential                                               */
       hfvals->_data[n] = (hmin - hmax) * exp(b[n] / expf) + 
@@ -5149,6 +5223,11 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   }
   /*for (n = 0; n < nhfun; n++) hfvals->_data[n] = 1.0;*/
   d_free_1d(b); 
+  if (mode & H_POLY) {
+    for (n = 0; n < npoly; n++)
+      poly_destroy(pl[n]);
+  free((poly_t **)pl);
+  }
   if (DEBUG("init_m"))
     dlog("init_m", "Coastline weighting function computed OK\n");
 }
@@ -5200,6 +5279,34 @@ double point_dist(int npoints, point *p, double xloc, double yloc)
 }
 
 /* END point_dist()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Computs the minimum distance to a coastline                       */
+/*-------------------------------------------------------------------*/
+double poly_dist(int npoly, poly_t **pl, double hmin, double xloc, double yloc)
+{
+  int n, i;
+  double d, x, y;
+  double dist = HUGE;
+
+  for (n = 0; n < npoly; n++) {
+    if (poly_contains_point(pl[n], xloc, yloc)) {
+      return(hmin);
+    } else {
+      for (i = 0; i < pl[n]->n; i++) {
+	x = xloc - pl[n]->x[i];
+	y = yloc - pl[n]->y[i];
+	d = sqrt(x * x + y * y);
+	dist = min(dist, d);
+      }
+    }
+  }
+  return(dist);
+}
+
+/* END poly_dist()                                                   */
 /*-------------------------------------------------------------------*/
 
 
@@ -7778,6 +7885,172 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
 }
 
 /* END mesh_expand()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Expand the mesh around a nominated point to create a vector (vec) */
+/* that is continuously connected; i.e. neighbours in the vector are */
+/* geographic neighbours.                                            */
+/*-------------------------------------------------------------------*/
+int mesh_expand_w(geometry_t *window,  /* Window geometry            */
+		  int *vec)            /* Return vector              */
+{
+  int cc, c, c2, ci, cn, j;
+  int found, ni, *film, *filla;
+  int verbose = 0;
+
+  /* Set the mask fanning out from the interior coordinate           */
+  ci = 1;
+  memset(vec, 0, window->szcS * sizeof(int));
+  filla = i_alloc_1d(window->szcS);
+  memset(filla, 0, window->szcS * sizeof(int));
+  found = 1;
+  ni = 1;
+  vec[ni++] = ci;
+  filla[ci] = 1;
+
+  while (found) {
+    found = 0;
+    for (cc = 1; cc < ni; cc++) {
+      c = vec[cc];
+      c2 = window->m2d[c];
+      if (filla[c] == 2) continue;
+      for (j = 1; j <= window->npe[c2]; j++) {
+	cn = window->c2c[j][c];
+	if (window->wgst[cn]) filla[cn] = 2;
+	if (!filla[cn]) {
+	  filla[cn] = 1;
+	  filla[c] = 2;
+	  vec[ni] = cn;
+	  found = 1;
+	  ni++;
+	}
+      }
+    }
+  }
+  ni--;
+  return(ni);
+}
+
+/* END mesh_expand_w()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Expand the mesh around a nominated point to create a vector (vec) */
+/* that is continuously connected; i.e. neighbours in the vector are */
+/* geographic neighbours. The mesh is connected in directions of     */
+/* outgoing flow.                                                    */
+/*-------------------------------------------------------------------*/
+int mesh_expand_3d(geometry_t *window,  /* Window geometry           */
+		   double *u            /* Velocity array            */
+		   )            
+{
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  int cc, c, c2, ci, cn, j, cm, n;
+  int e, ee;
+  int found, ni, *film, *filla;
+  int dir;
+  double d1;
+  int *vec = wincon->s6;
+  int *c2cc = wincon->s7;
+
+  memset(vec, 0, window->szc * sizeof(int));
+  memset(c2cc, 0, window->szc * sizeof(int));
+  filla = i_alloc_1d(window->szc);
+  memset(filla, 0, window->szc * sizeof(int));
+  ni = 1;
+  for (cc = 1; cc <=wincon->vcs; cc++) {
+    c = wincon->s1[cc];
+    c2 = window->m2d[c];
+    c2cc[c2] = cc;
+  }
+  for (cc = 1; cc <=wincon->vc; cc++) {
+    c = wincon->s1[cc];
+    c2 = window->m2d[c];
+    n = 0;
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      /* Direction of flow                                           */
+      dir = (window->eSc[ee][c2] * u[e] >= 0.0) ? 1 : -1;
+      /* Sum the edges with outgoing flow                            */
+      if (dir == 1) n++;
+    }
+    /* All edges are outflow                                         */
+    if (!filla[c] && n == window->npe[c2]) {
+      /*printf("start %d %d %d(%d %d)\n",master->nstep,ni,c,window->s2i[c],window->s2j[c]);*/
+      vec[ni++] = c;
+      filla[c] = 1;
+      mesh_expand_do(window, u, vec, &ni, filla);
+    }
+  }
+  /* Collect unassigned cells having at least one outflow edge       */
+  for (cc = 1; cc <=wincon->vc; cc++) {
+    c = wincon->s1[cc];
+    c2 = window->m2d[c];
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      dir = (window->eSc[ee][c2] * u[e] >= 0.0) ? 1 : -1;
+      if (!filla[c] && dir == 1) {
+	vec[ni++] = c;
+	filla[c] = 1;
+	mesh_expand_do(window, u, vec, &ni, filla);
+      }
+    }
+  }
+  ni--;
+  vec[0] = ni;
+  return(ni);
+}
+
+/* END mesh_expand_3d()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Performs mesh expansion                                           */
+/*-------------------------------------------------------------------*/
+int mesh_expand_do(geometry_t *window,  /* Window geometry           */
+		   double *u,           /* Velocity array            */
+		   int *vec,            /* Return vector             */
+		   int *ni,
+		   int *filla
+		   )
+{
+  int cc, c, c2, j;
+  int e, dir, cn;
+  int found = 1;
+
+  while (found) {
+    found = 0;
+    for (cc = 1; cc < *ni; cc++) {
+      c = vec[cc];
+      c2 = window->m2d[c];
+      if (filla[c] == 2) continue;
+      /*printf("do cc=%d ni=%d c=%d\n",cc,*ni,c);*/
+      for (j = 1; j <= window->npe[c2]; j++) {
+	e = window->c2e[j][c];
+	dir = (window->eSc[j][c2] * u[e] >= 0.0) ? 1 : -1;
+	cn = window->c2c[j][c];
+	if (window->wgst[cn]) continue;
+	if (dir == 1) {
+	  if (!filla[cn]) {
+	    vec[*ni] = cn;
+	    /*printf("found %d %d %d(%d %d)\n",j,*ni,cn,window->s2i[cn],window->s2j[cn]);*/
+	    *ni+=1;
+	    filla[cn] = 1;
+	  }
+	  found = 1;
+	}
+      }
+      filla[c] = 2;
+    }
+  }
+}
+
+/* END mesh_expand_do()                                              */
 /*-------------------------------------------------------------------*/
 
 

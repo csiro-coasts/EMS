@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: cstmesh.h 5862 2018-07-02 04:08:51Z her127 $
+ *  $Id: cstmesh.h 6233 2019-05-29 03:31:45Z her127 $
  */
 
 #ifndef _CSTMESH_H
@@ -24,6 +24,7 @@
 #define LINK_M 1
 #define LINK_P 2
 #define LINK_N 4
+#define LINK_D 8
 #define CM_FILE 2
 #define CM_LIB  4
 #define S_COAST  1
@@ -116,6 +117,9 @@ typedef struct {
   double hfun_max;    /* Maximum mesh size value                       */
   int nobc;           /* Number of open boundaries                     */
   cmobc_t *obc;       /* Open boundary structure                       */
+  double auto_l;      /* Auto link length                              */
+  int auto_t;         /* Auto link threshold                           */
+  double auto_f;      /* Auto link fraction                            */
   int nlink;
   link_t *link;
   msh_t *msh;

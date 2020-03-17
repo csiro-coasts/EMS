@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: boundaryio.c 6421 2019-11-22 00:23:02Z her127 $
  *
  */
 
@@ -290,6 +290,20 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       }
       sprintf(keyword, "BOUNDARY%1d.TRPC_TRA%d", n, tm);
       prm_read_double(fp, keyword, &open->trpc[i]);
+      sprintf(keyword, "BOUNDARY%1d.TRT_TRA%d", n, tm);
+      if (prm_read_char(fp, keyword, buf)) {
+	int tr;
+	for (tr = 0; tr <= params->ntr; tr++) {
+	  if (strcmp(buf, params->trinfo_3d[tr].name) == 0) {
+	    open->trt[i] = tr;
+	    break;
+	  }
+	}
+	/*
+	if ((tr = tracer_find_index(buf, open->ntr, tracers) >= 0))
+	  open->trt[i] = tr;
+	*/
+      }
     }
   }
 
@@ -653,6 +667,11 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     prm_read_char(fp, keyword, open->scale_d[i]);
   }
 
+  /* Nudging zone for T and S                                        */
+  sprintf(open->nzone, "%c", '\0');
+  sprintf(keyword, "BOUNDARY%1d.NUDGE_ZONE", n);
+  prm_read_char(fp, keyword, open->nzone);
+
   /*-----------------------------------------------------------------*/
   /* Options                                                         */
   sprintf(keyword, "BOUNDARY%1d.OPTIONS", n);
@@ -762,6 +781,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->rele_b = open->rele_i = 0.0; 
   open->stagger = OUTFACE;
   sprintf(open->bflow, "%c", '\0');
+  sprintf(open->nzone, "%c", '\0');
   open->rlen = 0.0;
   open->bhc = NOTVALID;
   open->bgz = 0;
@@ -780,8 +800,12 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
     open->rtra_b = d_alloc_1d(open->ntr);
     open->rtra_i = d_alloc_1d(open->ntr);
     open->trpc = d_alloc_1d(open->ntr);
+    open->trt = i_alloc_1d(open->ntr);
     /*UR-FIX assign last element */
     open->bcond_tra[open->ntr] = -1;
+  }
+  for (i = 0; i < open->ntr; i++) {
+    open->trt[i] = -1;
   }
   memset(open->relax_zone_tra, 0, open->ntr * sizeof(int));
   memset(open->rtra_b, 0, open->ntr * sizeof(double));
@@ -837,6 +861,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
     open->rtra_b = d_alloc_1d(open->ntr);
     open->rtra_i = d_alloc_1d(open->ntr);
     open->trpc = d_alloc_1d(open->ntr);
+    open->trt = i_alloc_1d(open->ntr);
   /*UR-FIX assign last element */
      open->bcond_tra[open->ntr] = -1;
   }
@@ -876,6 +901,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
     open->bcond_tra[i] = io->bcond_tra[i];
     open->clampv[i] = io->clampv[i];
     open->trpc[i] = io->trpc[i];
+    open->trt[i] = io->trt[i];
   }
   open->relax_time = io->relax_time;
   open->relax_timei = io->relax_timei;
@@ -899,6 +925,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->rlen = io->rlen;
   open->options = io->options;
   strcpy(open->tsfn, io->tsfn);
+  strcpy(open->nzone, io->nzone);
   open->sbcond = io->sbcond;
   open->bstdf = io->bstdf;
   open->nbstd = io->nbstd;
@@ -1562,8 +1589,8 @@ void bdry_custom_init(master_t *master, open_bdrys_t *open,
       (cstring *) malloc(sizeof(cstring) * open->ntsfiles);
     for (t = 0; t < open->ntsfiles; ++t)
       strcpy(open->filenames[t], ((char **)files)[t]);
-      open->tsfiles = hd_ts_multifile_read(master, open->ntsfiles,
-                                           open->filenames);
+    open->tsfiles = hd_ts_multifile_read(master, open->ntsfiles,
+					 open->filenames);
   }
 
   /*-----------------------------------------------------------------*/

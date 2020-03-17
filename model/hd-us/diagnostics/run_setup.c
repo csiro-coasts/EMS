@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 6310 2019-09-13 04:30:28Z her127 $
+ *  $Id: run_setup.c 6455 2020-02-18 23:41:22Z her127 $
  *
  */
 
@@ -96,12 +96,8 @@ void write_run_setup(hd_data_t *hd_data)
       else
 	fprintf(fp, "Local filling invoked\n");
     }
-    if (params->fillf & LOCALER) 
-      fprintf(fp, "Global filling invoked - monotonic using volume errors to infer total mass\n");
     if (params->fillf & GLOBAL) 
       fprintf(fp, "Global filling invoked - non monotonic\n");
-    if (params->fillf & MONOTONIC && !(params->fillf & LOCAL))
-      fprintf(fp, "Monotonic multiplicative global filling invoked\n");
     if (params->fillf & WEIGHTED)
       fprintf(fp, "Weighted additive global filling invoked\n");
     if (params->fillf & OBC_ADJUST)
@@ -295,6 +291,8 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Tracer percentile '%s' diagnostic invoked\n", params->trperc);
   if (params->trflsh)
     fprintf(fp, "Flushing diagnostic invoked for tracer 'flush'\n");
+  if (params->means & TRANSPORT)
+    fprintf(fp, "Mean quantities used for inline transport\n");
   if (params->means & VEL3D)
     fprintf(fp, "Mean 3D velocity diagnostic invoked\n");
   if (params->means & VEL2D)
@@ -319,7 +317,10 @@ void write_run_setup(hd_data_t *hd_data)
 
   }
   if (!(params->means & NONE))
-    fprintf(fp, "  Averaging period = %s\n", params->means_dt);
+    if (params->means & TRANSPORT)
+      fprintf(fp, "  Averaging period = %3.0f timesteps\n", params->tratio);
+    else
+      fprintf(fp, "  Averaging period = %s\n", params->means_dt);
   if (params->lnm != 0.0)
     fprintf(fp, "Steric height diagnostic invoked : lnm = -%6.2f\n",
             params->lnm);
@@ -567,8 +568,13 @@ void write_run_setup(hd_data_t *hd_data)
     if (params->trasc& ORDER4US)
       fprintf(fp, "  High order scheme = 4th order unstructured.\n");
   }
-  if (params->trasc == FFSL)
+  if (params->trasc == FFSL) {
     fprintf(fp, "Flux-form semi-lagrangian tracer advection scheme.\n");
+    if (params->fillf & CLIP) 
+      fprintf(fp, "Clipping invoked to ensure monotonicity.\n");
+    if (params->fillf & MONOTONIC)
+      fprintf(fp, "Monotonic multiplicative global filling invoked.\n");
+  }
   if (params->trasc == LAGRANGE) {
     if (params->osl & L_LINEAR)
       fprintf(fp, "Linear semi-Lagrangian tracer advection scheme.\n");
@@ -599,8 +605,12 @@ void write_run_setup(hd_data_t *hd_data)
   }
   if (params->trasc == (LAGRANGE|VANLEER))
     fprintf(fp, "Split Semi-Lagrangian/Van Leer tracer advection scheme.\n");
-  if (params->ultimate)
-    fprintf(fp, "Ultimate filter invoked.\n");
+  if (params->ultimate) {
+    if (params->trasc == FFSL)
+      fprintf(fp, "Universal flux limiter invoked.\n");
+    else
+      fprintf(fp, "Ultimate filter invoked.\n");
+  }
   fprintf(fp, "\n");
 
   /*-----------------------------------------------------------------*/
@@ -684,12 +694,16 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Horizontal viscosity using unstructured Laplacian scheme\n");
   else if (params->visc_method & US_BIHARMONIC)
     fprintf(fp, "Horizontal viscosity using unstructured biharmonic scheme\n");
-  fprintf(fp, "Mean horizontal edge length = %8.2f m\n", master->hmean1);
-  fprintf(fp, "Mean horizontal distance between centres = %8.2f m\n", master->hmean2);
+  d1 = 0.01 * (master->hmean1 * master->hmean1) / master->grid_dt;
+  fprintf(fp, "Mean horizontal edge length = %8.2f m (VH ~ %5.0f)\n", master->hmean1, d1);
+  d1 = 0.01 * (master->hmean2 * master->hmean2) / master->grid_dt;
+  fprintf(fp, "Mean horizontal distance between centres = %8.2f m (VH ~ %5.0f)\n", master->hmean2, d1);
   fprintf(fp, "Minimum horizontal distance between centres = %8.2f m\n", master->minres);
   fprintf(fp, "Maximum horizontal distance between centres = %8.2f m\n", master->maxres);
-  fprintf(fp, "Mean cell area = %5.4e m^2\n", master->amean);
-  fprintf(fp, "Mean edge area = %5.4e m^2\n", master->edmean);
+  d1 = 0.01 * master->amean / master->grid_dt;
+  fprintf(fp, "Mean cell area = %5.4e m^2 (VH ~ %5.0f)\n", master->amean, d1);
+  d1 = 0.01 * master->edmean / master->grid_dt;
+  fprintf(fp, "Mean edge area = %5.4e m^2 (VH ~ %5.0f)\n", master->edmean, d1);
   if (params->smag_smooth) {
     fprintf(fp, "Smagorinsky clipping and smoothing (%d passes)\n", params->smag_smooth);
     fprintf(fp, "Viscosity limited to %5.2f\n", -master->u1vh0);
@@ -1176,6 +1190,8 @@ void write_run_setup(hd_data_t *hd_data)
 
   if (!(params->heatflux & NONE)) {
     fprintf(fp, "Heat flux calculated\n");
+    if (params->heatflux & GHRSST)
+      fprintf(fp, "  Relaxation to surface GHRSST temperature.\n");
     if (params->heatflux & (SURF_RELAX|AVHRR)) {
       fprintf(fp, "  Relaxation to surface temperature.\n");
       if (master->hftemp)
@@ -1394,8 +1410,8 @@ void write_run_setup(hd_data_t *hd_data)
   fprintf(fp,"\n");
   if (params->tidep) {
     fprintf(fp, "Tidal body force included.\n");
-    fprintf(fp, "  Tidal self-attraction / loading (SAL) constant = %5.2f\n", params->eqt_alpha);
     fprintf(fp, "  Tidal body force constant constant = %5.2f\n\n", params->eqt_beta);
+    fprintf(fp, "  Tidal self-attraction / loading (SAL) constant = %5.2f\n", params->eqt_alpha);
   }
 
   /*-----------------------------------------------------------------*/

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tsfiles.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: tsfiles.c 6228 2019-05-29 03:28:29Z her127 $
  *
  */
 
@@ -35,6 +35,7 @@ double df_eval_sparse(datafile_t *df, df_variable_t *v, double r, int cc);
 int dump_choose_multifile(datafile_t *df, double t);
 int read_sparse_dims(char *name, int ns2,int ns3,int nce1,int nce2,int nz);
 void process_avhrr(master_t *master, timeseries_t *ts);
+void process_ghrsst(master_t *master, timeseries_t *ts);
 int c_search(geometry_t *geom, int c, int *edge, int *edge_len, int *edge_pos);
 int is_fin(double sst, double tol, double mask, double lim);
 int *stencil(geometry_t *window, int cl, int *size, int type);
@@ -401,8 +402,8 @@ double hd_ts_multifile_eval_xyz(int ntsfiles, timeseries_t **tsfiles,
           ((t >= ts->t[0]) && (t <= ts->t[ts->nt - 1]))))
           break;
     }
-
     assert(index >= 0);
+
     val = ts_eval_xyz(tsfiles[index], varids[index], t, x, y, z);
     if (ts_eval_runcode(tsfiles[index])) master->regf = RS_OBCSET;
     return val;
@@ -565,6 +566,8 @@ void hd_ts_multifile_eval(master_t *master,
       }
       if (v == master->avhrr)
 	process_avhrr(master, tsfiles[0]);
+      if (v == master->ghrsst)
+	process_ghrsst(master, tsfiles[0]);
 
     } else {
       for (cc = 1; cc <= nvec; cc++) {
@@ -628,6 +631,8 @@ void hd_trans_multifile_eval(master_t *master,
       }
       if (v == master->avhrr)
 	process_avhrr(master, tsfiles[0]);
+      if (v == master->ghrsst)
+	process_ghrsst(master, tsfiles[0]);
 
     } else {
       /* Assume u and v are oriented in east and north directions,
@@ -1377,6 +1382,119 @@ void process_avhrr(master_t *master, /* Master data                  */
 }
 
 /* END process_avhrr()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to perform a global fill and smooth the GHRSST SST data.  */
+/*-------------------------------------------------------------------*/
+void process_ghrsst(master_t *master, /* Master data                 */
+		    timeseries_t *ts) /* Timeseries file             */
+{
+  geometry_t *geom = master->geom;
+  int do_global_fill = 1;            /* Perform global filling       */
+  int do_median = 1;                 /* Perform median filtering     */
+  double sfact = 1.0;                /* Scaing for std_dev threshold */
+  double sr = 1100.0;                /* Nominal GHRSST resolution    */
+  double tol = 5.0;                  /* Error tolerance              */
+  int c, c1, cc, n, sn;
+  int edge, edge_pos, edge_len;
+  int finished;
+  double *sst = master->ghrsst;
+  double *sste = master->ghrsste;
+  double* aa, fval;
+  double mean_sst, std_dev, ms;
+
+  aa = d_alloc_1d(geom->sgsizS);
+
+  /*-----------------------------------------------------------------*/
+  /* Get the mean sst                                                */
+  mean_sst = 0.0;
+  std_dev = 0.0;
+  n = 0;
+  for(cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];    
+    if (fabs(sste[c]) <= tol) {
+      mean_sst += sst[c];
+      std_dev += sst[c] * sst[c];
+      n += 1;
+    }
+  }
+  if (n) {
+    std_dev = (std_dev - mean_sst * mean_sst / (double)n) / (double)(n - 1);
+    std_dev = 2.0 * sqrt(std_dev);
+    mean_sst /= (double)n;
+  }
+  else
+    hd_warn("No valid SST values in file %s, time %f\n", ts->df->name,
+	    master->t/86400);
+
+  /*-----------------------------------------------------------------*/
+  /* Perform a global fill on the data at land locations             */
+  set_lateral_bc_eta(sst, geom->nbptS, geom->bpt, geom->bin, geom->bin2, 0);
+  for(cc = 1; cc <= geom->n2_t; cc++) {
+    edge = L_EDGE; edge_pos = 0; edge_len = 2;
+    c = geom->w2_t[cc];
+    c1 = geom->xm1[geom->yp1[c]];
+    aa[c] = sst[c];
+    finished = (fabs(sste[c]) > tol) ? 1 : 0;
+    if (!finished && sst[c] < 0.0) finished = 1;
+    /* Find the nearest valid value */
+    for (n = 0; n < geom->b2_t && finished; n++) {
+      aa[c] = sst[c1];
+      finished = (sste[c1] > tol) ? 1 : 0;
+      if (!finished && aa[c] < 0.0) finished = 1;
+      c1 = c_search(geom, c1, &edge, &edge_len, &edge_pos);
+    }
+
+    /* No valid values found in the search,usually due to the search */
+    /* becomming 'trapped' in a corner => replace with mean.         */
+    if (finished) {
+      int *st, c2;
+      int ns = 5;
+      st = stencil(geom, c, &ns, 0);
+      ms = 0.0; n = 0;
+      for (c2 = 0; c2 < ns; c2++) {
+	c1 = st[c2];
+	if (sste[c1] <= tol) {
+	  ms += aa[c1];
+	  n += 1;
+	}
+      }
+      aa[c] = n ? ms / (double)n : mean_sst;
+      i_free_1d(st);
+    }
+  }
+  if (do_global_fill)
+    memcpy(sst, aa, geom->sgsizS * sizeof(double));
+
+  /*-----------------------------------------------------------------*/
+  /* Median filter the data where the median over a large stencil    */
+  /* and the value at a location exceed the domain variance. This    */
+  /* helps remove anomolously low values from cloud interference and */
+  /* high values from land interference / diurnal heating.           */
+  set_lateral_bc_eta(sst, geom->nbptS, geom->bpt, geom->bin, geom->bin2, 0);
+  n = 11;
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    fval = sqrt(geom->h1acell[c] * geom->h1acell[c] + 
+		geom->h2acell[c] * geom->h2acell[c]);
+    if (fval < sr)
+      sn = 2 * floor(n * (int)(sr / fval) / 2) + 1;
+    else
+      sn = n;
+    aa[c] = sst[c];
+    ms = median(geom, sst, sn * sn, c);
+    if (fabs(sst[c] - ms) > sfact * std_dev) 
+      aa[c] = ms;
+  }
+  if (do_median)
+    memcpy(sst, aa, geom->sgsizS * sizeof(double));
+
+  d_free_1d(aa);
+}
+
+/* END process_ghrsst()                                              */
 /*-------------------------------------------------------------------*/
 
 

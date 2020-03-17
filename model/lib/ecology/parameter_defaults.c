@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_defaults.c 6040 2018-11-28 11:32:15Z bai155 $
+ *  $Id: parameter_defaults.c 6353 2019-09-20 14:22:57Z bai155 $
  *
  */
 
@@ -1095,7 +1095,7 @@ void eco_params_bgc2p0(parameter_info **params, int *nprm)
   assign_string_values(parameters, *nprm);
 }
 
-void eco_params_bgc3p0(parameter_info **params, int *nprm)
+void eco_params_bgc3p1(parameter_info **params, int *nprm)
 {
   int n;
   parameter_info *parameters = *params;
@@ -1128,13 +1128,13 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].value[0] = 1.0e-6;
   parameters[n].index = n++;
 
-  parameters[n].name  = "xco2_in_air";
-  parameters[n].desc  = "Atmospheric CO2";
-  parameters[n].sym   = "p\\mathrm{CO}_2";
-  parameters[n].units = "ppmv";
-  parameters[n].value[0] = 396.48;
-  parameters[n].ref = "Mean 2013 at Mauna Loa: http://co2now.org/current-co2/co2-now/";
-  parameters[n].index = n++;
+  // parameters[n].name  = "xco2_in_air";
+  // parameters[n].desc  = "Atmospheric CO2";
+  // parameters[n].sym   = "p\\mathrm{CO}_2";
+  // parameters[n].units = "ppmv";
+  // parameters[n].value[0] = 396.48;
+  // parameters[n].ref = "Mean 2013 at Mauna Loa: http://co2now.org/current-co2/co2-now/";
+  // parameters[n].index = n++;
 
   parameters[n].name  = "N2";
   parameters[n].desc  = "Concentration of dissolved N2";
@@ -1635,7 +1635,7 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].desc  = "Maximum denitrification rate";
   parameters[n].units = "d-1";
   parameters[n].sym   = "\\tau_{denit}";
-  parameters[n].value[0] = 0.8;  
+  parameters[n].value[0] = 0.1;  
   parameters[n].index = n++;
 
   parameters[n].name  = "KO_den";
@@ -1802,7 +1802,7 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].ref = "NESP project";
   parameters[n].index = n++;
 
-  parameters[n].name  = "SG_tau_time";
+  parameters[n].name  = "SG_tau_efold";
   parameters[n].desc  = "Time-scale for critical shear stress for SG loss";
   parameters[n].units = "s";
   parameters[n].sym   = "\\tau_{SG,time}";
@@ -1915,7 +1915,7 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].ref = "NESP project";
   parameters[n].index = n++;
 
-  parameters[n].name  = "SGH_tau_time";
+  parameters[n].name  = "SGH_tau_efold";
   parameters[n].desc  = "Time-scale for critical shear stress for SGH loss";
   parameters[n].units = "s";
   parameters[n].sym   = "\\tau_{SGH,time}";
@@ -2029,7 +2029,7 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].ref = "NESP project";
   parameters[n].index = n++;
 
-  parameters[n].name  = "SGD_tau_time";
+  parameters[n].name  = "SGD_tau_efold";
   parameters[n].desc  = "Time-scale for shear stress for deep SG loss";
   parameters[n].units = "s";
   parameters[n].sym   = "\\tau_{SGD,time}";
@@ -2151,14 +2151,38 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].ref = "EMS manual";
   parameters[n].index = n++;
 
-  /* New parameters for B3p0 */
+  /* New parameters for B3p1 */
 
   parameters[n].name  = "ROSthreshold";
-  parameters[n].desc  = "Bleaching ROS threshold";
-  parameters[n].units = "mg O cell-1";
+  parameters[n].desc  = "Bleaching ROS threshold per cell";
+  parameters[n].units = "mg ROS cell-1";
   parameters[n].sym   = "\\phi_{ROS}";
-  parameters[n].value[0] = 5.0e-4;
+  parameters[n].value[0] = 1.418e-14;
   parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Xanth_tau";
+  parameters[n].desc  = "Xanthophyll switching rate coefficient";
+  parameters[n].units = "s-1";
+  parameters[n].sym   = "\\tau_{xan}";
+  parameters[n].value[0] = 8.333333e-04;
+  parameters[n].ref = "Gustafsson et al., 2013";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "chla2rcii";
+  parameters[n].desc  = "Ratio of RCII to Chlorophyll a";
+  parameters[n].units = "mol RCII g Chl-1";
+  parameters[n].sym   = "A_{RCII}";
+  parameters[n].value[0] = 2.238413e-06;
+  parameters[n].ref = "Suggett et al., 2009";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "photon2rcii";
+  parameters[n].desc  = "Stoichiometric ratio of RCII units to photons";
+  parameters[n].units = "mol RCII mol photon-1";
+  parameters[n].sym   = "m_{RCII}";
+  parameters[n].value[0] = 0.1e-6;
+  parameters[n].ref = "";
   parameters[n].index = n++;
 
   parameters[n].name  = "r_RD_NtoP";
@@ -2182,6 +2206,30 @@ void eco_params_bgc3p0(parameter_info **params, int *nprm)
   parameters[n].units = "m";
   parameters[n].sym   = "r_{Tricho colony}";
   parameters[n].value[0] = 0.000005;
+  parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "CS_photon2ros";
+  parameters[n].desc  = "Stoichiometric coefficient of ROS";
+  parameters[n].units = "-";
+  parameters[n].sym   = "-";
+  parameters[n].value[0] = 7.0e7;
+  parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ROSmult";
+  parameters[n].desc  = "Linear coefficient of bleaching for above threshold fraction";
+  parameters[n].units = "unitless";
+  parameters[n].sym   = "k_{CS,ROSfrac}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "CSmaxbleachrate";
+  parameters[n].desc  = "Maximum coral bleaching rate";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\zeta_{bleach}";
+  parameters[n].value[0] = 1.0;
   parameters[n].ref = "EMS manual";
   parameters[n].index = n++;
 

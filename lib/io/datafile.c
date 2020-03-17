@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.c 5838 2018-06-27 03:33:01Z riz008 $
+ *  $Id: datafile.c 6235 2019-05-29 03:32:20Z her127 $
  */
 
 #include <stdio.h>
@@ -25,6 +25,14 @@
 #include <time.h>
 #include "netcdf.h"
 #include "ems.h"
+
+static char *sst_names[5] = {
+  "analysed_sst",
+  "analysis_error",
+  "sea_surface_temperature",
+  "quality_level",
+  NULL
+};
 
 /* Prototypes for local routines */
 void netcdf_read(int fid, datafile_t *df, int type);
@@ -39,7 +47,7 @@ void multi_netcdf_read_data(datafile_t *df, df_variable_t *v, int rec);
 void multi_netcdf_free(datafile_t *df);
 void multi_netcdf_read_attrib(datafile_t *df, int varid, int attnum,
                         df_attribute_t *a);
-
+void multi_netcdf_read_atts(datafile_t *df, df_multi_file_t *fd);
 void ascii_read(FILE * fp, datafile_t *df);
 void ascii_write(FILE * fp, datafile_t *df);
 void ascii_free(datafile_t *df);
@@ -1307,7 +1315,6 @@ void netcdf_read(int fid, datafile_t *df, int type)
     return;
   }
 
-
   /* Query the netCDF file for the total number of variables, and allocate 
      the array */
   nc_inq_nvars(df->ncid, &df->nv);
@@ -1333,6 +1340,25 @@ void netcdf_read(int fid, datafile_t *df, int type)
       v->dimids = (int *)malloc(v->nd * sizeof(int));
       nc_inq_vardimid(df->ncid, v->varid, v->dimids);
 
+      /* MH. Allow special treatment for GHRSST netCDF files. These files */
+      /* have a time dimension of 1 rather than UNLIMITED, no coordinate  */
+      /* types for lat and lon, and only 2 coordinates for the data       */
+      /* (analysed_sst). If v->type |= VT_COORD, then these issues are    */
+      /* forced.                                                          */
+      if (v->nd == 3) {
+	j = 0;
+	while (sst_names[j] != NULL) {
+	  if (strcmp(v->name, sst_names[j]) == 0) {
+	    v->type |= VT_COORD;
+	    break;
+	  }
+	  j++;
+	}
+      }
+      /*
+      if (strcmp(v->name, "analysed_sst") == 0 && v->nd == 3) 
+	v->type |= VT_COORD;
+      */
       /* Loop through all of the attributes. Take special care to with the 
          long_name, units, missing, _FillValue, and * coord type.
          Coordinates are checked later. */
@@ -1415,7 +1441,6 @@ void netcdf_read(int fid, datafile_t *df, int type)
         v->lflag = v->lflag * v->scale_factor + v->add_offset;
         v->cflag = v->cflag * v->scale_factor + v->add_offset;
       }
-
     }
 
     /* Read the global attributes */
@@ -1439,6 +1464,17 @@ void netcdf_read(int fid, datafile_t *df, int type)
           break;
         }
       }
+      /* MH. Find the time dimension for GHRSST netCDF and set to coordinate dimension. */
+      if (v->type & VT_COORD) {
+	if ((v->nd == 1) && strcmp(v->name, "time") == 0 && df->dimensions[v->dimids[0]].size == 1) {
+	  if (strcasecmp(v->name, df->dimensions[v->dimids[0]].name) == 0) {
+	    df_set_record(df, i);
+	    break;
+	  } else
+	    v->type &= ~VT_COORD;
+	}
+      }
+      /* END MH */
     }
 
 
@@ -1455,8 +1491,15 @@ void netcdf_read(int fid, datafile_t *df, int type)
           text = ATT_TEXT(a);
         }
       }
-
       decode_coords(df, v, text);
+
+      /* MH : set the coordinate types (for GHRSST data) if not already set     */
+      if (strcmp(v->name, "time") == 0 && v->nc == 0 && v->type & VT_DATA)
+	v->type = VT_TIME;
+      if (strcmp(v->name, "lon") == 0 && v->nc == 0 && v->type & VT_DATA)
+	v->type = VT_LONGITUDE;
+      if (strcmp(v->name, "lat") == 0 && v->nc == 0 && v->type & VT_DATA)
+	v->type = VT_LATITUDE;
 
       /* MH : If the variable is botz and no coordinates were found, assume the */
       /* coordinates are x_centre, y_centre and try again.                      */
@@ -1471,11 +1514,33 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	  }
 	}
 	decode_coords(df, v, text);
+	v->type |= VT_BATHY;
       }
-
+      /* MH : If the variable is height and no coordinates were found, assume   */
+      /* the coordinates are lon, lat and try again.                            
+      if (strcmp(v->name, "height") == 0 && v->nc == 0) {
+	int ii;
+	char buf[MAXSTRLEN];
+	for (ii = 0; ii < df->nv; ++ii) {
+	  df_variable_t *vc = &df->variables[ii];
+	  if (strcmp(vc->name, "lon") == 0) {
+	    strcpy(vc->units, "degrees_E");
+	    strcpy(buf, "geographic");
+	    df_add_text_attribute(df, vc, "projection", buf);
+	  }
+	  if (strcmp(vc->name, "lat") == 0) {
+	    strcpy(vc->units, "degrees_N");
+	    strcpy(buf, "geographic");
+	    df_add_text_attribute(df, vc, "projection", buf);
+	  }
+	}
+	df->nrecords = 1;
+	v->type |= VT_BATHY;
+      }
+      */
       /* MH : Check if the coordinates can be constructed from existing variables. */
       /* Only for 2d and 3d spatial data in lat/long coordinates. */
-      if (v->type == VT_DATA && v->nc == 0 && v->nd > 1) {
+      if (v->type & VT_DATA && v->nc == 0 && v->nd > 1) {
 	int n;
 	v->coordids = (int *)malloc(v->nd * sizeof(int));
 	memset(v->coordids, 0, sizeof(v->nd * sizeof(int)));
@@ -1488,6 +1553,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	    }
 	  }
 	}
+
 	if (v->nc == 0) {
 	  free(v->coordids);
 	  v->coordids = NULL;
@@ -1500,12 +1566,48 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	      else if (strcmp(cv->units, "degrees_N") == 0)
 		cv->type = VT_LATITUDE;
 	      else if (strcmp(cv->units, "meters") == 0)
-		cv->type = VT_Z;	      
+		cv->type = VT_Z;
 	    }
 	    warn("netcdf_read: Coordinates for %s not found; using coord%d = %s\n",
 		 v->name, j, cv->name);
 	  }
 	  v->type |= VT_INFERRED;
+	}
+      }
+
+      /* Set the coordinate types for ghrsst netCDF. */
+      if (v->type & VT_COORD) {
+	if (v->type & VT_DATA && v->nc == 0 && v->nd >= 1) {
+	  int n;
+	  v->coordids = (int *)malloc(v->nd * sizeof(int));
+	  memset(v->coordids, 0, sizeof(v->nd * sizeof(int)));
+	  for (j = 0; j < v->nd; ++j) {
+	    for (n = 0; n < df->nv; ++n) {
+	      df_variable_t *nv = &df->variables[n];
+	      if(strcmp(df->dimensions[v->dimids[j]].name, nv->name) == 0) {
+		v->coordids[v->nd-(j+1)] = n;
+		v->nc++;
+	      }
+	    }
+	  }
+	  if (v->nc == 0) {
+	    free(v->coordids);
+	    v->coordids = NULL;
+	  } else {
+	    for (j = 0; j < v->nc; ++j) {
+	      df_variable_t *cv = &df->variables[v->coordids[j]];
+	      if (cv->type & VT_DATA) {
+		if (strcmp(cv->units, "degrees_east") == 0)
+		  cv->type = VT_LONGITUDE;
+		else if (strcmp(cv->units, "degrees_north") == 0)
+		  cv->type = VT_LATITUDE;
+		else if (strcmp(cv->units, "meters") == 0)
+		  cv->type = VT_Z;	      
+	      }
+	      warn("netcdf_read: Coordinates for %s not found; using coord%d = %s\n",
+		   v->name, j, cv->name);
+	    }
+	  }
 	}
       }
       /* end MH */
@@ -1679,7 +1781,6 @@ void multi_netcdf_read(FILE *fp, datafile_t *df)
        memset(df1, 0, sizeof(datafile_t));
        if (nc_open(fd->files[i].filename, NC_NOWRITE, &fid) == NC_NOERR) {
 	 netcdf_read(fid, df1, DFT_NETCDF);
-
 	 /* Check number of dimensions */
 	 if (df0->nd != df1->nd)
 	   quit("Error: multinecdf file '%s' number of dimensions (%d) does not match between %s and %s\n",
@@ -1707,7 +1808,8 @@ void multi_netcdf_read(FILE *fp, datafile_t *df)
 		  df0->variables[d].name, fd->files[0].filename, 
 		  df1->variables[d].name, fd->files[i].filename);
 	 }
-	 
+	 /* MH : Read the saved attributes for this file */
+	 multi_netcdf_read_atts(df1, &fd->files[i]);
 	 /* Clean up */
 	 df_free(df1);
 	 df1 = NULL;
@@ -1716,7 +1818,7 @@ void multi_netcdf_read(FILE *fp, datafile_t *df)
 	 quit("Error opening the netcdf file '%d:%s'\n", 
 	      i, fd->files[i].filename);
      }
-     
+
      /* Cleanup df0 */
      df_free(df0);
      
@@ -1725,11 +1827,61 @@ void multi_netcdf_read(FILE *fp, datafile_t *df)
       */
      nc_open(fd->files[0].filename, NC_NOWRITE, &fid);
      netcdf_read(fid, df, DFT_MULTI_NETCDF);
+     /* MH : Read the saved attributes for this file */
+     multi_netcdf_read_atts(df, &fd->files[0]);
      nc_close(df->ncid);
      df->ncid = -1;
   }
 
   fclose(fp);
+}
+
+/* MH. Routine to read and save selected attributes for multi_netcdf files */
+void multi_netcdf_read_atts(datafile_t *df, df_multi_file_t *fd) {
+  int n, nv = df->nv;
+  fd->offset = d_alloc_1d(nv);
+  fd->scale = d_alloc_1d(nv);
+  fd->fill = d_alloc_1d(nv);
+
+  for (n = 0; n < nv; n++) {
+    df_variable_t *v = &df->variables[n];
+    df_attribute_t *a = df_get_attribute(df, v, "add_offset");
+    fd->scale[n] = 1.0;
+    fd->offset[n] = 0.0;
+    if (a != NULL) {
+      if (CHK_TYPE(a, AT_DOUBLE))
+	v->add_offset = ATT_DOUBLE(a, 0);
+      else
+	v->add_offset = ATT_FLOAT(a, 0);
+      fd->offset[n] = (double)v->add_offset;
+      a = df_get_attribute(df, v, "scale_factor");
+      if (a != NULL) {
+	if (CHK_TYPE(a, AT_BYTE))
+	  v->scale_factor = ATT_BYTE(a, 0);
+	else if (CHK_TYPE(a, AT_SHORT))
+	  v->scale_factor = ATT_SHORT(a, 0);
+	else if (CHK_TYPE(a, AT_FLOAT))
+	  v->scale_factor = ATT_FLOAT(a, 0);
+	else
+	  v->scale_factor = ATT_DOUBLE(a, 0);
+	if (v->scale_factor == 0.0) v->scale_factor = 1.0;
+	fd->scale[n] = (double)v->scale_factor;
+	a = df_get_attribute(df, v, "_FillValue");
+	if (a != NULL) {
+	  if (CHK_TYPE(a, AT_BYTE))
+	    v->fillvalue = ATT_BYTE(a, 0);
+	  else if (CHK_TYPE(a, AT_SHORT))
+	    v->fillvalue = ATT_SHORT(a, 0);
+	  else if (CHK_TYPE(a, AT_FLOAT))
+	    v->fillvalue = ATT_FLOAT(a, 0);
+	  else
+	    v->fillvalue = ATT_DOUBLE(a, 0);
+	  v->fillvalue = v->fillvalue * v->scale_factor + v->add_offset;
+	  fd->fill[n] = (double)v->fillvalue;
+	}
+      }
+    }
+  }
 }
 
 void multi_netcdf_read_records(datafile_t *df, int varid) {
@@ -1800,7 +1952,7 @@ void multi_netcdf_read_data(datafile_t *df, df_variable_t *v, int rec) {
 
   df_multi_t *fd = (df_multi_t *)df->private_data;
   if (fd != NULL) {
-    int i, nr = 0;
+    int i, j, nr = 0, jv;
     
     /* Start counter where we left off last */
     for (i=0; i<fd->nfiles; ++i) {
@@ -1808,6 +1960,20 @@ void multi_netcdf_read_data(datafile_t *df, df_variable_t *v, int rec) {
       int roff = f->rec_offset;
       
       if ((rec >= nr) && (rec < (nr+f->nrecords - roff))) {
+
+	/* MH : Update selected attributes if saved */
+	for (j = 0; j < df->nv; j++) {
+	  if (f->scale[j] != 1.0 && f->offset[j] != 0.0) {
+	    df_variable_t *rv = &df->variables[j];
+	    if (strcmp(rv->name, v->name) == 0) {
+	      v->add_offset = f->offset[j];
+	      v->scale_factor = f->scale[j];
+	      v->fillvalue = f->fill[j] * v->scale_factor + v->add_offset;
+	      break;
+	    }
+	  }
+	}
+
          if (nc_open(f->filename, NC_NOWRITE, &df->ncid) == NC_NOERR) {
 	    netcdf_read_data(df, v, rec, nr-roff);
             nc_close(df->ncid);

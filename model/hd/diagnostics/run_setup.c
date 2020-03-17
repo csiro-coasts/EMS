@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 5997 2018-10-22 22:46:49Z riz008 $
+ *  $Id: run_setup.c 6422 2019-11-22 00:23:19Z her127 $
  *
  */
 
@@ -918,6 +918,9 @@ void write_run_setup(hd_data_t *hd_data)
           wbdrycustom(fp, params, n, &open->bdata_t[nn]);
 	if (strlen(scale->name))
 	  fprintf(fp, "    Scaling: %s\n", scale->name);
+	if (open->trt[nn] >= 0) {
+	  fprintf(fp, "    Prescribed using tracer %s\n", master->trinfo_3d[open->trt[nn]].name);
+	}
       }
 
       if (open->relax_time) {
@@ -1210,6 +1213,8 @@ void write_run_setup(hd_data_t *hd_data)
 
   if (!(params->heatflux & NONE)) {
     fprintf(fp, "Heat flux calculated\n");
+    if (params->heatflux & GHRSST)
+      fprintf(fp, "  Relaxation to surface GHRSST temperature.\n");
     if (params->heatflux & (SURF_RELAX|AVHRR)) {
       fprintf(fp, "  Relaxation to surface temperature.\n");
       if (master->hftemp)
@@ -1295,6 +1300,12 @@ void write_run_setup(hd_data_t *hd_data)
         }
         if (master->swr_babs)
           fprintf(fp, "  Short wave radiation bottom absorption parameter = %4.2f\n", master->swr_babs[1]);
+	if (strlen(params->swr_regions)) {
+	  fprintf(fp, "  Short wave radiation parameter estimation:\n");
+	  fprintf(fp, "    Regions = %s\n", params->swr_regions);
+	  fprintf(fp, "    Update dt = %5.1f hours\n", params->swreg_dt / 3600.0);
+	  fprintf(fp, "    Data = %s\n", params->swr_data);
+	}
       }
       fprintf(fp, "\n");
       if (master->airtemp)
@@ -2209,6 +2220,8 @@ void trans_write(hd_data_t *hd_data)
   fprintf(op, "PARAMETERHEADER      %s\n", params->parameterheader);
   fprintf(op, "DESCRIPTION          %s\n", params->grid_desc);
   fprintf(op, "NAME                 %s\n", params->grid_name);
+  if (strlen(params->projection))
+    fprintf(op, "PROJECTION           %s\n", params->projection);
   fprintf(op, "TIMEUNIT             %s\n", params->timeunit);
   fprintf(op, "OUTPUT_TIMEUNIT      %s\n", params->output_tunit);
   fprintf(op, "LENUNIT              %s\n", params->lenunit);

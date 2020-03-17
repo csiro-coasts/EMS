@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timeseries.c 6280 2019-08-08 04:28:53Z her127 $
+ *  $Id: timeseries.c 6446 2020-01-12 22:48:46Z riz008 $
  *
  */
 
@@ -280,7 +280,7 @@ int ts_init(sched_event_t *event)
 
     /* If restarting an existing run, then read the old timeseries file
      * into memory */
-    if (forced_restart) {
+    if (forced_restart || nrt_restart) {
       FILE *fp = fopen(tslist[i].pname, "rb");
       if (fp != NULL) {
 	fclose(fp);

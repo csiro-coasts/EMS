@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: dumpfile.h 6443 2019-12-18 03:51:40Z riz008 $
  *
  */
 
@@ -39,7 +39,7 @@
 #define HP3PT  0x010
 #define SHU3PT 0x020
 
-#define MAXNUMVARS 350
+#define MAXNUMVARS 400
 
 typedef struct dump_data dump_data_t;
 typedef struct dump_file dump_file_t;
@@ -281,6 +281,7 @@ struct dump_data {
   double runno;
   char rev[MAXSTRLEN];          /* Version number for parameter file */
   char grid_name[MAXSTRLEN];
+  char grid_desc[MAXSTRLEN];
 
   double t;
   momgrid_t *momgrid;           /* MOM format grid structure */

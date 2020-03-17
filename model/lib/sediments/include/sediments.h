@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.h 6154 2019-03-05 02:54:04Z riz008 $
+ *  $Id: sediments.h 6197 2019-04-11 04:19:10Z mar644 $
  *
  */
 
@@ -337,6 +337,10 @@ struct sed_tracer {
                                    [kg/cub.b] */
   double i_conc;                /* initial deposit concentration -
                                    mandatory [kg/cub.m] */
+//2019
+  double css_erosion;           /* tracer specific css erosion */
+  double css_deposition;
+
   /* Column based, in case it varies spatially */
   double *svel;                 /* settling velocity - mandatory [m/s] */
 

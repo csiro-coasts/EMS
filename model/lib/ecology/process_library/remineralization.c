@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: remineralization.c 6048 2018-12-19 02:01:55Z bai155 $
+ *  $Id: remineralization.c 6450 2020-01-22 04:15:06Z wil00y $
  *
  */
 
@@ -48,6 +48,7 @@ typedef struct {
     double KO_aer;
     double r_RD_NtoP;
     double r_DOM_NtoP;
+    double tau_COD;
 
     /*
      * tracers
@@ -118,6 +119,12 @@ void remineralization_init(eprocess* p)
     if (isnan(ws->r_DOM_NtoP)){
       ws->r_DOM_NtoP = 1.0;
       eco_write_setup(e,"Code default of r_DOM_NtoP = %e \n",ws->r_DOM_NtoP);
+    }
+
+    ws->tau_COD = try_parameter_value(e, "tau_COD");
+    if (isnan(ws->tau_COD)){
+      ws->tau_COD = 1.0/3600.0;
+      eco_write_setup(e,"Code default of tau_COD = %e \n",ws->tau_COD);
     }
 
     /*
@@ -241,12 +248,29 @@ void remineralization_calc(eprocess* p, void* pp)
 
     Oxygen2 = Oxygen2 * Oxygen2; 
 
-    double DetPL_N_break = cv[ws->r_DetPL_i] * DetPL_N;
-    double DetBL_N_break = cv[ws->r_DetBL_i] * DetBL_N;
+    /* limit detrital remineralisation to concentrations > 0.001 */
+    double DetPL_N_break = 0.0;
+    if (DetPL_N > 0.001){
+      DetPL_N_break = cv[ws->r_DetPL_i] * DetPL_N;}
+
+    double DetBL_N_break = 0.0;
+    if (DetBL_N > 0.001){
+      DetBL_N_break = cv[ws->r_DetBL_i] * DetBL_N;}
+
     double r_RD = cv[ws->r_RD_i];
-    double DetR_C_break = r_RD * DetR_C;
-    double DetR_N_break = r_RD * DetR_N;
-    double DetR_P_break =  ws->r_RD_NtoP * r_RD * DetR_P;
+
+    double DetR_C_break = 0.0;
+    if (DetR_C > 0.001){
+      DetR_C_break = r_RD * DetR_C;}
+
+    double DetR_N_break = 0.0;
+    if (DetR_N > 0.001){
+      DetR_N_break = r_RD * DetR_N;}
+
+    double DetR_P_break = 0.0;
+    if (DetR_P > 0.001){
+      DetR_P_break = ws->r_RD_NtoP * r_RD * DetR_P;}
+
     double DetPL_N_remin = DetPL_N_break * (1.0 - ws->F_LD_RD - ws->F_LD_DOM);
     double DetBL_N_remin = DetBL_N_break * (1.0 - ws->F_LD_RD - ws->F_LD_DOM);
     double DetR_N_remin = DetR_N_break * (1.0 - ws->F_RD_DOM);
@@ -289,7 +313,7 @@ void remineralization_calc(eprocess* p, void* pp)
       // y1[ws->Oxygen_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0); 
       // y1[ws->COD_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0);
 
-      double consume = 1.0/3600.0 * min(y[ws->COD_i],8000.0) * (y[ws->Oxygen_i] / 8000.0);
+      double consume = ws->tau_COD * min(y[ws->COD_i],8000.0) * (y[ws->Oxygen_i] / 8000.0);
       y1[ws->Oxygen_i] -= consume;
       y1[ws->COD_i] -= consume;
     }

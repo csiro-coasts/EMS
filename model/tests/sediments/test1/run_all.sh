@@ -38,7 +38,7 @@ echo ""
 echo "Running Resuspension test"
 rm tran_outputs/*   
 rm sedlog.txt sed_mass_*.txt
-./shoc -t inputs/test_d.tran
+./shoc -t inputs/test_r.tran
 awk 'BEGIN{a=0;} {if ($NR eq 3) a=$5;} END{if((a-$5)<0.1) \
 print("OK: mass conservation of gravel"); \
 else print("ERROR: mass conservation of gravel");}' sed_mass_end.txt
@@ -53,7 +53,7 @@ echo ""
 echo "Running Compaction test"
 rm tran_outputs/*   
 rm sedlog.txt sed_mass_*.txt
-./shoc -t inputs/test_d.tran
+./shoc -t inputs/test_c.tran
 awk 'BEGIN{a=0;} {if ($NR eq 3) a=$4;} END{if((a-$4)<0.1) \
 print("OK: mass conservation of dissolved tracer"); \
 else print("ERROR: mass conservation of dissolved tracer");}' sed_mass_end.txt
@@ -65,7 +65,7 @@ echo ""
 echo "Running Desorption of Pollutant test"
 rm tran_outputs/*   
 rm sedlog.txt sed_mass_*.txt
-./shoc -t inputs/test_d.tran
+./shoc -t inputs/test_p.tran
 awk 'BEGIN{a=0;} {if ($NR eq 3) a=$4+$8;} END{if((a-$4-$8)<0.1) \
 print("OK: mass conservation of pollutant"); \
 else print("ERROR: mass conservation of pollutant");}' sed_mass_end.txt
@@ -74,7 +74,7 @@ echo ""
 echo "Running Resuspension, Diffusion and Compaction together"
 rm tran_outputs/*
 rm sedlog.txt sed_mass_*.txt
-./shoc -t inputs/test_d.tran
+./shoc -t inputs/test_rcd.tran
 awk 'BEGIN{a=0;} {if ($NR eq 3) a=$4;} END{if((a-$4)<0.1) \
 print("OK: mass conservation of dissolved tracer"); \
 else print("ERROR: mass conservation of dissolved tracer");}' sed_mass_end.txt

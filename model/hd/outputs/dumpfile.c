@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 6013 2018-11-01 02:10:37Z riz008 $
+ *  $Id: dumpfile.c 6242 2019-06-12 06:24:07Z riz008 $
  *
  */
 
@@ -1377,6 +1377,7 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
   /* Set up each file list entry */
   strcpy(dumpdata->rev, params->rev);
   sprintf(dumpdata->grid_name, "%s", params->grid_name);
+  sprintf(dumpdata->grid_desc, "%s", params->grid_desc);
   if (params->runno > 0) dumpdata->runno = params->runno;
   if (type == 1) {
     FILE *ip, *op;
@@ -2943,9 +2944,11 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
 
   /* global attributes */
   write_text_att(cdfid, NC_GLOBAL, "title", dumpdata->grid_name);
+  write_text_att(cdfid, NC_GLOBAL, "description", dumpdata->grid_desc);
   write_text_att(cdfid, NC_GLOBAL, "paramhead", parameterheader);
   write_text_att(cdfid, NC_GLOBAL, "paramfile", dumpdata->prmname);
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
+  write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
@@ -3215,9 +3218,11 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
 
   /* global attributes */
   write_text_att(cdfid, NC_GLOBAL, "title", dumpdata->grid_name);
+  write_text_att(cdfid, NC_GLOBAL, "description", dumpdata->grid_desc);
   write_text_att(cdfid, NC_GLOBAL, "paramhead", parameterheader);
   write_text_att(cdfid, NC_GLOBAL, "paramfile", dumpdata->prmname);
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
+  write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CF-1.0");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
@@ -4791,10 +4796,13 @@ void *df_parray_create(dump_data_t *dumpdata, dump_file_t *df)
   }
 
   /* global attributes */
-  write_text_att(cdfid, NC_GLOBAL, "title", codeheader);
+  write_text_att(cdfid, NC_GLOBAL, "title", dumpdata->grid_name);
+  write_text_att(cdfid, NC_GLOBAL, "description", dumpdata->grid_desc);
+  write_text_att(cdfid, NC_GLOBAL, "codehead", codeheader);
   write_text_att(cdfid, NC_GLOBAL, "paramhead", parameterheader);
   write_text_att(cdfid, NC_GLOBAL, "paramfile", dumpdata->prmname);
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
+  write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);

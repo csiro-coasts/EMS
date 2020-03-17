@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6012 2018-10-31 22:43:43Z riz008 $
+ *  $Id: hd_params.h 6426 2019-11-22 00:24:20Z her127 $
  *
  */
 
@@ -233,14 +233,15 @@
 #define TEMP_MIX        4
 
 /* Heat flux options                                                         */
-#define ADVANCED        2
-#define INVERSE         4
-#define NET_HEAT        16
-#define SURF_RELAX      32
-#define COMP_HEAT       64
-#define AVHRR           128
-#define COMP_HEAT_MOM   256
-#define COMP_HEAT_NONE  512
+#define ADVANCED        0x002
+#define INVERSE         0x004
+#define NET_HEAT        0x008
+#define SURF_RELAX      0x010
+#define COMP_HEAT       0x020
+#define AVHRR           0x040
+#define COMP_HEAT_MOM   0x080
+#define COMP_HEAT_NONE  0x100
+#define GHRSST          0x200
 
 /* Salt flux options                                                         */
 #define BULK            4
@@ -304,6 +305,7 @@
 #define A_RECOM_R1      64
 #define A_RECOM_R2      128
 #define A_ROAM_R3       256
+#define A_ROAM_R4       512
 
 /* Advection scheme flags                                                    */
 #define ORDER1        0x000002
@@ -677,6 +679,8 @@
 #define RLX_EDEP  0x0100
 #define RLX_CDEP  0x0200
 #define RLX_GRD   0x0400
+#define RLX_REG   0x0800
+#define RLX_OBC   0x1000
 
 /* Regions */
 #define RG_NONE    0
@@ -783,9 +787,12 @@
 /* Degree heating diagnostic */
 #define DHW_NOAA   1
 #define DHW_RT     2
+#define DHW_INT    4
+#define DHW_MEAN   8
+#define DHW_SNAP   16
+#define DHW_SET    32
 
 /* Misc */
 #define INV_BARO 8
-#define GHRSST   0x0100
 
 typedef char cstring[MAXSTRLEN];

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: allprocesses.c 6109 2019-02-08 05:50:00Z wil00y $
+ *  $Id: allprocesses.c 6302 2019-09-09 03:49:46Z bai155 $
  *
  */
 
@@ -43,6 +43,7 @@
 #include "process_library/trichodesmium_mortality_wc.h"
 #include "process_library/moldiff.h"
 #include "process_library/nitrification_denitrification_sed.h"
+#include "process_library/nitrification_denitrification_anammox.h"
 #include "process_library/nitrification_wc.h"
 #include "process_library/nodularia_grow_wc.h"
 #include "process_library/nodularia_mortality_wc.h"
@@ -51,6 +52,7 @@
 #include "process_library/oxygen_exchange_sed.h"
 #include "process_library/p_adsorption_sed.h"
 #include "process_library/p_adsorption_wc.h"
+#include "process_library/p_adsorption.h"
 #include "process_library/phytoplankton_grow_wc.h"
 #include "process_library/phytoplankton_mortality_sed.h"
 #include "process_library/remineralization.h"
@@ -103,6 +105,7 @@
 #include "process_library/coral_spectral_grow_bleach_epi.h"
 #include "process_library/coral_spectral_carb_epi.h"
 #include "process_library/age_wc.h"
+#include "process_library/age_sed.h"
 #include "process_library/macroalgae_grow_wc.h"
 #include "process_library/macroalgae_mortality_wc.h"
 #include "process_library/salmon_waste.h"
@@ -172,6 +175,7 @@ eprocess_entry eprocesslist[] = {
     {"microphytobenthos_mortality_sed", PT_SED, 0, 0, microphytobenthos_mortality_sed_init, NULL, microphytobenthos_mortality_sed_destroy, microphytobenthos_mortality_sed_precalc, microphytobenthos_mortality_sed_calc, microphytobenthos_mortality_sed_postcalc},
     {"moldiff", PT_GEN, 0, 0, moldiff_init, NULL, moldiff_destroy, moldiff_precalc, NULL, NULL},
     {"nitrification_denitrification_sed", PT_SED, 0, 0, nitrification_denitrification_sed_init, nitrification_denitrification_sed_postinit, nitrification_denitrification_sed_destroy, nitrification_denitrification_sed_precalc, nitrification_denitrification_sed_calc, nitrification_denitrification_sed_postcalc},
+    {"nitrification_denitrification_anammox", PT_GEN, 0, 0, nitrification_denitrification_anammox_init, nitrification_denitrification_anammox_postinit, nitrification_denitrification_anammox_destroy, nitrification_denitrification_anammox_precalc, nitrification_denitrification_anammox_calc, nitrification_denitrification_anammox_postcalc},
     {"nitrification_wc", PT_WC, 0, 0, nitrification_wc_init, NULL, nitrification_wc_destroy, nitrification_wc_precalc, nitrification_wc_calc, nitrification_wc_postcalc},
     {"nodularia_grow_wc", PT_WC, 0, 0, nodularia_grow_wc_init, nodularia_grow_wc_postinit, nodularia_grow_wc_destroy, nodularia_grow_wc_precalc, nodularia_grow_wc_calc, nodularia_grow_wc_postcalc},
     {"nodularia_mortality_wc", PT_WC, 0, 0, nodularia_mortality_wc_init, NULL, nodularia_mortality_wc_destroy, nodularia_mortality_wc_precalc, nodularia_mortality_wc_calc, nodularia_mortality_wc_postcalc},
@@ -182,6 +186,7 @@ eprocess_entry eprocesslist[] = {
     {"phytoplankton_mortality_sed", PT_SED, 1, 0, phytoplankton_mortality_sed_init, phytoplankton_mortality_sed_postinit, phytoplankton_mortality_sed_destroy, phytoplankton_mortality_sed_precalc, phytoplankton_mortality_sed_calc, phytoplankton_mortality_sed_postcalc},
     {"p_adsorption_sed", PT_SED, 0, 0, p_adsorption_sed_init, p_adsorption_sed_postinit, p_adsorption_sed_destroy, p_adsorption_sed_precalc, p_adsorption_sed_calc, p_adsorption_sed_postcalc},
     {"p_adsorption_wc", PT_WC, 0, 0, p_adsorption_wc_init, p_adsorption_wc_postinit, p_adsorption_wc_destroy, p_adsorption_wc_precalc, p_adsorption_wc_calc, p_adsorption_wc_postcalc},
+    {"p_adsorption", PT_GEN, 0, 0, p_adsorption_init, p_adsorption_postinit, p_adsorption_destroy, p_adsorption_precalc, p_adsorption_calc, p_adsorption_postcalc},
     {"remineralization", PT_GEN, 0, 0, remineralization_init, remineralization_postinit, remineralization_destroy, remineralization_precalc, remineralization_calc, remineralization_postcalc},
     {"seagrass_grow_epi", PT_EPI, 0, 0, seagrass_grow_epi_init, seagrass_grow_epi_postinit, seagrass_grow_epi_destroy, seagrass_grow_epi_precalc, seagrass_grow_epi_calc, seagrass_grow_epi_postcalc},
     {"seagrass_mortality_epi", PT_EPI, 0, 0, seagrass_mortality_epi_init, NULL, seagrass_mortality_epi_destroy, seagrass_mortality_epi_precalc, seagrass_mortality_epi_calc, seagrass_mortality_epi_postcalc},
@@ -231,6 +236,7 @@ eprocess_entry eprocesslist[] = {
     {"filter_feeder_wc", PT_WC, 0, 0, filter_feeder_wc_init, filter_feeder_wc_postinit, filter_feeder_wc_destroy, filter_feeder_wc_precalc, filter_feeder_wc_calc, filter_feeder_wc_postcalc},
     {"filter_feeder_epi", PT_EPI, 0, 0, filter_feeder_epi_init, filter_feeder_epi_postinit, filter_feeder_epi_destroy, filter_feeder_epi_precalc, filter_feeder_epi_calc, filter_feeder_epi_postcalc},
     {"age_wc", PT_WC, 0, 0, age_wc_init, age_wc_postinit, age_wc_destroy, age_wc_precalc, age_wc_calc, NULL},
+    {"age_sed", PT_SED, 0, 0, age_sed_init, age_sed_postinit, age_sed_destroy, age_sed_precalc, age_sed_calc, NULL},
 /*    {"light_wc_gradient", PT_WC, 0, 0, light_wc_gradient_init, light_wc_gradient_postinit, light_wc_gradient_destroy, light_wc_gradient_precalc, NULL, NULL},
 */
 

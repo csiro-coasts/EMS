@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6110 2019-02-15 05:43:04Z her127 $
+ *  $Id: windows.c 6432 2019-11-22 00:26:10Z her127 $
  *
  */
 
@@ -3349,6 +3349,7 @@ void OBC_build(open_bdrys_t **open, /* Global open boundary structure */
 	window[nn]->open[c1]->options = open[n]->options;
         window[nn]->open[c1]->relax_zone_tra = i_alloc_1d(open[n]->ntr);
         window[nn]->open[c1]->trpc = d_alloc_1d(open[n]->ntr);
+        window[nn]->open[c1]->trt = i_alloc_1d(open[n]->ntr);
         if ((window[nn]->open[c1]->ntt = open[n]->ntt))
           window[nn]->open[c1]->trm = i_alloc_1d(open[n]->ntr);
 
@@ -3359,6 +3360,7 @@ void OBC_build(open_bdrys_t **open, /* Global open boundary structure */
           window[nn]->open[c1]->relax_zone_tra[tn] =
             open[n]->relax_zone_tra[tn];
           window[nn]->open[c1]->trpc[tn] = open[n]->trpc[tn];
+          window[nn]->open[c1]->trt[tn] = open[n]->trt[tn];
           if (window[nn]->open[c1]->ntt)
             window[nn]->open[c1]->trm[tn] = open[n]->trm[tn];
 	  if (open[n]->bcond_tra[tn] & (TRFLUX|TRCONC|TRCONF))
@@ -5311,6 +5313,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
 					relax->rlxdt, winsize, 0);
       if ((m = tracer_find_index("oeta", master->ntrS, master->trinfo_2d)) >= 0)
 	windat->eta_rlx->val1 = windat->tr_wcS[m];
+      windat->eta_rlx->tctype = relax->tctype;
       windat->eta_rlx->rlx = relax->rlx;
       windat->eta_rlx->dv0 = relax->dv0;
       windat->eta_rlx->dv1 = relax->dv1;
@@ -5510,6 +5513,8 @@ window_t *win_data_init(master_t *master, /* Master data structure */
         windat->avhrr = windat->tr_wcS[m];
       if (strcmp("ghrsst", master->trinfo_2d[m].name) == 0)
         windat->ghrsst = windat->tr_wcS[m];
+      if (strcmp("ghrsste", master->trinfo_2d[m].name) == 0)
+        windat->ghrsste = windat->tr_wcS[m];
       if (strcmp("u1_rad", master->trinfo_2d[m].name) == 0)
         windat->u1_rad = windat->tr_wcS[m];
       if (strcmp("u2_rad", master->trinfo_2d[m].name) == 0)
@@ -5550,6 +5555,14 @@ window_t *win_data_init(master_t *master, /* Master data structure */
         windat->swr_tran = windat->tr_wcS[m];
       if (strcmp("swr_bot_absorb", master->trinfo_2d[m].name) == 0)
         windat->swr_babs = windat->tr_wcS[m];
+      if (strcmp("swreg", master->trinfo_2d[m].name) == 0)
+        windat->swreg = windat->tr_wcS[m];
+      if (strcmp("swrms", master->trinfo_2d[m].name) == 0)
+        windat->swrms = windat->tr_wcS[m];
+      if (strcmp("attn_mean", master->trinfo_2d[m].name) == 0)
+        windat->attn_mean = windat->tr_wcS[m];
+      if (strcmp("tran_mean", master->trinfo_2d[m].name) == 0)
+        windat->tran_mean = windat->tr_wcS[m];
       if (strcmp("flow", master->trinfo_2d[m].name) == 0)
         windat->riverflow = windat->tr_wcS[m];
       if (strcmp("flow_depth", master->trinfo_2d[m].name) == 0)
@@ -5689,6 +5702,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
     windat->odeta = master->odeta;
     windat->avhrr = master->avhrr;
     windat->ghrsst = master->ghrsst;
+    windat->ghrsste = master->ghrsste;
     windat->shwin = master->shwin;
     windat->alert_a = master->alert_a;
     windat->alert_c = master->alert_c;
@@ -5723,6 +5737,10 @@ window_t *win_data_init(master_t *master, /* Master data structure */
     windat->swr_attn1 = master->swr_attn1;
     windat->swr_tran = master->swr_tran;
     windat->swr_babs = master->swr_babs;
+    windat->swreg = master->swreg;
+    windat->swrms = master->swrms;
+    windat->attn_mean = master->attn_mean;
+    windat->tran_mean = master->tran_mean;
     windat->riverflow = master->riverflow;
     windat->riverdepth = master->riverdepth;
     windat->eta_tc = master->eta_tc;
@@ -6223,6 +6241,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->cfl_dt = master->cfl_dt;
     wincon[n]->lnm = master->lnm;
     wincon[n]->nprof = master->nprofn;
+    wincon[n]->nprof2d = master->nprofn2d;
     wincon[n]->vorticity = master->vorticity;
     wincon[n]->numbers = master->numbers;
     wincon[n]->compatible = master->compatible;
@@ -6329,6 +6348,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->da = master->da;
     wincon[n]->swr_type = master->swr_type;
     wincon[n]->dhwf = master->dhwf;
+    wincon[n]->dhwh = master->dhwh;
 
     /* FR: Strictly speaking this is not good
      *     It will obviously work for shared memory and luckily
@@ -7458,6 +7478,7 @@ void pre_run_setup(master_t *master,  /* Master data structure */
   init_totals(master, window, wincon);
   init_trans(master, window, wincon);
   nan_check(window, windat, wincon, nwindows);  
+  swr_params_init(master, window);
 }
 
 /* END pre_run_setup()                                               */
@@ -8181,6 +8202,8 @@ void win_geom_clear(geometry_t **window,  /* Window data structure */
         d_free_1d(window[n]->open[nn]->clampv);
       if (window[n]->open[nn]->trpc)
         d_free_1d(window[n]->open[nn]->trpc);
+      if (window[n]->open[nn]->trt)
+        i_free_1d(window[n]->open[nn]->trt);
       if (window[n]->open[nn]->relax_zone_tra)
         i_free_1d(window[n]->open[nn]->relax_zone_tra);
       if (window[n]->open[nn]->iloc)

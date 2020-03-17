@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 6312 2019-09-13 04:31:15Z her127 $
+ *  $Id: dumpfile.h 6440 2019-12-04 03:00:23Z riz008 $
  *
  */
 
@@ -60,6 +60,8 @@ typedef struct {
   int size;             /* Stencil size */
   double *k;            /* Stencil kernel */
   int *map;             /* Stencil map */
+  int map3;             /* 1 ring stencil size */
+  int map5;             /* 2 ring stencil size */
   double f;             /* Implementation factor */
   double v;             /* Damping factor (optional) */
 } df_filter_t;
@@ -552,4 +554,7 @@ int check_sparse_dumpfile(geometry_t *geom, int ntsfiles,
 void set_longitude(dump_data_t *dumpdata, dump_file_t *df, int mode);
 void set_chunk_name(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_parse_vars(dump_data_t *dumpdata, dump_file_t *df, char* excludevars, char* all_vars);
+void dump_eta_snapshot(master_t *master, geometry_t **window,
+		       window_t **windat, win_priv_t **wincon);
+
 #endif

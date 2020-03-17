@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 6148 2019-03-05 01:58:55Z her127 $
+ *  $Id: hd_init.c 6431 2019-11-22 00:25:57Z her127 $
  *
  */
 
@@ -636,6 +636,7 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   master->gint_errfcn = params->gint_errfcn;
   master->swr_type = params->swr_type;
   master->dhwf = params->dhwf;
+  master->dhwh = params->dhwh;
   master->togn = TOPRIGHT;
   master->crf = NONE;
   master->regf = NONE;
@@ -651,6 +652,9 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   master->nprofn = -1;
   if (strlen(params->nprof))
     master->nprofn = tracer_find_index(params->nprof, master->ntr, master->trinfo_3d);
+  master->nprofn2d = -1;
+  if (strlen(params->nprof2d))
+    master->nprofn2d = tracer_find_index(params->nprof2d, master->ntrS, master->trinfo_2d);
 
   master->trtend = -1;
   if (strlen(params->trtend)) {
@@ -711,6 +715,14 @@ void compute_constants(parameters_t *params,  /* Input parameter data
 						master->timeunit, &c);
     } else
       master->means_dt = 0.0;
+    if (strlen(params->means_mc) && master->means_dt == SEASONAL || 
+	       master->means_dt == MONTHLY || master->means_dt == DAILY) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      cc = parseline(params->means_mc, fields, MAXNUMARGS);
+      for (c = 1; c <= cc; c++) {
+	master->meancs[c] = atof(fields[c-1]);
+      }
+    }
     if (strlen(params->means_os)) {
       tm_scale_to_secs(params->stop_time, &master->means_os);
       for (cc = 1; cc <= geom->enonS; cc++) {

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: regions.c 6328 2019-09-13 04:38:11Z her127 $
+ *  $Id: regions.c 6408 2019-11-21 23:03:15Z her127 $
  *
  */
 
@@ -32,7 +32,6 @@ void get_regions(geometry_t *win, region_t *region, double *mask, int nregions);
 void region_schedule(region_t *region, double dt, double trem, char *timeunit);
 double get_totflux(region_t *region, int tr);
 int find_trindex(region_t *region, int trn);
-void read_region_us(geometry_t *geom, char *name, double *regionid);
 
 /*-------------------------------------------------------------------*/
 /* Reads the region infromation from the parameter file              */
@@ -1436,10 +1435,10 @@ int read_regioni(master_t *master, char *rname, double *regionid)
 
 
 /*-------------------------------------------------------------------*/
-/* Reads a region specification from unstructured fine (.bncc) and   */
+/* Reads a region specification from unstructured file (.bncc) and   */
 /* interpolates onto the mesh using unstructured interpolation.      */
 /*-------------------------------------------------------------------*/
-void read_region_us(geometry_t *geom, char *name, double *regionid)
+int read_region_us(geometry_t *geom, char *name, double *regionid)
 {
   int varid;
   char i_rule[MAXSTRLEN];
@@ -1510,6 +1509,7 @@ void read_region_us(geometry_t *geom, char *name, double *regionid)
     for (cc = 1; cc <= geom->b3_t; cc++) {
       c = geom->w3_t[cc];
       cs = geom->m2d[c];
+
       if (poly_contains_point(pl, geom->cellx[cs], geom->celly[cs])) {
 	regionid[c] = (double)n;
       }
@@ -1522,7 +1522,7 @@ void read_region_us(geometry_t *geom, char *name, double *regionid)
   f_free_1d(v);
   d_free_2d(xv);
   d_free_2d(yv);
-  return;
+  return(nr);
 
   /*---------------------------------------------------------------*/
   /* Interpolate from a triangulation                              */
@@ -1540,6 +1540,7 @@ void read_region_us(geometry_t *geom, char *name, double *regionid)
       regionid[c] = ceil(d1);
   }
   grid_specs_destroy(gs);
+  return(nr);
 } 
 
 /* END read_region_us()                                              */

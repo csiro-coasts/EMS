@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6092 2019-02-08 04:33:35Z her127 $
+ *  $Id: readparam_t.c 6367 2019-10-10 02:33:02Z her127 $
  *
  */
 
@@ -298,12 +298,8 @@ FILE *fp;
   prm_read_double(fp, keyword, &params->lnm);
   if (params->lnm != 0.0)
     params->ntrS++;
-  sprintf(keyword, "PROFILE");
-  if (prm_read_char(fp, keyword, buf)) {
-    strcpy(params->nprof, buf);
-    params->ntr += 1;
-  }
   read_debug(params, fp);
+  read_profile(params, fp);
   /* Totals diagnostics */
   read_totals(params, fp);
   /* Regions */
@@ -323,8 +319,9 @@ FILE *fp;
   }
   /* GHRSST SST */
   if (prm_read_char(fp, "GHRSST", params->ghrsst_path)) {
+    prm_read_char(fp, "GHRSST_OPTIONS", params->ghrsst_opt);
     create_ghrsst_list(params);
-    params->ntrS++;
+    params->ntrS+=2;
   }
   /* Diagnistic numbers */
   params->ntr += numbers_init(params);

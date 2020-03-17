@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 6325 2019-09-13 04:36:35Z her127 $
+ *  $Id: vel3d.c 6472 2020-02-18 23:50:58Z her127 $
  *
  */
 
@@ -43,7 +43,6 @@ void mom_balance(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void get_sdc_e1(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double gridze(geometry_t *geom, int e);
 void set_sur_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void vel_tan_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void vel_components_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
@@ -301,7 +300,14 @@ void mode3d_step(geometry_t *geom,    /* Global geometry             */
 
   /*-----------------------------------------------------------------*/
   /* Reset the means on the master if required.                      */
-  reset_means_m(master);
+  /* This is now done within a scheduled function
+     reset_means_m_o(master);*/
+  /* Reset means if FFSL is computed using mean velocities           */
+  if (master->means & TRANSPORT) {
+    if (master->nstep % (int)master->tratio == 0) {
+      reset_means_m(master);
+    }
+  }
 
   /*-----------------------------------------------------------------*/
   /* Do the custom tracer routines on the master                     */
@@ -423,7 +429,6 @@ void mode3d_prep(geometry_t *geom,      /* Global geometry           */
     /*---------------------------------------------------------------*/
     /* Calculate a heatflux if required                              */
     calc_heatf(window[n], windat[n], wincon[n]);
-
     set_dz_at_u1(window[n], windat[n], wincon[n]);
     init_sigma(window[n], windat[n], wincon[n]);
     wincon[n]->hor_mix->pre(window[n], windat[n], wincon[n]);
@@ -1745,7 +1750,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   corr = wincon->w8;
 
   dd = wincon->d1;
-  dc = wincon->w3;
+  dc = wincon->w7;
   dhdiv = wincon->d2;
   u1inter = wincon->d3;
   midx = wincon->d4;
@@ -2061,7 +2066,7 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       dinter[es] += wincon->g * mask[e] * d1 * hlower[e];
       ddbt[es] += wincon->g * dzsum[e] * hupper[e];
 
-      /* Update the u1 velocity                                      */
+      /* Upadte the u1 velocity                                      */
       /*
       windat->nu1[e] += windat->dt * wincon->u1c6[es] * (dd[es] + dc[es]) / dav[e];
       */
@@ -2118,7 +2123,6 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
       c2s = window->e2c[es][1];
 
       wincon->densavu1[es] /= dhdiv[es];
-
       d1 = fabs(windat->topz[c1s] - windat->topz[c2s]);
       wincon->topdensu1[es] =
         (d1 > tol) ? wincon->topdensu1[es] / d1 : dav[e];
@@ -2240,6 +2244,7 @@ void vel_tan_3d(geometry_t *window,    /* Window geometry            */
   )
 {
   int e, ee, es, eoe, n;
+  double fs = 1.0;
 
   /*-----------------------------------------------------------------*/
   /* Get the u2 (tangential) velocity at the edge.                   */
@@ -2249,8 +2254,9 @@ void vel_tan_3d(geometry_t *window,    /* Window geometry            */
     windat->u2[e] = 0.0;
     for (n = 1; n <= window->nee[es]; n++) {
       eoe = window->eSe[n][e];
+      fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
       if (!eoe) continue;
-      windat->u2[e] += window->wAe[n][e] * windat->u1[eoe];
+      windat->u2[e] += fs * window->wAe[n][e] * windat->u1[eoe];
     }
   }
 }
@@ -2980,7 +2986,7 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
   /*-----------------------------------------------------------------*/
   /* Set pointers and initialise                                     */
   if (mode & TRANSPORT) {
-    u = windat->u1m;
+    u = windat->u1;
   } else {
     u = windat->u1;
   }
@@ -3063,6 +3069,7 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
     /* Get the mean u1 volume flux if required                       */
     if (wincon->means & VOLFLUX && windat->u1vm) {
       double t = windat->dtf;
+      if (wincon->means & TRANSPORT) windat->meanc[0] += 1.0;
       for (ee = 1; ee <= window->b3_e1; ee++) {
 	e = window->w3_e1[ee];
 	es = window->m2de[e];
@@ -3073,8 +3080,8 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
 			   windat->u1flux3d[e] * t) / (windat->meanc[cs] + t);
       }
     }
-
 }
+
 /* END set_flux_3d()                                                 */
 /*-------------------------------------------------------------------*/
 
@@ -3087,7 +3094,7 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
 void velocity_adjust(geometry_t *window,    /* Window geometry       */
                      window_t *windat,      /* Window data           */
                      win_priv_t *wincon     /* Window constants      */
-  )
+		     )
 {
   int e, ee, es, eb;            /* Sparse coodinate / counter        */
   double *sum;                  /* Vertically integrated 3D velocity */
@@ -3568,7 +3575,7 @@ void vel_w_update(geometry_t *window, /* Window geometry             */
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
       cs = window->m2d[c];
-      if (wincon->means & (VOLFLUX|PSSFLUX)) {
+      if (!(wincon->means & TRANSPORT) && wincon->means & (VOLFLUX|PSSFLUX)) {
 	windat->wm[c] = (windat->wm[c] * windat->meanc[cs] + 
 	 	        (windat->waterss[c] * t / window->cellarea[cs])) /
                         (windat->meanc[cs] + t);
@@ -3799,6 +3806,133 @@ void ff_sl_w_update(geometry_t *window, /* Window geometry           */
 
 
 /*-------------------------------------------------------------------*/
+/* Calculates the vertical velocity through continuity.              */
+/*-------------------------------------------------------------------*/
+void vel_w_trans(geometry_t *window, /* Window geometry              */
+		 window_t *windat,   /* Window data                  */
+		 win_priv_t *wincon  /* Window constants             */
+  )
+{
+  int c, cc, cs;      /* Sparse coodinate / counter                  */
+  int e, ee, es, j;   /* Edge coodinate / counter                    */
+  int *bottom;        /* Bottom sparse coordinate                    */
+  int *sur;           /* Minimum of surface coordinate               */
+  int *nsur;          /* Surface sparse coordinate after the 2D mode */
+  double fctop;       /* Flux at the top edge of the cell            */
+  double fcbot;       /* Flux at the bottom edge of the cell         */
+  int zp1, zm1;       /* Sparse coordinate below cell c              */
+  double hf, vf, cnt; /* Diagnostics for continuity                  */
+  int dc = 0;         /* Diagnostic continuity surface coordinate    */
+  int dw = 1;         /* Window for diagnostic continuity            */
+  double detadt;      /* Rate of change of elevation                 */
+  double *deta;       /* Elevation rate of change for SIGMA          */
+  double d1;          /* Dummy                                       */
+
+  /*-----------------------------------------------------------------*/
+  /* Set pointers and initialise                                     */
+  memset(windat->wm, 0, window->szc * sizeof(double));
+  bottom = wincon->i1;          /* Set in set_dz()                   */
+  nsur = wincon->i2;            /* Set in set_dz()                   */
+  sur = wincon->i3;             /* Set in set_dz()                   */
+  deta = wincon->w1;
+
+  /*-----------------------------------------------------------------*/
+  /* Set the maps to be self-mapping across e1 and e2 OBC's          */
+  reset_map_t(window);
+
+  /*-----------------------------------------------------------------*/
+  /* Calculate the vertical velocity at the surface and bottom       */
+  /* boundaries.                                                     */
+  vel_w_bounds_tran(window, windat, wincon);
+
+  /*-----------------------------------------------------------------*/
+  /* Add the contribution from eta relaxation. Note that these       */
+  /* fluxes are in/out of the surface cell and are not actually used */
+  /* in the calculation of w, which loops from the bottom coordinate */
+  /* to the cell below the surface. The surface condition on w       */
+  /* implicitly includes these fluxes through the gradients of eta.  */
+  /* Surface tracer mass fluxes due to eta relaxation must be        */
+  /* explicitly added and this is handled in the routine ss_tracer() */
+  /* in inputs/sourcesink.c. The above also applies for evaporation, */
+  /* precipitation and source/sinks input into the surface.          */
+  /* The total volume added to the cell in the 2D mode must be       */
+  /* divided by the 3D time-step to get the flux over the 3D step.   */
+  /* Note that waterss is the flow into the cell, wheras eta_rlx3d   */
+  /* (m3) is the flow out of the cell, hence the minus sign.         */
+  if (!(wincon->etarlx & NONE)) {
+    for (cc = 1; cc <= wincon->vcs; cc++) {
+      c = wincon->s1[cc];
+      cs = window->m2d[c];
+      windat->waterss[c] -= wincon->eta_rlx3d[cs] / windat->dt;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Add the contribution from precipitation and evaporation. The 2D */
+  /* part was added in ss_water() before elevation was calculated in */
+  /* the 2D mode. Note that the mass flux of salinity due to salt    */
+  /* fluxes is handled as the surface boundary condition to vertical */
+  /* diffusion.                                                      */
+  if (wincon->saltflux & ORIGINAL) {
+    for (cc = 1; cc <= wincon->vcs; cc++) {
+      c = wincon->s1[cc];
+      cs = window->m2d[c];
+      /* Convert from m s-1 to m3 s-1                                */
+      windat->waterss[c] += (windat->nsfd[cs] * window->cellarea[cs]);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Get the vertical velocity from the bottom to the surface. This  */
+  /* is performed over all wet and open boundary tracer cells.       */
+  /* Note: sur[] is lower of the surface coordinate before and after */
+  /* the elevation is updated. Also, the cells to process vectors    */
+  /* for tracers include the wet + open boundary cells (set in       */
+  /* set_dz()).                                                      */
+  /* Calculate velocity from the bottom upwards : this is consistent */
+  /* with the original MECO formulation.                             */
+  if (!wincon->sigma) {
+    for (cc = 1; cc <= wincon->vcs; cc++) {
+      c = bottom[cc];
+      cs = window->m2d[c];
+      windat->wm[c] = windat->wbot[cs];
+      fcbot = windat->wm[c] * window->cellarea[cs];
+
+      while (c > sur[cc]) {
+        zp1 = window->zp1[c];
+
+        /* Get the flux at cell top due to inflow from bottom, sides */
+        /* and any additional water from sources or sinks.           */
+	fctop = fcbot + windat->waterss[c];
+	for (j = 1; j <= window->npe[cs]; j++) {
+	  e = window->c2e[j][c];
+	  fctop -= window->eSc[j][cs] * windat->u1vm[e];
+	}
+
+        /* Velocity at cell top                                      */
+        windat->wm[zp1] = fctop / window->cellarea[cs];
+	
+        /* Transfer top flux to bottom for next cell                 */
+        fcbot = fctop;
+        c = zp1;
+      }
+
+      /* Calculations for those cells through which the surface      */
+      /* moves; use value from wtop calculated above.                */
+      while (c > nsur[cc]) {
+        zp1 = window->zp1[c];
+        windat->wm[zp1] = windat->wtop[cs];
+        c = zp1;
+      }
+    }
+  }
+}
+
+/* END vel_w_trans()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Sets vertical velocity above the surface to wtop. This aids       */
 /* stability in the vertical momentum advection when cells have one  */
 /* edge dry.                                                         */
@@ -3922,6 +4056,103 @@ void vel_w_bounds(geometry_t *window, /* Window geometry             */
 }
 
 /* END vel_w_bounds()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to calculate the surface and bottom vertical velocity     */
+/*-------------------------------------------------------------------*/
+void vel_w_bounds_tran(geometry_t *window, /* Window geometry        */
+		       window_t *windat,   /* Window data            */
+		       win_priv_t *wincon  /* Window constants       */
+  )
+{
+  int j, jo;                    /* Edge counter                      */
+  int c, cc;                    /* Sparse coodinate / counter        */
+  int cs;                       /* 2D sparse coordinate              */
+  int cb;                       /* Bottom sparse coordinate          */
+  int ee, e, es, eb;            /* Edge coordinates                  */
+  int c1, c2;                   /* Centre coordinates                */
+  int *bottom;                  /* Bottom sparse coordinate          */
+  double eta_l;                 /* Upstream surface elevation        */
+  double eta_r;                 /* Downstream surface elevation      */
+  double *u1top;                /* Surface e1 velocity               */
+  double *u1bot;                /* Bottom e1 velocity                */
+
+  /*-----------------------------------------------------------------*/
+  /* Set pointers and initialise                                     */
+  bottom = wincon->i1;          /* Set in set_dz()                   */
+  u1top = wincon->d1;
+  u1bot = wincon->d3;
+  memset(windat->wtop, 0, window->szcS * sizeof(double));
+  memset(windat->wbot, 0, window->szcS * sizeof(double));
+  memset(u1top, 0, window->szeS * sizeof(double));
+  memset(u1bot, 0, window->szeS * sizeof(double));
+
+  /* SIGMA : zero velocity at the sigma boundaries                   */
+  if (wincon->sigma)
+    return;
+
+  /* Set the surface velocity. Note: this cannot be retreived from   */
+  /* the u1 array since neighbours are required and with a cell      */
+  /* drying the neighbour may not be the surface.                    */
+  for (ee = 1; ee <= window->a2_t; ee++) {
+    e = window->w2_t[ee];
+    es = window->m2de[e];
+    u1top[es] = windat->ume[e];
+  }
+  for (ee = 1; ee <= window->b2_e1; ee++) {
+    eb = window->bot_e1[ee];  /* 3D bottom coordinate                */
+    es = window->m2de[eb];
+    u1bot[es] = windat->ume[eb];
+  }
+
+  /* Note : should relocate this call so that copies from the master */
+  /* are made for multiple windows.                                  */
+#if GLOB_BC
+  set_lateral_bc_eta(master->eta, geom->nbptS, geom->bpt, geom->bin,
+                     geom->bin2, 0);
+#endif
+
+#if !GLOB_BC
+  set_lateral_bc_eta(windat->eta, window->nbptS, window->bpt, window->bin,
+                     window->bin2, 0);
+#endif
+
+  /* In the linear case wtop and detadt are the same, whereas in the */
+  /* non-linear case, they are related by terms involving the        */
+  /* surface slope and surface horizontal velocities.                */
+  memcpy(windat->wtop, windat->detadt, window->szcS * sizeof(double));
+  memset(windat->wbot, 0.0, window->szcS * sizeof(double));
+
+  if (!wincon->nonlinear)
+    return;
+
+  /* Non-linear case - have to calculate the surface slope terms and */
+  /* add or subtract as necessary.                                   */
+  for (cc = 1; cc <= wincon->vcs; cc++) {
+    c = wincon->i3[cc];
+    cs = window->m2d[c]; 
+
+    for (j = 1; j <= window->npe[cs]; j++) {
+      e = window->c2e[j][cs];
+      es = window->m2de[e];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      /* Calculate the surface vertical velocity                     */
+      eta_l = windat->eta[c1];
+      eta_r = windat->eta[c2];
+      windat->wtop[cs] += (u1top[es] * (eta_r - eta_l) / 
+			   (window->h2au1[es] * (double)window->npe[cs]));
+
+      /* Calculate the bottom vertical velocity                      */
+      windat->wbot[cs] -= (u1bot[es] *	window->dHde1[es] / 
+			   (window->h2au1[es]* (double)window->npe[cs]));
+    }
+  }
+}
+
+/* END vel_w_bounds_tran()                                           */
 /*-------------------------------------------------------------------*/
 
 

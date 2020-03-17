@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: heatflux.c 5996 2018-10-17 04:57:10Z her127 $
+ *  $Id: heatflux.c 6414 2019-11-22 00:19:28Z her127 $
  *
  */
 
@@ -666,7 +666,7 @@ void calc_heatf(geometry_t *window,
   double fact = -4.0e3 * 1025.0;  /* Conversion Wm-2 to ms-1K */
 
   /* Surface relaxation is done in the windows */
-  if (wincon->heatflux & (NONE | SURF_RELAX | AVHRR))
+  if (!(wincon->heatflux & (ADVANCED | INVERSE | NET_HEAT | COMP_HEAT | COMP_HEAT_MOM | COMP_HEAT_NONE)))
     return;
 
   /* No heatflux before the ramp time */
@@ -681,14 +681,11 @@ void calc_heatf(geometry_t *window,
   /* Get the heat flux for ADVANCED and INVERSE methods. Time series */
   /* of heatflux is read from file via the scheduler if a file is */
   /* present in the input file.  */
-  switch (wincon->heatflux) {
-  case ADVANCED:
+  if (wincon->heatflux & ADVANCED) {
     surf_heat_flux(window, windat, wincon);
-    break;
-  case INVERSE:
+  } else if (wincon->heatflux & INVERSE) {
     calc_heatflux(window, windat, wincon);
-    break;
-  case NET_HEAT:
+  } else if (wincon->heatflux & NET_HEAT) {
     /* Nothing to do : heatflux read from file via the scheduler */
     /* Copy heatfluxs to the diagnostic tracers if required      */
     if (windat->heatf) {
@@ -705,16 +702,12 @@ void calc_heatf(geometry_t *window,
 	windat->swrd[c] = windat->swr[c];
       }
     }
-    break;
-  case COMP_HEAT:
+  } else if (wincon->heatflux & COMP_HEAT) {
     comp_heat_inv(window, windat, wincon);
-    break;
-  case COMP_HEAT_MOM:
+  } else if (wincon->heatflux & COMP_HEAT_MOM) {
     comp_heat_mom(window, windat, wincon);
-    break;
-  case COMP_HEAT_NONE:
+  } else if (wincon->heatflux & COMP_HEAT_NONE) {
     comp_heat_none(window, windat, wincon);
-    break;
   }
 }
 
@@ -2464,6 +2457,8 @@ void surf_relax(geometry_t *window, /* Processing window */
     sst = windat->hftemp;
   else if(wincon->heatflux & AVHRR)
     sst = windat->avhrr;
+  else if(wincon->heatflux & GHRSST)
+    sst = windat->ghrsst;
   else
     return;
 

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd.h 5915 2018-09-05 03:30:40Z riz008 $
+ *  $Id: hd.h 6441 2019-12-04 03:01:03Z riz008 $
  *
  */
 
@@ -70,11 +70,6 @@
 #endif
 
 #include "dp.h"
-
-/* JIGSAW grid generation */
-#ifdef HAVE_JIGSAWLIB
-#include "lib_jigsaw.h"
-#endif
 
 /* prototypes */
 #include "proto.h"

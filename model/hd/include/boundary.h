@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundary.h 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: boundary.h 6425 2019-11-22 00:24:04Z her127 $
  *
  */
 
@@ -252,6 +252,7 @@ struct open_bdrys {
   int bgz;                      /* OBC ghost zone */
   int *t_tmap;                  /* Map from tracer m - s OBC vectors */
   int *trm;                     /* Tracers requiring m - s transfers */
+  int *trt;                     /* Tracer OBC prescribed using tracer in tracer list */
   int mwn;                      /* Window number in the master */
   int inverse_barometer;        /* 1 if enabled, else 0 */
   int upmeth;                   /* Velocities to use in UPSTRM */
@@ -276,6 +277,7 @@ struct open_bdrys {
   int relax_zone_tan;           /* Tangential velocity relaxation zone */
   int relax_zone_ele;           /* Elevation flow relaxation zone */
   int *relax_zone_tra;          /* Tracer flow relaxation zone */
+  char nzone[MAXSTRLEN];        /* Nudging zone for T and S */
   double *rtra_b;               /* Relaxation timescale on boundary */
   double *rtra_i;               /* Relaxation timescale in interior */
   int relax_ele;                /* Elevation relaxation zone */

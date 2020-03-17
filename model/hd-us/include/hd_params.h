@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6313 2019-09-13 04:31:35Z her127 $
+ *  $Id: hd_params.h 6458 2020-02-18 23:42:30Z her127 $
  *
  */
 
@@ -253,14 +253,15 @@
 #define TEMP_MIX        4
 
 /* Heat flux options                                                         */
-#define ADVANCED        2
-#define INVERSE         4
-#define NET_HEAT        16
-#define SURF_RELAX      32
-#define COMP_HEAT       64
-#define AVHRR           128
-#define COMP_HEAT_MOM   256
-#define COMP_HEAT_NONE  512
+#define ADVANCED        0x002
+#define INVERSE         0x004
+#define NET_HEAT        0x008
+#define SURF_RELAX      0x010
+#define COMP_HEAT       0x020
+#define AVHRR           0x040
+#define COMP_HEAT_MOM   0x080
+#define COMP_HEAT_NONE  0x100
+#define GHRSST          0x200
 
 /* Salt flux options                                                         */
 #define BULK            4
@@ -324,6 +325,7 @@
 #define A_RECOM_R1      64
 #define A_RECOM_R2      128
 #define A_ROAM_R3       256
+#define A_ROAM_R4       512
 
 /* Advection scheme flags                                                    */
 #define ORDER1        0x000002
@@ -364,6 +366,8 @@
 #define L_NRST        0x200
 
 #define TR_FIRST      0x000001
+#define TR_LIND2      0x000002
+#define TR_LIND3      0x000004
 
 /* Momentum ommission flags                                                  */
 #define ADVECT        1
@@ -524,6 +528,7 @@
 #define SCALEBI        0x010000  /* Biharmonic viscosity scaling */
 #define CUBIC          0x020000  /* Cubic viscosity scaling */
 #define AREAL          0x040000  /* Areal scaling */
+#define U1_SBC         0x080000  /* Smagorinsky, FILEIN OBCs    */
 
 /* Save input forcing flags */
 #define OTEMP          1
@@ -610,14 +615,15 @@
 #define DIAGNOSE_BGC      0x400000
 #define LOCAL             0x800000
 #define TR_CHECK          0x1000000
-#define SET_AIJ           0x2000000
+#define SP_STRUCT         0x2000000
 #define MONGLOB           0x4000000
-#define LOCALER           0x8000000
+#define CLIP              0x8000000
 #define SP_FFSL           0x10000000
 #define SP_U1VM           0x20000000
 #define DO_SWR            0x40000000
 #define DO_OBC            0x80000000
-
+#define U1STRUCT          0x0100
+#define U2STRUCT          0x0200
 
 #define REINIT            0x0001
 #define NOINIT            0x0002
@@ -719,6 +725,9 @@
 #define DF_V2D            0x0002
 #define DF_MPK            0x0004
 #define DF_BARO           0x0008
+#define DF_TRA            0x0010
+#define DF_NOR            0x0020
+#define DF_TAN            0x0040
 
 /* DA flags */
 #define NO_DA             1
@@ -748,6 +757,8 @@
 #define RLX_EDEP  0x0100
 #define RLX_CDEP  0x0200
 #define RLX_GRD   0x0400
+#define RLX_REG   0x0800
+#define RLX_OBC   0x1000
 
 /* Regions */
 #define RG_NONE    0
@@ -795,6 +806,9 @@
 #define BLOCK_E2   0x0008
 #define WIN_EXP    0x0010
 #define GROUPED    0x0020
+#define WIN_REG    0x0040
+#define WIN_FILE   0x0080
+#define WIN_METIS  0x0100
 
 /* Point source/sinks */
 # define PSS_AW    0x0001
@@ -920,6 +934,7 @@
 #define W_GOBC    0x100  /* Ghost OBC */
 #define W_AUX     0x200  /* Auxiliary */
 #define W_SOBC    0x400  /* Sponge zone OBC */
+#define W_TRA     0x800  /* Valid tracer cells */
 
 /* Lagrange cell codes */
 #define L_WET          1
@@ -930,9 +945,23 @@
 /* Degree heating diagnostic */
 #define DHW_NOAA   1
 #define DHW_RT     2
+#define DHW_INT    4
+#define DHW_MEAN   8
+#define DHW_SNAP   16
+#define DHW_SET    32
+
+/* HFUN method */
+#define H_BATHY    0x001
+#define H_COAST    0x002
+#define H_CONST    0x004
+#define H_POINT    0x008
+#define H_POLY     0x010
+#define H_CST      0x020
+#define H_NC       0x040
+#define H_BTY      0x080
+#define H_MSH      0x100
 
 /* Misc */
 #define INV_BARO 8
-#define GHRSST   0x0100
 
 typedef char cstring[MAXSTRLEN];

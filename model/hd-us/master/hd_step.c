@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_step.c 6251 2019-07-31 05:21:06Z riz008 $
+ *  $Id: hd_step.c 6469 2020-02-18 23:49:45Z her127 $
  *
  */
 
@@ -78,7 +78,7 @@ void hd_step(hd_data_t *hd_data, double tstop)
     /* first step of the schedule dttr = time_left (the length of    */
     /* the schedule) otherwise dttr is the time remaining in the     */
     /* schedule.                                                     */
-    if (master->tratio) {
+    if (master->tratio < 1.0) {
       double dttr = master->tratio * master->grid_dt;
       if(time_left >= dttr) {
         if (!nc || trc % (int)master->tratio == 0)
@@ -92,6 +92,14 @@ void hd_step(hd_data_t *hd_data, double tstop)
           master->dttr = !nc ? time_left : 0.0;
       }
       time_left_tr -= master->dttr;
+      trc += 1;
+    } else if (master->tratio > 1.0) {
+      master->dttc += master->dt;
+      if (trc % (int)master->tratio == (int)master->tratio - 1) {
+	master->dttr = master->dttc;
+	master->dttc = 0.0;
+      } else
+	master->dttr = 0.0;
       trc += 1;
     } else
       master->dttr = master->dt;
@@ -175,6 +183,7 @@ void hd_step(hd_data_t *hd_data, double tstop)
 					 VEL2D))
       hd_quit("Single and multli-windows u1av mismatch\n");
 #endif
+
     /*---------------------------------------------------------------*/
     /* Do the post 3D mode calculations                              */
     mode3d_post(geom, master, window, windat, wincon, master->nwindows);

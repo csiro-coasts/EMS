@@ -2,7 +2,7 @@
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
  *  
- *  File: model/hd-us/ginterface/ginterface.c
+ *  File: model/hds/ginterface/ginterface.c
  *  
  *  Description:
  *  Generic interface
@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6121 2019-02-27 03:31:33Z riz008 $
+ *  $Id: ginterface.c 6377 2019-11-06 05:22:46Z bai155 $
  *
  */
 
@@ -32,8 +32,6 @@
 int LOCAL_TRACERS[] = {NOT, ETA, KZ, VZ,U1VH, U2VH, U1KH, U2KH};
 int NLOCAL_TRACERS = sizeof(LOCAL_TRACERS) / sizeof(int);
 
-#if defined(HAVE_TRACERSTATS_MODULE)
-
 char* ginterface_get2Dtracername(void* model, int i);
 int  ginterface_get_max_numbercolumns(void* model);
 
@@ -44,6 +42,8 @@ static int e_nepi;
 static int epi_map[MAXNUMVARS];
 
 int i_get_c(void *model, int b);
+
+#if defined(HAVE_TRACERSTATS_MODULE)
 
 trs_t* trs_create();
 
@@ -1146,7 +1146,7 @@ int ginterface_getnumbercolumns_e(void* model)
 {
   geometry_t *window = (geometry_t *)model;
   process_cell_mask(window, window->cbgc, window->ncbgc);
-  return window->wincon->vca2;
+  return window->wincon->vcs2;
 }
 
 /* Returns 1 if cell index b is a boundary cell                      */
@@ -1640,8 +1640,10 @@ double ginterface_calc_zenith(void *model, double t, int b)
   lat = asin(window->wincon->coriolis[c2] / (2.0 * ang));
 
   /* Call the library function to calculate the solar elevation      */
-  // xxx this needs fixing
-  elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
+  if (window->is_geog)
+    elev = calc_solar_elevation(NULL, tunit, t, lat, NULL, &window->cellx[c2]);
+  else
+    elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
 
   /* Zenith                                                          */
   return ( (PI/2.0) - elev);
@@ -2294,7 +2296,7 @@ void wave_interface_step(geometry_t *window)
     for (cc = 1; cc <= window->b2_t; cc++) {
       c = window->w2_t[cc];
     */
-    for (cc = 1; cc <= wincon->vca2; cc++) {
+    for (cc = 1; cc <= wincon->vcs2; cc++) {
       c = wincon->s2[cc];
       /* Exclude process points if required */
       if (window->ncwave)
@@ -2647,5 +2649,113 @@ void w_get_brsm(void *hmodel, int *brsm)
   }
   */
 }
+
+/*
+ * Moon angle interface
+ */
+void ginterface_moonvars(void *hmodel, int c,
+			 double *mlon, double *mlat,
+			 double *dist_earth_sun, double *dist_moon_earth,
+			 double *lunar_angle, double *sun_angle,
+			 double *moon_phase,
+			 double *lunar_dec)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int cs = window->m2d[c];
+  double Al, dec;
+  int yr, mon, nday, jd; /* Year, month, day, Julian date            */
+  double day;            /* Day of year                              */
+  double hrs;            /* Hours at longitude lon                   */
+  double d2r = PI/180.0;  /* Degrees to radians                      */
+  double Rl = 3844e5;    /* Mean distance of moon from earth         */
+  double Rs = 1496e8;    /* Mean distance of sun from earth          */
+  double es = 0.0167086; /* Solar eccentricity                       */
+  double el = 0.0549;    /* Lunar eccentricity                       */
+  double as = 149.60e9;  /* Sun semi-maor axis (m)                   */
+  double lat;            /* Latitude (radians)                       */ 
+  double lon = window->cellx[cs];  /* Longitude (degrees)            */
+  double gmst;           /* Greenwhich mean sidereal time (hours)    */
+  double jt;             /* Julian date                              */
+  double hrang[2];       /* Lunar and solar hour angle (rad)         */
+  double radius[2];      /* Lunar and solar distance (m)             */
+
+  /* Get the Julian date                                             */
+  tm_time_to_ymd(windat->t, master->timeunit, &yr, &mon, &nday);
+  jd = date_to_jul(mon, nday, yr);
+
+  /* Julian date starts at midday - adjust half a day                */
+  jt = (double)jd - 0.5;
+
+  /* Get the day of the year                                         */
+  if (window->is_geog) {
+    dtime(NULL, master->timeunit, windat->t, &yr, &day, &lon);
+  } else {
+    hd_quit("Can't compute moon angles for non-geographic mesh.\n");
+    return;
+  }
+
+  /* Get the Greenwhich mean sidereal time in hours                  */
+  /* see https://aa.usno.navy.mil/faq/docs/GAST.php                  */
+  jt += windat->days - floor(windat->days);
+  gmst = fmod(18.697374558 + 24.06570982441908 * (jt - 2451545.0), 24.0) * PI / 12.0;
+  
+  /* Call EMS library function */
+
+  // printf("Passing jt = %e to moonvars \n",jt);
+
+  moonvars(jt, &Al, &dec, mlon, mlat, &radius[0]);
+  radius[0] *= 1e3;   /* Convert to metres */
+
+  /* Get the lunar hour angle (Pugh Eq. 3.20a)                       */
+  hrang[0] = lon * d2r + gmst - Al;
+  
+  /* Get the solar hour angle                                        */
+  nday = (int)day;
+  hrs = 24 * (day - (double)nday);
+  hrang[1] = (hrs - 12.0) * PI / 12.0;
+  radius[1] = d2r * day * 360.0 / 365.25;
+  radius[1] = as * (1.0 - es * es) / (1.0 + es *cos(radius[1]));
+
+  /* Calculate Moon Phase - New Moon in Hobart 4.13 am, 7 Jan 2000 */
+  /* Need to make this work for any time */
+
+  int newmoonday = date_to_jul(1, 7, 2000);
+  double newmoon_jt = (double)newmoonday + 4./24.+ 13./(60.*24.) + 0.5;
+  double partday = (windat->days+12./24. - floor(windat->days+12./24.));
+  double moonphase = fmod((double)jd + partday - newmoon_jt,29.530588853)/29.530588853;
+
+  /* calculate lunar declination using earth's declination (off by a maximum of 5 degrees) */
+
+  // dec = 0.409230*sin(2.0*M_PI*(284.0+day)/365.0);
+
+  /*
+   * Assign outputs
+   */
+  *dist_moon_earth = radius[0];
+  *dist_earth_sun  = radius[1];
+  *lunar_angle = hrang[0];
+  *sun_angle   = hrang[1];
+  *moon_phase = moonphase*M_PI;
+  *lunar_dec = dec;
+
+  return;
+}
+
+/*
+ * Fractional cloud cover
+ */
+double ginterface_get_cloud(void *hmodel, int c)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int cs = window->m2d[c];
+  double tcld;
+
+  tcld = min(max((windat->cloud) ? windat->cloud[c] : 0.0, 0.0), 1.0);
+
+  return(tcld);
+}
+
 
 #endif

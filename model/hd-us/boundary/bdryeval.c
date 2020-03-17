@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryeval.c 6328 2019-09-13 04:38:11Z her127 $
+ *  $Id: bdryeval.c 6384 2019-11-21 22:54:21Z her127 $
  *
  */
 
@@ -227,17 +227,17 @@ void bdry_eval_u1_m(geometry_t *geom, /* Global geometry             */
 	double ramp = (master->rampf & FILEIN) ? master->rampval : 1.0;
 	for (ee = 1; ee <= open[n]->no3_e1; ee++) {
 	  e = open[n]->obc_e1[ee];
-	  c = open[n]->obc_e1[ee];
+	  c = open[n]->obc_e2[ee];
 	  e2 = geom->m2de[e];
 	  c2 = geom->m2d[c];
 	  x = geom->u1x[e2];
 	  y = geom->u1y[e2];
 	  z = geom->cellz[c] * master->Ds[c2];
-	  open[n]->transfer_u1[ee] = ramp * master->Hn1[c2] *
+	  open[n]->transfer_u1[ee] = ramp * master->Hn1[c2] * 
 	    hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
 					     open[n]->tsfiles,
 					     open[n]->filenames, data->name,
-					     master->t3d, x, y, z);
+					     master->t, x, y, z);
 	  if (open[n]->relax_zone_nor)
 	    read_bdry_zone(master, open[n], ee, U1BDRY|U1GEN);
 	}
@@ -258,7 +258,7 @@ void bdry_eval_u1_m(geometry_t *geom, /* Global geometry             */
 	double ramp = (master->rampf & FILEIN) ? master->rampval : 1.0;
 	for (ee = open[n]->no3_e1 + 1; ee <= open[n]->to3_e1; ee++) {
 	  e = open[n]->obc_e1[ee];
-	  c = open[n]->obc_e1[ee];
+	  c = open[n]->obc_e2[ee];
 	  e2 = geom->m2de[e];
 	  c2 = geom->m2d[c];
 	  x = geom->u1x[e2];
@@ -269,8 +269,7 @@ void bdry_eval_u1_m(geometry_t *geom, /* Global geometry             */
 					     open[n]->tsfiles,
 					     open[n]->filenames, 
 					     data->name,
-					     master->t3d, x, y, z);
-
+					     master->t, x, y, z);
 	  if (open[n]->relax_zone_tan)
 	    read_bdry_zone(master, open[n], ee, U1BDRY|U2GEN);
 	}
@@ -401,6 +400,7 @@ void bdry_eval_eta_m(geometry_t *geom,  /* Global geometry */
 	double ramp = (master->rampf & FILEIN) ? master->rampval : 1.0;
 	if (open[n]->file_dt && master->t < open[n]->file_next - DT_EPS)
 	  continue;
+
         for (cc = 1; cc <= open[n]->no2_t; cc++) {
           c = open[n]->obc_t[cc];
           x = geom->cellx[c];
@@ -856,7 +856,7 @@ void bdry_eval_u1av_m(geometry_t *geom, /* Global geometry           */
       /* Read the forcing data from file                             */
       else {
 	double ramp = (master->rampf & FILEIN) ? master->rampval : 1.0;
-	for (ee = open[n]->no2_e1 + 1; ee <= open[n]->to2_e1; ee++) {
+	for (ee = open[n]->no3_e1 + 1; ee <= open[n]->to2_e1; ee++) {
 	  e = open[n]->obc_e1[ee];
 	  c = open[n]->obc_e2[ee];
 	  e2 = geom->m2de[e];
@@ -915,7 +915,7 @@ void bdry_transfer_u1av(master_t *master, geometry_t *window,
 	if(data->trans)
 	  data->trans(master, open_w[n], data, window, windat);
 	else {
-	  for (ee = open_w[n]->no2_e1 + 1; ee <= open_w[n]->to2_e1; ee++)
+	  for (ee = open_w[n]->no3_e1 + 1; ee <= open_w[n]->to2_e1; ee++)
 	    open_w[n]->transfer_u2av[ee] = data->fill_value;
 	}
       }
@@ -935,7 +935,7 @@ void bdry_transfer_u1av(master_t *master, geometry_t *window,
       }
       if (open_w[n]->bcond_tan2d & (FILEIN | CUSTOM)) {
         int mwn = open_w[n]->mwn;
-        for (ee = open_w[n]->no2_e1 + 1; ee <= open_w[n]->to2_e1; ee++) {
+        for (ee = open_w[n]->no3_e1 + 1; ee <= open_w[n]->to2_e1; ee++) {
           e = open_w[n]->tmap_u2[ee];
           open_w[n]->transfer_u2av[ee] = open_m[mwn]->transfer_u2av[e];
         }

@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: recom_extras.c 6052 2019-01-21 02:41:06Z bai155 $
+ *  $Id: recom_extras.c 6376 2019-11-06 04:09:47Z bai155 $
  *
  */
 
@@ -150,6 +150,15 @@ void recom_extras_postinit(eprocess* p)
 
   int dummy_i;
 
+  if (process_present(e,PT_WC,"light_spectral_wc(H,HPLC)")){
+      dummy_i = e->find_index(tracers, "Mud-carbonate", e);
+      dummy_i = e->find_index(tracers, "Sand-carbonate", e);
+      dummy_i = e->find_index(tracers, "Gravel-carbonate", e);
+      dummy_i = e->find_index(tracers, "Mud-mineral", e);
+      dummy_i = e->find_index(tracers, "Sand-mineral", e);
+      dummy_i = e->find_index(tracers, "Gravel-mineral", e);
+    }
+
   if (process_present(e,PT_EPI,"diffusion_epi")){
     dummy_i = e->find_index(epis, "Oxygen_sedflux", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "DIC_sedflux", e) + OFFSET_EPI;
@@ -170,7 +179,7 @@ void recom_extras_postinit(eprocess* p)
     ws->PAR_i = e->find_index(tracers, "PAR", e);
     ws->PAR_z_i = e->find_index(tracers, "PAR_z", e);
     ws->at_440_i   = e->find_index(tracers, "at_440", e);
-    ws->ap_670_i   = e->find_index(tracers, "ap_670", e);
+    // ws->ap_670_i   = e->find_index(tracers, "ap_670", e); nolonger needed?
     ws->bt_550_i = e->find_index(tracers, "bt_550", e);
     ws->Kd_490_i = e->find_index(tracers, "Kd_490", e);
     ws->K_heat_i = e->find_index(tracers, "K_heat", e);
@@ -228,28 +237,29 @@ void recom_extras_postinit(eprocess* p)
 
     ws->OC3V_i = e->find_index(epis, "OC3V", e) + OFFSET_EPI;
 
-    /* Himawari-8 - assume MODIS 470 nm */
+    /* Himawari-8 - assume 470 nm in MODIS and 510 nm in Sentinel-3 */
 
-    dummy_i = e->find_index(epis, "R_510", e) + OFFSET_EPI;
-    dummy_i = e->find_index(epis, "R_640", e) + OFFSET_EPI;
+    // dummy_i = e->find_index(epis, "R_640", e) + OFFSET_EPI;
 
     /* Landsat8 */
 
-    dummy_i = e->find_index(epis, "R_482", e) + OFFSET_EPI;
+    // dummy_i = e->find_index(epis, "R_482", e) + OFFSET_EPI;
     // dummy_i = e->find_index(epis, "R_561", e) + OFFSET_EPI;
-    dummy_i = e->find_index(epis, "R_655", e) + OFFSET_EPI;
+    // dummy_i = e->find_index(epis, "R_655", e) + OFFSET_EPI;
 
-    /* Sentinal-3 - 412, 443, 490 in MODIS, 510 in Himawari8, */
+    /* Sentinel-3 - 412, 443, 490 in MODIS  */
 
     dummy_i = e->find_index(epis, "R_400", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_510", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_560", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_620", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_665", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_681", e) + OFFSET_EPI;
-    dummy_i = e->find_index(epis, "R_710", e) + OFFSET_EPI;
-    dummy_i = e->find_index(epis, "R_753", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_709", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_754", e) + OFFSET_EPI;
 
     dummy_i = e->find_index(epis, "OC4Me", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Hue", e) + OFFSET_EPI;
 
     /* NTU comparison */
 
@@ -262,6 +272,12 @@ void recom_extras_postinit(eprocess* p)
     dummy_i = e->find_index(epis, "Secchi", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "SWR_bot_abs", e) + OFFSET_EPI;
 
+    /* Moonlight */
+
+    dummy_i = e->find_index(epis, "Moonlight", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Lunar_zenith", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Lunar_phase", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "Moon_fulldisk", e) + OFFSET_EPI;
   }
 
   /* add diagnostics if particular processes specificed */ 
@@ -299,6 +315,7 @@ void recom_extras_postinit(eprocess* p)
     ws->dpCO2_i = e->find_index(tracers,"dpCO2", e);
     ws->omega_ar_i = e->find_index(tracers,"omega_ar", e);
     ws->PH_i = e->find_index(tracers, "PH", e);
+    dummy_i = e->find_index(tracers, "xco2_in_air", e);
   }
 }
 

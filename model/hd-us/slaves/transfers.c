@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6281 2019-08-08 04:29:06Z her127 $
+ *  $Id: transfers.c 6474 2020-02-18 23:52:26Z her127 $
  *
  */
 
@@ -329,8 +329,11 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     c = window->wsa[lc];
     windat->w[lc] = master->w[c];
     /*
-    windat->u[lc] = master->u[c];
-    windat->v[lc] = master->v[c];
+    if (master->means & TRANSPORT) {
+      windat->u1m[lc] = master->u1m[c];
+      windat->u2m[lc] = master->u2m[c];
+      windat->wm[lc] = master->wm[c];
+    }
     */
     windat->Kz[lc] = master->Kz[c];
     windat->Vz[lc] = master->Vz[c];
@@ -347,6 +350,10 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     windat->u1b[lc] = master->u1b[ce1];
     windat->u2b[lc] = master->u2b[ce1];
     windat->u1flux3d[lc] = master->u1flux3d[ce1];
+    if (master->means & TRANSPORT) {
+      windat->ume[lc] = master->ume[ce1];
+      windat->u1vm[lc] = master->u1vm[ce1];
+    }
   }
 
   /* These fluxes do not need to be transferred unless diagnostic    */
@@ -570,6 +577,17 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
 	c = window->wsa[lc];
 	windat->sdc[lc] = master->sdc[c];
       }
+      /*
+      if (master->means & TRANSPORT) {
+	for (cc = 1; cc <= window->nm2s; cc++) {
+	  lc = window->m2s[cc];
+	  c = window->wsa[lc];
+	  windat->u1m[lc] = master->u1m[c];
+	  windat->u2m[lc] = master->u2m[c];
+	  windat->wm[lc] = master->wm[c];
+	}
+      }
+      */
     }
     /* Transfer any custom data from the master to the slaves        */
     bdry_transfer_u1(master, window, windat);
@@ -584,6 +602,10 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
       windat->u1[le] = master->u1[e];
       /*windat->u2[le] = master->u2[e];*/
       windat->u1flux3d[le] = master->u1flux3d[e];
+      if (master->means & TRANSPORT) {
+	windat->ume[le] = master->ume[e];
+	windat->u1vm[le] = master->u1vm[e];
+      }
       /* Cell thickness is required for tracer horizontal diffusion  */
       windat->dzu1[le] = master->dzu1[e];
     }
@@ -800,7 +822,12 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
             window->s2me1, window->wse, window->ns2me1);
     s2m_vel(master->u2b, windat->u2b,
             window->s2me1, window->wse, window->ns2me1);
-
+    if (master->means & TRANSPORT) {
+      s2m_vel(master->u1vm, windat->u1vm,
+	      window->s2me1, window->wse, window->ns2me1);
+      s2m_vel(master->ume, windat->ume,
+	      window->s2me1, window->wse, window->ns2me1);
+    }
     /* Set in set_new_cells_ and used in tracer horz diffusion       */
     s2m_vel(master->dzu1, windat->dzu1,
 	    window->s2me1, window->wse, window->ns2me1);
@@ -834,6 +861,17 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
       master->wtop[c] = windat->wtop[lc];
       master->wbot[c] = windat->wbot[lc];
     }
+    /*
+    if (master->means & TRANSPORT) {
+      for (cc = 1; cc <= window->ns2m; cc++) {
+	lc = window->s2m[cc];
+	c = window->wsa[lc];
+	master->u1m[c] = windat->u1m[lc];
+	master->u2m[c] = windat->u2m[lc];
+	master->wm[c] = windat->wm[lc];
+      }
+    }
+    */
   }
   /* mode = TRACERS : variables calculated in the tracer routine     */
   if (mode & TRACERS) {

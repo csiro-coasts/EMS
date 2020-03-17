@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_r.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: readparam_r.c 6480 2020-03-02 05:37:45Z her127 $
  *
  */
 
@@ -724,7 +724,7 @@ void auto_params_roam_pre3(FILE * fp, parameters_t *params)
   if(!strlen(params->odata))
     sprintf(params->odata,"%s %s %s",params->edata, params->tdata,
 	    params->sdata);
-  params->rampf = WIND|TIDALH|INV_BARO;
+  params->rampf = WIND|TIDALH|TIDALC|INV_BARO;
   params->save_force = OTEMP|OSALT|OETA;
   params->save_force = NONE;
   params->save_force = OTEMP|OSALT;
@@ -1450,6 +1450,7 @@ void auto_params_roam_post1(FILE * fp, parameters_t *params)
       strcpy(buf, params->sdata);
     else
       continue;
+    strcpy(tracer->data, buf);
     if (strlen(params->trrlxn[n]) == 0) {
       strcpy(params->trrlxn[n], buf);
       strcpy(tracer->relax_file, buf);
@@ -1543,6 +1544,7 @@ void auto_params_roam_post2(FILE * fp, parameters_t *params)
       strcpy(buf, params->sdata);
     else
       continue;
+    strcpy(tracer->data, buf);
     if (strlen(params->trrlxn[n]) == 0) {
       strcpy(params->trrlxn[n], buf);
       strcpy(tracer->relax_file, buf);
@@ -1652,6 +1654,7 @@ void auto_params_roam_post3(FILE * fp, parameters_t *params)
       strcpy(buf, params->sdata);
     else
       continue;
+    strcpy(tracer->data, buf);
     if (strlen(params->trrlxn[n]) == 0) {
       strcpy(params->trrlxn[n], buf);
       strcpy(tracer->relax_file, buf);
@@ -1764,6 +1767,7 @@ void auto_params_roam_post4(FILE * fp, parameters_t *params)
       strcpy(buf, params->sdata);
     else
       continue;
+    strcpy(tracer->data, buf);
     if (strlen(params->trrlxn[n]) == 0) {
       strcpy(params->trrlxn[n], buf);
       strcpy(tracer->relax_file, buf);
@@ -1910,6 +1914,7 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
       }
     } else
       continue;
+    strcpy(tracer->data, buf);
     if (strlen(params->trrlxn[n]) == 0) {
       strcpy(params->trrlxn[n], buf);
       strcpy(tracer->relax_file, buf);
@@ -2000,7 +2005,15 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
     open->relax_zone_nor = 8;
     open->relax_zone_tan = 8;
     */
-    open->adjust_flux = -1.2;  /* 10 times dt2d */
+    if (params->robust <= 1) {
+      open->adjust_flux = -1.2;  /* 10 times dt2d */
+      open->adjust_flux_s = 1.5;
+    } else if (params->robust > 1 && params->robust <= 3) {
+      open->adjust_flux = 1.8;
+    } else {
+      open->adjust_flux = -1.2;  /* 10 times dt2d */
+    }
+
     if(params->robust < 3 || params->robust > 4) {
       open->sponge_zone_h = 8;
       open->sponge_f = 5;
@@ -2020,6 +2033,168 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
 }
 
 /* END auto_params_roam_post5()                                      */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to overwrite input parameters to ROAM values.             */
+/* Included Nov 2019. Uses TPXO tide.                                */
+/*-------------------------------------------------------------------*/
+void auto_params_roam_post6(FILE * fp, parameters_t *params)
+{
+  int n, tn;                    /* Counters */
+  open_bdrys_t *open;           /* Pointer to boundary structure */
+  char keyword[MAXSTRLEN];      /* Input dummy */
+  char buf[MAXSTRLEN];          /* Input dummy */
+  int nvf = 0;                  /* 0 : bcond_nor = CUSTOM            */
+                                /* 1 : bcond_nor2d = CUSTOM          */
+
+  /* Changes to _pre fromulation */
+  if (!strlen(params->vel_init))
+    params->rampf |= CUSTOM;
+
+  /* Tracer relaxation */
+  for (n = 0; n < params->ntr; n++) {
+    int tm = params->trinfo_3d[n].m;
+    tracer_info_t *tracer = &params->trinfo_3d[n];
+
+    if (strcmp(tracer->name, "temp") == 0) {
+      if (strlen(params->tdata)) strcpy(buf, params->tdata);
+      if (params->sharp_pyc) {
+	strcpy(tracer->tag, "hipass_vert:1");
+	tracer->flag |= V_HP;
+	tracer->scale = 1.0;
+      }
+    } else if (strcmp(tracer->name, "salt") == 0) {
+      if (strlen(params->sdata)) strcpy(buf, params->sdata);
+      if (params->sharp_pyc) {
+	strcpy(tracer->tag, "hipass_vert:1");
+	tracer->flag |= V_HP;
+	tracer->scale = 1.0;
+      }
+    } else
+      continue;
+    strcpy(tracer->data, buf);
+    if (strlen(params->trrlxn[n]) == 0) {
+      strcpy(params->trrlxn[n], buf);
+      strcpy(tracer->relax_file, buf);
+      params->trrlxdt[n] = 3600.0;
+      strcpy(tracer->relax_dt, "1 hour");
+      strcpy(params->trrlxtc[n], "20 days");
+      strcpy(tracer->r_rate, "20 days");
+      if (params->robust == 4 || params->robust == 8) {
+	strcpy(params->trrlxtc[n], "temporal -4 1 hour 0 20 days");
+	strcpy(tracer->r_rate, "temporal -4 1 hour 0 20 days");
+      }
+    }
+  }
+
+  /* Tracer reset */
+  for (n = 0; n < params->ntr; n++) {
+    int tm = params->trinfo_3d[n].m;
+    if (strlen(params->trinfo_3d[n].reset_file))
+      strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
+    if (strlen(params->trinfo_3d[n].reset_dt))
+      tm_scale_to_secs(params->trinfo_3d[n].reset_dt, &params->trrestdt[n]);
+  }
+
+  /* Bathymetry limits */
+  if (params->bmin < 1.0)
+    params->bmin = 1.0;
+  if (params->bmax > 20.0 && params->bmin < 2.0)
+    params->bmin = 2.0;
+  if (params->bmax > 200.0 && params->bmin < 4.0)
+    params->bmin = 4.0;
+
+  /* Vertical grid */
+  for (n = params->nz - 1; n >= 0; n--) {
+    if (params->layers[n] > -LAYERMIN) {
+      params->layers[n] = params->layers[params->nz];
+      params->nz -= 1;
+    }
+    if (params->layers[n] >= -LAYERMIN)
+      break;
+  }
+  params->hmin = min(0.1, 0.07 * (params->layers[params->nz] -
+				  params->layers[params->nz - 1]));
+ 
+  /*-----------------------------------------------------------------*/
+  /* Open boundaries */
+  for (n = 0; n < params->nobc; n++) {
+    open = params->open[n];
+
+    if (strlen(open->bflow)) continue;
+
+    if (nvf == 0) {
+      open->bcond_nor = CUSTOM;
+      if (open->type & U1BDRY) 
+	sprintf(open->cusname_u1, "uv_to_u1 %s", params->vdata);
+      else if (open->type & U2BDRY)
+	sprintf(open->cusname_u2, "uv_to_u2 %s", params->vdata);
+      open->bcond_nor2d = VERTIN;
+      
+      open->bcond_tan = CUSTOM;
+      if (open->type & U1BDRY) 
+	sprintf(open->cusname_u2, "uv_to_u2 %s", params->vdata);
+      else if (open->type & U2BDRY)
+	sprintf(open->cusname_u1, "uv_to_u1 %s", params->vdata);
+      open->bcond_tan2d = VERTIN;
+    } else {
+      open->bcond_nor = NOGRAD;
+      open->bcond_nor2d = CUSTOM;
+      if (open->type & U1BDRY) 
+	sprintf(open->cusname_u1av, "uv_to_u1av %s", params->vdata);
+      else if (open->type & U2BDRY)
+	sprintf(open->cusname_u2av, "uv_to_u2av %s", params->vdata);
+
+      open->bcond_tan = NOGRAD;
+      open->bcond_tan2d = CUSTOM;
+      if (open->type & U1BDRY) 
+	sprintf(open->cusname_u2av, "uv_to_u2av %s", params->vdata);
+      else if (open->type & U2BDRY)
+	sprintf(open->cusname_u1av, "uv_to_u1av %s", params->vdata);
+    }
+    if (strlen(params->odata))
+      strcpy(open->tsfn, params->odata);
+    if(prm_read_char(fp, "TIDE_CONSTITUENTS", params->tide_con_file)) {
+      if (prm_read_char(fp, "TIDE_CSR_CON_DIR", params->nodal_dir)) {
+	open->bcond_ele = NOTHIN|TIDALC|FILEIN;
+	strcpy(open->tide_con, "M2 S2 N2 K2 K1 O1 P1 Q1");
+      }
+    } else
+      open->bcond_ele = NOTHIN;
+    /*
+    open->relax_zone_nor = 8;
+    open->relax_zone_tan = 8;
+    */
+    if (params->robust <= 1) {
+      open->adjust_flux = -1.2;  /* 10 times dt2d */
+      open->adjust_flux_s = 1.5;
+    } else if (params->robust > 1 && params->robust <= 3) {
+      open->adjust_flux = 1.8;
+    } else {
+      open->adjust_flux = -1.2;  /* 10 times dt2d */
+    }
+
+    if(params->robust < 3 || params->robust > 4) {
+      open->sponge_zone_h = 8;
+      open->sponge_f = 5;
+    }
+    if(strlen(params->patm)) open->inverse_barometer = 1;
+    open->stagger = OUTFACE;
+
+    for (tn = 0; tn < params->ntr; tn++) {
+      tracer_info_t *tracer = &params->trinfo_3d[tn];
+      if ((strcmp(tracer->name, "salt") == 0) ||
+	  (strcmp(tracer->name, "temp") == 0))
+        open->bcond_tra[tn] = UPSTRM | FILEIN;
+      else
+        open->bcond_tra[tn] = NOGRAD;
+    }
+  }
+}
+
+/* END auto_params_roam_post6()                                      */
 /*-------------------------------------------------------------------*/
 
 
@@ -2276,7 +2451,7 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
   } else if (params->roammode == A_ROAM_R2) {
     if (params->robust == 10)
       sf *= 0.5;
-  } else if (params->roammode == A_ROAM_R3) {
+  } else if (params->roammode & (A_ROAM_R3|A_ROAM_R4)) {
     if (params->robust == 5)
       sf *= 0.5;
   }
@@ -2456,7 +2631,7 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
       params->u1vh *= -1.0;
       params->u2vh *= -1.0;
     }
-    if (params->roammode == A_ROAM_R3) {
+    if (params->roammode & (A_ROAM_R3|A_ROAM_R4)) {
       params->u1vh *= -1.0;
       params->u2vh *= -1.0;
     }
@@ -2472,7 +2647,7 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
   else
     params->visc_method = (LAPLACIAN|PRE794);
 
-  if (params->roammode & A_ROAM_R3) {
+  if (params->roammode & (A_ROAM_R3|A_ROAM_R4)) {
     params->bsue1 = floor(params->bsue1 * fabs(params->u1vh));
     params->bsue2 = floor(params->bsue2 * fabs(params->u2vh));
     params->bkue1 = floor(params->bkue1 * fabs(params->u1kh));
@@ -2484,19 +2659,23 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
   }
 
   /* Set time-step dependent parameters */
-  if (params->roammode & (A_ROAM_R1|A_ROAM_R2|A_ROAM_R3|A_RECOM_R2)) {
+  if (params->roammode & (A_ROAM_R1|A_ROAM_R2|A_ROAM_R3|A_ROAM_R4|A_RECOM_R2)) {
     int n, nn, c1;
     d1 = params->grid_dt / (double)params->iratio;
     for (nn = 1; nn <= params->nwindows; nn++) {
       for (n = 0; n < params->nobc; n++) {
 	d2 = params->open[n]->adjust_flux;
+	d3 = params->open[n]->adjust_flux_s;
 	if (nn == 1) {
 	  params->open[n]->adjust_flux = d1 * d2;
 	  geom->open[n]->adjust_flux = d1 * d2;
+	  params->open[n]->adjust_flux_s = d1 * d3;
+	  geom->open[n]->adjust_flux_s = d1 * d3;
 	}
 	c1 = geom->owc[n][nn];
 	if (c1 != -1) {
 	  window[nn]->open[c1]->adjust_flux = d1 * d2;
+	  window[nn]->open[c1]->adjust_flux_s = d1 * d3;
 	}
       }
     }

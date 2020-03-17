@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 6286 2019-08-08 04:33:36Z her127 $
+ *  $Id: reset.c 6477 2020-02-18 23:53:57Z her127 $
  *
  */
 
@@ -610,6 +610,16 @@ static double trans_reset_event(sched_event_t *event, double t)
     tsync = master->dt;
     tsin = reset->tnext + master->grid_dt;
   }
+  if (master->tmode & SP_STRUCT) {
+    ve3 = geom->s2c;
+    ve2 = geom->s2c;
+    ne2 = geom->ns2;
+    ne3 = geom->ns3;
+    vc3 = geom->s2c;
+    vc2 = geom->s2c;
+    nc2 = geom->ns2;
+    nc3 = geom->ns3;
+  }
 
   if ((t + reset->dt / 10.0) >= (reset->tnext - tsync)) {
     if (master->tmode & SP_ORIGIN) {
@@ -640,15 +650,35 @@ static double trans_reset_event(sched_event_t *event, double t)
 			      vc2, nc2, (mode|VEL2D));
     }
     if (master->tmode & SP_FFSL) {
+      int nmode = (mode|U1GEN);
+      if (master->tmode & SP_STRUCT) {
+	nmode |= U2STRUCT;
+	hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
+				reset->tsnames, "u2vmean", master->u1vm, tsin,
+				ve3, ne3, nmode);
+	nmode &= ~U2STRUCT;
+	nmode |= U1STRUCT;
+      }
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, "u1vmean", master->u1vm, tsin,
-			      ve3, ne3, (mode|U1GEN));
+			      ve3, ne3, nmode);
+      if (master->tmode & SP_STRUCT) nmode &= ~U1STRUCT;
     }
     /* Read in mandatory variables                                   */
     if (!(master->tmode & (SP_ORIGIN|GLOBAL))) {
+      int nmode = (mode|U1GEN);
+      if (master->tmode & SP_STRUCT) {
+	nmode |= U2STRUCT;
+	hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
+				reset->tsnames, "u2", master->u1, tsin,
+				ve3, ne3, nmode);
+	nmode &= ~U2STRUCT;
+	nmode |= U1STRUCT;
+      }
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, "u1", master->u1, tsin,
-			      ve3, ne3, (mode|U1GEN));
+			      ve3, ne3, nmode);
+      if (master->tmode & SP_STRUCT) nmode &= ~U1STRUCT;
       if (!(master->conserve & CONS_W) || master->conserve & (CONS_PSS|CONS_WS)) {
 	hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 				reset->tsnames, "w", master->w, tsin,

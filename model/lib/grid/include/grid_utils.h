@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: grid_utils.h 5839 2018-06-28 03:38:07Z riz008 $
+ *  $Id: grid_utils.h 6437 2019-11-27 23:58:45Z riz008 $
  *
  */
 
@@ -24,6 +24,7 @@
 /*********/
 /* POINT */
 /*********/
+#include "emsmath.h"
 
 /* 
  * "point" is a basic data structure in this package.

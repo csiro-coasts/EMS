@@ -157,7 +157,7 @@ AC_CHECK_PROG(AR, ar, ar, :)
 
 dnl Fix up for the intel compiler
 dnl * takes care of mpicc and mpiicc
-AS_CASE($CC, *icc, CFLAGS+=" -no-gcc")
+dnl AS_CASE($CC, *icc, CFLAGS+=" -no-gcc")
 
 dnl Checks for system header files and functions.
 AC_HEADER_STDC
@@ -569,6 +569,35 @@ if test "$MPI_ROOT"; then
       AC_MSG_WARN('(MPI) Could not find OpenMP support on this machine')
    fi
    AC_DEFINE(HAVE_OMP)
+   includedir=$oldincludedir
+   libdir=$oldlibdir
+fi
+
+dnl ---
+dnl Metis
+dnl ---
+AC_ARG_WITH(metis, [  --with-metis=<path>       Path of METIS], METIS_ROOT=$withval, METIS_ROOT=)
+if test "$METIS_ROOT"; then
+   oldincludedir=$includedir
+   oldlibdir=$libdir
+
+   includedir="$includedir $METIS_ROOT/include"
+   libdir="$libdir $METIS_ROOT/lib"
+
+   AC_FIND_LIB(metis, METIS_LIB=$lib_path, METIS_LIB=)
+   if test -z "$METIS_LIB"; then
+      AC_MSG_ERROR('Unable to find libmetis in $METIS_ROOT/lib')
+   fi
+   AC_FIND_HEADER(metis.h, METIS_INC=$header_path, METIS_INC=)
+   if test -z "$METIS_LIB"; then
+      AC_MSG_ERROR('Unable to find libmetis in $METIS_ROOT/lib64')
+   fi
+   METIS_INC="-I${METIS_INC}"
+   METIS_LIB="-L${METIS_LIB} -lmetis"
+   AC_SUBST(METIS_INC)
+   AC_SUBST(METIS_LIB)
+   AC_DEFINE(HAVE_METIS)
+
    includedir=$oldincludedir
    libdir=$oldlibdir
 fi

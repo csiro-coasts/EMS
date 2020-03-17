@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_mortality_sed.c 5934 2018-09-12 03:34:13Z bai155 $
+ *  $Id: zooplankton_mortality_sed.c 6449 2020-01-22 04:12:16Z wil00y $
  *
  */
 
@@ -116,7 +116,8 @@ void zooplankton_mortality_sed_init(eprocess* p)
     ws->TP_i = e->find_index(tracers, "TP", e);
     ws->TC_i = e->find_index(tracers, "TC", e);
     ws->BOD_i = e->find_index(tracers, "BOD", e);
-    ws->COD_i = e->find_index(tracers, "COD", e);
+    ws->COD_i = e->try_index(tracers, "COD", e);
+    /*   ws->COD_i = e->find_index(tracers, "COD", e); */
     
 
   /*non essential diagnostic variables*/
@@ -187,7 +188,8 @@ void zooplankton_mortality_sed_calc(eprocess* p, void* pp)
     y1[ws->DetPL_N_i] += mortality * ws->FDM;
     y1[ws->Oxygen_i] += Oxy_pr;
 
-    y1[ws->COD_i] += NH4release * red_W_O * (1.0-sigmoid) / porosity;
+    if (ws->COD_i > -1)
+      y1[ws->COD_i] += NH4release * red_W_O * (1.0-sigmoid) / porosity;
 
     if (ws-> NH4_pr_i > -1)
       y1[ws->NH4_pr_i] += NH4release * SEC_PER_DAY * c->dz_sed * porosity;

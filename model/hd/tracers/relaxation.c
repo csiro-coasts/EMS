@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: relaxation.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: relaxation.c 6434 2019-11-22 00:26:56Z her127 $
  *
  */
 
@@ -27,6 +27,7 @@
 static int tr_relax_init(sched_event_t *event);
 static double tr_relax_event(sched_event_t *event, double t);
 static void tr_relax_cleanup(sched_event_t *event, double t);
+static void get_obc_relax(master_t *master, double *rr);
 
 typedef struct {
   master_t *master;             /* Grid associated with */
@@ -42,6 +43,7 @@ typedef struct {
   double dt0, dt1, rlx0, rlx1;  /* Adaptive relaxation endpoints */
   double slope;                 /* Adaptive relaxation slope */
   int tctype;                   /* Adaptive relaxation type */
+  double *rr;                   /* Relaxation rate array */
   int da_started;               /* Start of a DA cycle */
 } tr_relax_data_t;
 
@@ -78,9 +80,10 @@ void tracer_relax_init(master_t *master)
   char tu0[MAXSTRLEN], tu1[MAXSTRLEN];
   char fname[MAXSTRLEN];
   double dt, tconst = 0.0;
-  int t;
+  int t, n;
   tr_relax_data_t *relax = NULL;
   int rlx[master->ntr];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
 
   master->nrlx = 0;
   prm_set_errfn(hd_silent_warn);
@@ -104,6 +107,8 @@ void tracer_relax_init(master_t *master)
 	  /* Allocate memory for relaxation structure                */
 	  relax = (tr_relax_data_t *)malloc(sizeof(tr_relax_data_t));
 	  memset(relax, 0, sizeof(tr_relax_data_t));
+	  strcpy(buf, master->trinfo_3d[t].r_rate);
+	  n = parseline(buf, fields, MAXNUMARGS);
 
 	  /* Assign the time constant                                */
 	  relax->tc = NULL;
@@ -224,6 +229,21 @@ void tracer_relax_init(master_t *master)
 	      relax->tctype = (RLX_ADPT|RLX_EXP);
 	    } else
 	      hd_quit("Exponential adaptive relaxation format, e.g; 'exponential 10 1 day'\n");
+	  } else if (strcmp(fields[0], "region") == 0) {
+	    double *reg = d_alloc_1d(geom->sgsizS);
+	    int m;
+	    relax->rr = d_alloc_1d(geom->sgsiz);
+	    relax->tctype = RLX_REG;
+	    tconst = 1.0;
+	    value_init_regions(master, fields[1], reg, 2);
+	    for (m = 0; m < n - 2; m++) {
+	      
+	    }
+	  } else if (strcmp(fields[0], "obc") == 0) {
+	    relax->rr = d_alloc_1d(geom->sgsiz);
+	    relax->tctype = RLX_OBC;
+	    tconst = 1.0;
+	    get_obc_relax(master, relax->rr);
 	  } else {
 	    /* Relaxation constant is in a file */
 	    relax->tc = hd_ts_read(master, master->trinfo_3d[t].r_rate, 0);
@@ -366,13 +386,15 @@ static double tr_relax_event(sched_event_t *event, double t)
 			   geom->cellz[c] * master->Ds[cs]);
 	if (relax->tctype & (RLX_DEP|RLX_EDEP|RLX_CDEP))
 	  dtr = geom->botz[geom->m2d[c]];
+	else if (relax->tctype & (RLX_FILE|RLX_REG|RLX_OBC))
+	  dtr = (double)c;
 	else
 	  dtr = trv[c] - master->rtemp[c];
 	relax_rate = get_relax_rate(master, relax, dtr);
 	/* Set for do_ts_relax */
-	if (relax->tctype & (RLX_LINR|RLX_EXP|RLX_DEP|RLX_EDEP|RLX_CDEP)) {
+	if (relax->tctype & (RLX_LINR|RLX_EXP|RLX_DEP|RLX_EDEP|RLX_CDEP|RLX_REG|RLX_OBC)) {
 	  master->trinfo_3d[tid].relax_rate = 0.0;
-	  master->temp_tc[c] = sf / relax_rate;
+	  master->temp_tc[c] = (relax_rate) ? sf / relax_rate : 0.0;
 	} else
 	  master->trinfo_3d[tid].relax_rate = relax_rate;
       }
@@ -389,13 +411,15 @@ static double tr_relax_event(sched_event_t *event, double t)
 			   geom->cellz[c] * master->Ds[cs]);
 	if (relax->tctype & (RLX_DEP|RLX_EDEP|RLX_CDEP))
 	  dtr = geom->botz[geom->m2d[c]];
+	else if (relax->tctype & (RLX_FILE|RLX_REG|RLX_OBC))
+	  dtr = (double)c;
 	else
 	  dtr = trv[c] - master->rsalt[c];
 	relax_rate = get_relax_rate(master, relax, dtr);
 	/* Set for do_ts_relax */
-	if (relax->tctype & (RLX_LINR|RLX_EXP|RLX_DEP|RLX_EDEP|RLX_CDEP)) {
+	if (relax->tctype & (RLX_LINR|RLX_EXP|RLX_DEP|RLX_EDEP|RLX_CDEP|RLX_REG|RLX_OBC)) {
 	  master->trinfo_3d[tid].relax_rate = 0.0;
-	  master->salt_tc[c] = sf / relax_rate;
+	  master->salt_tc[c] = (relax_rate) ? sf / relax_rate : 0.0;
 	} else
 	  master->trinfo_3d[tid].relax_rate = relax_rate;
       }
@@ -409,6 +433,8 @@ static double tr_relax_event(sched_event_t *event, double t)
 	  ntval = master->tr_wc[trn][c];
 	  if (relax->tctype & (RLX_DEP|RLX_EDEP|RLX_CDEP))
 	    dtr = geom->botz[geom->m2d[c]];
+	  else if (relax->tctype & (RLX_FILE|RLX_REG))
+	    dtr = (double)c;
 	  else
 	    dtr = trv[c] - ntval;
 	  relax_rate = get_relax_rate(master, relax, dtr);
@@ -455,6 +481,7 @@ static void tr_relax_cleanup(sched_event_t *event, double t)
     hd_ts_free(master, relax->tsfiles[i]);
   free(relax->tsfiles);
   free(relax->tsnames);
+  if (relax->rr) d_free_1d(relax->rr);
   free(relax);
 }
 
@@ -466,15 +493,27 @@ static double get_relax_rate(master_t *master, tr_relax_data_t *relax, double dt
   if (relax->relax_rate) {
     /* Relaxation rate has been set for this timestep */
     return(relax->relax_rate);
+  } else if (relax->tctype & (RLX_REG|RLX_OBC)) {
+    int c = (int)dtr;
+    rr = relax->rr[c];
+    rr = (rr) ? 1.0 / rr : 0.0;
+    return(rr);
   } else if (relax->tc != NULL) {
     /* Relaxation rate read from file. Temporally variable only. */
+    geometry_t *geom = master->geom;
     char buf[MAXSTRLEN];
     double tt = master->t;
+    int c = (int)dtr;
+    int cs = geom->m2d[c];
     if (master->da && !relax->da_started && ts_is_modulo(relax->tc)) {
       relax->da_started = 1;
       tt += 10.; // forces wrap around of modulo file
     }
     rr = ts_eval(relax->tc, relax->tcid, tt);
+    /*
+    rr = ts_eval_xyz(relax->tc, relax->tcid, tt, geom->cellx[cs], geom->celly[cs],
+		     geom->cellz[c] * master->Ds[cs]);
+    */
     sprintf(buf, "%f %s\n",rr, relax->tc->varunit[relax->tcid]);
     tm_scale_to_secs(buf, &rr);
     relax->relax_rate = 1.0 / rr;
@@ -558,4 +597,55 @@ void tr_relax_event_c(sched_event_t *event, double relax_rate,
 }
 
 /* END tr_relax_event_c()                                           */
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Sets up a nudging zone dist wide, with relaxation rate r0 on the */
+/* boundary and r1 dist from the boundary. Only used to relax temp  */
+/* and salt. The nudging zone must be specified for each boundary.  */
+/*------------------------------------------------------------------*/
+static void get_obc_relax(master_t *master, double *rr)
+{
+  geometry_t *geom = master->geom;
+  char buf[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int cc, c, cb;
+  int n, m;
+  double dist, r0, r1, d, x, y;
+  int has_proj = (strlen(params->projection) > 0);
+  int is_geog = has_proj && (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
+  double deg2m = 60.0 * 1852.0;
+  double sf = (is_geog) ? deg2m : 1.0;
+
+  memset(rr, 0, geom->sgsiz * sizeof(double));
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    if (strlen(open->nzone)) {
+      strcpy(buf, open->nzone);
+      m = parseline(buf, fields, MAXNUMARGS);
+      dist = atof(fields[0]);
+      sprintf(buf, "%s %s", fields[1], fields[2]);
+      tm_scale_to_secs(buf, &r0);
+      sprintf(buf, "%s %s", fields[3], fields[4]);
+      tm_scale_to_secs(buf, &r1);
+      for (cc = 1; cc <= open->no3_t; cc++) {
+	c = cb = open->obc_t[cc];
+	x = geom->cellx[cb] - geom->cellx[c];
+	y = geom->celly[cb] - geom->celly[c];
+	d = sf * sqrt(x * x + y * y);
+	while (d <= dist && c != open->nmap[c]) {
+	  rr[c] = (r1 - r0) * d / dist + r0;
+	  c = open->nmap[c];
+	  x = geom->cellx[cb] - geom->cellx[c];
+	  y = geom->celly[cb] - geom->celly[c];
+	  d = sf * sqrt(x * x + y * y);
+	}
+      }
+    }
+  }
+
+}
+
+/* END get_obc_relax()                                              */
 /*------------------------------------------------------------------*/

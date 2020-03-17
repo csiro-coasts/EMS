@@ -18,7 +18,7 @@ OBJS := jigsaw.o
 JIGSAW_LIB := ../lib/libjigsaw64r.so
 JIGSAW_EXE := ../bin/jigsaw64r
 
-ALL_TARGETS := $(OBJS) $(JIGSAW_LIB) $(JIGSAW_EXT)
+ALL_TARGETS := $(OBJS) $(JIGSAW_LIB) $(JIGSAW_EXE)
 all : $(ALL_TARGETS)
 
 .cpp.o:

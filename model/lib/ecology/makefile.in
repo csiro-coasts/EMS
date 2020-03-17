@@ -87,6 +87,7 @@ process_library/microphytobenthos_grow_wc.o \
 process_library/microphytobenthos_mortality_sed.o \
 process_library/moldiff.o \
 process_library/nitrification_denitrification_sed.o \
+process_library/nitrification_denitrification_anammox.o \
 process_library/nitrification_denitrification_fraction_sed.o \
 process_library/nitrification_wc.o \
 process_library/nodularia_grow_wc.o \
@@ -96,6 +97,7 @@ process_library/oxygen_exchange_wc.o \
 process_library/oxygen_exchange_sed.o \
 process_library/p_adsorption_sed.o \
 process_library/p_adsorption_wc.o \
+process_library/p_adsorption.o \
 process_library/phytoplankton_grow_wc.o \
 process_library/phytoplankton_mortality_sed.o \
 process_library/remineralization.o \
@@ -155,6 +157,7 @@ process_library/coral_spectral_carb_epi.o \
 process_library/filter_feeder_wc.o \
 process_library/filter_feeder_epi.o \
 process_library/age_wc.o \
+process_library/age_sed.o \
 process_library/co2_exchange_wc.o \
 process_library/gas_exchange_wc.o \
 process_library/gas_exchange_epi.o \

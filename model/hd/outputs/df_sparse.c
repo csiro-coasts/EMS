@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_sparse.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: df_sparse.c 6242 2019-06-12 06:24:07Z riz008 $
  *
  */
 
@@ -394,10 +394,13 @@ void write_dump_attributes_sp(dump_data_t *dumpdata, int cdfid,
   }
 
   /* global attributes */
-  write_text_att(cdfid, NC_GLOBAL, "title", codeheader);
+  write_text_att(cdfid, NC_GLOBAL, "title", dumpdata->grid_name);
+  write_text_att(cdfid, NC_GLOBAL, "description", dumpdata->grid_desc);
   write_text_att(cdfid, NC_GLOBAL, "paramhead", parameterheader);
+  write_text_att(cdfid, NC_GLOBAL, "codehead", codeheader);
   write_text_att(cdfid, NC_GLOBAL, "paramfile", dumpdata->prmname);
-  write_text_att(cdfid, NC_GLOBAL, "version", version);
+  write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
+  write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries/SHOC");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);

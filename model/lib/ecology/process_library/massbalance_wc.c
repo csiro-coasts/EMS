@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_wc.c 6043 2018-12-07 03:33:38Z bai155 $
+ *  $Id: massbalance_wc.c 6293 2019-08-12 02:50:06Z bai155 $
  *
  */
 
@@ -48,6 +48,8 @@ typedef struct {
   int O2_flux_i;
 
   int NO3_i;
+  int Den_fl_i;
+  int Amm_fl_i;
 
     /*
      * common cell variables
@@ -83,6 +85,9 @@ void massbalance_wc_init(eprocess* p)
 
     ws->CO2_flux_i = e->try_index(tracers, "CO2_flux", e);
     ws->O2_flux_i = e->try_index(tracers, "O2_flux", e);
+
+    ws->Den_fl_i = e->find_index(tracers, "Den_fl", e);
+    ws->Amm_fl_i = e->try_index(tracers, "Amm_fl", e);
    
     /*
      * common cell variables
@@ -101,7 +106,7 @@ void massbalance_wc_init(eprocess* p)
      */
     stringtable_add_ifabscent(e->cv_model, "massbalance_wc", -1);
 
-    eco_write_setup(e,"\nMass balance in water column to %e mg N / m3 \n",MASSBALANCE_EPS);
+    eco_write_setup(e,"\nMass balance in water column to fractional difference of %e \n",MASSBALANCE_EPS);
 
 }
 
@@ -156,27 +161,31 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
         return;
 
     y = c->y;
-    TN = y[ws->TN_i];
+    TN = y[ws->TN_i] + y[ws->Den_fl_i] / SEC_PER_DAY / c->dz_wc;
     Nfix = (ws->Nfix_i >= 0) ? y[ws->Nfix_i] : 0.0;
     TP = y[ws->TP_i];
     TC = y[ws->TC_i];
+
+    if (ws->Amm_fl_i > -1){
+      TN += y[ws->Amm_fl_i] / SEC_PER_DAY / c->dz_wc ;
+    }
 
     CO2_flux = (ws->CO2_flux_i >= 0) ? y[ws->CO2_flux_i] : 0.0;
 
     eps = fabs(TN - cv[ws->TN_old_i] - Nfix) / (TN + cv[ws->TN_old_i] + Nfix);
 
     if (eps > MASSBALANCE_EPS)
-     e->quitfn("ecology: error: N balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
+     e_warn("ecology: error: N balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
 
     eps = fabs(TP - cv[ws->TP_old_i]) / (TP + cv[ws->TP_old_i]);
  
     if (eps > MASSBALANCE_EPS)
-      e->quitfn("ecology: error: P balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
+      e_warn("ecology: error: P balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
     
     eps = fabs(TC - cv[ws->TC_old_i] + CO2_flux * e->dt / c->dz_wc) / (TC + cv[ws->TC_old_i]);
     
     if (eps > MASSBALANCE_EPS)
-      e->quitfn("ecology: error: C balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
+      e_warn("ecology: error: C balance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
 
     if (ws->TO_old_i > -1){
 	O2_flux = (ws->O2_flux_i >= 0) ? y[ws->O2_flux_i] : 0.0;
@@ -192,7 +201,7 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
 	  eps = fabs(TO - cv[ws->TO_old_i] + O2_flux / c->dz_wc) / max(fabs(TO + cv[ws->TO_old_i]),8000.0);
 
 	  if (eps > MASSBALANCE_EPS)
-	    e->quitfn("ecology: error: Oxygen - BOD - COD (%e,%e) imbalance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
+	    e_warn("ecology: error: Oxygen - BOD - COD (%e,%e) imbalance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
     }
 }
 

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6328 2019-09-13 04:38:11Z her127 $
+ *  $Id: windows.c 6475 2020-02-18 23:53:06Z her127 $
  *
  */
 
@@ -20,6 +20,9 @@
 #include <string.h>
 #include "hd.h"
 #include "tracer.h"
+#ifdef HAVE_METIS
+#include "metis.h"
+#endif
 
 /*-------------------------------------------------------------------*/
 /* Routines contained in this module                                 */
@@ -191,7 +194,7 @@ void window_build(geometry_t *geom,     /* Global geometry           */
   nwindows = geom->nwindows;
   if (DEBUG("init_w"))
     dlog("init_w", "Start making %d windows\n", nwindows);
-  if (params->runmode & MANUAL && nwindows > 1 && strlen(params->win_file)) 
+  if (params->runmode & MANUAL && nwindows > 1 && params->win_type & WIN_FILE)
     readwin = 1;
 
   /*-----------------------------------------------------------------*/
@@ -314,6 +317,10 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 	window_cells_block_e2(geom, nwindows, ws2, wsz2D, params->win_block);
       else if (params->win_type & STRIPE_E1)
 	window_cells_linear_e1(geom, nwindows, ws2, wsz2D);
+      else if (params->win_type & WIN_REG)
+	window_cells_region(geom, nwindows, ws2, wsz2D, params->win_file);
+      else if (params->win_type & WIN_METIS)
+	window_cells_metis(geom, nwindows, ws2, wsz2D);
       else
 	window_cells_grouped(geom, nwindows, ws2, wsz2D);
 
@@ -912,6 +919,182 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
 }
 
 /* END window_cells_grouped()                                        */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/* Divides the domain into nwindows partitions using the METIS lib   */
+/*                                                                   */
+/* Reference:                                                        */
+/*      http://glaros.dtc.umn.edu/gkhome/metis/metis/overview        */
+/*-------------------------------------------------------------------*/
+#ifdef HAVE_METIS
+void window_cells_metis(geometry_t *geom, /* Global geometery        */
+			int nwindows,     /* Number of windows       */
+			int **ws2,        /* 2D wet cells in window  */
+			int *wsizeS       /* Number of 2D wet cells  */
+		  )
+{
+  
+  int ne = geom->b2_t;    /* Number of elements, i.e. cells/faces */
+  int nn = geom->n2_e1;   /* Number of nodes, i.e. vertices */
+  idx_t ncommon = 1;      /* Put an edge across all pairs of nodes */
+  idx_t numflag = 0;      /* C-style (0 based) numberihg */
+  idx_t *eptr, *eind;     /* Node and element arrays */
+  idx_t *npart, *epart;   /* Graph partition output */
+  idx_t *ewgt = NULL;     /* Element weights */
+  real_t *twgts = NULL;   /* Target window partition sizes */
+  int cc, c, n, nnodes;
+  int idx = 0;
+  int status;
+  idx_t options[METIS_NOPTIONS];
+  idx_t nparts = (idx_t)geom->nwindows;
+  int objval;
+
+  /* options */
+  int do3D =   0;    /* assign botz as element weights    */
+  int contig = 1;    /* force partitions to be contiguous */
+  
+  /* Count the total number of nodes across all elements */
+  nnodes = 0;
+  for (cc = 1; cc <= geom->b2_t; cc++)
+    nnodes += geom->npe[cc];
+
+  /* Allocate arrays and fill in */
+  eptr = malloc((ne+1) * sizeof(idx_t));
+  eind = malloc(nnodes * sizeof(idx_t));
+  if (do3D) ewgt = malloc(ne * sizeof(idx_t));
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    eptr[cc-1] = idx;
+    for (n = 1; n <= geom->npe[c]; n++)
+      eind[idx++] = geom->c2v[n][c]-1;
+    /* Weight by bathy */
+    if (do3D) ewgt[cc-1] = -(idx_t)geom->botz[c];
+  }
+  eptr[ne] = idx; /* finish off last row */
+
+  /* Check if window sizes are given */
+  if (geom->win_size) {
+    real_t tot = 0.0;
+    twgts = malloc(nwindows * sizeof(real_t));
+    for (n=0; n<nwindows-1; n++) {
+      twgts[n] = (real_t)geom->win_size[n+1];
+      tot += twgts[n];
+    }
+    /* Make sure we add up to exactly 1.0 */
+    twgts[n] = (real_t)1.0-tot;
+  }
+  
+  /* METIS options */
+  METIS_SetDefaultOptions(options);
+  options[METIS_OPTION_DBGLVL] = 1;
+  if (contig) options[METIS_OPTION_CONTIG] = 1;
+
+  epart = malloc(ne * sizeof(idx_t));
+  npart = malloc(nn * sizeof(idx_t));
+  
+  /* Partion mesh using the dual graph */
+  status = METIS_PartMeshDual(&ne, &nn, eptr, eind, ewgt, NULL, &ncommon,
+			      &nparts, twgts, options, &objval, epart, npart);
+  if (status != METIS_OK)
+    hd_quit("METIS partitioning failedfailed\n");
+
+  /* Fill in the output arrays */
+  for (cc=0; cc<ne; cc++) {
+    int wn = epart[cc]+1;
+    if (!(wn>=1 && wn<=nwindows)) hd_quit("METIS: found unpartitioned cell cc=%d\n", cc+1);
+    ws2[wn][++wsizeS[wn]] = geom->w2_t[cc+1];
+  }
+
+  /* Cleanup */
+  free(eptr);
+  free(eind);
+  free(epart);
+  free(npart);
+  if (ewgt) free(ewgt);
+  if (twgts) free(twgts);
+  
+}
+#else
+void window_cells_metis(geometry_t *geom, /* Global geometery        */
+			int nwindows,     /* Number of windows       */
+			int **ws2,        /* 2D wet cells in window  */
+			int *wsizeS       /* Number of 2D wet cells  */
+		  )
+{
+  hd_quit("This COMPAS executable is not built with METIS. Please rebuild or remove the METIS partitioning option.");
+}
+#endif
+/* END window_cells_metis()                                          */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/* Routine to partition the surface layer into windows if the domain */
+/* is divided into regionas as specified by a supplied region file.  */
+/* Any open boundary cells are assigned the window number            */
+/* corresponding to their interior wet neighbour.                    */
+/*-------------------------------------------------------------------*/
+void window_cells_region(geometry_t *geom,    /* Global geometery    */
+			 int nwindows,    /* Number of windows       */
+			 int **ws2,       /* 2D wet cells in window  */
+			 int *wsizeS,     /* Number of 2D wet cells  */
+			 char *fname      /* Region file             */
+  )
+{
+  int c, cc, ci, n, nn;
+  int verbose = 0;
+  int nr;
+  int *wm, *wc;
+  double *reg;
+
+  reg = d_alloc_1d(geom->szc);
+  nr = read_region_us(geom, fname, reg);
+  if (nr != nwindows)
+    hd_quit("Number of regions in file %s should equal %d (%d)\n", fname, nwindows, nr);
+
+  /* Get the number of cells in this window                          */
+  memset(wsizeS, 0 , (nwindows + 1) * sizeof(int));
+  for (cc = 1; cc <= geom->v2_t; cc++) {
+    c = geom->w2_t[cc];
+    n = (int)reg[c] + 1;
+    wsizeS[n] += 1;
+  }
+
+  /* Save the surface cell locations in ws2                          */
+  wm = i_alloc_1d(geom->szcS);
+  wc = i_alloc_1d(nwindows + 1);
+  /* Assign the wet cells in the work array to the windows.          */
+  nn = 1;
+  for (n = 1; n <= nwindows; n++) wc[n] = 1;
+  for (cc = 1; cc <= geom->v2_t; cc++) {
+    c = geom->w2_t[cc];
+    n = (int)reg[c] + 1;
+    ws2[n][wc[n]++] = c;
+    wm[c] = n;
+  }
+  /* Assign the obc cells to the window corresponding to their       */
+  /* interior wet neighbours.                                        */
+  for (nn = 0; nn < geom->nobc; nn++) {
+    open_bdrys_t *open = geom->open[nn];
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = open->obc_t[cc];
+      ci = open->oi1_t[cc];
+      n = wm[ci];
+      wsizeS[n]++;
+      ws2[n][wsizeS[n]] = c;
+      wm[c] = n;
+      if (geom->win_size)
+	geom->win_size[n] = (double)wsizeS[n] / (double)geom->b2_t;
+      if (verbose)
+	printf("%s wn=%d %d(%d %d) %d\n",open->name, n, c, geom->s2i[c], geom->s2j[c], wsizeS[n]);
+    }
+  }
+  i_free_1d(wm);
+  i_free_1d(wc);
+  d_free_1d(reg);
+}
+
+/* END window_cells_region()                                         */
 /*-------------------------------------------------------------------*/
 
 
@@ -2325,7 +2508,6 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
 	jop = jow(geom, c, j);
 	nmap[jop][cax] = cc;
       }
-
       mask[e] = 1;
       if (verbose && c == geom->m2d[c])
 	printf("c2c wn=%d c=%d cgm=%d j=%d cl=%d ac=%d\n",wn,c,cgm,j,cax,*ac);
@@ -2747,7 +2929,7 @@ void get_local_wsc(geometry_t *geom,    /* Global geometry           */
   for (cc = 1; cc <= nvec; cc++) {
     c = vec[cc];                /* Global cell to process            */
     n = wm[c];                  /* Window associated with cell c     */
-    sc = geom->fm[c].sc;        /* Local cell in window n            *
+    sc = geom->fm[c].sc;        /* Local cell in window n            */
 
     /* Auxiliary and ghost cells mapped from c2c. These cells are    */
     /* required for the specification of fluxes used to subsequently */
@@ -4081,6 +4263,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
         window[nn]->open[c1]->rele_i = open[n]->rele_i;
         window[nn]->open[c1]->adjust_flux = open[n]->adjust_flux;
         window[nn]->open[c1]->adjust_flux_s = open[n]->adjust_flux_s;
+        window[nn]->open[c1]->afr = open[n]->afr;
         window[nn]->open[c1]->stagger = open[n]->stagger;
         window[nn]->open[c1]->spf = open[n]->spf;
         window[nn]->open[c1]->meanc = open[n]->meanc;
@@ -5495,13 +5678,13 @@ void reorder_gl_map(geometry_t *geom, /* Global geometry             */
 /*-------------------------------------------------------------------*/
 void set_mask(geometry_t *window)
 {
-  int cc, c, ee, e, ci, n, j;
+  int cc, c, c2, ee, e, ci, n, j;
 
   window->cask = i_alloc_1d(window->szc);
   memset(window->cask, 0, window->szc * sizeof(int));
   for (cc = 1; cc <= window->v3_t; cc++) {
     c = window->w3_t[cc];
-    window->cask[c] = W_WET;
+    window->cask[c] = (W_WET|W_TRA);
   }
   for (cc = 1; cc <= window->v2_t; cc++) {
     c = window->w2_t[cc];
@@ -5513,11 +5696,11 @@ void set_mask(geometry_t *window)
   }
   for (cc = window->v3_t+1; cc <= window->a3_t; cc++) {
     c = window->w3_t[cc];
-    window->cask[c] |= W_AUX;
+    window->cask[c] |= (W_AUX|W_TRA);
   }
   for (cc = 1; cc <= window->nbpt; cc++) {
     c = window->bpt[cc];
-    window->cask[c] = W_GST;
+    window->cask[c] = (W_GST|W_TRA);
     c = window->bin[cc];
     window->cask[c] |= W_INT;
   }
@@ -5525,14 +5708,14 @@ void set_mask(geometry_t *window)
     open_bdrys_t *open = window->open[n];
     for (cc = 1; cc <= open->no3_t; cc++) {
       c = open->obc_t[cc];
-      window->cask[c] = W_NOBC;
+      window->cask[c] = (W_NOBC|W_TRA);
     }
     for (ee = 1; ee <= open->no3_e1; ee++) {
       c = open->ogc_t[ee];
-      window->cask[c] = W_GOBC;
+      window->cask[c] = (W_GOBC|W_TRA);
       for (j = 0; j < open->bgz; j++) {
 	c = open->omape[ee][c];
-	window->cask[c] = W_GOBC;
+	window->cask[c] = (W_GOBC|W_TRA);
       }
     }
     /* Set in set_sponge_cells
@@ -5652,7 +5835,7 @@ window_t **win_data_build(master_t *master,   /* Master data         */
     windat[n]->regionid = windat[n]->regres = windat[n]->Vi = NULL;
     windat[n]->reefe1 = windat[n]->reefe2 = windat[n]->agetr = NULL;
     windat[n]->tr_adv = windat[n]->tr_hdif = windat[n]->tr_vdif = windat[n]->tr_ncon = NULL;
-    windat[n]->wave_stke1 = windat[n]->wave_stke1 = NULL;
+    windat[n]->wave_stke1 = windat[n]->wave_stke1 = windat[n]->mono = NULL;
 
     for (tn = 0; tn < windat[n]->ntr; tn++) {
       if (strcmp("salt", master->trname[tn]) == 0) {
@@ -5807,6 +5990,8 @@ window_t **win_data_build(master_t *master,   /* Master data         */
         windat[n]->nprof = windat[n]->tr_wc[tn];
       } else if (strcmp("unit", master->trname[tn]) == 0) {
         windat[n]->unit = windat[n]->tr_wc[tn];
+      } else if (strcmp("mono", master->trname[tn]) == 0) {
+        windat[n]->mono = windat[n]->tr_wc[tn];
       } else if (strcmp("decorr_e1", master->trname[tn]) == 0) {
         windat[n]->decv1 = windat[n]->tr_wc[tn];
       } else if (master->swr_type & SWR_3D && strcmp("swr_attenuation", master->trname[tn]) == 0) {
@@ -6092,6 +6277,8 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->cfl3d = windat->tr_wcS[m];
       if (strcmp("courant", master->trinfo_2d[m].name) == 0)
         windat->cour = windat->tr_wcS[m];
+      if (strcmp("courant_no", master->trinfo_2d[m].name) == 0)
+        windat->courn = windat->tr_wcS[m];
       if (strcmp("lipschitz", master->trinfo_2d[m].name) == 0)
         windat->lips = windat->tr_wcS[m];
       if (strcmp("diffstab", master->trinfo_2d[m].name) == 0)
@@ -6217,7 +6404,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->avhrr = windat->tr_wcS[m];
       if (strcmp("ghrsst", master->trinfo_2d[m].name) == 0)
         windat->ghrsst = windat->tr_wcS[m];
-      if (strcmp("ghrsste", master->trinfo_2d[m].name) == 0)
+      if (strcmp("ghrsst_error", master->trinfo_2d[m].name) == 0)
         windat->ghrsste = windat->tr_wcS[m];
       if (strcmp("u1_rad", master->trinfo_2d[m].name) == 0)
         windat->u1_rad = windat->tr_wcS[m];
@@ -6391,6 +6578,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->cfl2d = master->cfl2d;
     windat->cfl3d = master->cfl3d;
     windat->cour = master->cour;
+    windat->courn = master->courn;
     windat->lips = master->lips;
     windat->ahsb = master->ahsb;
     windat->steric = master->steric;
@@ -6740,12 +6928,23 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->dzz = d_alloc_1d(szm);
       wincon[n]->cellz = d_alloc_1d(szm);
       wincon[n]->s5 = i_alloc_1d(szm);
+      wincon[n]->s6 = i_alloc_1d(szm);
+      wincon[n]->s7 = i_alloc_1d(szm);
     }
     if(master->trasc & FFSL || master->do_pt) {
       wincon[n]->tr_mod = d_alloc_1d(szm);
       wincon[n]->tr_mod_x = d_alloc_1d(szm);
       wincon[n]->tr_mod_y = d_alloc_1d(szm);
       wincon[n]->tr_mod_z = d_alloc_1d(szm);
+      wincon[n]->crfxc = d_alloc_1d(szm);
+      wincon[n]->crfyc = d_alloc_1d(szm);
+      wincon[n]->crfxf = d_alloc_1d(szm);
+      wincon[n]->crfyf = d_alloc_1d(szm);
+      wincon[n]->Fzh = d_alloc_1d(window[n]->szc);
+      if (master->means & TRANSPORT)
+	wincon[n]->dzo = d_alloc_1d(szm);
+	wincon[n]->etao = d_alloc_1d(window[n]->szcS);
+	wincon[n]->suro = i_alloc_1d(window[n]->szcS);
     }
     if(master->trasc & FCT) {
       wincon[n]->Fxh = d_alloc_1d(window[n]->sze);
@@ -6766,11 +6965,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->clxc = i_alloc_1d(winsize);
     wincon[n]->clyc = i_alloc_1d(winsize);
     wincon[n]->clzc = i_alloc_1d(winsize);
-    wincon[n]->crfxf = d_alloc_1d(winsize);
-    wincon[n]->crfyf = d_alloc_1d(winsize);
     wincon[n]->crfzf = d_alloc_1d(winsize);
-    wincon[n]->crfxc = d_alloc_1d(winsize);
-    wincon[n]->crfyc = d_alloc_1d(winsize);
     wincon[n]->crfzc = d_alloc_1d(winsize);
     /* Also allocate the parallel versions, if required              */
 #ifdef HAVE_OMP
@@ -6793,12 +6988,9 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->c2 = c_alloc_1d(szmS);
     if (master->thin_merge) {
       wincon[n]->kth_e1 = i_alloc_1d(szmS);
-      wincon[n]->kth_e2 = i_alloc_1d(szmS);
     }
     wincon[n]->cdry_e1 = i_alloc_1d(szmS);
-    wincon[n]->cdry_e2 = i_alloc_1d(szmS);
     wincon[n]->cbot_e1 = i_alloc_1d(szmS);
-    wincon[n]->cbot_e2 = i_alloc_1d(szmS);
     wincon[n]->i1 = i_alloc_1d(szmS);
     wincon[n]->i2 = i_alloc_1d(szmS);
     wincon[n]->i3 = i_alloc_1d(szmS);
@@ -7078,6 +7270,11 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->gint_errfcn = master->gint_errfcn;
     wincon[n]->da = master->da;
     wincon[n]->swr_type = master->swr_type;
+    wincon[n]->dhwf = master->dhwf;
+    wincon[n]->dhwh = master->dhwh;
+    wincon[n]->monon = master->monon;
+    wincon[n]->monomn = master->monomn;
+    wincon[n]->monomx = master->monomx;
 
     /* FR: Strictly speaking this is not good
      *     It will obviously work for shared memory and luckily
@@ -7585,12 +7782,8 @@ void win_consts_clear(geometry_t **window, int nwindows)
       i_free_1d(wincon->sflux);
     if (wincon->kth_e1)
       i_free_1d(wincon->kth_e1);
-    if (wincon->kth_e2)
-      i_free_1d(wincon->kth_e2);
     i_free_1d(wincon->cdry_e1);
-    i_free_1d(wincon->cdry_e2);
     i_free_1d(wincon->cbot_e1);
-    i_free_1d(wincon->cbot_e2);
     d_free_1d(wincon->oldeta);
     d_free_1d(wincon->dz);
     d_free_1d(wincon->one);
@@ -7670,6 +7863,10 @@ void win_consts_clear(geometry_t **window, int nwindows)
     i_free_1d(wincon->s4);
     if (wincon->s5)
       i_free_1d(wincon->s5);
+    if (wincon->s6)
+      i_free_1d(wincon->s6);
+    if (wincon->s7)
+      i_free_1d(wincon->s7);
     c_free_1d(wincon->c1);
     c_free_1d(wincon->c2);
     i_free_1d(wincon->i1);

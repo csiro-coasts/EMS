@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: cstmesh.c 5860 2018-07-02 04:07:46Z her127 $
+ *  $Id: cstmesh.c 6288 2019-08-08 04:36:16Z her127 $
  */
 
 #include <stdio.h>
@@ -47,6 +47,12 @@ static void msh_free(msh_t *msh);
 
 static jig_t *jig_alloc(char *infile, char *hfile, double hmin, double hmax);
 static void jig_free(jig_t *jig);
+int IsPointInPolygon(double xin, double yin, int np, double *lon, double *lat);
+int pnpoly(int nvert, double *vertx, double *verty, double xin, double yin);
+void auto_link(coamsh_t *cm, int ns, int *nsl, int msl, int *nso,
+	       double *nlat, double *nlon, double **lat, double **lon,
+	       int cutoff, int *mask);
+
 // xxx What about jig_free?
 
 /*
@@ -109,12 +115,13 @@ void cm_free(coamsh_t *cm)
 /* END cm_free()                                                       */
 /*---------------------------------------------------------------------*/
 
+
 /*---------------------------------------------------------------------*/
 /* Builds a msh specification from a coastmesh definition.             */
 /*---------------------------------------------------------------------*/
 int coastmesh(coamsh_t *cm, int mode)
 {
-  FILE *fp, *op = NULL, *bp = NULL, *pp = NULL, *opp = NULL;
+  FILE *fp, *op = NULL, *bp = NULL, *pp = NULL, *opp = NULL, *sp = NULL;
   char buf[MAXSTRLEN];
   int n, m, i, j, nl, nlm, sm;
   int n1, n2, ii, i1, i2, i3, mi;
@@ -140,6 +147,7 @@ int coastmesh(coamsh_t *cm, int mode)
   int **flag;         /* Type of pont in the list (coast, link, obc)   */
   int *incf;
   double d1, d2, dist, dist1, dist2;
+  double deg2m = 60.0 * 1852.0;
   int isclosed = 1;
   int checki = 0;
   int filef = 0;
@@ -149,7 +157,7 @@ int coastmesh(coamsh_t *cm, int mode)
   int sseg, ssid, ssize, sdir, sn, en, mn;
   msh_t *msh = NULL;
   jig_t *jig = NULL;
-  int psize = 10;
+  int psize = 5;
 
   /*-------------------------------------------------------------------*/
   /* Open the ouput file                                               */
@@ -170,11 +178,15 @@ int coastmesh(coamsh_t *cm, int mode)
     quit("coastmesh: Can't open coastline file %s\n", cm->cofile);
   }
 
-  pp = opp = NULL;
+  pp = opp = sp = NULL;
   if (strlen(cm->pname)) {
     sprintf(buf, "%s_in.txt", cm->pname);
     if((pp = fopen(buf, "w")) == NULL) {
       warn("coastmesh: Can't open plot file %s\n", buf);
+    }
+    sprintf(buf, "%s.site", cm->pname);
+    if((sp = fopen(buf, "w")) == NULL) {
+      warn("coastmesh: Can't open site file %s\n", buf);
     }
     sprintf(buf, "%s_out.txt", cm->pname);
     if((opp = fopen(buf, "w")) == NULL) {
@@ -187,12 +199,12 @@ int coastmesh(coamsh_t *cm, int mode)
   if (cm->bslon > cm->belon) {
     d1 = cm->bslon;
     cm->bslon = cm->belon;
-    cm->belon = cm->bslon;
+    cm->belon = d1;
   }
   if (cm->bslat > cm->belat) {
     d1 = cm->bslat;
     cm->bslat = cm->belat;
-    cm->belat = cm->bslat;
+    cm->belat = d1;
   }
 
   /*-------------------------------------------------------------------*/
@@ -214,7 +226,7 @@ int coastmesh(coamsh_t *cm, int mode)
     m++;
     if (strcmp(fields[0], "nan") == 0 ||
 	strcmp(fields[0], "NaN") == 0) {
-      if (nl > psize) {
+      if (m > psize) {
 	nlm = max(nlm, nl);
 	ns ++;
       }
@@ -222,6 +234,8 @@ int coastmesh(coamsh_t *cm, int mode)
       n1++;
     }
   }
+  if (!ns) quit("coastmesh error: can't find any segments in coast file %s\n", cm->cofile);
+  if (!nlm) quit("coastmesh error: maximum segment size of zero in coast file %s\n", cm->cofile);
 
   /* Allocate                                                          */
   rlon = d_alloc_2d(nlm, ns);
@@ -246,7 +260,7 @@ int coastmesh(coamsh_t *cm, int mode)
     m++;
     if (strcmp(fields[0], "nan") == 0 ||
 	strcmp(fields[0], "NaN") == 0) {
-      if (nl > psize) {
+      if (m > psize) {
 	incf[n1] = 1; 
       }
       nl = m = 0;
@@ -332,7 +346,8 @@ int coastmesh(coamsh_t *cm, int mode)
   }
 
   /*-------------------------------------------------------------------*/
-  /* Find the link indices                                             */
+  /* Find the link indices in the major segment. Other segments are    */
+  /* found again later.                                                */
   for (i = 0; i < cm->nlink; i++) {
     link_t *links = &cm->link[i];
     /* Find the indices of the links (segment specific)                */
@@ -352,32 +367,13 @@ int coastmesh(coamsh_t *cm, int mode)
     while (ssid != eid || sseg != en) {
       m = find_link(en, eid, &sseg, &ssid, &dir, &ssize, nsl, cm->nlink, cm->link, rlat, rlon, NULL, NULL, NULL);
       /*printf("Pass%d sid = %d, seg = %d, size = %d, link = %d\n", i, ssid, sseg, ssize, m);*/
+
       if(i > cm->nlink) {
 	printf("Can't find end index %d in segment %d\n", sid, sn);
 	quit("coastmesh error\n");
       }
       i++;
     }
-
-    /* Count the points from the last link to the end point. To do     */
-    /* this we make a dummy link, where the end point and segment are  */
-    /* placed in the last link, then call find_link() to capture these */
-    /* last points. After counting, reset the last link to its         */
-    /* original specification.                                         */
-    /*
-    n = cm->nlink-1;
-    i1 = cm->link[n].ilink[0];
-    i2 = cm->link[n].ilink[1];
-    n1 = cm->link[n].slink[0];
-    n2 = cm->link[n].slink[1];
-    cm->link[n].slink[0] = cm->link[n].slink[1] = en;
-    cm->link[n].ilink[0] = cm->link[n].ilink[1] = eid;
-    m = find_link(en, eid, &sseg, &ssid, &dir, &ssize, nsl, cm->nlink, cm->link, rlat, rlon, NULL, NULL, NULL);
-    cm->link[n].ilink[0] = i1;
-    cm->link[n].ilink[1] = i2;
-    cm->link[n].slink[0] = n1;
-    cm->link[n].slink[1] = n2;
-    */
     msl = ssize;
 
     /* Assign the points to the major segment                          */
@@ -390,17 +386,35 @@ int coastmesh(coamsh_t *cm, int mode)
     i = 0;
     while (ssid != eid || sseg != en) {
       m = find_link(en, eid, &sseg, &ssid, &dir, &ssize, nsl, cm->nlink, cm->link, rlat, rlon, nlat, nlon, flag[sn]);
+      if (m >=0) cm->link[m].flag |= LINK_D;
       i++;
     }
-    /*
-    cm->link[n].slink[0] = cm->link[n].slink[1] = en;
-    cm->link[n].ilink[0] = cm->link[n].ilink[1] = eid;
-    m = find_link(en, eid, &sseg, &ssid, &dir, &ssize, nsl, cm->nlink, cm->link, rlat, rlon, nlat, nlon, flag[sn]);
-    */
+
     /* Clean                                                           */
     for(i = 1; i < msl-1; i++) {
       if (nlon[i] == 0.0) nlon[i] = 0.5 * (nlon[i-1] + nlon[i+1]);
       if (nlat[i] == 0.0) nlat[i] = 0.5 * (nlat[i-1] + nlat[i+1]);
+    }
+
+    /* Connect any links not used in the major segment                 */
+    for (n = 0; n < cm->nlink; n++) {
+      link_t *links = &cm->link[n];
+      /* If the link was used in the major segment, flag it as unused  */
+      /* and continue.                                                 */
+      if (links->flag & LINK_D) {
+	links->flag &= ~LINK_D;
+	continue;
+      }
+      /* Indexes are always increasing (dir=1) for links not in the    */
+      /* major segment, so reset these and swap start/end indices if   */
+      /* required. Set dir=0 for links in the same segment.            */ 
+      links->dir = 1;
+
+      find_link_index(ns, nsl, rlat, rlon, links, 1);
+      if (links->flag & LINK_N) links->dir = 0;
+
+      /* Connect non-major segment links                               */
+      connect_link(ns, cm->nlink, nsl, &nlm, rlat, rlon, n, cm->link);
     }
 
     /* Copy the linked and un-linked segments to the lat/long arrays   */
@@ -428,16 +442,25 @@ int coastmesh(coamsh_t *cm, int mode)
     /* points in all those other segments.                             */
     for (n = 0; n < cm->nlink; n++) {
       link_t *links = &cm->link[n];
+      if (links->flag & LINK_D) continue;
       m = links->slink[0];
       if (m != sn) nsl[m] = 0;
       m = links->slink[1];
       if (m != sn) nsl[m] = 0;
     }
+
     d_free_2d(rlat);
     d_free_2d(rlon);
   } else {
     /* Connect any links                                               */
-    connect_link(ns, cm->nlink, nsl, &nlm, lat, lon, i, cm->link);
+    for (m = 0; m < cm->nlink; m++) {
+      link_t *links = &cm->link[n];
+      if (links->flag & LINK_D) continue;
+      links->dir = 1;
+      find_link_index(ns, nsl, rlat, rlon, links, 1);
+      if (links->flag & LINK_N) links->dir = 0;
+      connect_link(ns, cm->nlink, nsl, &nlm, rlat, rlon, m, cm->link);
+    }
     for (n = 0; n < ns; n++) {
       for (i = 0; i < nsl[n]; i++) {
 	lat[n][i] = rlat[n][i];
@@ -452,13 +475,20 @@ int coastmesh(coamsh_t *cm, int mode)
     fprintf(pp, "Original coastline\n");
     for (n = 0; n < ns; n++) {
       ii = 0;
-      for(i = 1; i < nsl[n]; i++) {
+      for(i = 0; i < nsl[n]; i++) {
 	if (lon[n][i] >= cm->bslon && lon[n][i] <= cm->belon && lat[n][i] >= cm->bslat && lat[n][i] <= cm->belat) {
 	  fprintf(pp, "%f %f\n", lon[n][i], lat[n][i]);
 	  ii = 1;
 	}
       }
       if (ii) fprintf(pp, "NaN NaN\n");
+    }
+  }
+  if (sp) {
+    for (n = 0; n < ns; n++) {
+      if (lon[n][0] >= cm->bslon && lon[n][0] <= cm->belon && lat[n][0] >= cm->bslat && lat[n][0] <= cm->belat) {
+	fprintf(sp, "%f %f\n", lon[n][0], lat[n][0]);
+      }
     }
   }
 
@@ -510,7 +540,7 @@ int coastmesh(coamsh_t *cm, int mode)
       if (n == nso[m]) nsr[n] = m;
     }
   }
-  /* Exclude the maor segment from the segment list                    */
+  /* Exclude the major segment from the segment list                   */
   mask[nsr[sn]] = 0;
 
   /*-------------------------------------------------------------------*/
@@ -532,8 +562,9 @@ int coastmesh(coamsh_t *cm, int mode)
   /*-------------------------------------------------------------------*/
   /* Pre-smooth individual segments if required                        */
   for (n1 = 0; n1 < cm->nss; n1++) {
-    n = cm->ss[0][n1];
-    n2 = nso[n];
+    n2 = cm->ss[0][n1];
+    /*n2 = nso[n];*/
+    n = nsr[n2];
     for (m = 0; m < cm->ss[1][n1]; m++) {
       if (nsl[n] == 0) continue;
       tlon = d_alloc_1d(nsl[n]);
@@ -564,7 +595,7 @@ int coastmesh(coamsh_t *cm, int mode)
   /*-------------------------------------------------------------------*/
   /* Remove individual segments if required                            */
   for (n1 = 0; n1 < cm->nrs; n1++) {
-    n = cm->sr[n1];
+    n = nsr[cm->sr[n1]];
     nsl[n] = 0;
   }
 
@@ -696,6 +727,7 @@ int coastmesh(coamsh_t *cm, int mode)
 	mask[n] = 0;
     }
   }
+
   /* Exclude segments with a mean radius less than the minimum         */
   if (cm->radius < HUGE) {
     if (pp) fprintf(pp, "Minimum radius = %f (m)\n", cm->radius);
@@ -723,6 +755,7 @@ int coastmesh(coamsh_t *cm, int mode)
       if (dist1 < cm->radius) mask[n] = 0;
     }
   }
+
   /* Exclude segments with a maximum length less than the minimum      */
   if (cm->length < HUGE) {
     if (pp) fprintf(pp, "Minimum length = %f (m)\n", cm->length);
@@ -751,14 +784,6 @@ int coastmesh(coamsh_t *cm, int mode)
     cmobc_t *open = &cm->obc[i];
     point += open->nobc;
   }
-  /*for (n = ns-obci; n >= 0; n--) {*/
-  for (n = ns-1; n >= 0; n--) {
-    if (!mask[n]) continue;
-    j = nso[n];
-    nsp[n] = point;
-    point += nsl[n];
-  }
-  if (filef) fprintf(op, "point=%d\n", point);
 
   /*-------------------------------------------------------------------*/
   /* Set the OBC endpoints to the start and end index (for continuity  */
@@ -854,6 +879,33 @@ int coastmesh(coamsh_t *cm, int mode)
   }
 
   /*-------------------------------------------------------------------*/
+  /* Exclude closed segments lying outside the major segment           */
+  for (n = 0; n < ns-1; n++) {
+    double clon, clat;
+    if (!mask[n]) continue;
+    j = nso[n];
+    clon = lon[j][0];
+    clat = lat[j][0];
+    if (!(pnpoly(msl, nlon, nlat, clon, clat))) {
+      /*if(!(IsPointInPolygon(clon, clat, msl, nlon, nlat))) {*/
+      mask[n] = 0;
+    }
+  }
+  /* Reset the number of points of non-major segments                  */
+  for (n = ns-1; n >= 0; n--) {
+    if (!mask[n]) continue;
+    nsp[n] = point;
+    point += nsl[n];
+  }
+  if (filef) fprintf(op, "point=%d\n", point);
+
+  /*-------------------------------------------------------------------*/
+  /* Auto links                                                        */
+  if (cm->auto_l > 0.0) {
+    auto_link(cm, ns, nsl, msl, nso, nlat, nlon, lat, lon, cutoff, mask);
+  }
+
+  /*-------------------------------------------------------------------*/
   /* Print the coordinates in order of decreasing segment size above   */
   /* the cutoff fraction.                                              */
   /* Major segment coordinates                                         */
@@ -918,6 +970,9 @@ int coastmesh(coamsh_t *cm, int mode)
     fprintf(opp, "%f %f\n", nlon[0], nlat[0]);
     fprintf(opp, "NaN NaN\n");
   }
+  if (sp) {
+    fprintf(sp, "%f %f m r\n", nlon[0], nlat[0]);
+  }
 
   /* Other segments.                                                   */
   /*for (n = ns-obci; n >= cutoff; n--) {*/
@@ -939,6 +994,9 @@ int coastmesh(coamsh_t *cm, int mode)
     if (opp) {
       fprintf(opp, "%f %f\n", lon[j][0], lat[j][0]);
       fprintf(opp, "NaN NaN\n");
+    }
+    if (sp) {
+      fprintf(sp, "%f %f %d r\n", lon[j][0], lat[j][0], j);
     }
   }
 
@@ -1031,6 +1089,7 @@ int coastmesh(coamsh_t *cm, int mode)
   if (op) fclose(op);
   if (pp) fclose(pp);
   if (opp) fclose(opp);
+  if (sp) fclose(sp);
   i_free_1d(nsl);
   i_free_1d(nsp);
   i_free_1d(nso);
@@ -1049,6 +1108,7 @@ int coastmesh(coamsh_t *cm, int mode)
   if (incf) i_free_1d(incf);
   cm->msh = msh;
   cm->jig = jig;
+  return(0);
 }
 
 /* END coastmesh()                                                     */
@@ -1132,6 +1192,25 @@ void cm_read(coamsh_t *cm, FILE *ip)
   cm->hfun_max = 0.05;
   prm_read_double(ip, "HFUN_HMAX", &cm->hfun_max);
 
+  if (prm_read_int(ip, "NHFUN", &m)) {
+    double *hmn = d_alloc_1d(m);
+    double *hmx = d_alloc_1d(m);
+    cm->hfun_max = -HUGE;
+    cm->hfun_min = HUGE;
+    for (n = 0; n < m; n++) {
+      sprintf(buf, "HMIN%d", n);
+      prm_read_double(ip, buf, &hmn[n]);
+      hmn[n];
+      sprintf(buf, "HMAX%d", n);
+      prm_read_double(ip, buf, &hmx[n]);
+      hmx[n];
+      cm->hfun_max = max(cm->hfun_max, hmx[n]);
+      cm->hfun_min = min(cm->hfun_min, hmn[n]);
+    }
+    d_free_1d(hmn);
+    d_free_1d(hmx);
+  }
+
   /*-------------------------------------------------------------------*/
   /* Read in the bounding box                                          */
   cm->cutoff = 50;
@@ -1140,6 +1219,12 @@ void cm_read(coamsh_t *cm, FILE *ip)
   prm_read_double(ip, "MINLAT", &cm->bslat);
   prm_read_double(ip, "MAXLON", &cm->belon);
   prm_read_double(ip, "MAXLAT", &cm->belat);
+  if (cm->bslon > 360.0 || cm->bslon < -360 ||
+      cm->belon > 360.0 || cm->belon < -360 ||
+      cm->bslat > 90.0 || cm->bslat < -90 ||
+      cm->belat > 90.0 || cm->belat < -90) {
+    quit("cm_read: Coordinates for mesh generation should be in lat / long.\n");
+  }
 
   /*-------------------------------------------------------------------*/
   /* Read the open boundary paths                                      */
@@ -1314,6 +1399,16 @@ void cm_read(coamsh_t *cm, FILE *ip)
   } else {
     mid = -1;
   }
+
+  /*-------------------------------------------------------------------*/
+  /* Read in the auto link specification                               */
+  cm->auto_l = 0.0;
+  cm->auto_t = 100;
+  cm->auto_f = 3.0;
+  if (prm_read_double(ip, "AUTO_LENGTH", &cm->auto_l)) {
+    prm_read_int(ip, "AUTO_THRESHOLD", &cm->auto_t);
+    prm_read_double(ip, "AUTO_RATIO", &cm->auto_f); 
+  }
 }
 
 /* END cm_read()                                                       */
@@ -1327,14 +1422,8 @@ void write_jigsaw(jig_t *jig)
   FILE *fp;
   int i;
   char buf[MAXSTRLEN], jigfile[MAXSTRLEN];
-  double hfun_hmax;
-  double hfun_hmin;
-  double km2nm = 1852.0;
   int verbose = 0;
 
-  hfun_hmin = jig->hfun_hmin / (60.0 * km2nm);
-  hfun_hmax = jig->hfun_hmax / (60.0 * km2nm);
- 
   for (i = 0; i < strlen(jig->geom_file); i++) {
     if (jig->geom_file[i] == '.')
       break;
@@ -1379,8 +1468,8 @@ void write_jigsaw(jig_t *jig)
   fprintf(fp, "hfun_scal=%s\n", jig->hfun_scal);
   fprintf(fp, "\n# Maximum and minimum mesh size function value. Default = 0.02 & 0.00.\n");
   fprintf(fp, "hfun_file=%s\n", jig->hfun_file);
-  fprintf(fp, "hfun_hmax=%f\n", hfun_hmax);
-  fprintf(fp, "hfun_hmin=%f\n", hfun_hmin);
+  fprintf(fp, "hfun_hmax=%f\n", jig->hfun_hmax);
+  fprintf(fp, "hfun_hmin=%f\n", jig->hfun_hmin);
   fprintf(fp, "\n# Maximum gradient in the mesh-size function. Default = 0.25.\n");
   fprintf(fp, "hfun_grad=%f\n", jig->hfun_grad);
   fprintf(fp, "\n# Number of topological dimensions to mesh. DIMS=K meshes K-dimensional\n");
@@ -1480,6 +1569,8 @@ static jig_t *jig_alloc(char *infile, char *hfile, double hmin, double hmax)
   int i;
   char buf[MAXSTRLEN];
   jig_t *jig = (jig_t *)malloc(sizeof(jig_t));
+  double km2nm = 1852.0;
+
   memset(jig, 0, sizeof(jig_t));
 
   for (i = 0; i < strlen(infile); i++) {
@@ -1502,8 +1593,8 @@ static jig_t *jig_alloc(char *infile, char *hfile, double hmin, double hmax)
   if (strlen(hfile)) strcpy(jig->hfun_file,hfile);
   if (hmin && hmax) {
     strcpy(jig->hfun_scal, "absolute");
-    jig->hfun_hmax = hmax;
-    jig->hfun_hmin = hmin;
+    jig->hfun_hmax = hmax / (60.0 * km2nm);
+    jig->hfun_hmin = hmin / (60.0 * km2nm);
   } else {
     strcpy(jig->hfun_scal, "relative");
     jig->hfun_hmax = 0.02;
@@ -1604,6 +1695,7 @@ void find_link_index(int ns,       /* Number of segments               */
 	links->ilink[2] = find_index(links->llon[2], links->llat[2], lon[n], lat[n], nsl[n], NULL);
     }
   }
+
   /*
   printf("link%d start(s=%d i=%d) end(s=%d i=%d)\n",links->id, 
 	 links->slink[0], links->ilink[0],
@@ -1703,10 +1795,20 @@ int find_link(int en,          /* End segment number                   */
   int pdir = *dir;             /* Traverse direction before update     */
   int verbose = 0;
 
+  /*if (nlink == 0) return;*/
+
   if (verbose)
     printf("\nstart i=%d n=%d dir=%d size=%d\n",*si, *n, *dir, *size);
-  i = *si; ii = 0;
+  i = *si; ii = 1;
   while (!found) {
+    if (!nlink) {
+      if (*n == en && i == eid) {
+	*n = en;
+	*si = eid;
+	found = 3;
+	break;
+      }
+    }
     for (m = 0; m < nlink; m++) {   /* Loop over all links             */
       if (*n == en && i == eid) {
 	*n = en;
@@ -1718,7 +1820,7 @@ int find_link(int en,          /* End segment number                   */
 	/* Find the direction to traverse in after the link            */
 	if (link[m].slink[1] != *n)
 	  *dir = find_dir(&link[m], nsl, link[m].slink[1]);
-	if (verbose) printf("found l=%d i=%d s=%d ei=%d es=%d dir=%d\n",m,i,*n,link[m].ilink[1],link[m].slink[1],*dir);
+	if (verbose) printf("found link=%d index=%d segment=%d ei=%d es=%d dir=%d\n",m,i,*n,link[m].ilink[1],link[m].slink[1],*dir);
 	*n = link[m].slink[1];     /* Updated segment number          */
 	*si = link[m].ilink[1];    /* Updated start index             */
 	found = 2;
@@ -1729,13 +1831,14 @@ int find_link(int en,          /* End segment number                   */
     if (*dir == 1 && i >= nsl[*n]) i = 0;
     if (*dir == -1 && i < 0) i = nsl[*n] - 1;
     ii++;
-    if (!found && ii >= nsl[*n]) found = 1;
+    if (!found && ii > nsl[*n]) found = 1;
   }
   if (found == 1) {
     printf("Couldn't find any links in segment %d (%f %f)\n", *n, lon[*n][0], lat[*n][0]);
     quit("coastmesh error.\n");
   }
   *size += ii;
+  if (!nlink) m = -1;
 
   if (verbose)
     printf("end i=%d n=%d dir=%d size=%d link=%d\n",*si, *n, *dir, *size, m);
@@ -1755,16 +1858,15 @@ int find_link(int en,          /* End segment number                   */
     if (pdir == 1 && i >= nsl[pn]) i = 0;
     if (pdir == -1 && i < 0) i = nsl[pn] - 1;
   }
-  if (link[m].nseg) {
+  if (found == 2 && link[m].nseg) {
     *size += link[m].nseg;
     for (i = 0; i < link[m].nseg; i++) {
       nlon[ii] = link[m].segx[i];
       nlat[ii] = link[m].segy[i];
       flag[ii] = S_LINK;
-     ii++;
+      ii++;
     }
   }
-
   return(m);
 }
 
@@ -1850,8 +1952,10 @@ void connect_link(int ns,          /* Number of segments               */
   }
 
   links = &link[il];
+  links->flag |= LINK_D;
   n = links->slink[0];
   j = 0;
+
   for (i = 0; i < nsl[n]; i++) {
     rlon[n][j] = lon[n][i];
     rlat[n][j] = lat[n][i];
@@ -1892,7 +1996,7 @@ void connect_link(int ns,          /* Number of segments               */
       /* Cycle the end segment and add coordinates to rlat/rlon        */
       i1 = links->ilink[1];
       if (links->flag & LINK_N) i = i1;
-      printf("start %f %f\n",lon[n1][i1],lat[n1][i1]);
+
       for (ii = 0; ii < nsl[n1]; ii++) {
 	rlon[n][j] = lon[n1][i1];
 	rlat[n][j] = lat[n1][i1];
@@ -1921,3 +2025,190 @@ void connect_link(int ns,          /* Number of segments               */
 /* END connect_link()                                                  */
 /*---------------------------------------------------------------------*/
 
+
+/*---------------------------------------------------------------------*/
+/* Automatic link generator.                                           */
+/*                                                                     */
+/*---------------------------------------------------------------------*/
+void auto_link(coamsh_t *cm,    /* Coastmesh structure                 */
+	       int ns,          /* Number of segments                  */
+	       int *nsl,        /* Segment sizes                       */
+	       int msl,         /* Length of the major segment         */
+	       int *nso,        /* Re-ordered segment list             */
+	       double *nlat,    /* Major segment latitude              */ 
+	       double *nlon,    /* Major segment longitude             */ 
+	       double **lat,    /* Coastline latitude                  */
+	       double **lon,    /* Coastline longitide                 */
+	       int cutoff,      /* Segment cutoff                      */
+	       int *mask        /* Mask of valid segments              */
+	       )
+{
+  FILE *op;
+  int n, i, i1, i2,j;
+  int n1 = 0;
+  double d1, d2, dist, dist1, dist2;
+  double deg2m =  60.0 * 1852.0;
+
+  if ((op = fopen("auto_link.site", "w")) == NULL) {
+    warn("coastmesh: Can't open auto link file 'auto_link.site'.\n");
+    return;
+  }
+
+  for (n = ns; n >= cutoff; n--) {
+    double sf = 0.5;
+    double ld = cm->auto_l;
+    int ithr = cm->auto_t;
+    double frac = cm->auto_f;
+    double *ulon = (n == ns) ? nlon : lon[nso[n]];
+    double *ulat = (n == ns) ? nlat : lat[nso[n]];
+    int nseg = (n == ns) ? msl : nsl[n];
+    double clon = 0.0, clat = 0.0;
+    double sgn = (n == ns) ? 1.0 : -1.0;
+    double plon = 148.1753;
+    double plat = -40.8282;
+      
+    if (n != ns && !mask[n]) continue;
+    for (i = 0; i < nseg; i++) {
+      clat += ulat[i];
+      clon += ulon[i];
+    }
+    clat /= (double)nseg;
+    clon /= (double)nseg;
+      
+    for (i = 0; i < nseg; i++) {
+      double ilat = ulat[i];
+      double ilon = ulon[i];
+      double jlon, jlat;
+      double dmin = HUGE;
+      double dmax = 0;
+      int jmin, jmax;
+      int found = 0;
+      int inn = 0;
+      int id = 0;
+	
+      /*
+	d1 = ilon - plon;
+	d2 = ilat - plat;
+	dist = sqrt(d1 * d1 + d2 * d2) * deg2m;
+	if (dist < 50)printf("%f %f i%d b\n", ilon, ilat, i);
+      */
+
+      i1 = sf * nseg;
+      i2 = i + i1;
+      if (i2 >= nseg) i2 -= nseg;
+      for (j = i2; j != i; j--) {
+	if (j == 0) j = nseg - 1;
+	jlat = ulat[j];
+	jlon = ulon[j];
+	d1 = ilon - jlon;
+	d2 = ilat - jlat;
+	dist = sqrt(d1 * d1 + d2 * d2) * deg2m;
+	if (!found && dist < ld) found = 1;
+
+	if (found) {
+
+	  if(dist < dmin) {
+	    dmin = dist;
+	    jmin = j;
+	    inn++;
+	  }
+	  if (dist > dmin) {
+	    found = 2;
+	    break;
+	  }
+	}
+	if (i == nseg - 1 && j == nseg - 1) break;
+      }
+      /*
+      if(i == 2803){
+	printf("%f %f s%d g\n",ilon, ilat, i);
+	printf("%f %f e%d r\n",ulon[jmin], ulat[jmin], i);
+      }
+      */
+
+      if (found == 2) {
+	double slon = 0.0, slat = 0.0;
+	double sn = 0.0;
+	for (j = i; j <= jmin; j++) {
+	  if (j > nseg - 1) j = 0;
+	  jlat = ulat[j];
+	  jlon = ulon[j];
+	  d1 = ilon - jlon;
+	  d2 = ilat - jlat;
+	  dist = sqrt(d1 * d1 + d2 * d2) * deg2m;
+	  
+	  slon += jlat;
+	  slat += jlon;
+	  sn += 1.0;
+	  
+	  if (dist > dmax) {
+	    dmax = dist;
+	    jmax = j;
+	  }
+	  if (i == nseg - 1 && j == nseg - 1) break;
+	  
+	}
+
+	slon /= sn;
+	slat /= sn;
+	d1 = clon - slon;
+	d2 = clat - slat;
+	dist1 = sqrt(d1 * d1 + d2 * d2) * deg2m;
+	d1 = 0.5 * (ilon + ulon[jmin]) - clon;
+	d1 = 0.5 * (ilat + ulat[jmin]) - clat;
+	dist2 = sqrt(d1 * d1 + d2 * d2) * deg2m;
+	/*if(i==2813)printf("aa %d %f %f %f %f %f\n",j,dist,jlon,jlat,dist2, dist1);*/
+	/*printf("[%f %f] [%f %f] dist1 = %f dist2 = %f\n",clon,clat,slon,slat,dist1/1e3, dist2/1e3);*/
+	if(n==ns) {
+	  if (dist2 < dist1 && dmax > frac * dmin) {
+	    /*printf("Link @ segment%d, i=%d j=%d [%f %f]-[%f %f] %f %f\n",n,i,jmin,ilon,ilat,ulon[jmin],ulat[jmin],clon,clat);*/
+
+	    fprintf(op, "%f %f s%d g\n",ilon, ilat, i);
+	    fprintf(op, "%f %f e%d r\n",ulon[jmin], ulat[jmin], i);
+	    fprintf(op, "%f %f e%d b\n",ulon[jmax], ulat[jmax], i);
+
+	    i = jmin;   
+	  }
+	}
+      }
+    }
+  }
+  fclose(op);
+}
+
+/* END auto_link()                                                     */
+/*---------------------------------------------------------------------*/
+
+
+/*---------------------------------------------------------------------*/
+/*---------------------------------------------------------------------*/
+int IsPointInPolygon(double xin, double yin, int np, double *lon, double *lat) {
+  int i=0;
+  int inside = 0;
+  double endX, endY;
+  double startX, startY;
+  endX = lon[np - 1]; 
+  endY = lat[np - 1];
+  while (i < np) {
+    startX = endX;           
+    startY = endY;
+    endX = lon[i];
+    endY = lat[i++];
+    
+    inside ^= (endY > yin ^ startY > yin) &&
+      ((xin - endX) < (yin - endY) * (startX - endX) / (startY - endY));
+  }
+  return inside;
+}
+
+
+int pnpoly(int nvert, double *vertx, double *verty, double xin, double yin)
+{
+  int i, j, c = 0;
+  for (i = 0, j = nvert-1; i < nvert; j = i++) {
+    if ( ((verty[i]>yin) != (verty[j]>yin)) &&
+     (xin < (vertx[j]-vertx[i]) * (yin-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+       c = !c;
+  }
+  return c;
+}

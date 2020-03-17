@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: datafile.h 6234 2019-05-29 03:32:02Z her127 $
  */
 
 
@@ -41,6 +41,8 @@ typedef enum { AT_TEXT, AT_BYTE, AT_FLOAT, AT_DOUBLE, AT_SHORT, AT_INT }
 #define VT_LATITUDE	 0x00000040 /* Lat. geographic coord var. */
 #define VT_LONGITUDE	 0x00000080 /* Long. geographic coord var. */
 #define VT_INFERRED      0x00000100 /* Data var. with inferred coordinates */
+#define VT_BATHY         0x00000200 /* Bathymetry variable                 */
+#define VT_COORD         0x00000400 /* Data var. with inferred coordinates */
 typedef int VariableType;
 
 /* Define the geographic types understood by datafile */
@@ -125,6 +127,9 @@ typedef struct {
   size_t nrecords;              /* Number of records */
   double *records;              /* Records */
   int rec_offset;               /* Overlapping offset from the file before */
+  double *offset;               /* Offset value */
+  double *scale;                /* Scale value */
+  double *fill;                 /* Fill value */
 } df_multi_file_t;
 
 typedef struct {

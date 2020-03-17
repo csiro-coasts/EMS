@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 6160 2019-03-05 04:35:12Z riz008 $
+ *  $Id: ecology.c 6224 2019-05-28 06:10:38Z riz008 $
  *
  */
 
@@ -739,19 +739,6 @@ ecology* ecology_build(void* model, char* prmfname)
     }
     
     /* 
-     * Initialise number of rsr wavelengths from the model 
-     *   - needs to come before bio_opt_init and slot
-     *     in between finalising the epi stringtable
-     */
-    e->bio_opt = NULL;
-    create_processes(e, e->processfname);
-
-    if (e->verbose) {
-        print_processes(e);
-        print_unmapped(e);      /* tracers, epis & parameters */
-    }
-
-    /* 
      * Open ecology setup file 
      *  - Do this after the initial create_processes call to only
      *    capture the events once (see call below)
@@ -766,6 +753,19 @@ ecology* ecology_build(void* model, char* prmfname)
       }
     }
 	
+    /* 
+     * Initialise number of rsr wavelengths from the model 
+     *   - needs to come before bio_opt_init and slot
+     *     in between finalising the epi stringtable
+     */
+    e->bio_opt = NULL;
+    create_processes(e, e->processfname);
+
+    if (e->verbose) {
+        print_processes(e);
+        print_unmapped(e);      /* tracers, epis & parameters */
+    }
+
     if (e->internaltracers) {
         e->ntr = e->tracers->n;
         e->nepi = e->epis->n;

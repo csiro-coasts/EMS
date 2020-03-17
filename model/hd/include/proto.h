@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6157 2019-03-05 03:18:45Z riz008 $
+ *  $Id: proto.h 6427 2019-11-22 00:24:51Z her127 $
  *
  */
 
@@ -26,7 +26,7 @@
 /*------------------------------------------------------------------*/
 #define SHOC_MAJOR_VERSION 1
 #define SHOC_MINOR_VERSION 1
-#define SHOC_PATCH_VERSION 1
+#define SHOC_PATCH_VERSION 2
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -45,6 +45,7 @@ void auto_params_roam_post2(FILE * fp, parameters_t *params);
 void auto_params_roam_post3(FILE * fp, parameters_t *params);
 void auto_params_roam_post4(FILE * fp, parameters_t *params);
 void auto_params_roam_post5(FILE * fp, parameters_t *params);
+void auto_params_roam_post6(FILE * fp, parameters_t *params);
 void auto_params_recom_post1(FILE * fp, parameters_t *params);
 void auto_params_recom_post2(FILE * fp, parameters_t *params);
 double get_restart_time(char *filename, char *iunits);
@@ -95,6 +96,7 @@ void bathy_compare(master_t *master);
 void read_compatible(parameters_t *params, FILE *fp);
 void read_means(parameters_t *params, FILE *fp, int mode);
 void read_debug(parameters_t *params, FILE *fp);
+void read_profile(parameters_t *params, FILE *fp);
 void read_explicit_maps(parameters_t *params, FILE *fp);
 void get_output_path(parameters_t *params, FILE *fp);
 void vel_init(geometry_t *geom, parameters_t *params, master_t *master);
@@ -719,6 +721,9 @@ int regulate_init(sched_event_t *event);
 double regulate_event(sched_event_t *event, double time);
 void regulate_cleanup(sched_event_t *event, double t);
 
+void swr_params_init(master_t *master, geometry_t **window);
+double swr_params_event(geometry_t *window, window_t *windat, win_priv_t *wincon, int n);
+
 /*------------------------------------------------------------------*/
 /* Data Assimilation routines                                       */
 /*------------------------------------------------------------------*/
@@ -852,7 +857,7 @@ void implicit_vdiff_at_cc(geometry_t *window, window_t *windat,
 			  double *dzcell, double *dzface, double *fb,
 			  double *ft, int *ctp, int *cbt, int cc,
 			  double *Splus, double *Sminus, double *scale,
-			  double *C, double *Cp1, double *Cm1);
+			  double *C, double *Cp1, double *Cm1, double dt);
 void mode2d_tracer_init(geometry_t *window, window_t *windat,
                         win_priv_t *wincon);
 void tr_diag_reset_w(geometry_t *window, window_t *windat,
@@ -1331,6 +1336,7 @@ void cs_landfill_map(dump_data_t *dumpdata);
 void dump_bathy_mask(dump_data_t *dumpdata, double bathyf);
 void write_text_att(int cdfid, int varid, const char *name,
                     const char *text);
+void write_date_created(int cdfid);
 void dump_windows(master_t *master, geometry_t **window, char *name, char *iname);
 void read_windows(geometry_t *geom, geometry_t **window, char *name);
 void trans_check_dump(master_t *master, dump_data_t *dumpdata, char *trdata);
@@ -1624,7 +1630,11 @@ void s2ijk(geometry_t *window, int c);
 /*------------------------------------------------------------------*/
 void i_set_error(void* hmodel, int col, int errorf, char *text);
 int i_get_error(void* hmodel, int col);
-
+void ginterface_moonvars(void *hmodel, int c,
+			 double *mlon, double *mlat,
+			 double *dist_earth_sun, double *dist_moon_earth,
+			 double *lunar_angle, double *sun_angle,double *moon_phase,double *lunar_dec);
+double ginterface_get_cloud(void *hmodel, int c);
 
 /*------------------------------------------------------------------*/
 /* Ecology                                                          */

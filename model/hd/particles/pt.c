@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: pt.c 6174 2019-03-19 00:37:46Z her127 $
  *
  */
 
@@ -46,7 +46,7 @@ double time_to_face(master_t *master, double ul, double ur, double f,
                     double *u, double *du);
 double pt_step_dist(master_t *master, double u, double du, double dt);
 int hd_pt_create(master_t *master, char *name);
-
+void pt_auto_init(master_t *master);
 
 /*-------------------------------------------------------------------*/
 /* Event called by the time scheduler. This routine writes out the   */
@@ -186,6 +186,10 @@ void pt_params_init(master_t *master, FILE * fp)
   prm_set_errfn(hd_silent_warn);
   if (master->do_pt == 0) {
     /* No particle tracking input file - so nothing further to do    */
+    return;
+  }
+  if (master->do_pt == 2) {
+    pt_auto_init(master);
     return;
   }
 
@@ -589,6 +593,131 @@ void pt_params_init(master_t *master, FILE * fp)
 /* END pt_params_init()                                              */
 /*-------------------------------------------------------------------*/
 
+
+/*-------------------------------------------------------------------*/
+/* Routine to set up auto particle releases                          */
+/*-------------------------------------------------------------------*/
+void pt_auto_init(master_t *master)
+{
+  parameters_t *params = master->params;
+  char buf[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int n, m, i;
+
+  master->mage = master->magec = 0.0;
+  master->shist = 0;
+  master->phist = NULL;
+  master->pt_svel = NULL;
+
+  /* Read particle tracking file parameters                          */
+  prm_set_errfn(hd_silent_warn);
+  if (master->do_pt == 0) {
+    /* No particle tracking input file - so nothing further to do    */
+    return;
+  }
+  master->ptinrec = 0;
+  sprintf(master->ptoutname, "%spt.nc", master->opath);
+  master->ptstart = master->tstart;
+  master->ptend = schedule->stop_time;
+  master->ptoutinc = 3600.0;
+  master->ptstep = 600.0;
+  master->ptreset = master->ptend - master->ptstart;
+  master->pt_kh = 1.0;
+  master->pt_kz_mult = 1.0;
+  master->pt_mass = 1.0;
+  master->pt_stickybdry = 0;
+  master->pt_agelim = master->ptend - master->ptstart;
+  master->pt_dumpf |= PT_AGE;
+  master->shist = HIST_SCALE * master->pt_agelim / 86400;
+  master->pt_sizelim = 0;
+  master->wvel_i = NULL;
+  master->uvel_i = NULL;
+  master->vvel_i = NULL;
+  master->mort_i = NULL;
+  n = parseline(params->particles, fields, MAXNUMARGS);
+  master->pt_nsource = n / 4;
+  master->pt_rate = d_alloc_1d(master->pt_nsource);
+  master->pt_colour = (short *)malloc(sizeof(short) * master->pt_nsource);
+  master->pt_x1 = d_alloc_1d(master->pt_nsource);
+  master->pt_y1 = d_alloc_1d(master->pt_nsource);
+  master->pt_z1 = d_alloc_1d(master->pt_nsource);
+  master->pt_x2 = d_alloc_1d(master->pt_nsource);
+  master->pt_y2 = d_alloc_1d(master->pt_nsource);
+  master->pt_z2 = d_alloc_1d(master->pt_nsource);
+  master->pt_accum = d_alloc_1d(master->pt_nsource);
+  master->pt_size = d_alloc_1d(master->pt_nsource);
+  master->pt_decay = d_alloc_1d(master->pt_nsource);
+  master->pt_svel = d_alloc_1d(master->pt_nsource);
+  master->pt_dens = d_alloc_1d(master->pt_nsource);
+  master->svel_type = i_alloc_1d(master->pt_nsource);
+  master->pt_sper = d_alloc_1d(master->pt_nsource);
+  memset(master->pt_svel, 0, master->pt_nsource*sizeof(double)); 
+
+  for (i = 0; i < master->pt_nsource; ++i) {
+    int colourBit = 0;
+    master->pt_accum[i] = master->pt_size[i] = 0.0;
+
+    master->pt_rate[i] = 0.000555555556; /* 2 particles / hour       */
+    colourBit = i + 2;
+    master->pt_colour[i] = 1 << colourBit;
+    master->pt_colour[i] &= ~(PT_ACTIVE | PT_LOST);
+    master->pt_size[i] = master->pt_decay[i] = 0.0;
+    master->svel_type[i] = NONE;
+    master->pt_svel[i] = 0.0;
+    m = i * 4;
+    master->pt_x1[i] = atof(fields[m]);
+    master->pt_y1[i] = atof(fields[m + 1]);
+    master->pt_z1[i] = atof(fields[m + 2]);
+    master->pt_x2[i] = atof(fields[m]);
+    master->pt_y2[i] = atof(fields[m + 1]);
+    master->pt_z2[i] = atof(fields[m + 3]);
+  }
+  /* Allocate the memory for the particle concentrations, and */
+  /* initialise to NaN.  */
+  for (i = 1; i < geom->sgsiz; i++) {
+    master->ptconc[i] = NaN;
+  }
+
+  /* Read particles and convert to grid coords */
+  pt_read(master->ptinname,
+          master->ptinrec, &master->ptn, &master->ptp, NULL, NULL, NULL);
+
+  /* Allocate memory for the particle to source map */
+  master->pt_sm = s_alloc_1d(master->ptn);
+
+  if (master->pt_nsource > 0) {
+    pt_new(master, master->ptn, master->ptp);
+  }
+
+  /* Initialise the particle concentrations */
+  particles_to_conc(master, master->ptn, master->ptp);
+
+  /* Allocate array for max vert diffusion values */
+  master->maxdiffw = f_alloc_1d(geom->sgsizS);
+
+  /* Register an interest with the tscheduler for dumping the output */
+  /* output particle file.  */
+  sched_register(schedule, "particles", ptrack_init,
+                 ptrack_event, ptrack_cleanup, master, NULL, NULL);
+
+  /* Throw away some random numbers. This is an attempt to avoid rather
+     bizzare behaviour which can occur under certain circustances. If the
+     utility used to generate initial particle positions uses the same set
+     of random numbers as those used on the first timestep for
+     diffusivities (see ptmove below), the particle positions and
+     diffusivities are correlated, which can lead to unexpected and
+     entertaining results for the first time step! It probably isn't
+     necessary to throw away as many as shown below, but it probably
+     doesn't hurt, either. */
+  for (i = 0; i < master->ptn; i++) {
+    int raninit = 0;
+    ran3(&raninit);
+    ran3(&raninit);
+    ran3(&raninit);
+  }
+}
+/* END pt_auto_init()                                                */
+/*-------------------------------------------------------------------*/
 
 /*-------------------------------------------------------------------*/
 /* Convert horizontal particle world coords to grid coords           */

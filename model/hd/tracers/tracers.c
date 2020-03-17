@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 6097 2019-02-08 04:43:46Z her127 $
+ *  $Id: tracers.c 6435 2019-11-22 00:27:11Z her127 $
  *
  */
 
@@ -3910,12 +3910,13 @@ void vert_diffuse_3d(geometry_t *window,  /* Processing window */
 	  topflux = windat->heatf;
 	} else {
 	  Splus = wincon->w8;
+	  if (wincon->nswreg) swr_params_event(window, windat, wincon, n);
 	  memset(Splus, 0, window->sgsiz * sizeof(double));
 	  calc_swr(window, windat, wincon, Splus, 0);
 	  topflux = windat->heatf;
 	}
       }
-      if (wincon->heatflux & (SURF_RELAX|AVHRR))
+      if (wincon->heatflux & (SURF_RELAX|AVHRR|GHRSST))
         surf_relax(window, windat, wincon);
     }
     if (n == windat->sno) {
@@ -4040,7 +4041,8 @@ void swr_assimilation(geometry_t *window,  /* Window geometry        */
       calc_swr(window, windat, wincon, Splus, cc);
       implicit_vdiff_at_cc(window, windat, wincon, temp, Kz, dzcell, dzface,
 			   wincon->d1, topflux, ctp, cbt, cc, Splus,
-			   NULL, wincon->one, C, Cp1, Cm1);
+			   NULL, wincon->one, C, Cp1, Cm1, windat->dt);
+
       /* Do the estimation est(temp, anys, attn, tran, babs) */
       /* Copy swr parameters to the arrays                           */
       windat->swr_attn[c2] = attn;
@@ -4056,6 +4058,7 @@ void swr_assimilation(geometry_t *window,  /* Window geometry        */
 
 /* END swr_assimilation()                                            */
 /*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Implicit vertical diffusion scheme                                */
@@ -6148,10 +6151,11 @@ void do_ts_relax(geometry_t *window,  /* Processing window */
       windat->temp[c] -= windat->dt * rr * (windat->temp[c] - windat->rtemp[c]);
     }
   }
-  if (windat->rtemp && windat->temp_tc && tcf & RLX_ADPT) {
+  if (windat->rtemp && windat->temp_tc && tcf & (RLX_ADPT|RLX_REG|RLX_OBC)) {
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
-      windat->temp[c] -= windat->dt * (windat->temp[c] - windat->rtemp[c]) * sf / windat->temp_tc[c];
+      rr = (windat->temp_tc[c]) ? sf / windat->temp_tc[c] : 0.0;
+      windat->temp[c] -= windat->dt * (windat->temp[c] - windat->rtemp[c]) * rr;
     }
   }
 
@@ -6177,10 +6181,11 @@ void do_ts_relax(geometry_t *window,  /* Processing window */
       windat->sal[c] -= windat->dt * rr * (windat->sal[c] - windat->rsalt[c]);
     }
   }
-  if (windat->rsalt && windat->salt_tc && tcf & RLX_ADPT) {
+  if (windat->rsalt && windat->salt_tc && tcf & (RLX_ADPT|RLX_REG|RLX_OBC)) {
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
-      windat->sal[c] -= windat->dt * (windat->sal[c] - windat->rsalt[c]) * sf /	windat->salt_tc[c];
+      rr = (windat->salt_tc[c]) ? sf / windat->salt_tc[c] : 0.0;
+      windat->sal[c] -= windat->dt * (windat->sal[c] - windat->rsalt[c]) * rr;
     }
   }
 
@@ -7408,7 +7413,8 @@ void implicit_vdiff_at_cc(geometry_t *window, /* Window geometry     */
 			  double *Splus,   /* + part of source term  */
 			  double *Sminus,  /* - part of source term  */
 			  double *scale,   /* SIGMA : scaling        */
-			  double *C, double *Cp1, double *Cm1
+			  double *C, double *Cp1, double *Cm1,
+			  double dt
 			  )
 {
   int c, k;                     /* Sparse/layer coordinate           */
@@ -7416,7 +7422,6 @@ void implicit_vdiff_at_cc(geometry_t *window, /* Window geometry     */
   int cb, kb;                   /* Bottom coordinate                 */
   int zm1;                      /* Sparse cell below c               */
   int c2;                       /* 2D cell corresponding to 3D cell  */
-  double dt = windat->dt;       /* Time step for the window          */
   double dzdt;                  /* dz / dt                           */
   double div;                   /* Constant                          */
 
@@ -7627,4 +7632,405 @@ void reset_flow(geometry_t *window,    /* Processing window          */
 }
 
 /* END reset_flow()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initialises regions for swr estimation                            */
+/*-------------------------------------------------------------------*/
+void swr_params_init(master_t *master, geometry_t **window)
+{
+  parameters_t *params = master->params;
+  geometry_t *geom = master->geom;
+  win_priv_t *wincon;
+  window_t *windat;
+  int wn, nr, reg;
+  int cc, c, lc, n, found;
+  double *regionid, depth = 0.0;
+
+  /*-----------------------------------------------------------------*/
+  /* Initialise for no swr parameter estimation                      */
+  if (!strlen(params->swr_regions)) {
+    for (wn = 1; wn <= master->nwindows; wn++) {
+      wincon = window[wn]->wincon;
+      windat = window[wn]->windat;
+      wincon->swr_next = master->t - 1;
+      wincon->swr_dt = 0.0;
+      wincon->nswreg = 0;
+    }
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Get the data to converge towards (GHRSST or a tracer)           */
+  lc = -1;
+  if (strcmp(params->swr_data, "GHRSST") == 0) {
+    if (!params->ghrsst)
+      hd_quit("SWR estimation must have GHRSST invoked.\n");
+  } else {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    n = parseline(params->swr_data, fields, MAXNUMARGS);
+    if (n == 1) {           /* 2D data                               */
+      found = 0;
+      for (n = 0; n < master->ntrS; n++) {
+	if (strcmp(fields[0], master->trinfo_2d[n].name) == 0) {
+	  lc = n;
+	  found = 1;
+	  break;
+	}
+      }
+      if (!found)
+	hd_quit("SWR estimation must have 2D tracer %s in the tracer list.\n", fields[0]);
+    }
+    if (n == 2) {           /* 3D data                               */
+      found = 0;
+      for (n = 0; n < master->ntr; n++) {
+	if (strcmp(fields[0], master->trinfo_3d[n].name) == 0) {
+	  lc = n;
+	  found = 1;
+	  break;
+	}
+      }
+      if (!found)
+	hd_quit("SWR estimation must have 3D tracer %s in the tracer list.\n", fields[0]);
+    }
+    depth = atof(fields[1]);
+  }
+  for (wn = 1; wn <= master->nwindows; wn++) {
+    wincon = window[wn]->wincon;
+    wincon->swr_data = lc;
+    wincon->swr_depth = -fabs(depth);
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Estimate the swr parameters at every column in the grid         */
+  if (strcmp(params->swr_regions, "ALL") == 0) {
+    for (wn = 1; wn <= master->nwindows; wn++) {
+      wincon = window[wn]->wincon;
+      windat = window[wn]->windat;
+      wincon->nswreg = window[wn]->b2_t;
+      wincon->swr_dt = params->swreg_dt;
+      wincon->swr_next = master->t;
+      windat->swrc = 0.0;
+      wincon->swmap = i_alloc_1d(window[wn]->sgsizS);
+      wincon->swC = d_alloc_1d(window[wn]->sgsiz);
+      for (cc = 1; cc <= window[wn]->b2_t; cc++) {
+	c = window[wn]->w2_t[cc];
+	windat->swreg[c] = cc;
+	wincon->swmap[c] = cc-1;
+      }
+    }
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Estimate the swr parameters at the geographic centre of the     */
+  /* grid.                                                           */
+  if (strcmp(params->swr_regions, "ONE") == 0) {
+    for (wn = 1; wn <= master->nwindows; wn++) {
+      wincon = window[wn]->wincon;
+      windat = window[wn]->windat;
+      wincon->nswreg = 1;
+      wincon->swr_dt = params->swreg_dt;
+      wincon->swr_next = master->t;
+      windat->swrc = 0.0;
+      wincon->swmap = i_alloc_1d(window[wn]->sgsizS);
+      wincon->swC = d_alloc_1d(window[wn]->sgsiz);
+      for (cc = 1; cc <= window[wn]->b2_t; cc++) {
+	c = window[wn]->w2_t[cc];
+	windat->swreg[c] = 0;
+	wincon->swmap[c] = 0;
+      }
+    }
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Estimate the swr parameters according to regional partitioning  */
+  regionid = d_alloc_1d(master->geom->sgsiz);
+  nr = read_regioni(master, params->swr_regions, regionid);
+
+  if (nr) {
+    /* Set the mask in the windows */
+    for (wn = 1; wn <= master->nwindows; wn++) {
+      wincon = window[wn]->wincon;
+      memset(wincon->d1, 0, window[wn]->sgsizS * sizeof(int));
+      wincon->nswreg = 0;
+      wincon->swr_dt = params->swreg_dt;
+      wincon->swr_next = master->t;
+      windat->swrc = 0.0;
+      wincon->swmap = i_alloc_1d(window[wn]->sgsizS);
+      wincon->swC = d_alloc_1d(window[wn]->sgsiz);
+    }
+    for (cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->w2_t[cc];
+      lc = geom->fm[c].sc;
+      wn = geom->fm[c].wn;
+      reg = (int)regionid[c];
+      if (reg >= 0) {
+	wincon = window[wn]->wincon;
+	windat = window[wn]->windat;
+	windat->swreg[lc] = (double)reg;
+	found = 0;
+	for (n = 0; n < wincon->nswreg; n++) {
+	  if (reg == wincon->d1[n]) {
+	    found = 1;
+	    break;
+	  }
+	}
+	if (!found) {
+	  wincon->d1[wincon->nswreg] = reg;
+	  wincon->nswreg++;
+	}
+      }
+      for (n = 0; n < wincon->nswreg; n++)
+	if (reg == wincon->d1[n])
+	  wincon->swmap[lc] = n;
+    }
+  }
+  d_free_1d(regionid);
+}
+
+/* END swr_params_init()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to optimize swr_attn and swr_tran from an ensemble to     */
+/*  minimise SST error compared GHRSST.                              */
+/*-------------------------------------------------------------------*/
+double swr_params_event(geometry_t *window,
+			window_t *windat,
+			win_priv_t *wincon,
+			int n
+			)
+{
+  int tn, k, c, cc, cs, cb, c2, cd, ks, kb, m;
+  int i1, i2, zm1, zp1;
+  double *tr = windat->tr_wc[n];    /* Temperature tracer            */
+  double *ghrsst;                   /* GHRSST tracer                 */
+  double *topflux = windat->heatf;  /* Surface flux                  */
+  double *Splus = wincon->w8;   /* swr source                        */
+  int *ctp = wincon->i2;        /* Old surface sparse coordinate     */
+  int *cbt = wincon->i5;        /* Bottom sparse coordinate          */
+  double *dzface = wincon->w7;  /* Cell thickness at the cell face   */
+  double *dzcell = wincon->w9;  /* Cell centered cell thickness      */
+  double *Kz = wincon->w10;     /* Vertical diffusivity              */
+  double *Cm1 = wincon->w1;     /* Constant for implicit calculation */
+  double *C = wincon->w2;       /* Constant for implicit calculation */
+  double *Cp1 = wincon->w3;     /* Constant for implicit calculation */
+  double *temp = wincon->v1;    /* Temperature vector                */
+  double attn;                  /* swr attenuation                   */
+  double tran;                  /* swr transmission                  */
+  double babs;                  /* swr bottom absorption             */
+  double rms;                   /* Global rms error                  */
+  double swr;                   /* SWR at the estimation location    */
+  double *sstm;                 /* Regional mean of GHRSST           */
+  double *tm;                   /* Surface temp closest to sstm      */
+  double *nreg;                 /* Number of cells in each region    */
+  int *ccs;                     /* Cell cc of clostest temp to sstm  */
+  double *mattn, *mtran;        /* Region optimised atten and tran   */
+  double dzdt;                  /* dz / dt for tridiagnol            */
+  double *heatf = wincon->d2;   /* Copy of surface heatflux          */
+  double *data;                 /* Target temperature array          */ 
+  double tempt;                 /* Target temperature value          */
+  double tmin = 0.0;            /* Minimum allowable temperature     */
+  double tmax = 35.0;           /* Maximum allowable temperature     */
+  double attn0 = 0.02;          /* Start attenuation for ensemble    */
+  double attni = 0.05;          /* Atten increment for ensemble      */
+
+  /* Return if next swr event isn't scheduled                        */
+  if (windat->t < wincon->swr_next) return;
+  wincon->swr_next = windat->t + wincon->swr_dt;
+
+  /*-----------------------------------------------------------------*/
+  /* Allocate and ititialize                                         */
+  tm = d_alloc_1d(wincon->nswreg);
+  sstm = d_alloc_1d(wincon->nswreg);
+  nreg = d_alloc_1d(wincon->nswreg);
+  ccs = i_alloc_1d(wincon->nswreg);
+  mattn = d_alloc_1d(wincon->nswreg);
+  mtran = d_alloc_1d(wincon->nswreg);
+  data = (wincon->swr_data >= 0) ? windat->tr_wcS[wincon->swr_data] : windat->ghrsst;
+  memset(sstm, 0, wincon->nswreg * sizeof(double));
+  memset(nreg, 0, wincon->nswreg * sizeof(double));
+  for (m = 0; m < wincon->nswreg; m++) {
+    tm[m] = HUGE;
+    ccs[m] = 0;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Get the mean SST in each region                                 */
+  for (cc = 1; cc <= wincon->vcs; cc++) {
+    c = ctp[cc];
+    c2 = window->m2d[c];
+    m = wincon->swmap[c2];
+    if (wincon->swr_depth != 0.0) {
+      while (window->gridz[c] > wincon->swr_depth && c != window->zm1[c]) {
+	c = window->zm1[c];
+      }
+      c2 = c;
+    }
+    if (data[c2] >= tmin && data[c2] <= tmax) {
+      sstm[m] += data[c2];
+      nreg[m] += 1.0;
+    }
+  }
+  for (m = 0; m < wincon->nswreg; m++) {
+    if (nreg[m]) {
+      sstm[m] /= nreg[m];
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Find the cell in each region with a sst closest to the mean     */
+  for (cc = 1; cc <= wincon->vcs; cc++) {
+    c = ctp[cc];
+    c2 = window->m2d[c];
+    m = wincon->swmap[c2];
+    if (wincon->swr_depth != 0.0) {
+      while (window->gridz[c] > wincon->swr_depth && c != window->zm1[c]) {
+	c = window->zm1[c];
+      }
+    }
+    rms = sqrt((tr[c] - sstm[m]) * (tr[c] - sstm[m]));
+    if (rms < tm[m]) {
+      ccs[m] = cc;
+      tm[m] = rms;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Set up the tridiagnol timestep dependent term                   */
+  for (m = 0; m < wincon->nswreg; m++) {
+    cc = ccs[m];
+    cs = c = ctp[cc];
+    cb = cbt[cc];
+    c2 = window->m2d[cs];
+    ks = window->s2k[cs];
+    kb = window->s2k[cb];
+    zm1 = window->zm1[c];
+
+    /* Single layer case (i.e. surface lies in the bottom layer)     */
+    if (zm1 == window->zm1[zm1] || !dzcell[zm1])
+      continue;
+
+    c = cb;
+    zp1 = window->zp1[c];       /* Layer above the bottom        */
+
+    /* Set up tri-diagonal set of equations.                         */
+    /* Bottom layer.                                                 */
+    dzdt = dzcell[c] / wincon->swr_dt;
+    wincon->swC[c] = dzdt - Cp1[c];
+    /* Mid-water layers                                              */
+    while (zp1 != cs) {
+      c = zp1;
+      zp1 = window->zp1[c];
+      dzdt = dzcell[c] / wincon->swr_dt;
+      wincon->swC[c] = dzdt - Cm1[c] - Cp1[c];
+    }
+    /* Surface layer                                                 */
+    c = cs;
+    dzdt = dzcell[c] / wincon->swr_dt;
+    wincon->swC[c] = dzdt - Cm1[c];
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Do the vertical diffusion over the ensemble                     */
+  memset(windat->swrms, 0, window->sgsizS * sizeof(double));
+  memset(Splus, 0, window->sgsiz * sizeof(double));
+  memcpy(heatf, windat->heatf, window->sgsizS * sizeof(double));
+  for (m = 0; m < wincon->nswreg; m++) {
+    cc = ccs[m];
+    if (!cc) continue;
+    cs = c = cd = ctp[cc];
+    cb = cbt[cc];
+    c2 = window->m2d[cs];
+    ks = window->s2k[cs];
+    kb = window->s2k[cb];
+    windat->swrms[c2] = HUGE;
+    swr = windat->swr[c2];
+    if (swr == 0.0) continue;
+
+    /* Get the coordinate of the data                                */
+    if (wincon->swr_depth != 0.0) {
+      while (window->gridz[cd] > wincon->swr_depth && cd != window->zm1[cd]) {
+	cd = window->zm1[cd];
+      }
+    } else
+      cd = c2;
+
+    tempt = data[cd];
+    if (tempt < tmin || tempt > tmax) tempt = sstm[m];
+
+    for (i1 = 0; i1 <= 10; i1 += 1) {   /* Transmission range        */
+      for (i2 = 0; i2 <= 10; i2 += 1) { /* Attenuation range         */
+	/* Set swr parameters                                        */
+	attn = attn0 + (double)i2 * attni;
+	tran = (double)i1 / 10.0;
+	babs = windat->swr_babs[c2];
+	windat->swr_attn[c2] = attn;
+	windat->swr_tran[c2] = tran;
+
+	/* Set the temperature profile                               */
+	c = cs;
+	for (k = ks; k >= kb; k--) {
+	  temp[k] = tr[c];
+	  c = window->zm1[c];
+	}
+
+	/* Set the swr distribution                                  */
+	calc_swr(window, windat, wincon, Splus, cc);
+
+	/* Mix vertically                                            */
+	implicit_vdiff_at_cc(window, windat, wincon, temp, Kz, dzcell, dzface,
+			     wincon->d1, windat->heatf, ctp, cbt, cc, Splus,
+			     NULL, wincon->one, wincon->swC, Cp1, Cm1, wincon->swr_dt);
+	windat->heatf[c2] = heatf[c2];
+
+	/* Save the swr parameters if the SST is improved            */
+	rms = sqrt((data[cd] - temp[ks]) * (data[cd] - temp[ks]));
+	/*if(m==0)printf("%f %f : %f %f : %f\n",attn,tran,temp[ks],data[cd],rms);*/
+	if (rms < windat->swrms[c2]) {
+	  mattn[m] = attn;
+	  mtran[m] = tran;
+	  windat->swrms[c2] = rms;
+	}
+	/*if(m==2)printf("%f %d %d(%d %d) : %d %d : %f %f : %f %f %f\n",windat->days,m,c,window->s2i[c],window->s2j[c],i1,i2,attn,tran,data[cd],temp[ks],rms);*/
+      }
+    }
+    /*if(m==1)printf("%f %d %f %f : %f\n",windat->days,m,mattn[m],mtran[m],windat->swrms[c2]);*/
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Repopulate the swr parameters with optimized values             */
+  k = 0;
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    if (windat->swr[c2]) {
+      k = 1;
+      m = wincon->swmap[c];
+      windat->swr_attn[c] = mattn[m];
+      windat->swr_tran[c] = mtran[m];
+      windat->attn_mean[c] = (windat->attn_mean[c] * windat->swrc + 
+			      windat->swr_attn[c] * wincon->swr_dt) / 
+	(windat->swrc + wincon->swr_dt);
+      windat->tran_mean[c] = (windat->tran_mean[c] * windat->swrc + 
+			      windat->swr_tran[c] * wincon->swr_dt) / 
+	(windat->swrc + wincon->swr_dt);
+    }
+  }
+  if (k) windat->swrc += wincon->swr_dt;
+  memcpy(windat->swr_attn, windat->attn_mean, window->sgsizS * sizeof(double));
+  memcpy(windat->swr_tran, windat->tran_mean, window->sgsizS * sizeof(double));
+
+  d_free_1d(tm);
+  d_free_1d(sstm);
+  d_free_1d(nreg);
+  i_free_1d(ccs);
+  d_free_1d(mattn);
+  d_free_1d(mtran);
+}
+
+/* END swr_params_event()                                            */
 /*-------------------------------------------------------------------*/

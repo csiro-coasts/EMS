@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 6145 2019-03-05 01:58:05Z her127 $
+ *  $Id: monitor.c 6360 2019-10-10 02:30:22Z her127 $
  *
  */
 
@@ -2688,6 +2688,13 @@ void nor_vert_prof(geometry_t *window,       /* Window geometry       */
       c = window->zp1[c];
       windat->nprof[c] = trs;
     } 
+  }
+  if (wincon->nprof2d >= 0) {
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      cs = window->m2d[c];
+      windat->nprof[c] *= windat->tr_wcS[wincon->nprof2d][cs];
+    }
   }
 }
 

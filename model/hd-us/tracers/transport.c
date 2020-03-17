@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 6087 2019-02-08 04:15:28Z her127 $
+ *  $Id: transport.c 6479 2020-02-18 23:54:44Z her127 $
  *
  */
 
@@ -89,12 +89,15 @@ void reset_npt(geometry_t *window, delaunay **d, npt_t **npt);
 npt_t* npt_create(int n);
 int get_pos(geometry_t *window, int c, int ci, double u, double v, double w,
             double *cx, double *cy, double *cz, double dt, int mode);
+int get_posc(geometry_t *window, int *ei, int ci, double u, double v, 
+            double *cx, double *cy, double dt, int mode, double *odist);
 int find_cell(geometry_t *window, int c, double x, double y, double *xi, double *yi);
 double get_dist(double x1, double y1, double x2, double y2);
 void ffsl_doc(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 	      double *ntr, double dtu, int mode);
-void interp_limit(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr); 
 void check_monotone(geometry_t *window, window_t *windat, win_priv_t *wincon, double tr, int c);
+void universal_limit(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		     int cin, int co, int cs, int cb, double dt, double *tr, double *Fx, double *Fz, int *mask);
 
 /*-------------------------------------------------------------------*/
 /* Transport step                                                    */
@@ -113,7 +116,8 @@ void transport_step(master_t *master, geometry_t **window,
 
   /*-----------------------------------------------------------------*/
   /* Reset the means on the master if required.                      */
-  reset_means_m(master);
+  /* This is now done within a scheduled function
+     reset_means_m_o(master);*/
 
   /*-----------------------------------------------------------------*/
   /* Do the custom tracer routines on the master                     */
@@ -273,10 +277,10 @@ void transport_step(master_t *master, geometry_t **window,
     /* which is achieved by setting u1, u2, w and volume fluxes = 0. */
     if ((wincon[n]->trasc == FFSL) && (windat[n]->nstep == 0)) {
       hd_warn("Setting initial velocity and volume fluxes to zero for FFSL advection scheme (t = %f)\n", windat[n]->t / 86400);
-      memset(windat[n]->u1, 0, window[n]->sgsiz * sizeof(double));
-      memset(windat[n]->w, 0, window[n]->sgsiz * sizeof(double));
-      memset(windat[n]->u1vm, 0, window[n]->sgsiz * sizeof(double));
-      memset(windat[n]->u1flux3d, 0, window[n]->sgsiz * sizeof(double));
+      memset(windat[n]->u1, 0, window[n]->sze * sizeof(double));
+      memset(windat[n]->w, 0, window[n]->szc * sizeof(double));
+      memset(windat[n]->u1vm, 0, window[n]->sze * sizeof(double));
+      memset(windat[n]->u1flux3d, 0, window[n]->sze * sizeof(double));
     }
 
     /*---------------------------------------------------------------*/
@@ -389,6 +393,10 @@ void transport_step(master_t *master, geometry_t **window,
       wincon[n]->hor_mix->pre(window[n], windat[n], wincon[n]);
       wincon[n]->hor_mix->setup(window[n], windat[n], wincon[n]);
     }
+
+    /*---------------------------------------------------------------*/
+    /* Compute the tangential component of velocity                  */
+    vel_tan_3d(window[n], windat[n], wincon[n]);
 
     /*---------------------------------------------------------------*/
     /* Calculate the alert diagnostics if required                   */
@@ -870,8 +878,8 @@ void semi_lagrange_c(geometry_t *window,  /* Window geometry         */
 
     /* Rotate the edge velocity to east and north, and use this at   */
     /* at the ghost cell.                                            */
-    nu[c] = windat->u1[e] * window->costhu1[es] - windat->u2[e] * window->sinthu1[es];
-    nv[c] = windat->u1[e] * window->sinthu1[es] + windat->u2[e] * window->costhu1[es];
+    nu[c] = windat->u1[e] * window->costhu1[es] + windat->u2[e] * window->costhu2[es];
+    nv[c] = windat->u1[e] * window->sinthu1[es] + windat->u2[e] * window->sinthu2[es];
     nw[c] = nw[ci];
     dzz[c] = dzz[ci];
     wincon->m2d[c] = (ci == wincon->m2d[ci]) ? c : 0;
@@ -1161,6 +1169,114 @@ int get_pos(geometry_t *window, /* Window geometry                   */
 
 
 /*-------------------------------------------------------------------*/
+/* Computes the new location of the streamline origin such that the  */
+/* streamline traverses only one cell, i.e. the source location lies */
+/* on an edge. Returns the cell centre of the source location.       */
+/* If the streamline lands in a ghost cell, then shift into the wet  */
+/* interior and re-compute a new location.                           */
+/* Destination cell is the origin of the streamline.                 */
+/* Source cell is the end point of the streamline track.             */
+/* Returns a new source cell after moving a distance increment.      */
+/* The new geographic location is returned in cx and cy.             */
+/*-------------------------------------------------------------------*/
+int get_posc(geometry_t *window, /* Window geometry                  */
+	     int *ei,            /* Source edge                      */
+	     int ci,             /* Current source cell              */
+	     double u,           /* East velocity                    */
+	     double v,           /* North velocity                   */
+	     double *cx,         /* x location of streamline         */
+	     double *cy,         /* y location of streamline         */
+	     double dt,          /* Time step                        */
+	     int mode,           /* mode=0, centres, 1=layer faces   */
+	     double *odist       /* Distance of this segment         */
+	    )
+{
+  window_t *windat = window->windat;
+  win_priv_t *wincon = window->wincon;
+  int cis = window->m2d[ci];
+  int cn, cns, zm1;
+  double xin = *cx;
+  double yin = *cy;
+  double dist, dir, s1, s2;
+  double slat, slon;
+  double sinth, costh;
+  double dx, dy;
+  double nx, ny;
+  double m2deg = 1.0 / (60.0 * 1852.0);
+  int has_proj = (strlen(projection) > 0);
+  int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
+  int sodanos = 0;  /* Compute distances on the spheroid             */
+  int j, k = window->s2k[ci], e;
+  double xi, yi;
+  int found;
+
+  /* Get the new horizontal location                                 */
+  if (!is_geog) m2deg = 1.0;
+  if (sodanos) {
+    dist = sqrt(u * u + v * v) * dt;
+    dir =  PI / 2.0 - atan2(v, u);  /* deg T                         */
+    geod_fwd_sodanos(DEG2RAD(xin), DEG2RAD(yin), dir, dist, RADIUS, ECC, &slon, &slat);
+    slon = RAD2DEG(slon);
+    slat = RAD2DEG(slat);
+  } else {
+    /* Get the new distances                                         */
+    dist = sqrt(u * u + v * v) * dt * m2deg;
+    dir =  atan2(v, u);
+    /* Update the origin location                                    */
+    sinth = sin(dir);
+    costh = cos(dir);
+    slon = xin - dist * costh;
+    slat = yin - dist * sinth;
+  }
+
+  /* Return current cell if the streamline is at the end             */
+  if(dist == 0.0) {
+    *odist = 0.0;
+    return(-ci);
+  }
+
+  /* Find the first edge the streamline crosses                      */
+  cn = ci;
+  for (j = 1; j <= window->npe[cis]; j++) {
+    e = window->c2e[j][ci];
+    if (e != *ei && (found = intersect(window, ci, j, *cx, *cy, slon, slat, &xi, &yi))) {
+      cn = window->c2c[j][ci];
+      break;
+    }
+  }
+  *ei = e;
+
+  /* Send back if the next cell is a ghost cell */
+  k = window->s2k[cn];
+  cns = window->m2d[cn];
+  if (window->gcm[k][cns] & L_GHOST) {
+    *odist = get_dist(*cx, *cy, xi, yi) / m2deg;
+    *cx = xi;
+    *cy = yi;
+    return(-ci);
+  }
+  /* Find the first edge the streamline crosses                      */
+  /* If the streamline ends in a cell (i.e. doesn't cross an edge)   */
+  /* then return its source location, otherwise return the location  */
+  /* of the edge it crosses.                                         */
+  if (!found) {
+    *odist = get_dist(*cx, *cy, slon, slat) / m2deg;
+    *cx = slon;
+    *cy = slat;
+    return(-ci);
+  } else {
+    *odist = get_dist(*cx, *cy, xi, yi) / m2deg;
+    *cx = xi;
+    *cy = yi;
+    return(cn);
+  }
+}
+
+/* END get_posc()                                                    */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Semi-lagrangian advection scheme. See Casulli and Cheng (1992),   */
 /* Int. J. Num. Meth. Fluids, 15, 629-648.                           */
 /* This part is performed in the tracer loop to get the updated      */
@@ -1185,9 +1301,6 @@ void semi_lagrange(geometry_t *window,  /* Processing window */
   /* structure.                                                      */
   delaunay_reinit(window, windat->d, 3, tr);
 
-  /* Limit least squares interpolation functions                     */
-  /*interp_limit(window, windat, wincon, tr);*/
-
   memcpy(ntr, tr, window->szc * sizeof(double));
 
   for (cc = 1; cc <= wincon->vc; cc++) {
@@ -1200,81 +1313,6 @@ void semi_lagrange(geometry_t *window,  /* Processing window */
 }
 
 /* END semi_lagrange()                                               */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Limits a least squares polynomial with a slope limiter            */
-/*-------------------------------------------------------------------*/
-void interp_limit(geometry_t *window, /* Processing window           */
-		  window_t *windat,   /* Window data structure       */
-		  win_priv_t *wincon, /* Window geometry / constants */
-		  double *tr          /* Tracer array                */
-		  )
-{
-  int cc, c, cs, c1, v, vs;
-  int k, n, j, jj;
-  point *pv;
-  double vmin[window->nvem];
-  double vmax[window->nvem];
-  int id;
-
-  if (wincon->osl & (L_LSLIN)) {
-
-    pv = malloc(window->npem * sizeof(point));
-    for (cc = 1; cc <=window->b3_t; cc++) {
-      c = window->w3_t[cc];
-      cs = window->m2d[c];
-      k =  window->s2k[c] + 1;
-      id = window->c2p[k][cs];
-
-      n = 0;
-      for (j = 1; j <= window->npe[cs]; j++) {
-	int v = window->c2v[j][c];
-	int vs = window->m2dv[v];
-	pv[n].v = d_alloc_1d(2);
-
-	if (v) {
-	  vmin[n] = HUGE;
-	  vmax[n] = -HUGE;
-	  for (jj = 1; jj <= window->nvc[vs]; jj++) {
-	    c1 = window->v2c[v][jj];
-	    vmin[n] = min(vmin[n], tr[c1]);
-	    vmax[n] = max(vmax[n], tr[c1]);
-	  }
-	  n++;
-	}
-      }
-
-      n = 0;
-      for (j = 1; j <= window->npe[cs]; j++) {
-	int v = window->c2v[j][c];
-	int vs = window->m2dv[v];
-	if (v) {
-	  pv[n].x = window->gridx[vs];
-	  pv[n].y = window->gridy[vs];
-	  pv[n].z = (double)id;
-	  pv[n].v[0] = vmin[n];
-	  pv[n].v[1] = vmax[n];
-	  n++;
-	}
-      }
-      if (id >= 0) {
-	lsql_limit(windat->gst[k]->interpolator, n, pv);
-	if (window->wgst[window->zm1[c]]) {
-	  for (j = 0; j < n; j++) pv[j].z = (double)id;
-	  lsql_limit(windat->gst[0]->interpolator, n, pv);
-	}
-      }
-      for (j = 0; j < n; j++) d_free_1d(pv[j].v);
-    }
-    free(pv);
-
-
-  }
-}
-
-/* END interp_limit()                                                */
 /*-------------------------------------------------------------------*/
 
 
@@ -1478,6 +1516,10 @@ int find_cellq(geometry_t *window, /* Window geometry                */
 /* END find_cellq()                                                  */
 /*-------------------------------------------------------------------*/
 
+#define T_NONE    1
+#define T_VERT    2
+#define T_HORZ    4
+#define T_HV      8
 
 /*-------------------------------------------------------------------*/
 /* Flux Form semi-Lagrange: tracks streamlines from cell edges and   */
@@ -1486,7 +1528,7 @@ int find_cellq(geometry_t *window, /* Window geometry                */
 /* limiter (using streamline mean cell centered values) to keep the  */
 /* solution monotonic.                                               */
 /*-------------------------------------------------------------------*/
-void ffsl_do(geometry_t *window,           /* Window geometry        */
+void ffsl_don(geometry_t *window,           /* Window geometry        */
 	     window_t *windat,             /* Window data            */
 	     win_priv_t *wincon,           /* Window constants       */
 	     double *tr,                   /* Tracer array           */
@@ -1497,58 +1539,117 @@ void ffsl_do(geometry_t *window,           /* Window geometry        */
 {
   double dt;                  /* Sub-time step for Euler velocity    */
   double time_left;           /* Number of sub-timesteps per dt      */
-  double SCALE = 0.95;        /* Use 95% of allowable sub-timestep   */
-  double wgt[8];              /* Weights for trilinear interpolation */
+  double *u1;                 /* Horizontal edge velocity            */
+  double *w;                  /* Vertical velocity                   */
+  double *u1v;                /* Horizontal volume flux              */
   double *nu, *nv;            /* Cell centered horizontal velocity   */
-  double *nw = wincon->w10;   /* Cell centered vertical velocity     */
+  double *nw = wincon->nw;    /* Cell centered vertical velocity     */
   double *cx = wincon->tr_mod_x;  /* x position of streamline        */
   double *cy = wincon->tr_mod_y;  /* y position of streamline        */
-  double *cz = wincon->tr_mod_z;  /* z position of streamline        */
-  double *mask = wincon->tr_mod;  /* Mask for cfl scaling            */
-  double *dzz = wincon->dzz;  /* Cell thickness                      */
+  double *cz = wincon->tr_mod_z;  /* z poition of streamline         */
+  double *tr_mod = wincon->tr_mod; /* z transverse tracer            */
+  double *crfzf;   /* Fractional factors of face trajectories        */
+  double *crfzc;   /* Fractional factors of centre trajectories      */
+  int *clzf;       /* Cell counter at face source cell               */
+  int *clzc;       /* Cell counter cell centre source                */
   double *ntr = wincon->w5;   /* New tracer value                    */
   double *dint = wincon->w3;  /* Streamline integrated tracer value  */
+  double *smin = wincon->crfxc; /* Minimum streamline value          */
+  double *smax = wincon->crfyc; /* Maximum streamline value          */
+  double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
+  double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
+  double *tr_moc = wincon->Fzh;
   int *cl = wincon->s2;       /* Cell location of streamline         */
-  int *cd = wincon->s3;       /* Initial cell centre destination     */
   int *e2ee = wincon->s4;     /* Mapping from edge to index          */
-  double u, v, w;             /* Velocities                          */
-  double p, q, r;             /* Courant numbers                     */
+  int *mask = wincon->s3;
+  double u, v;                /* Velocities                          */
   double trs, tre;            /* Tracer at start and end of segments */
-  double px, py, pz;          /* Previous streamline location        */
-  double slon, slat;          /* New streamline location             */
-  double dist, dir;           /* Length and direction of segment     */
+  double dz;                  /* Cell thickness                      */
+  double dist, d1;            /* Lengths of segment                  */
   double sinth, costh;        /* sin and cos of edge angle           */
   double m2deg = 1.0 / (60.0 * 1852.0);  /* Meter to degree          */
-  int cc, c, cs, ci, kb, zm1;
-  int ee, e, e2, es, ei;
-  int c1, c2, c1s, c2s;
+  double px, py, pz;
+  int cc, c, cs, ci, kb, zm1, zp1;
+  int ee, e, e2, es, ei, pei;
+  int c1, c2;
   int n;
-  int i, j;
   int has_proj = (strlen(projection) > 0);
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
+  double tf = 0.55; /* Factor for implicitness of cross terms (0.5:1)*/
+  int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
   int sodanos = 0;            /* Compute distances on spheriod       */
+  int tranf;                  /* Transverse term flag                */
   int doint = 1;              /* Integrate tracers along streamline  */
-  int dovert = 1;             /* Use vertially integrated tracers    */
-  int timef = 1;              /* 1=1st order, 2=2nd order time       */
-  int k;
-  point *pv;
-  double u0, v0, w0;
-  int ed, cdd;
+  int momo2 = 0;              /* Second order momentum estimation    */
 
+  /* Set which transverse terms are used                             */
+  tranf = (T_VERT|T_HORZ|T_HV);
   if (!is_geog) m2deg = 1.0;
+  if (tmode) {
+    u1 = windat->ume;
+    w = windat->wm;
+    u1v = windat->u1vm;
+  } else {
+    u1 = windat->u1;
+    w = windat->w;
+    u1v = windat->u1flux3d;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Initialise                                                      */
   memset(cx, 0, window->sze * sizeof(double));
   memset(cy, 0, window->sze * sizeof(double));
+  memset(cz, 0, window->sze * sizeof(double));
   memset(ntr, 0.0, window->sze * sizeof(double));
   memset(dint, 0.0, window->sze * sizeof(double));
-  /* Initialisation should occur outside the tracer loop             */
-  ffsl_init(window, windat, wincon);
+  memset(tr_moc, 0.0, window->szc * sizeof(double));
+  memset(mask, 0, window->szc * sizeof(int));
+
+  /*-----------------------------------------------------------------*/
+  /* Define a new tracer with z-direction transverse terms           */
+  clzf = wincon->clzf;
+  clzc = wincon->clzc;
+  crfzf = wincon->crfzf;
+  crfzc = wincon->crfzc;
+  memcpy(tr_mod, tr, window->szc * sizeof(double));
+  if (tranf & T_VERT) {
+    for (cc = 1; cc <= window->a3_t; cc++) {
+      c = window->w3_t[cc];
+      zp1 =  (nw[c] < 0.0) ? clzc[c] : window->zm1[clzc[c]];
+      ci = (nw[c] < 0.0) ?  window->zm1[zp1] : clzc[c];
+      tr_mod[c] = tf * tr[ci] + (1.0 - tf) * tr[c];
+      /* Note: tf determines how much of the tracer at the forward   */
+      /* timestep is used (i.e. the 'implicitness' of the solution). */
+      /* This should lie between 0.5 (centered) or 1 (implicit). The */
+      /* implicit solutions tend to be more diffuse.                 */
+      if (crfzc[c] > 0.) {
+	tr_mod[c] += tf * (crfzc[c] * (tr[zp1] - tr[ci]));
+      }
+    }
+    set_tr_nograd(window, tr_mod);
+    /* OBC ghost cells                                               */
+    for (n = 0; n < window->nobc; n++) {
+      open_bdrys_t *open = window->open[n];
+      int trn = (int)tr[0];
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	c = c2 = open->obc_e2[ee];
+	zp1 =  (nw[c] < 0.0) ? clzc[c] : window->zm1[clzc[c]];
+	ci = (nw[c] < 0.0) ?  window->zm1[zp1] : clzc[c];
+	do {
+	  c = open->omape[ee][c];
+	  zp1 = open->omape[ee][zp1];
+	  ci = open->omape[ee][ci];
+	  tr_mod[c] = tf * tr[ci] + (1.0 - tf) * tr[c];
+	  if (crfzc[c2] > 0.)
+	    tr_mod[c] += tf * (crfzc[c2] * (tr[zp1] - tr[ci]));
+	} while (c != open->omape[ee][c]);
+      }
+    }
+  }
 
   /*-----------------------------------------------------------------*/
   /* Set the initial streamline location                             */
-  for (ee = 1; ee <= window->b3_e1; ee++) {
+  for (ee = 1; ee <= window->a3_e1; ee++) {
     e = window->w3_e1[ee];
     e2 = window->m2de[e];
     c1 = window->e2c[e][0];
@@ -1558,7 +1659,13 @@ void ffsl_do(geometry_t *window,           /* Window geometry        */
     cz[e] = 0.5 * (wincon->cellz[c1] + wincon->cellz[c2]);
     e2ee[e] = ee;
   }
-
+  /*
+  for (ee = 1; ee <= window->n3_e1; ee++) {
+    e = window->w3_e1[ee];
+    smin[e] = HUGE;
+    smax[e] = -HUGE;
+  }
+  */
   /* Get the initial cell centre; this is the cell upstream of the   */
   /* edge.                                                           */
   for (cc = 1; cc <= window->b3_t; cc++) {
@@ -1567,161 +1674,95 @@ void ffsl_do(geometry_t *window,           /* Window geometry        */
     for (n = 1; n <= window->npe[c2]; n++) {
       e = window->c2e[n][c];
       ee = e2ee[e];
-      if (windat->u1[e] > 0.0)
+      if (u1[e] > 0.0)
 	cl[ee] = (window->eSc[n][c2] < 0) ? window->c2c[n][c] : c;
       else
 	cl[ee] = (window->eSc[n][c2] < 0) ? c : window->c2c[n][c];
-      cd[ee] = cl[ee];
     }
   }
-
-  /* Set the initial concentration at the cell face (using Van Leer) */
-  van_leer(window, windat, wincon, tr, Fx, Fz);
-
-  /* Uncomment to use QUICKEST as the initial face concentration     */
-  /*quickest(window, windat, wincon, tr, Fx, Fz);*/
-
-  /* Uncomment to use 2nd order as the initial face concentration    */
-  /* 2nd order 
-  for (cc = 1; cc <= window->b3_t; cc++) {
-    c = window->w3_t[cc];
-    Fz[c] = (windat->w[c] > 0.0) ? tr[window->zm1[c]] : tr[c];
-    Fz[c] = 0.5 * (tr[window->zm1[c]] + tr[c]);
-  }
-  for (ee = 1; ee <= window->b3_e1; ee++) {
-    e = window->w3_e1[ee];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-    Fx[e] = 0.5 * (tr[c1] + tr[c2]);
-  }
-  */
-
-  /* Uncomment to invoke the ULTIMATE filter on initial values       */
-  /*
-  if (wincon->ultimate) {
-    for (ee = 1; ee <= window->n3_e1; ee++) {
-      int cm1, cp, cm2;
-      double trm, trp;
-      e = window->w3_e1[ee];
-      c = window->e2c[e][0];
-      cm1 = window->e2c[e][1];
-      cp = window->e2c[window->ep[e]][0];
-      cm2 = window->e2c[window->em[e]][1];
-      trm = tr[cm2];
-      trp = tr[cp];
-      ultimate_filter(wincon->w6, Fx, tr, e, c, trp, cm1, trm); 
-    }
-    for (cc = 1; cc <= wincon->vc; cc++) {
-      int cp, cm1, cm2;
-      c = wincon->s1[cc];
-      cp = window->zp1[c];
-      cm1 = window->zm1[c];
-      cm2 = window->zm1[cm1];
-      ultimate_filter(wincon->w8, Fz, tr, c, c, tr[cp], cm1, tr[cm2]); 
+  /* Use interior cells for normal open boundary edges               */
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    int trn = (int)tr[0];
+    if (!(open->bcond_tra[trn] & TRCONC)) {
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	e = open->obc_e1[ee];
+       cl[e2ee[e]] = open->obc_e2[ee];
+      }
     }
   }
-  */
 
   /*-----------------------------------------------------------------*/
-  /* Initialize the interpolation structure                          */
-  /*delaunay_reinit(window, windat->d, 3, tr);*/
-
   /* Limit least squares interpolation functions                     */
-  /*interp_limit(window, windat, wincon, tr);*/
-  get_linear_limit(window, windat, wincon, tr);
-
-  /* Courant diagnostic 
-  for (cc = 1; cc <= window->b3_t; cc++) {
-    c = window->w3_t[cc];
-    p = sqrt(windat->u[c] * windat->u[c] + windat->v[c] * windat->v[c]);
-    windat->dum1[c] = p * dtu / sqrt(window->cellarea[window->m2d[c]]);
-    if(tr[c]>35.01)hd_quit(">35@%d %e %f %f\n",c,tr[c],window->cellx[window->m2d[c]],window->celly[window->m2d[c]]);
-  }
-  */
-
-  /* Uncomment to use LSQ for initial concentrations (also in        */
-  /* ffsl_doc()).                                                    */
-  /*
-  for (ee = 1; ee <= window->v3_e1; ee++) {
-    e = window->w3_e1[ee];
-    es = window->m2de[e];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-    Fx[e] = get_linear_value(window, windat, wincon, tr, cl[ee], cx[e], cy[e], cz[e]);
-  }
-  */
+  get_linear_limit(window, windat, wincon, tr_mod);
 
   /*-----------------------------------------------------------------*/
   /* Trace the streamline back to the origin                         */
-  for (ee = 1; ee <= window->v3_e1; ee++) {
+  for (ee = 1; ee <= window->a3_e1; ee++) {
     int first = 0;
     e = window->w3_e1[ee];
+    if (window->eask[e] & (W_NOBC|W_TOBC)) continue;
     es = window->m2de[e];
     c1 = window->e2c[e][0];
     c2 = window->e2c[e][1];
     time_left = dtu;
-    u = windat->u1[e] * window->costhu1[es];
-    v = windat->u1[e] * window->sinthu1[es];
-    w = 0.5 * (nw[c1] + nw[c2]);
-    trs = Fx[e];
+    u = windat->u1[e] * window->costhu1[es] + windat->u2[e] * window->costhu2[es];
+    v = windat->u1[e] * window->sinthu1[es] + windat->u2[e] * window->sinthu2[es];
     n = 0;
+    ei = e;
+ 
+    if (wincon->fillf & CLIP) smin[e] = smax[e] = tr[cl[ee]];
+    if (wincon->ultimate) smin[e] = smax[e] = tr_mod[cl[ee]];
 
-    while (time_left > 0) {
+    if (tmode) first = 1;
 
-      int ins;
-      double ua = max(fabs(u), SMALL);
-      double va = max(fabs(v), SMALL);
-      double wa = max(fabs(w), SMALL);
+    while (cl[ee] > 0) {
 
       /* Set the current cell the streamline resides in. Note; these */
       /* locations are cell centre locations, stored for every edge. */
-      c = cl[ee];
-
-      /* Get the sub-timestep for the next integration. Streamlines  */
-      /* cannot cross more than one cell in one sub-timestep.        */
-      ins = (c == wincon->m2d[c]) ? 1 : 0;
-      cs = (window->wgst[c]) ? window->m2d[window->wgst[c]] : window->m2d[c];
-      p = sqrt(window->cellarea[cs]) * mask[c];
-      r = (w < 0.0) ? dzz[c] : dzz[window->zm1[c]];
-      dt = min(SCALE * fabs(p / ua), SCALE * fabs(p / va));
-      dt = (r) ? ((ins && nw[c] < 0.0) ? dt : min(dt, SCALE * fabs(r / wa))) : dt;
-      dt = min(dt, time_left);
+      c = ci = cl[ee];
+      pz = wincon->cellz[ci];
 
       /* Get the velocties at the origin. For the first segment      */
       /* sub-step use (rotated u1) velocities at the edge location.  */
       if (first) {
-	u = hd_trans_interp(window, windat->gsx, cx[e], cy[e], cz[e], c, 0, 0);
-	v = hd_trans_interp(window, windat->gsy, cx[e], cy[e], cz[e], c, 0, 1);
-	w = hd_trans_interp(window, windat->gsz, cx[e], cy[e], cz[e], c, 0, 2);
-	trs = tre;
+	u = hd_trans_interp(window, windat->gsx, cx[e], cy[e], pz, c, 0, 0);
+	v = hd_trans_interp(window, windat->gsy, cx[e], cy[e], pz, c, 0, 1);
       }
       first = 1;
-
-      /* Save the previous streamline position                       */
-      px = cx[e];
-      py = cy[e];
-      pz = cz[e];
-
-      /* Perform second order in time integration if required        */
-      if (timef == 2) {
-	u0 = u;
-	v0 = v;
-	w0 = w;
-	cl[ee] = get_pos(window, cd[ee], c, u, v, w, &cx[e], &cy[e], &cz[e], dt, 0);
-	u = hd_trans_interp(window, windat->gsx, cx[e], cy[e], cz[e], c, 0, 0);
-	v = hd_trans_interp(window, windat->gsy, cx[e], cy[e], cz[e], c, 0, 1);
-	w = hd_trans_interp(window, windat->gsz, cx[e], cy[e], cz[e], c, 0, 2);
-	u = 0.5 * (u + u0);
-	v = 0.5 * (v + v0);
-	w = 0.5 * (w + w0);
-	cx[e] = px;
-	cy[e] = py;
-	cz[e] = pz;
+      /* Assume only normal flow through normal OBC edges            */
+      if (window->eask[e] & W_NOBC) {
+	u = windat->u1[e] * window->costhu1[es];
+	v = windat->u1[e] * window->sinthu1[es];
       }
 
       /* Get the new location of the streamline origin               */
-      cl[ee] = get_pos(window, cd[ee], c, u, v, w, &cx[e], &cy[e], &cz[e], dt, 1);
+      px = cx[e];
+      py = cy[e];
+      pei = ei;
+      cl[ee] = get_posc(window, &ei, c, u, v, &cx[e], &cy[e], time_left, 1, &dist);
 
+      /* Use a second order approximation for the velocity used to   */
+      /* track the streamline.                                       */
+      if (momo2) {
+	double u2 = hd_trans_interp(window, windat->gsx, cx[e], cy[e], pz, c, 0, 0);
+	double v2 = hd_trans_interp(window, windat->gsy, cx[e], cy[e], pz, c, 0, 1);
+	u = 0.5 * (u + u2);
+	v = 0.5 * (v + v2);
+	cx[e] = px;
+	cy[e] = py;
+	ei = pei;
+	cl[ee] = get_posc(window, &ei, c, u, v, &cx[e], &cy[e], time_left, 1, &dist);
+      }
+
+      /* If the source lies in a wet cell, then get the time it's    */
+      /* taken to cross the cell.                                    */
+      if (cl[ee] > 0) {
+	d1 = sqrt(u * u + v * v);
+	dt = dist / d1;
+	time_left -= dt;
+      }
+      /*
       if (window->wgst[cl[ee]] && window->zp1[cl[ee]] != window->wgst[cl[ee]] &&
 	  ee <= window->v3_e1) 
 	printf("Streamline in ghost @ %f %d : %f %f\n",windat->days, e, window->cellx[window->m2d[cl[ee]]], 
@@ -1730,87 +1771,56 @@ void ffsl_do(geometry_t *window,           /* Window geometry        */
       if (cl[ee] <=0 || cl[ee] >= window->szc) 
 	printf("Streamline out of bounds @ %f %d %f %f\n", windat->days, e, window->cellx[window->m2d[cl[ee]]], 
 				       window->celly[window->m2d[cl[ee]]]);
+      */
+      trs = get_linear_value(window, windat, wincon, tr_mod, ci, px, py, pz);
+      tre = get_linear_value(window, windat, wincon, tr_mod, ci, cx[e], cy[e], pz);
 
-      /* Get the length of the streamline segment                    */
-      px -= cx[e];
-      py -= cy[e];
-      pz -= cz[e];
-      dist = sqrt(px * px + py * py);
-      dist = sqrt(pz * pz + dist * dist);
-      /*dist = sqrt(px * px + py * py + pz * pz);*/
-
-      /* Get the tracer value at the end of the streamline segment   */
-      /*tre = hd_trans_interp(window, windat->gst, cx[e], cy[e], cz[e], cl[ee], e, 3);*/
-      tre = get_linear_value(window, windat, wincon, tr, cl[ee], cx[e], cy[e], cz[e]);
-
-      /*check_monotone(window, windat, wincon, tre, cl[ee]);*/
+      /* Get the minimum and maximum values encountered in the       */
+      /* stencil along the streamline.                               */
+      if (wincon->ultimate) {
+	get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
+	get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
+      } else if (wincon->fillf & CLIP) {
+	get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
+	get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
+      }
 
       /* Integrate (linearly) the tracer along the streamline        */
       /* segment.                                                    */
       dint[e] += dist;
-      if (doint)
+
+      if (doint) {
 	ntr[e] += 0.5 * dist * (trs + tre);
-      else
-	ntr[e] += (trs * dist);
+      } else
+	ntr[e] += (tr_mod[ci] * dist);
 
       /* Get the number of sub-timesteps used                        */
-      time_left = time_left - dt;
       n++;
       if(n > 100) {
 	printf("stuck in loop e=%d [%f %f]\n",e,window->u1x[window->m2de[e]],window->u1y[window->m2de[e]]);
 	exit(0);
       }
+      /* Get the contributions to the horizontal transverse terms    */
+      /* for the vertical advection, this is the tracer value at the */
+      /* current source location.                                    */
+      if (tranf & T_HV) {
+	if (cl[ee] < 0) {
+	  tre = get_linear_value(window, windat, wincon, tr, ci, cx[e], cy[e], pz);
+	  tr_moc[c1] += tre;
+	  tr_moc[c2] += tre;
+	  mask[c1]++;
+	  mask[c2]++;
+	}
+      }
     }
-
-    /* Get the Courant number at the end of the segment              */
-    /*
-    u = hd_trans_interp(window, windat->gsx, cx[e], cy[e], cz[e], cl[ee], 0, 0);
-    v = hd_trans_interp(window, windat->gsy, cx[e], cy[e], cz[e], cl[ee], 0, 1);
-    w = hd_trans_interp(window, windat->gsz, cx[e], cy[e], cz[e], cl[ee], 0, 2);
-    r =  (u * window->costhu1[es] + v * window->sinthu1[es]) * dtu;
-    wincon->w6[e] = fmod(r / window->h2au1[e2], 1.0);
-    */
-    /*wincon->w6[e] = fmod(r / sqrt(window->cellarea[window->m2d[cl[ee]]]), 1.0);*/
-
     /* Get the mean tracer value along the streamline                */
     Fx[e] = (dint[e]) ? ntr[e] / dint[e] : Fx[e];
-  }
-  /*print_source_k(window, window->v3_e1, window->w3_e1, cx, cy, 20, window->e2k);**/
 
-  /* Get the vertically integrated streamline value if required      */
-  if (dovert) {
-    ffsl_doc(window, windat, wincon, tr, dtu, 0);
-    memcpy(Fz, ntr, window->szc * sizeof(double));
-  }
-
-  /* Set the streamline origin for subsequent clipping               */
-  ffsl_doc(window, windat, wincon, tr, dtu, 1);
-
-  /* Limit the mean tracer value if rquired                          */
-  if (wincon->ultimate) {
-    int cm1, cm2, cp;
-    /* Get mean values from cell centres                             */
-    ffsl_doc(window, windat, wincon, tr, dtu, 1);
-    set_tr_nograd(window, ntr);
-    /* Limit horizontally                                            */
-    for (ee = 1; ee <= window->b3_e1; ee++) {
-      double trm, trp;
-      e = window->w3_e1[ee];
-      c = window->e2c[e][0];
-      cm1 = window->e2c[e][1];
-      cp = window->e2c[window->ep[e]][0];
-      cm2 = window->e2c[window->em[e]][1];
-      trm = ntr[cm2];
-      trp = ntr[cp];
-      ultimate_filter(wincon->w6, Fx, ntr, e, c, trp, cm1, trm); 
+    /* Universal flux limiter Eq 34 & 35 of Thuburn (1995)           */
+    if (wincon->ultimate) {
+      Fx[e] = min(Fx[e], smax[e]);
+      Fx[e] = max(Fx[e], smin[e]);
     }
-    /* Limit vertically                                              */
-    for (cc = 1; cc <= wincon->vc; cc++) {
-      c = wincon->s1[cc];
-      cp = window->zp1[c];
-      cm1 = window->zm1[c];
-      cm2 = window->zm1[cm1];
-      ultimate_filter(wincon->w8, Fz, ntr, c, c, ntr[cp], cm1, ntr[cm2]);     }
   }
 
   debug_c(window, D_TS, D_STRML);
@@ -1818,192 +1828,153 @@ void ffsl_do(geometry_t *window,           /* Window geometry        */
   /* Multiply the tracer by the volume flux                          */
   for (ee = 1; ee <= window->n3_e1; ee++) {
     e = window->w3_e1[ee];
-    Fx[e] *= windat->u1flux3d[e];
+    Fx[e] *= u1v[e];
   }
+
+  /* Get the horizontal transverse terms by interpolating tr at the  */
+  /* source location. Note: the weights and slope limiter for the    */
+  /* least squares interpolation must be reset using tr (rather than */
+  /* tr_mod).                                                        */
+  if (!(tranf & T_HV)) {
+    get_linear_limit(window, windat, wincon, tr);
+    for (ee = 1; ee <= window->a3_e1; ee++) {
+      e = window->w3_e1[ee];
+      c = -cl[ee];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      pz = wincon->cellz[c];
+      tre = get_linear_value(window, windat, wincon, tr, c, cx[e], cy[e], pz);
+      tr_moc[c1] += tre;
+      tr_moc[c2] += tre;
+      mask[c1]++;
+      mask[c2]++;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Define a new tracer with horizontal-direction transverse terms  */
+  /* (note: we use the interpolated value at the streamline end      */
+  /* directly in tr_moc).                                            */
+  if (tranf & T_HORZ) {
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      tr_moc[c] /= (double)mask[c];
+      tr_moc[c] = tf * tr_moc[c] + (1.0 - tf) * tr[c];
+    }
+    set_tr_nograd(window, tr_moc);
+  } else
+    memcpy(tr_moc, tr, window->szc * sizeof(double));
+
+  /*-----------------------------------------------------------------*/
+  /* Vertical fluxes                                                 */
+  /* Calculate the fractional part of the volume flux, using the     */
+  /* Van Leer algorithm to get the tracer value on the face.         */
+  ff_sl_van_leer(Fz, tr_moc, w, crfzf, clzf, 1, wincon->vc, wincon->s1, window->zp1, window->zm1);
+
   for (cc = 1; cc <= wincon->vc; cc++) {
     c = wincon->s1[cc];
-    Fz[c] *= (windat->w[c] * dtu);
-  }
-}
-
-/* END ffsl_do()                                                     */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Same as ffsl_do() except trajectories leave from the destination  */
-/* cell centre rather than the edge.                                 */
-/*-------------------------------------------------------------------*/
-void ffsl_doc(geometry_t *window,           /* Window geometry       */
-	      window_t *windat,             /* Window data           */
-	      win_priv_t *wincon,           /* Window constants      */
-	      double *tr,                   /* Tracer array          */
-	      double dtu,                   /* Timestep              */
-	      int mode
-	      )
-{
-  double dt;                  /* Sub-time step for Euler velocity    */
-  double time_left;           /* Number of sub-timesteps per dt      */
-  double SCALE = 0.95;        /* Use 95% of allowable sub-timestep   */
-  double *nu, *nv;
-  double *cx = wincon->tr_mod_x;
-  double *cy = wincon->tr_mod_y;
-  double *cz = wincon->tr_mod_z;
-  double *dzz = wincon->dzz;
-  double *nw = wincon->w10;
-  double *ntr = wincon->w5;
-  double *mask = wincon->tr_mod;
-  double *dint = wincon->w3;
-  double *Fz = wincon->w4;
-  int *cl = wincon->s2;
-  int *cd = wincon->s3;       /* Initial cell centre destination     */
-  double u, v, w;
-  double p, q, r;
-  int cc, c, c2, ci, kb, zm1;
-  int n;
-  double slon, slat, dist, dir;
-  int i, j;
-  double sinth, costh;
-  double m2deg = 1.0 / (60.0 * 1852.0);
-  int has_proj = (strlen(projection) > 0);
-  int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
-  double trs, tre;
-  double px, py, pz;
-  int sodanos = 0;
-  int doint = 1;
-
-  if (!is_geog) m2deg = 1.0;
-
-  /*-----------------------------------------------------------------*/
-  /* Initialise                                                      */
-  memset(cx, 0, window->szc * sizeof(double));
-  memset(cy, 0, window->szc * sizeof(double));
-  memset(ntr, 0.0, window->szc * sizeof(double));
-  memset(dint, 0.0, window->szc * sizeof(double));
-  nu = windat->u;
-  nv = windat->v;
-
-  /*-----------------------------------------------------------------*/
-  /* Set the initial streamline location                             */
-  for (cc = 1; cc <= window->b3_t; cc++) {
-    c = window->w3_t[cc];
-    c2 = window->m2d[c];
-    cx[c] = window->cellx[c2];
-    cy[c] = window->celly[c2];
-    cz[c] = (mode) ? wincon->cellz[c] : window->gridz[c];
-  }
-
-  /* Get the initial cell centre                                     */
-  memcpy(cl, wincon->s1, window->szc * sizeof(int));
-  /* Get the initial cell centre; this is the cell upstream of the   */
-  /* layer.                                                          */
-  for (cc = 1; cc <= window->b3_t; cc++) {
-    c = window->w3_t[cc];
-    c2 = window->m2d[c];
-    if (windat->w[c] > 0.0)
-      cl[cc] = window->zm1[c];
-    else
-      cl[cc] = c;
-    cd[cc] = cl[cc];
-    /* Uncomment to use lSQ as the initial value                     */
-    /*Fz[c] = get_linear_value(window, windat, wincon, tr, cl[cc], cx[c], cy[c], cz[c]);*/
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Initialize the interpolation structure                          */
-  /*delaunay_reinit(window, windat->d, 3, tr);*/
-
-  /* Limit least squares interpolation functions                     */
-  /*interp_limit(window, windat, wincon, tr);*/
-
-  /*-----------------------------------------------------------------*/
-  /* Trace the streamline back to the origin                         */
-  for (cc = 1; cc <= window->b3_t; cc++) {
-    int first = 0;
-    int cs;
-    c = window->w3_t[cc];
-    cs = window->m2d[c];
-    time_left = dtu;
-    u = nu[c];
-    v = nv[c];
-    if (mode) {
-      w = nw[c];
-      trs = tr[c];
-    } else {
-      /* For gridz centered streamline integrals. Fz = wincon->w4.   */
-      u = 0.5 * (nu[c] + nu[window->zm1[c]]);
-      v = 0.5 * (nv[c] + nv[window->zm1[c]]);
-      w = windat->w[c];
-      trs = Fz[c];
+    ci = (w[c] > 0.0) ? c : window->zm1[c];
+    c2 = (w[c] > 0.0) ? window->zm1[c] : c;
+    if (wincon->fillf & CLIP) sminz[c] = smaxz[c] = tr[c2];
+    if (wincon->ultimate) sminz[c] = smaxz[c] = tr_moc[c2];
+    if (w[c] == 0.0) {
+      Fz[c] = 0.0;
+      continue;
     }
-    n=0;
+    ci = clzf[c];
+    Fz[c] *= (crfzf[c] * wincon->dz[ci]);
 
-    while (time_left > 0) {
-
-      int ins;
-      double ua = max(fabs(u), SMALL);
-      double va = max(fabs(v), SMALL);
-      double wa = max(fabs(w), SMALL);
-
-      /* Get the sub-timestep for the next integration. Streamlines  */
-      /* cannot cross more than one cell in one sub-timestep.        */
-      ci = cl[cc];
-      ins = (ci == wincon->m2d[ci]) ? 1 : 0;
-      c2 = (window->wgst[ci]) ? window->m2d[window->wgst[ci]] : window->m2d[ci];
-
-      p = q = sqrt(window->cellarea[c2]) * mask[c];
-      ua = sqrt(ua * ua + va * va);
-      r = (w < 0.0) ? dzz[ci] : dzz[window->zm1[ci]];
-      dt = min(SCALE * fabs(p / ua),
-               SCALE * fabs(q / va));
-
-      dt = (r) ? ((ins && nw[c] < 0.0) ? dt : min(dt, SCALE * fabs(r / wa))) : dt;
-      dt = min(dt, time_left);
-
-      /* Get the velocties at the origin                             */
-      if (first) {
-	u = hd_trans_interp(window, windat->gsx, cx[c], cy[c], cz[c], cl[cc],c,0);
-	v = hd_trans_interp(window, windat->gsy, cx[c], cy[c], cz[c], cl[cc],c,1);
-	w = hd_trans_interp(window, windat->gsz, cx[c], cy[c], cz[c], cl[cc],c,2);
-	trs = tre;
+    /* Integrate over the "integer" component of the trajectory      */
+    ci = (w[c] > 0.0) ? window->zm1[c] : wincon->s1[cc];
+    dz = wincon->dz[ci];
+    dist = fabs(w[c] * dtu);
+    while (dz < dist) {
+      /* Get the minimum and maximum values encountered in the       */
+      /* stencil along the streamline.                               */
+      if (wincon->ultimate) {
+	sminz[c] = min(sminz[c], tr_moc[ci]);
+	smaxz[c] = max(smaxz[c], tr_moc[ci]);
+      } else if (wincon->fillf & CLIP) {
+	sminz[c] = min(sminz[c], tr[ci]);
+	smaxz[c] = max(smaxz[c], tr[ci]);
       }
-      first = 1;
-
-      /* Get the new location of the streamline origin               */
-      px = cx[c];
-      py = cy[c];
-      pz = cz[c];
-      cl[cc] = get_pos(window, c, cd[cc], u, v, w, &cx[c], &cy[c], &cz[c], dt, 1);
-      px -= cx[c];
-      py -= cy[c];
-      pz -= cz[c];
-      dist = sqrt(px * px + py * py);
-      dist = sqrt(pz * pz + dist * dist);
-
-      /* Get the tracer value at the end of the streamline segment   */
-      /*tre = hd_trans_interp(window, windat->gst, cx[c], cy[c], cz[c], cl[cc], 0, 3);*/
-      tre = get_linear_value(window, windat, wincon, tr, cl[cc], cx[c], cy[c], cz[c]);
-
-      /*check_monotone(window, windat, wincon, tre, cl[cc]);*/
-
-      /* Integrate (linearly) the tracer along the streamline        */
-      /* segment.                                                    */
-      dint[c] += dist;
-      if (doint)
-	ntr[c] += 0.5 * dist * (trs + tre);
-      else
-	ntr[c] += (trs * dist);
-
-      /* Get the number of sub-timesteps used                        */
-      time_left = time_left - dt;
-      n++;
+      Fz[c] += (dz * tr_moc[ci]);
+      dist -= dz;
+      ci = (w[c] < 0.0) ? window->zp1[ci] : window->zm1[ci];
+      if (wincon->dz[ci] > 0)
+	dz = wincon->dz[ci];
     }
-    /* Get the mean tracer value along the streamline                */
-    ntr[c] = (dint[c]) ? ntr[c] / dint[c] : Fz[c];
+
+    /* Ensure Fz has correct sign */
+    if (w[c] < 0)
+      Fz[c] *= -1.0;
+
+    /* Universal flux limiter Eq 34 & 35 of Thuburn (1995)           */
+    if (wincon->ultimate) {
+      Fz[e] = min(Fz[c], smaxz[c] * w[c] * dtu);
+      Fz[e] = max(Fz[c], sminz[c] * w[c] * dtu);
+    }
+  }
+
+  /* Limit the mean tracer value if rquired                          */
+  if (wincon->ultimate) {
+    memset(mask, 0, window->sze * sizeof(int));
+    /* Limit the horizontal fluxes in the order of the sparse        */
+    /* vector. Some edges may be missed doing this if a cell is      */
+    /* limited and the incoming flux is an outgoing flux for a       */
+    /* subsequent cell.                                              */
+    /*
+    for (cc = 1; cc <= wincon->vcs1; cc++) {
+      int co, cs, cb;
+      c = wincon->s1[cc];
+      co = wincon->i3[cc];
+      cs = wincon->i2[cc];
+      cb = wincon->i1[cc];
+      if(c==599)printf("a %f %d %d %d\n",windat->days,c,co,cs);
+      while (c != window->zm1[c]) {
+	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
+	c = window->zm1[c];
+      }
+    }
+
+    /* Limit the horizontal fluxes following outgoing flow from      */
+    /* cells.                                                        */
+    /*
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      int cco, co, cs, cb;
+      c = wincon->i6[cc];
+      if (!(window->cask[c] & (W_WET|W_AUX))) continue;
+      cco = window->c2cc[c];
+      co = window->sur_t[cco];
+      cs = window->nsur_t[cco];
+      cb = window->bot_t[cco];
+      while (c != window->zm1[c]) {
+	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
+	c = window->zm1[c];
+      }
+    }
+    */
+    for (cc = 1; cc <= wincon->s6[0]; cc++) {
+      int cco, co, cs, cb, c2;
+      c = wincon->s6[cc];
+      c2 = window->m2d[c];
+      if (!(window->cask[c] & (W_WET|W_AUX))) continue;
+      cco = wincon->s7[c2];
+      co = wincon->i3[cco];
+      cs = max(co, wincon->i2[cco]);
+      cb = wincon->i1[cco];
+      /*
+      co = window->sur_t[cco];
+      cs = window->nsur_t[cco];
+      cb = window->bot_t[cco];
+      */
+      /*if(c2==1&&windat->days>0.8)printf("aa %f %d %d %d %d\n",windat->days,cco,c,co,cs);*/
+      universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
+    }
   }
 }
 
-/* END ffsl_doc()                                                    */
+/* END ffsl_don()                                                    */
 /*-------------------------------------------------------------------*/
 
 
@@ -2017,11 +1988,13 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
 {
   double *nu, *nv;
   double *dzz = wincon->dzz;
-  double *nw = wincon->w10;
+  double *nw = wincon->nw;
   double *mask = wincon->tr_mod;
+  double *u1, *u2;
   int cc, c, ci, c2;
   int ee, e, es;
   int n, j, zm1;
+  int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
 
   /*-----------------------------------------------------------------*/
   /* Set the vertical cell spacing                                   */
@@ -2029,8 +2002,16 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
 
   /*-----------------------------------------------------------------*/
   /* Center the velocities on the appropriate face / center          */
-  nu = windat->u;
-  nv = windat->v;
+  if (tmode) {
+    nu = windat->u1m;
+    nv = windat->u2m;
+    u1 = windat->ume;
+    vel_w_trans(window, windat, wincon);
+  } else {
+    nu = windat->u;
+    nv = windat->v;
+    u1 = windat->u1;
+  }
   vel_center_w(window, windat, wincon, nw);
 
   /* Set the ghost cells                                             */
@@ -2043,8 +2024,8 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
 
     /* Rotate the edge velocity to east and north, and use this at   */
     /* at the ghost cell.                                            */
-    nu[c] = windat->u1[e] * window->costhu1[es] - windat->u2[e] * window->sinthu1[es];
-    nv[c] = windat->u1[e] * window->sinthu1[es] + windat->u2[e] * window->costhu1[es];
+    nu[c] = u1[e] * window->costhu1[es] + windat->u2[e] * window->costhu2[es];
+    nv[c] = u1[e] * window->sinthu1[es] + windat->u2[e] * window->sinthu2[es];
     nw[c] = nw[ci];
     dzz[c] = dzz[ci];
     wincon->m2d[c] = (ci == wincon->m2d[ci]) ? c : 0;
@@ -2102,9 +2083,809 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
   delaunay_reinit(window, windat->d, 0, nu);
   delaunay_reinit(window, windat->d, 1, nv);
   delaunay_reinit(window, windat->d, 2, nw);
+
+  /* Make a contiguous mapping of cell locations                     */
+  if (wincon->ultimate)
+    mesh_expand_3d(window, u1);
 }
 
 /* END ffsl_init()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Prepares arrays for FFSL with inline mean velocity transport      */
+/*-------------------------------------------------------------------*/
+void ffsl_trans_prep(geometry_t *window,  /* Window geometry         */
+		     window_t *windat,    /* Window data             */
+		     win_priv_t *wincon   /* Window constants        */
+		     )
+{
+  int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
+
+  if (!tmode) return;
+
+  /* When using the flux-form semi-lagrange scheme, the velocities   */
+  /* must be set to zero on the first time step of the transport     */
+  /* model run. On the first time step, the transport model uses     */
+  /* the same value for the old elevation (oldeta) and the new       */
+  /* elevation (eta), so in effect the sea surface elevation does    */
+  /* not change on the first time step. The flux divergence          */
+  /* therefore also needs to be zero for the first time step only,   */
+  /* which is achieved by setting u1, w and volume fluxes = 0.       */
+  if (!wincon->suro[0]) {
+    memset(windat->ume, 0, window->sze * sizeof(double));
+    memset(windat->wm, 0, window->szc * sizeof(double));
+    memset(windat->u1vm, 0, window->sze * sizeof(double));
+    memcpy(wincon->etao, windat->eta, window->szcS * sizeof(double));
+    memcpy(wincon->suro, window->sur_t, (window->a2_t + 1) * sizeof(int));
+    wincon->suro[0] = 1;
+  }
+
+  /* Save the old surface from the 3D step in buffers                */
+  memcpy(wincon->s5, window->sur_t, (window->a2_t + 1) * sizeof(int));
+  memcpy(wincon->d4, wincon->oldeta, window->szcS * sizeof(double));
+  memcpy(wincon->dzo, wincon->dz, window->szc * sizeof(double));
+
+  /* Set the old elevation from the tracer step for dz calculation   */
+  memcpy(window->nsur_t, wincon->suro, (window->a2_t + 1) * sizeof(int));
+  memcpy(wincon->oldeta, wincon->etao, window->szcS * sizeof(double));
+
+  /* Calculate layer thickness for the tracer step                   */
+  set_dz(window, windat, wincon);
+
+  /* Save the surface into tracer step buffers                       */
+  memcpy(wincon->suro, window->nsur_t, (window->a2_t + 1) * sizeof(int));
+  memcpy(wincon->etao, windat->eta, window->szcS * sizeof(double));
+}
+
+/* END ffsl_trans_prep()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Reverts arrays for FFSL with inline mean velocity transport       */
+/*-------------------------------------------------------------------*/
+void ffsl_trans_post(geometry_t *window,  /* Window geometry         */
+		     window_t *windat,    /* Window data             */
+		     win_priv_t *wincon   /* Window constants        */
+		     )
+{
+  if (windat->dttr == 0.0) return;
+  memcpy(window->sur_t, wincon->s5, (window->a2_t + 1) * sizeof(int));
+  memcpy(wincon->oldeta, wincon->d4, window->szcS * sizeof(double));
+  memcpy(wincon->dz, wincon->dzo, window->szc * sizeof(double));
+}
+
+/* END ffsl_trans_post()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Universal flux limiter, see Thuburn (1996), JCP.                  */
+/* Assumes the upstream biased minimum and maximum values are stored */
+/* smin and smax. Limits horizontal fluxes only.                     */
+/*-------------------------------------------------------------------*/
+void universal_limith(geometry_t *window,       /* Window geometry    */
+		     window_t *windat,         /* Window data        */
+		     win_priv_t *wincon,       /* Window constants   */
+		     int c,
+		     int co,
+		     int cs,
+		     int cb,
+		     double dt,
+		     double *tr,
+		     double *Fx,
+		     double *Fz,
+		     int *mask
+		     )
+{
+  int cv, e, es, ee;
+  int c2 = window->m2d[c];
+  int zp1 = window->zp1[c];
+  double cout, cin;             /* Sum of out / inflow volume fluxes */
+  double qn, qx;                /* Minimum / maximum tracer values   */
+  double cn, cx;                /* Minimum / maximum fluxes          */
+  double qmin, qmax;            /* Outflow bounding tracer values    */
+  int ni, no;                   /* Number of inflow / outflow edges  */
+  int sf[window->npem + 1];     /* Sign of flux (1=out, -1=in)       */
+  double vol, volo;             /* Surface volume at time t and t-1  */
+  double tro;                   /* Tracer mass at t-1                */
+  double flux, dtracer, vflux;  /* Horizontal and vertical fluxes    */
+  double *hflux;                /* Horizontal volume flux pointer    */
+  double *smin = wincon->crfxc; /* Minimum streamline value          */
+  double *smax = wincon->crfyc; /* Maximum streamline value          */
+  double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
+  double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
+  double *osubeta = wincon->d1;  /* Surface elevation at t-1         */
+  double *subeta = wincon->d2;   /* Surface elevation at t           */
+  double *tr_mod = wincon->tr_mod; /* z transverse tracer            */
+  double *tr_moc = wincon->Fzh;    /* Horizontal transverse tracer   */
+  double *w;                     /* Vertical velocity                */
+  double d1;                     /* Dummy                            */
+  int checkf = 0;
+  int dolimit = 1;
+  int cd = 0;
+
+  if (checkf && window->s2i[c] == 47&& window->s2j[c] == 25 && window->s2k[c] == 22) cd = c;
+
+  /* Set the pointers                                                */
+  if (wincon->means & TRANSPORT) {
+    hflux = windat->u1vm;
+    w = windat->wm;
+  } else {
+    hflux = windat->u1flux3d;
+    w = windat->w;
+  }
+
+  /* Get the cell volumes at time t and t-1                          */
+  if (c == cs) {
+    double watertop;
+    double waterbot = (c == cb) ? window->botz[c2] : window->gridz[c];
+    double dz = subeta[c2] - waterbot;
+    vol = dz * window->cellarea[c2];
+    /* First increment the old volume from the current layer to the  */
+    /* layer below that containing the old surface. If elevation     */
+    /* has risen this loop is skipped.                               */
+    volo = tro = 0.0;
+    cv = c;
+    while (c != co) {
+      zp1 = window->zp1[c];
+      watertop = window->gridz[zp1];
+      d1 = window->cellarea[c2] * (watertop - waterbot);
+      volo += d1;
+      tro += tr[c] * d1;
+      c = zp1;
+      waterbot = window->gridz[c];
+    }
+
+    /* Now increment the old volume for the layer containing the old */
+    /* surface.                                                        */
+    waterbot = (c == cb) ? window->botz[c2] : window->gridz[c];
+    d1 = (osubeta[c2] - waterbot) * window->cellarea[c2];
+    volo += d1;
+    tro += tr[c] * d1;
+  } else {
+    cv = c;
+    vol = volo = window->cellarea[c2] * wincon->dz[c];
+    tro = tr[c] * volo;
+  }
+
+  /* Diagnostics                                                     */
+  if(checkf && c == cd) {
+    printf("-----------------------------\n");
+    printf("start %s %f %d %d[%d %d %d](%f %f) cs=%d co=%d tr=%f dt=%f\n",windat->days,
+	   wincon->trinfo_3d[(int)tr[0]].name, 
+	   windat->nstep, c, window->s2i[c], window->s2j[c], window->s2k[c],
+	   window->cellx[c], window->celly[c], cs, co, tr[c], dt);
+    printf("eta(t)=%f eta(t-1)=%f volo=%f vol=%f\n", subeta[c2], osubeta[c2],
+	   volo/window->cellarea[c2], vol/window->cellarea[c2]);
+  }
+
+  /* Get the sum of fluxes                                           */
+  qn = qx = tr_mod[c];
+  cn = cx = cout = cin = 0.0;
+  ni = no = 0;
+
+  /* Increment the fluxes from the current layer to the layer below  */
+  /* that containing the old surface. If elevation has risen through */
+  /* layers then this loop is skipped.                               */
+  c = cv;
+  if (cv == cs) {
+    while (c != co) {
+      zp1 = window->zp1[c];
+      for (ee = 1; ee <= window->npe[c2]; ee++) {
+	e = window->c2e[ee][c];
+	es = window->m2de[e];
+	flux = window->eSc[ee][c2] * hflux[e] * dt;
+	if(c==cd)printf("drop\n");
+	if (flux > 0.0) {
+	  cout += flux;
+	  no++;
+	} else if (flux < 0.0) {
+	  mask[e] = 1;
+	  qn = min(qn, smin[e]);
+	  qx = max(qx, smax[e]);
+	  cn -= smin[e] * flux;
+	  cx -= smax[e] * flux;
+	  cin -= flux;
+	  ni++; 
+	}
+      }
+      c = zp1;
+    }
+  }
+
+  /* Increment the fluxes for the layer containing the old surface   */
+  for (ee = 1; ee <= window->npe[c2]; ee++) {
+    e = window->c2e[ee][c];
+    es = window->m2de[e];
+    /* Get the edge signs                                            */
+    sf[ee] = 0;
+    flux = window->eSc[ee][c2] * hflux[e] * dt;
+    if (flux > 0.0) {              /* Outflow                        */
+      sf[ee] = 1;
+      cout += flux;
+      if(c==cd)printf("aout %d e=%d min=%f Fx=%f\n",ee, e, 
+		      smin[e] * flux, Fx[e]);
+      no++;
+    } else if (flux < 0.0) {
+      sf[ee] = -1;
+      mask[e] = 1;
+      qn = min(qn, smin[e]);
+      qx = max(qx, smax[e]);
+      /* Thuburn (1996) Eq. 48 & 49 */
+      cn -= min(window->eSc[ee][c2] * Fx[e]*dt, smin[e] * flux);
+      cx -= max(window->eSc[ee][c2] * Fx[e]*dt, smax[e] * flux);
+      cin -= flux;
+      if(c==cd)printf("ain %d e=%d min=%f max=%f Fx=%f\n",ee,e,
+		      cn, cx, Fx[e]*dt,smin[e]*flux);
+      ni++; 
+    }
+  }
+
+  /* Increment the fluxes from above the old surface elevation to    */
+  /* the top of the vertical grid. If the surface has risen then     */
+  /* these cells now contain water and horizontal divergence may     */
+  /* alter the total amount of tracer. If elevation has dropped then */
+  /* there is no water (and hence no divergence) in these cells.     */
+  if (cv == cs && c != c2) {
+    do {
+      c = window->zp1[c];
+      for (ee = 1; ee <= window->npe[c2]; ee++) {
+	e = window->c2e[ee][c];
+	es = window->m2de[e];
+	flux = window->eSc[ee][c2] * hflux[e] * dt;
+	if(c==cd)printf("rise\n");
+	if (flux > 0.0) {
+	  cout += flux;
+	  no++;
+	} else if (flux < 0.0) {
+	  mask[e] = 1;
+	  qn = min(qn, smin[e]);
+	  qx = max(qx, smax[e]);
+	  cn -= smin[e] * flux;
+	  cx -= smax[e] * flux;
+	  cin -= flux;
+	  ni++; 
+	}
+      }
+    } while (c != c2);
+  }
+  c = cv;
+
+  if (!cout) return;
+  if (!ni) {
+    qn = qx = tr[c];
+  }
+
+  /* Get the vertical fluxes for this cell                           */
+  if (c == cs) 
+    vflux = - Fz[c] * window->cellarea[c2] ;
+  else
+    vflux = (Fz[zp1] - Fz[c]) * window->cellarea[c2];
+
+  /* Get the outflow bounding values                                 */
+  qmin = (tro - vol * qx + cx - vflux) / (cout);
+  qmax = (tro - vol * qn + cn - vflux) / (cout);
+
+  /* Check                                                           */
+  if (c == cd) {
+    double d2, d3;
+    double dtracern = 0.0;
+    double dtracerx = 0.0;
+    dtracer = 0.0;
+    /* Get the continuity (volume) balance. This is independent of   */
+    /* tracer value and checks volume fluxes and sea levels are      */
+    /* correct. Should be ~1e-10.                                    */
+    if (c == cs) {
+      d2 = -w[c] * window->cellarea[c2] * dt;
+    } else
+      d2 = (w[zp1] - w[c]) * window->cellarea[c2] * dt;
+    d3 = vflux / tr[c];
+    d1 = window->cellarea[c2] * (osubeta[c2] - subeta[c2]) - ((cout-cin) + d2);
+    d1 = (volo - vol) - ((cout-cin) + d2);
+    printf("cnt=%e vflux=%f vflux=%f hflux=%f\n", d1, d2, d3, cout-cin);
+    /* Print the vertical mass fluxes                                */
+    printf("  vert flux wm=%f zp1=%f z=%f vflux=%f tr=%f\n",w[c], Fz[zp1], Fz[c], vflux, vflux / d2);
+    /* Print the horizontal mass fluxes                              */
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      flux = window->eSc[ee][c2] * hflux[e] * dt;
+      dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+      dtracerx += qmin * flux;
+      dtracern += qmax * flux;
+      if (sf[ee] == 1)printf("  out%d Fx=%f vol=%f min=%f max=%f tr=%f\n",ee, 
+			     window->eSc[ee][c2] * Fx[e], hflux[e], hflux[e] * smin[e], 
+			     hflux[e] * smax[e], Fx[e]/hflux[e]);
+      if (sf[ee] == -1)printf("  in%d Fx=%f vol=%f min=%f max=%f tr=%f\n",ee, 
+			      window->eSc[ee][c2] * Fx[e], hflux[e], hflux[e] * smin[e], 
+			      hflux[e] * smax[e], Fx[e]/hflux[e]);
+    }
+    d1 = (volo * tr[c] - (dtracer + vflux)) / vol;
+    d2 = (volo * tr[c] - (dtracern + vflux)) / vol;
+    d3 = (volo * tr[c] - (dtracerx + vflux)) / vol;
+    windat->dum1[c] = d1;
+    printf("  cn=%f cx=%f min=%f max=%f tr=%f qmin=%f qmax=%f\n",cn, cx, qn, qx, d1, qmin, qmax);
+    printf("  tr=%f trn=%f trx=%f\n",d1, d2, d3);
+  }
+
+  /* Limit the outflow edges                                         */
+  if (dolimit) {
+    dtracer = 0.0;
+
+    /* Limit the fluxes from the current layer to the layer below    */
+    /* that containing the old surface.                              */
+    if (cv == cs) {
+      while (c != co) {
+	zp1 = window->zp1[c];
+	for (ee = 1; ee <= window->npe[c2]; ee++) {
+	  e = window->c2e[ee][c];
+	  if (!mask[e] && window->eSc[ee][c2] * hflux[e] > 0) {
+	    mask[e] = 1;
+	    d1 = window->eSc[ee][c2] * hflux[e];
+	    Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	    Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	  }
+	  dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+	}
+	c = zp1;
+      }
+    }
+
+    /* Limit the fluxes for the layer containing the old surface     */
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      if (!mask[e] && sf[ee] == 1) {    /* Outflow                   */
+	mask[e] = 1;
+	d1 = window->eSc[ee][c2] * hflux[e];
+	flux =  Fx[e];
+	if (c == cd) printf("limit %f : ",Fx[e]);
+	Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	if (c == cd) printf("%f : ",Fx[e]);
+	Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	if (c == cd) printf("%f\n",Fx[e]);
+	/*if (fabs(flux - Fx[e]) > 1e-8) hd_quit("limit at c=%d d=%d %f %f\n",c, e, flux, Fx[e]);*/
+      }
+      dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+    }
+
+    /* Limit the fluxes from above the old surface elevation to the  */
+    /* top of the vertical grid.                                     */
+    if (cv == cs && c != c2) {
+      do {
+	c = window->zp1[c];
+	for (ee = 1; ee <= window->npe[c2]; ee++) {
+	  e = window->c2e[ee][c];
+	  if (!mask[e] && window->eSc[ee][c2] * hflux[e] > 0) {
+	    mask[e] = 1;
+	    d1 = window->eSc[ee][c2] * hflux[e];
+	    Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	    Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	  }
+	  dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+	}
+      } while (c != c2);
+    }
+    c = cv;
+  }
+
+  /* Check                                                           */
+  if (checkf && c == cd) {
+    printf("new dtracer=%f tr=%f\n", dtracer, d1);
+  }
+}
+
+/* END universal_limit()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Universal flux limiter, see Thuburn (1996), JCP.                  */
+/* Assumes the upstream biased minimum and maximum values are stored */
+/* in smin and smax. Limits horizontal and vertical fluxes.          */
+/*-------------------------------------------------------------------*/
+void universal_limit(geometry_t *window,       /* Window geometry    */
+		     window_t *windat,         /* Window data        */
+		     win_priv_t *wincon,       /* Window constants   */
+		     int ci,
+		     int co,
+		     int cs,
+		     int cb,
+		     double dt,
+		     double *tr,
+		     double *Fx,
+		     double *Fz,
+		     int *mask
+		     )
+{
+  int c, e, es, ee;
+  int c2 = window->m2d[ci];
+  int zp1 = window->zp1[ci];
+  double cout, cin;             /* Sum of out / inflow volume fluxes */
+  double qn, qx;                /* Minimum / maximum tracer values   */
+  double cn, cx;                /* Minimum / maximum fluxes          */
+  double qmin, qmax;            /* Outflow bounding tracer values    */
+  int ni, no;                   /* Number of inflow / outflow edges  */
+  int sf[window->npem + 1];     /* Sign of flux (1=out, -1=in)       */
+  double vol, volo;             /* Surface volume at time t and t-1  */
+  double tro;                   /* Tracer mass at t-1                */
+  double flux, dtracer, vflux;  /* Horizontal and vertical fluxes    */
+  double *hflux;                /* Horizontal volume flux pointer    */
+  double *smin = wincon->crfxc; /* Minimum streamline value          */
+  double *smax = wincon->crfyc; /* Maximum streamline value          */
+  double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
+  double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
+  double *osubeta = wincon->d1;  /* Surface elevation at t-1         */
+  double *subeta = wincon->d2;   /* Surface elevation at t           */
+  double *tr_mod = wincon->tr_mod; /* z transverse tracer            */
+  double *tr_moc = wincon->Fzh;    /* Horizontal transverse tracer   */
+  double *w;                     /* Vertical velocity                */
+  double d1;                     /* Dummy                            */
+  int checkf = 0;
+  int dolimit = 1;
+  int cd = 0;
+
+  c = ci;
+  /*if (checkf && window->s2i[c] == 30 && window->s2j[c] == 10 && window->s2k[c] == 22) cd = c;*/
+  if (checkf && c == 1) cd = c;
+
+  /* Set the pointers                                                */
+  if (wincon->means & TRANSPORT) {
+    hflux = windat->u1vm;
+    w = windat->wm;
+  } else {
+    hflux = windat->u1flux3d;
+    w = windat->w;
+  }
+
+  /* Get the cell volumes at time t and t-1                          */
+  if (c == cs) {
+    double watertop;
+    double waterbot = (c == cb) ? window->botz[c2] : window->gridz[c];
+    double dz = subeta[c2] - waterbot;
+    vol = dz * window->cellarea[c2];
+    /* First increment the old volume from the current layer to the  */
+    /* layer below that containing the old surface. If elevation     */
+    /* has risen this loop is skipped.                               */
+    volo = tro = 0.0;
+    while (c != co) {
+      zp1 = window->zp1[c];
+      watertop = window->gridz[zp1];
+      d1 = window->cellarea[c2] * (watertop - waterbot);
+      volo += d1;
+      tro += tr[c] * d1;
+      c = zp1;
+      waterbot = window->gridz[c];
+    }
+    if(checkf && c == cd) printf("a2 %d %d\n",c,co);
+    /* Now increment the old volume for the layer containing the old */
+    /* surface.                                                        */
+    waterbot = (c == cb) ? window->botz[c2] : window->gridz[c];
+    d1 = (osubeta[c2] - waterbot) * window->cellarea[c2];
+    volo += d1;
+    tro += tr[c] * d1;
+  } else {
+    vol = volo = window->cellarea[c2] * wincon->dz[c];
+    tro = tr[c] * volo;
+  }
+
+  /* Diagnostics                                                     */
+  if(checkf && c == cd) {
+    printf("-----------------------------\n");
+    printf("start %s %f %d %d[%d %d %d](%f %f) cs=%d co=%d tr=%f dt=%f\n",windat->days,
+	   wincon->trinfo_3d[(int)tr[0]].name, 
+	   windat->nstep, c, window->s2i[c], window->s2j[c], window->s2k[c],
+	   window->cellx[c2], window->celly[c2], cs, co, tr[c], dt);
+    printf("eta(t)=%f eta(t-1)=%f volo=%f vol=%f\n", subeta[c2], osubeta[c2],
+	   volo/window->cellarea[c2], vol/window->cellarea[c2]);
+  }
+
+  /* Get the sum of fluxes                                           */
+  qn = min(tr_mod[c], tr_moc[c]);
+  qx = max(tr_mod[c], tr_moc[c]);
+  cn = cx = cout = cin = 0.0;
+  ni = no = 0;
+  dtracer = 0.0;
+  c = ci;
+
+  /* Increment the fluxes from the current layer to the layer below  */
+  /* that containing the old surface. If elevation has risen through */
+  /* layers then this loop is skipped.                               */
+  if (c == cs) {
+    while (c != co) {
+      zp1 = window->zp1[c];
+      for (ee = 1; ee <= window->npe[c2]; ee++) {
+	e = window->c2e[ee][c];
+	es = window->m2de[e];
+	flux = window->eSc[ee][c2] * hflux[e] * dt;
+	dtracer += window->eSc[ee][c2] * Fx[e] * dt;
+	if(c==cd)printf("drop\n");
+	if (flux > 0.0) {
+	  cout += flux;
+	  no++;
+	} else if (flux < 0.0) {
+	  mask[e] = 1;
+	  qn = min(qn, smin[e]);
+	  qx = max(qx, smax[e]);
+	  cn -= smin[e] * flux;
+	  cx -= smax[e] * flux;
+	  cin -= flux;
+	  ni++; 
+	}
+      }
+      c = zp1;
+    }
+  }
+
+  /* Increment the fluxes for the layer containing the old surface   */
+  for (ee = 1; ee <= window->npe[c2]; ee++) {
+    e = window->c2e[ee][c];
+    es = window->m2de[e];
+    /* Get the edge signs                                            */
+    sf[ee] = 0;
+    flux = window->eSc[ee][c2] * hflux[e] * dt;
+    dtracer += window->eSc[ee][c2] * Fx[e] * dt;
+    if (flux > 0.0) {              /* Outflow                        */
+      sf[ee] = 1;
+      cout += flux;
+      if(c==cd)printf("aout %d e=%d min=%f Fx=%f\n",ee, e, 
+		      smin[e] * flux, Fx[e]);
+      no++;
+    } else if (flux < 0.0) {
+      sf[ee] = -1;
+      mask[e] = 1;
+      qn = min(qn, smin[e]);
+      qx = max(qx, smax[e]);
+      /* Thuburn (1996) Eq. 48 & 49 */
+      cn -= min(window->eSc[ee][c2] * Fx[e]*dt, smin[e] * flux);
+      cx -= max(window->eSc[ee][c2] * Fx[e]*dt, smax[e] * flux);
+      cin -= flux;
+      if(c==cd)printf("ain %d e=%d min=%f max=%f Fx=%f\n",ee,e,
+		      cn, cx, Fx[e]*dt);
+      ni++; 
+    }
+  }
+
+  /* Increment the fluxes from above the old surface elevation to    */
+  /* the top of the vertical grid. If the surface has risen then     */
+  /* these cells now contain water and horizontal divergence may     */
+  /* alter the total amount of tracer. If elevation has dropped then */
+  /* there is no water (and hence no divergence) in these cells.     */
+  if (ci == cs && c != c2) {
+    do {
+      c = window->zp1[c];
+      for (ee = 1; ee <= window->npe[c2]; ee++) {
+	e = window->c2e[ee][c];
+	es = window->m2de[e];
+	flux = window->eSc[ee][c2] * hflux[e] * dt;
+	dtracer += window->eSc[ee][c2] * Fx[e] * dt;
+	if(c==cd)printf("rise\n");
+	if (flux > 0.0) {
+	  cout += flux;
+	  no++;
+	} else if (flux < 0.0) {
+	  mask[e] = 1;
+	  qn = min(qn, smin[e]);
+	  qx = max(qx, smax[e]);
+	  cn -= smin[e] * flux;
+	  cx -= smax[e] * flux;
+	  cin -= flux;
+	  ni++; 
+	}
+      }
+    } while (c != c2);
+  }
+
+  /* Vertical fluxes into the cell                                   */
+  c = ci;
+  flux = w[c] * window->cellarea[c2] * dt;
+  if (flux > 0.0) {
+    qn = min(qn, sminz[c]);
+    qx = max(qx, smaxz[c]);
+    /* Thuburn (1996) Eq. 48 & 49 */
+    cn += min(Fz[c] * window->cellarea[c2], sminz[c] * flux);
+    cx += max(Fz[c] * window->cellarea[c2], smaxz[c] * flux);
+    cin += flux;
+    ni++;
+  } else if (flux < 0.0) {
+    cout -= flux;
+    no++;
+  }
+  if (c != cs) {
+    zp1 = window->zp1[c];
+    flux = w[zp1] * window->cellarea[c2] * dt;
+    if (flux < 0.0) {
+      qn = min(qn, sminz[zp1]);
+      qx = max(qx, smaxz[zp1]);
+      cn -= min(Fz[zp1] * window->cellarea[c2], sminz[zp1] * flux);
+      cx -= max(Fz[zp1] * window->cellarea[c2], smaxz[zp1] * flux);
+      cin -= flux;
+      ni++;
+    } else if (flux > 0.0) {
+      cout += flux;
+      no++;
+    }
+  }
+  if (!cout) return;
+  if (!ni) {
+    qn = qx = tr[c];
+  }
+
+  /* Get the horizontal outflow bounding values                      */
+  qmin = (tro - vol * qx + cx) / (cout);
+  qmax = (tro - vol * qn + cn) / (cout);
+
+  /* Check                                                           */
+  if (c == cd) {
+    double d2, d3;
+    dtracer = 0.0;
+    /* Get the continuity (volume) balance. This is independent of   */
+    /* tracer value and checks volume fluxes and sea levels are      */
+    /* correct. Should be ~1e-10.                                    */
+    d1 = (volo - vol) - ((cout-cin));
+    printf("cnt=%e flux=%f\n", d1, cout-cin);
+    /* Print the vertical mass fluxes                                */
+
+    vflux = - Fz[c] * window->cellarea[c2] ;
+    flux = w[c] * dt;
+    if (Fz[c] >= 0.0)
+      printf("  vin Fz=%f vol=%f min=%f max=%f tr=%f\n", Fz[c], flux, 
+	     flux * sminz[c], flux * smaxz[c], Fz[c]/flux);
+    else
+      printf("  vout Fz=%f vol=%f min=%f max=%f tr=%f\n", Fz[c], flux, 
+	     flux * sminz[c], flux * smaxz[c], Fz[c]/flux);
+    if (c != cs) {
+      vflux += Fz[zp1] * window->cellarea[c2];
+      flux = w[zp1] * window->cellarea[c2] * dt;
+
+      if (Fz[zp1] < 0.0)
+	printf("  vp1in Fzp1=%f vol=%f min=%f max=%f tr=%f\n", Fz[zp1], flux, 
+	       flux * sminz[zp1], flux * smaxz[zp1], Fz[zp1]/flux);
+      else
+	printf("  vp1out Fzp1=%f vol=%f min=%f max=%f tr=%f\n", Fz[zp1], flux, 
+	       flux * sminz[zp1], flux * smaxz[zp1], Fz[zp1]/flux);
+    }
+    /* Print the horizontal mass fluxes                              */
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      flux = window->eSc[ee][c2] * hflux[e] * dt;
+      dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+      if (sf[ee] == 1)printf("  out%d Fx=%f vol=%f min=%f max=%f tr=%f\n",ee, 
+			     window->eSc[ee][c2] * Fx[e], hflux[e], hflux[e] * smin[e], 
+			     hflux[e] * smax[e], Fx[e]/hflux[e]);
+      if (sf[ee] == -1)printf("  in%d Fx=%f vol=%f min=%f max=%f tr=%f\n",ee, 
+			      window->eSc[ee][c2] * Fx[e], hflux[e], hflux[e] * smin[e], 
+			      hflux[e] * smax[e], Fx[e]/hflux[e]);
+    }
+
+    d1 = (volo * tr[c] - (dtracer + vflux)) / vol;
+    printf("  cn=%f cx=%f min=%f max=%f tr=%f qmin=%f qmax=%f\n",cn, cx, qn, qx, d1, qmin, qmax);
+  }
+
+  /* Limit the outflow edges                                         */
+  if (dolimit) {
+    dtracer = 0.0;
+    /* Limit the fluxes from the current layer to the layer below    */
+    /* that containing the old surface.                              */
+    if (c == cs) {
+      while (c != co) {
+	zp1 = window->zp1[c];
+	for (ee = 1; ee <= window->npe[c2]; ee++) {
+	  e = window->c2e[ee][c];
+	  if (!mask[e] && window->eSc[ee][c2] * hflux[e] > 0) {
+	    mask[e] = 1;
+	    d1 = window->eSc[ee][c2] * hflux[e];
+	    Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	    Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	  }
+	  dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+	}
+	c = zp1;
+      }
+    }
+
+    /* Limit the fluxes for the layer containing the old surface     */
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      if (!mask[e] && sf[ee] == 1) {    /* Outflow                   */
+	mask[e] = 1;
+	d1 = window->eSc[ee][c2] * hflux[e];
+	flux =  Fx[e];
+	if (c == cd) printf("limit %f : ",Fx[e]);
+	Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	if (c == cd) printf("%f : ",Fx[e]);
+	Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	if (c == cd) printf("%f\n",Fx[e]);
+	/*if (fabs(flux - Fx[e]) > 1e-8) hd_quit("limit at c=%d d=%d %f %f\n",c, e, flux, Fx[e]);*/
+      }
+      dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+    }
+
+    /* Limit the fluxes from above the old surface elevation to the  */
+    /* top of the vertical grid.                                     */
+    if (ci == cs && c != c2) {
+      do {
+	c = window->zp1[c];
+	for (ee = 1; ee <= window->npe[c2]; ee++) {
+	  e = window->c2e[ee][c];
+	  if (!mask[e] && window->eSc[ee][c2] * hflux[e] > 0) {
+	    mask[e] = 1;
+	    d1 = window->eSc[ee][c2] * hflux[e];
+	    Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	    Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	  }
+	  dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
+	}
+      } while (c != c2);
+    }
+
+    /* Limit the vertical outgoing fluxes                            */
+    c = ci;
+    if (Fz[c] < 0) {
+      if (c == cd) printf("limit lower %f : ",Fz[c]);
+      Fz[c] = max(Fz[c], qmax * w[c] * dt);
+      if (c == cd) printf("%f : ",Fz[c]);
+      Fz[c] = min(Fz[c], qmin * w[c] * dt);
+      if (c == cd) printf("%f\n",Fz[c]);
+    }
+    zp1 = window->zp1[c];
+    if (c != cs && Fz[zp1] > 0.0) {
+      if (c == cd) printf("limit upper %f : ",Fz[zp1]);
+      Fz[zp1] = min(Fz[zp1], qmax * w[zp1] * dt);
+      if (c == cd) printf("%f : ",Fz[zp1]);
+      Fz[zp1] = max(Fz[zp1], qmin * w[zp1] * dt);
+      if (c == cd) printf("%f\n",Fz[zp1]);
+    }
+  }
+
+  /* Check                                                           */
+  if (checkf && c == cd) {
+    d1 = (tro - (dtracer + vflux)) / vol;
+    printf("new dtracer=%f tr=%f\n", dtracer, d1);
+  }
+}
+
+/* END universal_limit()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* gets the local bounds for cell c, i.e. the minimum and maximum    */
+/* tracer values at all stencil points used to interpolate a value.  */
+/*-------------------------------------------------------------------*/
+void get_local_bounds(geometry_t *window, 
+		      window_t *windat, 
+		      win_priv_t *wincon, 
+		      double tr, 
+		      double *trv,
+		      int e,               /* Destination edge       */
+		      int co,              /* Source centre          */
+		      double *smin,
+		      double *smax,
+		      int mode /* 0 = stencil, 1 = interpolated value*/
+		      )
+{
+  qweights *lw = &wincon->lw[co];
+
+
+  if (mode == 0) {
+    smin[e] = min(smin[e], tr);
+    smax[e] = max(smax[e], tr);
+  } else if (mode == 1) {
+    smin[e] = min(smin[e], lw->tmn);
+    smax[e] = max(smax[e], lw->tmx);
+  } else if (mode == 2) {
+    int j, c;
+    for (j = 0; j < lw->ncells; j++) {
+      c = lw->cells[j];
+      smin[e] = min(smin[e], trv[c]);
+      smax[e] = max(smax[e], trv[c]);
+    }
+  }
+}
+
+/* END get_local_bounds()                                            */
 /*-------------------------------------------------------------------*/
 
 
@@ -2123,11 +2904,19 @@ void check_monotone(geometry_t *window,        /* Window geometry    */
   double mx = lw->tmx;
   double mn = lw->tmn;
 
+  int tn = wincon->monon;
+
   if (tr > mx) {
+    /*if (windat->mono) windat->mono[c] = max(windat->mono[c], fabs(tr - mx));*/
+    /*
     hd_quit("Non monotonic max %f @ %d(%d %d %d) %12.10f : %f %f\n",windat->days,c, window->s2i[c], window->s2j[c], window->s2k[c],mx,mn);
+    */
   }
   if (tr < mn) {
+    /*if (windat->mono) windat->mono[c] = max(windat->mono[c], fabs(tr - mn));*/
+    /*
     hd_quit("Non monotonic min %f @ %d(%d %d %d) %12.10f : %f %f\n",windat->days,c, window->s2i[c], window->s2j[c], window->s2k[c],mx,mn);
+    */
   }
 }
 
@@ -2147,7 +2936,7 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
 	       double *tr                 /* Tracer array            */
 	       )
 {
-  int cc, c, cs, c2, k, id, m, j, cn;
+  int cc, c, cs, c2, k, id, m, j, cn, ee, e;
   int itmax = 20;
   int *cl = wincon->s2;
   double tn1 = HUGE, tx1 = -HUGE;
@@ -2165,20 +2954,36 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
   double *mxc = wincon->w4;    /* Local tracer maximum at source     */
   double *mnc = wincon->w5;    /* Local tracer minimum at source     */
   double m1, m2;
+  double *smin = wincon->crfxc; /* Minimum streamline value          */
+  double *smax = wincon->crfyc; /* Maximum streamline value          */
+  double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
+  double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
 
-  if (wincon->fillf & NONE) {
-    for (cc = 1; cc <= window->b3_t; cc++) {
+  /* Get the min/max along all streamlines                           */
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    c2 = window->m2d[c];
+
+    mn[c] = sminz[c];
+    mx[c] = smaxz[c];
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      mn[c] = min(mn[c], smin[e]);
+      mx[c] = max(mx[c], smax[e]);
+    }
+  }
+  if (wincon->fillf & CLIP) {
+    for (cc = 1; cc <= window->v3_t; cc++) {
       c = window->w3_t[cc];
-      
-      tr[c] =  max(min(wincon->lw[cl[cc]].tmx, tr[c]), wincon->lw[cl[cc]].tmn);
-
+      tr[c] =  max(min(mx[c], tr[c]), mn[c]);
     }
     return;
   }
 
   /* Set ghost cells                                                 */
+  /*
   set_tr_nograd(window, tr);
-
+  */
   /*-----------------------------------------------------------------*/
   /* Clip tracer values                                              */
   omass = emass = 0.0;
@@ -2186,6 +2991,14 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
     c = window->w3_t[cc];
     cs = cl[cc];
     c2 = window->m2d[cs];
+
+    mn[c] = sminz[c];
+    mx[c] = smaxz[c];
+    for (ee = 1; ee <= window->npe[window->m2d[c]]; ee++) {
+      e = window->c2e[ee][c];
+      mn[c] = min(mn[c], smin[e]);
+      mx[c] = max(mx[c], smax[e]);
+    }
 
     /* Get the minimum and maximum from the quadratic interpolator   */
     /*
@@ -2204,10 +3017,10 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
     }
     mn[c] = min(tn1, tn2);
     mx[c] = max(tx1, tx2);
-    */
+
     mn[c] = wincon->lw[cs].tmn;
     mx[c] = wincon->lw[cs].tmx;
-
+    */
     /* Clip the tracer and get mass before and after clipping        */
     vol = window->cellarea[window->m2d[c]] * wincon->dz[c];
     m1 = tr[c] * vol;
@@ -2216,11 +3029,12 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
     m2 = tr[c] * vol;
     emass += m2;
     windat->vol_cons[window->m2d[c]] = 0.5 * (windat->vol_cons[window->m2d[c]] + (m1 - m2) / m2);
+
   }
 
   /*-----------------------------------------------------------------*/
   /* Redistribute residual mass. Mass is to distributed to cells     */
-  /* that are situated in unifor tracer distributions (mn == mx),    */
+  /* that are situated in uniform tracer distributions (mn == mx),   */
   /* are at the maximum value (tr == mx) or at the minimum value     */
   /* (tr == mn). In these cases, residual mass is iteratively        */
   /* distributed to cells that do not satisfy these conditions.      */
@@ -2253,6 +3067,7 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
 	  /* Check for adjusted mass > local maximum                 */
 	  tr[c] = mx[c];
 	  mask[c] = 1.0;
+	  /*if(c==3540)printf("fill %e %e\n",v2,mx[c]);*/
 	} else if (v2 < mn[c] && !mask[c]) {
 	  /* Check for adjusted mass < local minimum                 */
 	  tr[c] = mn[c];
@@ -2271,6 +3086,7 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
       hd_warn("global_fill: Tracer did not converge at %5.2f, residual mass = %5.3f\n",
 	      windat->t/86400, omass - emass);
   }
+  set_tr_nograd(window, tr);
 }
 
 /* END clip_ffsl()                                                   */
@@ -2293,10 +3109,10 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   int sf = 3;  /* 3 = one row, 5 = two rows                          */
   int *mask;
   int newcode = 1;
-
+  /*
   if (window->nwindows > 1)
     hd_quit("Lagrangian tracking does not operate with more than one window: exiting.\n");
-
+  */
   /* Allocate                                                        */
   n = window->szcS + window->szvS;
   p = (point **)alloc_2d(n, nz+1, sizeof(point));
@@ -2311,7 +3127,7 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
 
   /*-----------------------------------------------------------------*/
   /* Set the ghost cell mask                                         */
-  for (cc = 1; cc <= window->b3_t; cc++) {
+  for (cc = 1; cc <= window->a3_t; cc++) {
     c = window->w3_t[cc];
     c2 = window->m2d[c];
     k = window->s2k[c];
@@ -2341,7 +3157,7 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   /* the Voronoi dual to the Delaunay index (c2p).                   */
   nk = i_alloc_1d(nz+1);
   memset(nk, 0, (nz+1) * sizeof(int));
-  for (cc = 1; cc <= window->b3_t; cc++) {
+  for (cc = 1; cc <= window->a3_t; cc++) {
     c = window->w3_t[cc];
     c2 = window->m2d[c];
     k = window->s2k[c] + 1;
@@ -2358,7 +3174,7 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   /* so as to account for multiple ghost cells in the interpolation  */
   /* triangulation. This means the boundary condition for velocity   */
   /* is v=0 at ghost cells rather than v=-vi.                        */
-  for (cc = window->b3_t+1; cc <= window->n3_t; cc++) {
+  for (cc = window->a3_t+1; cc <= window->n3_t; cc++) {
     c = window->w3_t[cc];
     ci = window->wgst[c];
     c2 = window->m2d[ci];
@@ -2403,7 +3219,7 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   if (ef) {
     mask = i_alloc_1d(window->szv);
     memset(mask, 0, window->szv * sizeof(int));
-    for (cc = 1; cc <= window->b3_t; cc++) {
+    for (cc = 1; cc <= window->a3_t; cc++) {
       c = window->w3_t[cc];
       c2 = window->m2d[c];
       k = window->s2k[c] + 1;
@@ -2435,12 +3251,11 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   /* layer. Note this is designed to be used with COMPAS arrays,     */
   /* which start at index 1, hence use [c+1].                        */
   windat->d = (delaunay **)calloc(nz+1, sizeof(delaunay *));
+
   for (k = 0; k <= nz; k++) {
     windat->d[k] = NULL;
     if (nk[k] == 0) continue;
-
     windat->d[k] = delaunay_build(nk[k], p[k], 0, NULL, 0, NULL);
-
     /*printf("%d %d %f %f\n",k,windat->d[k]->n_point_triangles[2],windat->d[k]->points[2].x,windat->d[k]->points[2].y);*/
 
     /*
@@ -2467,7 +3282,6 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
 
     }
     */
-
     for (c = 0; c < nk[k]; c++) {
       windat->d[k]->points[c].v = d_alloc_1d(4);
     }
@@ -2489,23 +3303,22 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   strcpy(wincon->momsr, wincon->trasr);
 
   if (newcode) {
-    /*
+
   wincon->osl = L_LINEAR;
   strcpy(wincon->trasr, "linear");
-    */
     /*
   wincon->mosl = L_LSQUAD;
   strcpy(wincon->momsr, "quadratic");
 
   wincon->mosl = L_LSLIN;
   strcpy(wincon->momsr, "linearlsq");
-    */
+
   wincon->mosl = L_LINEAR;
   strcpy(wincon->momsr, "linear");
 
   wincon->mosl = L_SIB;
   strcpy(wincon->momsr, "nn_sibson");
-
+    */
   /* Set up the point triangles                                      */
   windat->nptt = (npt_t **)calloc(nz+1, sizeof(npt_t *));
   windat->nptm = (npt_t **)calloc(nz+1, sizeof(npt_t *));
@@ -2567,16 +3380,13 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
     windat->d[k+1]->points[nk[k+1]].v[1] = windat->v[c];
     windat->d[k+1]->points[nk[k+1]].v[2] = windat->w[c];
     windat->d[k+1]->points[nk[k+1]].v[3] = windat->temp[c];
-    /*
-    if(c==window->zp1[c])printf("aa %d %d %d %f\n",c,k,nk[k],windat->temp[c]);
-    */
     nk[k+1]++;
   }
 
   if (ef) {
     mask = i_alloc_1d(window->szv);
     memset(mask, 0, window->szv * sizeof(int));
-    for (cc = 1; cc <= window->b3_t; cc++) {
+    for (cc = 1; cc <= window->a3_t; cc++) {
       c = window->w3_t[cc];
       c2 = window->m2d[c];
       k = window->s2k[c];
@@ -2997,6 +3807,7 @@ void set_tr_nograd(geometry_t *window, double *tr)
     c2 = window->bin[cc];
     tr[c] = tr[c2];
   }
+
   /* Sediment cells                                                  */
   for (cc = 1; cc <= window->b2_t; cc++) {
     c = window->bot_t[cc];
@@ -3007,10 +3818,10 @@ void set_tr_nograd(geometry_t *window, double *tr)
     open_bdrys_t *open = window->open[n];
     for (ee = 1; ee <= open->no3_e1; ee++) {
       c = open->ogc_t[ee];
-      c2 = open->obc_e2[ee];
+      c2 = c = open->obc_e2[ee];
       do {
-	tr[c] = tr[c2];
 	c = open->omape[ee][c];
+	tr[c] = tr[c2];
       } while (c != open->omape[ee][c]);
     }
     OBC_bgz_nogradb(window, open, tr);
@@ -3283,12 +4094,12 @@ void set_interp_points(geometry_t *window,
     c2 = window->m2d[c];
     k = window->s2k[c] + 1;
     id = window->c2p[k][c2];
-    /*if(k==23)printf("%d %d k=%d %d\n",c,c2,k,id);*/
+
     /* Set the flag in the Delaunay structure                        */
     d[k]->ptf = 1;
     /* Get the stencil                                               */
     sz = size;
-    st = stencil(geom, c, &sz, ST_SIZED, 0);
+    st = stencil(window, c, &sz, ST_SIZED, 0);
     /* Wet cells to include                                          */
     d[k]->n_point_triangles[id] = sz;
     /* Ghost cells to include                                        */
@@ -3314,7 +4125,6 @@ void set_interp_points(geometry_t *window,
       cn = st[i];
       cns = window->m2d[cn];
       cells[j] = cn;
-      /*if(k==1&&id==497)printf("a1 %d %d %d\n",window->c2p[k][cns]);*/
       d[k]->point_triangles[id][j++] = window->c2p[k][cns];
       if(window->c2p[k][cns] == -1) 
 	hd_quit("Invalid wet c2p map at c=%d: s[%d]=%d\n",c, i, cn);
@@ -3369,7 +4179,7 @@ void set_interp_points_n(geometry_t *window,
     d[k]->ptf = 1;
     /* Get the stencil                                               */
     sz = size;
-    st = stencil(geom, c, &sz, ST_SIZED, 0);
+    st = stencil(window, c, &sz, ST_SIZED, 0);
 
     /* Wet cells to include                                          */
     npt[k]->npt[id] = sz;
@@ -3396,10 +4206,9 @@ void set_interp_points_n(geometry_t *window,
       cn = st[i];
       cns = window->m2d[cn];
       cells[j] = cn;
-      /*if(k==1&&id==497)printf("a1 %d %d %d\n",window->c2p[k][cns]);*/
       npt[k]->pt[id][j++] = window->c2p[k][cns];
       if(window->c2p[k][cns] == -1) 
-	hd_quit("Invalid wet c2p map at c=%d: s[%d]=%d\n",c, i, cn);
+	hd_quit("Invalid wet c2p map at c=%d k=%d: s[%d]=%d cns=%d\n",c, k, i, cn, cns);
     }
     /* Ghost cells to include                                        */
     for (i = 0; i < sz; i++) {
@@ -3433,7 +4242,7 @@ void set_interp_points_n(geometry_t *window,
 	id = window->c2p[k][c2];
 
 	sz = size;
-	st = stencil(geom, c, &sz, ST_SIZED, 0);
+	st = stencil(window, c, &sz, ST_SIZED, 0);
 	/* Wet cells to include                                      */
 	npt[k]->npt[id] = sz;
 
@@ -3914,26 +4723,17 @@ void vel_center_w(geometry_t *window, /* Window geometry             */
   int cc, c;
   int p1;
   double wtop;
+  double *w = (wincon->means & TRANSPORT) ? windat->wm : windat->w;
 
-  /* Calculate the w values at the cell centre */
-  if (wincon->means & TRANSPORT) {
-    for (cc = 1; cc <= wincon->vc; cc++) {
-      c = wincon->s1[cc];
-      p1 = window->zp1[c];
-      nw[c] = 0.5 * (windat->wm[c] + windat->wm[p1]);
-      if (fabs(nw[c]) < SMALL)
-        nw[c] = SMALL;
-    }
-  } else {
-    for (cc = 1; cc <= wincon->vc; cc++) {
-      c = wincon->s1[cc];
-      p1 = window->zp1[c];
-      wtop =
-        (cc <= wincon->vcs) ? windat->wtop[window->m2d[c]] : windat->w[p1];
-      nw[c] = 0.5 * (windat->w[c] + wtop);
-      if (fabs(nw[c]) < SMALL)
-        nw[c] = SMALL;
-    }
+  /* Calculate the w values at the cell centre                       */
+  for (cc = 1; cc <= wincon->vc; cc++) {
+    c = wincon->s1[cc];
+    p1 = window->zp1[c];
+    wtop =
+      (cc <= wincon->vcs) ? windat->wtop[window->m2d[c]] : w[p1];
+    nw[c] = 0.5 * (w[c] + wtop);
+    if (fabs(nw[c]) < SMALL)
+      nw[c] = SMALL;
   }
 }
 
@@ -5289,7 +6089,7 @@ void calc_tracer_eta(geometry_t *window, /* Window geometry          */
   }
 
   /* Calculate the new elevation                                     */
-  set_map_eta(window);
+  /*set_map_eta(window);*/
   for (cc = 1; cc <= window->b2_t; cc++) {
     int e, j;
     double eta;

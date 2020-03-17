@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vtransp.c 5960 2018-09-20 03:14:25Z mar644 $
+ *  $Id: vtransp.c 6197 2019-04-11 04:19:10Z mar644 $
  *
  */
 
@@ -1361,6 +1361,7 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
   double bs;                    /* bottom shear stress */
   double nxsbs;                 /* normalized excess bottom shear stress */
   double css_depX;
+  double css_eroX;
   double depfluxcoef;           /* deposition term coefficient for
                                    implicit calculation */
   double r;
@@ -1376,14 +1377,21 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
 
   /* Calculate critical shear stress of erosion for cohesive sediment */
   sm->css[tk_sed] = calc_css(sediment, sm, tk_sed);
+
+// 2019
+  if(tracer->css_erosion > -0.1)
+     css_eroX= tracer->css_erosion;
+  else
+     css_eroX=sm->css[tk_sed];
+
   /* Calculate erosion term explicitly */
   bs = rho_w * sm->ustrcw_skin * sm->ustrcw_skin; /* skin friction */
-  if (sm->css[tk_sed] <= 0.){
+  if (css_eroX <= 0.){
     /* MH 07/2012: included instability handling */
-    sprintf(etext, "sed:vtransp:erdep_fine: Negative critical shear on cohesive sed.bed %f",sm->css[tk_sed]);
+    sprintf(etext, "sed:vtransp:erdep_fine: Negative critical shear on cohesive sed.bed %f",css_eroX);
     i_set_error(sediment->hmodel, sm->col_number, LFATAL, etext);
   }
-  nxsbs = (bs > sm->css[tk_sed]) ? (bs / sm->css[tk_sed] - 1.0) : 0.0;
+  nxsbs = (bs > css_eroX) ? (bs / css_eroX - 1.0) : 0.0;
 /* normalised excess stress */
 
   /* find volumetric fraction of the given sediment class in bottom */
@@ -1392,13 +1400,22 @@ static double erdep_fine(sediment_t *sediment, sed_column_t *sm, sed_tracer_t *t
   r = sm->cbfilt[n]/sm->tss_sed[tk_sed];
 
   sm->erflux[n] = param->erflux_scale *
-      r * 0.002 * sm->css[tk_sed] * nxsbs;  /* erosion flux, in kg m-2 s-1 */
+      r * 0.002 * css_eroX * nxsbs;  /* erosion flux, in kg m-2 s-1 */
   /* Define deposition term coefficient for implicit calculation */
-  /*NMY tmp fix for fluff 2018 */
+
+  /*NMY tmp fix for fluff 2018
   if (strcmp("Dust",tracer->name) == 0)
      css_depX=0.0;
   else
      css_depX=sm->css_dep;
+  */
+
+// 2019
+  if(tracer->css_deposition > -0.1)
+     css_depX= tracer->css_deposition;
+  else
+     css_depX=sm->css_dep;
+
 
   nxsbs = (bs < css_depX) ? (1.0 - bs / css_depX) : 0.0;  
   /* normalised excess stress */
@@ -1485,13 +1502,19 @@ static double erdep_coarse(sediment_t *sediment, sed_column_t *sm, sed_tracer_t 
   double svel = tracer->svel[sm->col_number-1];   /* settling velocity */
   double ref_c_c;               /* multiplier transforming cell averaged
                                    concentration to ref conc */
+  double css_eroX;
   double depfluxcoef;           /* deposition flux coefficient for
                                    implicit calculations */
 
   bs = rho_w * sm->ustrcw_skin * sm->ustrcw_skin;
-  css_coarse =
-    max(sm->css[tk_sed],
-        rho_w * 0.25 * svel * 0.25 * svel);
+
+// 2019
+  if(tracer->css_erosion > -0.1)
+     css_eroX= tracer->css_erosion;
+  else
+     css_eroX=sm->css[tk_sed];
+
+  css_coarse = max(css_eroX,  rho_w * 0.25 * svel * 0.25 * svel);
   nxsbs = (bs > css_coarse) ? (bs / css_coarse - 1.0) : 0.0;
   sm->ref_c_eq[n] = sm->cbfilt[n] * gamma0 * nxsbs / (1. + gamma0 * nxsbs);
   sm->erflux[n] = -svel * sm->ref_c_eq[n];

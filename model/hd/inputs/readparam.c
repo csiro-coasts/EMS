@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 6091 2019-02-08 04:33:19Z her127 $
+ *  $Id: readparam.c 6429 2019-11-22 00:25:21Z her127 $
  *
  */
 
@@ -184,6 +184,8 @@ void set_default_param(parameters_t *params)
   sprintf(params->swr_attn, "%c", '\0');
   sprintf(params->swr_attn1, "%c", '\0');
   sprintf(params->swr_tran, "%c", '\0');
+  sprintf(params->swr_regions, "%c", '\0');
+  strcpy(params->swr_data, "GHRSST");
   sprintf(params->densname, "%c", '\0');
   sprintf(params->regions, "%c", '\0');
   sprintf(params->region_dt, "%c", '\0');
@@ -247,6 +249,7 @@ void set_default_param(parameters_t *params)
   params->porusplate = 0;
   params->sharp_pyc = 0;
   sprintf(params->nprof, "%c", '\0');
+  sprintf(params->nprof2d, "%c", '\0');
   sprintf(params->reef_frac, "%c", '\0');
   params->dbi = params->dbj = params->dbk = -1;
   params->dbgf = NONE;
@@ -254,6 +257,7 @@ void set_default_param(parameters_t *params)
   memset(params->momfile, 0, sizeof(params->momfile));
   memset(params->avhrr_path, 0, sizeof(params->avhrr_path));
   memset(params->ghrsst_path, 0, sizeof(params->ghrsst_path));
+  memset(params->ghrsst_opt, 0, sizeof(params->ghrsst_opt));
   params->rampf = WIND|FILEIN|CUSTOM|TIDALH|TIDALC|TIDEBC|FLATHR|ETA_RELAX;
   memset(params->trvars, 0, sizeof(params->trvars));
   sprintf(params->smooth_v, "%c", '\0');
@@ -737,11 +741,7 @@ parameters_t *params_read(FILE *fp)
   if (params->lnm != 0.0)
     params->ntrS++;
   read_debug(params, fp);
-  sprintf(keyword, "PROFILE");
-  if (prm_read_char(fp, keyword, buf)) {
-    strcpy(params->nprof, buf);
-    params->ntr += 1;
-  }
+  read_profile(params, fp);
 
   read_decorr(params, fp, 0);
 
@@ -760,14 +760,18 @@ parameters_t *params_read(FILE *fp)
 
   /* GHRSST SST */
   if (prm_read_char(fp, "GHRSST", params->ghrsst_path)) {
+    prm_read_char(fp, "GHRSST_OPTIONS", params->ghrsst_opt);
     create_ghrsst_list(params);
-    params->ntrS++;
+    params->ntrS+=2;
   }
 
   /* Particle tracking */
   if(prm_read_char(fp, "PT_InputFile", params->ptinname)) {
     params->do_pt = 1;
     params->ntr++;
+    /* Auto particle source                                          */
+    if (prm_read_char(fp, "particles", params->particles))
+      params->do_pt = 2;
   }
 
   /* Transport mode files */
@@ -1339,21 +1343,32 @@ parameters_t *params_read(FILE *fp)
     if ((strcmp(buf, "NET_HEAT") == 0) || 
 	(strcmp(buf, "COMP_HEAT_MOM") == 0) || 
 	(strcmp(buf, "COMP_HEAT") == 0)) {
-    if (strcmp(buf, "COMP_HEAT") == 0)
-      params->heatflux = COMP_HEAT;
-    if (strcmp(buf, "COMP_HEAT_MOM") == 0)
-      params->heatflux = COMP_HEAT_MOM;
-    if (strcmp(buf, "NET_HEAT") == 0)
-      params->heatflux = NET_HEAT;
+      if (strcmp(buf, "COMP_HEAT") == 0)
+	params->heatflux = COMP_HEAT;
+      if (strcmp(buf, "COMP_HEAT_MOM") == 0)
+	params->heatflux = COMP_HEAT_MOM;
+      if (strcmp(buf, "NET_HEAT") == 0)
+	params->heatflux = NET_HEAT;
 
       /* Read the swr parameters                                     */
-    read_swr(params, fp, 0);
+      read_swr(params, fp, 0);
     }
+
+    if (contains_token(buf, "ADVANCED") != NULL) params->heatflux = ADVANCED;
+    if (contains_token(buf, "BULK") != NULL) params->heatflux = ADVANCED;
+    if (params->heatflux & ADVANCED) {
+      /*
+
+    if (contains_token(buf, "ADVANCED") != NULL ||
+	contains_token(buf, "BULK") != NULL ||
+	params->heatflux & ADVANCED) {
+      params->heatflux = ADVANCED;
+
 
     if (strcmp(buf, "ADVANCED") == 0 || strcmp(buf, "BULK") == 0 || 
 	params->heatflux & ADVANCED) {
       params->heatflux = ADVANCED;
-
+    */
       /* Read the swr parameters                                     */
       read_swr(params, fp, 0);
       read_hf_bulk(params, fp);
@@ -1385,6 +1400,22 @@ parameters_t *params_read(FILE *fp)
 	if (!(prm_get_time_in_secs(fp, keyword, &params->hftc))) {
 	  hd_warn
 	    ("params_read() : AVHRR heatflux requires HEATFLUX_TC constant.\n");
+	  params->hftc = 86400.0;
+	}
+      }
+    }
+
+    if (contains_token(buf, "GHRSST") != NULL) {
+      params->heatflux |= GHRSST;
+      if (!strlen(params->ghrsst_path)) {
+	hd_warn
+	  ("params_read() : GHRSST heatflux requires a GHRSST diagnostic path name.\n");
+	params->heatflux = NONE;
+      } else {
+	sprintf(keyword, "HEATFLUX_TC");
+	if (!(prm_get_time_in_secs(fp, keyword, &params->hftc))) {
+	  hd_warn
+	    ("params_read() : GHRSST heatflux requires HEATFLUX_TC constant.\n");
 	  params->hftc = 86400.0;
 	}
       }
@@ -2313,8 +2344,9 @@ parameters_t *auto_params(FILE * fp, int autof)
   }
   /* GHRSST SST */
   if (prm_read_char(fp, "GHRSST", params->ghrsst_path)) {
+    prm_read_char(fp, "GHRSST_OPTIONS", params->ghrsst_opt);
     create_ghrsst_list(params);
-    params->ntrS++;
+    params->ntrS+=2;
   }
 
   /* Transport mode files (optional) */
@@ -2336,6 +2368,9 @@ parameters_t *auto_params(FILE * fp, int autof)
   if (prm_read_char(fp, "PT_InputFile", params->ptinname)) {
     params->do_pt = 1;
     params->atr++;
+    /* Auto particle source                                          */
+    if (prm_read_char(fp, "particles", params->particles))
+      params->do_pt = 2;
   }
 
   /* Diagnistic numbers (optional) */
@@ -2506,6 +2541,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 	params->roammode = A_ROAM_R2;
       else if (strcmp(buf, "ROAMv3") == 0)
 	params->roammode = A_ROAM_R3;
+      else if (strcmp(buf, "ROAMv4") == 0)
+	params->roammode = A_ROAM_R4;
       else if (strcmp(buf, "6") == 0 || strcmp(buf, "RECOMv1") == 0)
 	params->roammode = A_RECOM_R1;
       else if (strcmp(buf, "7") == 0 || strcmp(buf, "RECOMv2") == 0)
@@ -2519,6 +2556,8 @@ parameters_t *auto_params(FILE * fp, int autof)
     else if (params->roammode == A_ROAM_R2)
       auto_params_roam_pre2(fp, params);
     else if (params->roammode == A_ROAM_R3)
+      auto_params_roam_pre3(fp, params);
+    else if (params->roammode == A_ROAM_R4)
       auto_params_roam_pre3(fp, params);
     else
       auto_params_roam_pre1(fp, params);
@@ -3591,6 +3630,8 @@ parameters_t *auto_params(FILE * fp, int autof)
       auto_params_roam_post5(fp, params);
     if (params->roammode == A_ROAM_R3)   /* A_ROAM_R3 with alternative robust parameterisations */
       auto_params_roam_post5(fp, params);
+    if (params->roammode == A_ROAM_R4)   /* A_ROAM_R4 with TPXO tide */
+      auto_params_roam_post6(fp, params);
     if (params->roammode == A_RECOM_R1)   /* RECOM */
       auto_params_recom_post1(fp, params);
     if (params->roammode == A_RECOM_R2)   /* RECOM + ROBUST */
@@ -4725,7 +4766,7 @@ int read_dhw(parameters_t *params, FILE *fp)
       ret = 3;
       params->dhwf = DHW_RT;
     }
-    if (n == 2) {
+    if (n >= 2) {
       strcpy(params->dhw, fields[0]);
       strcpy(params->dhdf, fields[1]);
       sprintf(keyword, "DHW_DT");
@@ -4734,6 +4775,15 @@ int read_dhw(parameters_t *params, FILE *fp)
       else
 	params->dhw_dt = 86400.0;
       params->dhwf = DHW_NOAA;
+      if (n == 3) {
+	if (strcmp(fields[2], "mean") == 0 || strcmp(fields[2], "MEAN") == 0) 
+	  params->dhwf |= DHW_MEAN;
+	else {
+	  params->dhwf |= DHW_SNAP;
+	  params->dhwh = atof(fields[2]);
+	}
+      } else
+	params->dhwf |= DHW_INT;
       ret = 3;
     }
     return(ret);
@@ -5567,6 +5617,9 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     if (open->adjust_flux)
       fprintf(op, "BOUNDARY%1.1d.ADJUST_FLUX   %s\n", n,
 	      otime(open->adjust_flux, tag));      
+    if (open->adjust_flux_s)
+      fprintf(op, "BOUNDARY%1.1d.ADJUST_TIDE   %s\n", n,
+	      otime(open->adjust_flux_s, tag));      
     if (open->relax_zone_nor)
       fprintf(op, "BOUNDARY%1.1d.RELAX_ZONE_NOR %d\n", n, open->relax_zone_nor);
     if (open->relax_zone_tan)
@@ -6537,6 +6590,13 @@ void read_swr(parameters_t *params, FILE *fp, int mode)
     strcpy(params->swr_babs, "1.0");
     params->ntrS++;
   }
+  sprintf(keyword, "SWR_REGIONS");
+  if (prm_read_char(fp, keyword, params->swr_regions)) {
+    sprintf(keyword, "SWREG_DT");
+    prm_get_time_in_secs(fp, keyword, &params->swreg_dt);
+    prm_read_char(fp, "SWR_DATA", params->swr_data);
+    params->ntrS+=4;
+  }
 }
 
 /* END read_swr()                                                    */
@@ -6850,6 +6910,35 @@ void read_debug(parameters_t *params, FILE *fp)
 
 
 /*-------------------------------------------------------------------*/
+/* Routine to read profile generation                                */
+/*-------------------------------------------------------------------*/
+void read_profile(parameters_t *params, FILE *fp)
+{
+  char buf[MAXSTRLEN];
+  char keyword[MAXSTRLEN];
+  int n, m;
+
+  sprintf(keyword, "PROFILE");
+  if (prm_read_char(fp, keyword, buf)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    n = parseline(buf, fields, MAXNUMARGS);
+    if (n == 1) {
+      strcpy(params->nprof, fields[0]);
+      params->ntr += 1;
+    }
+    if (n == 2) {
+      strcpy(params->nprof, fields[0]);
+      strcpy(params->nprof2d, fields[1]);
+      params->ntr += 1;
+    }
+  }
+}
+
+/* END read_profile()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to read decorrelation diagnostic                          */
 /*-------------------------------------------------------------------*/
 void read_decorr(parameters_t *params, FILE *fp, int mode)
@@ -7040,17 +7129,17 @@ void create_ghrsst_list(parameters_t *params)
 {
   FILE *ap;
   char infile[MAXSTRLEN], path[MAXSTRLEN], date[MAXSTRLEN], fname[MAXSTRLEN];
-  char fname2[MAXSTRLEN], daystr[MAXSTRLEN];
+  char fname2[MAXSTRLEN], daystr[MAXSTRLEN], infile2[MAXSTRLEN], buf[MAXSTRLEN];
   double start;            /* Model start time                       */
   double stop;             /* Model stop time                        */
   int nfiles, nf = 0;      /* Number of SST files                    */
   int fid;                 /* netcdf file handle                     */
   int ncerr;               /* netcdf error code                      */
-  int i, n;                /* Counter                                */
+  int i, n, nc;            /* Counter                                */
   int product;             /* Number of days in composite            */
   int ys, mos, ds, hs, mis, ss;  /* Start year, month, day           */
   int ye, moe, de, he, mie, se;  /* End year, month, day             */
-  int y, m, d, day, lp;          /* Year, month, day                 */
+  int y, m, d, day, lp, py;      /* Year, month, day                 */
   int is_mnc;
   double ep;                     /* Epoch                            */
   int tday;                      /* Transition day                   */
@@ -7062,6 +7151,23 @@ void create_ghrsst_list(parameters_t *params)
   int lyr[2] = {365, 366};
   char files[MAXNUMTSFILES][MAXSTRLEN];
   char *fields[MAXSTRLEN * MAXNUMARGS];
+  char vars[MAXSTRLEN];
+  int noday = 0;
+  int yrmnc = 0;
+  int intype;
+
+  /* Get any options                                                 */
+  sprintf(vars, "%c", '\0');
+  nfiles = parseline(params->ghrsst_opt, fields, MAXNUMARGS);
+  for (n = 0; n < nfiles; n++) {
+    strcpy(path, fields[n]);
+    if (strcmp(path, "NODAY") == 0) noday = 1;
+    if (strcmp(path, "YRMNC") == 0) yrmnc = 1;
+    if (strcmp(path, "VARIABLES") == 0) {
+      strcpy(vars, fields[n+1]);
+      n++;
+    }
+  }
 
   /* Get the input arguments                                         */
   nfiles = parseline(params->ghrsst_path, fields, MAXNUMARGS);
@@ -7072,22 +7178,43 @@ void create_ghrsst_list(parameters_t *params)
     strcpy(path, fields[n]);
     m = strlen(path);
     if (path[m-4] == '.' && path[m-3] == 'm' &&
-	path[m-2] == 'n' && path[m-1] == 'c')
+	path[m-2] == 'n' && path[m-1] == 'c') {
       is_mnc += 1;
+      intype = 1;
+    } else { /* File may contain variable substitution */
+      for (i = 0; i < m-6; i++) {
+	if (path[i] == '.' && path[i+1] == 'm' &&
+	    path[i+2] == 'n' && path[i+3] == 'c' &&
+	    path[i+4] == '(' && path[m-1] == ')') {
+	  is_mnc += 1;
+	  intype = 2;
+	}
+      }
+    }
   }
   is_mnc = (is_mnc == nfiles) ? 1 : 0;
 
   if (is_mnc) {
     for (n = 0; n < nfiles; n++) {
       strcpy(path, fields[n]);
-      if (n == nfiles-1)
-	sprintf(fname, "%s(ghrsst=analysed_sst)", fields[n]);
-      else
-	sprintf(fname, "%s(ghrsst=analysed_sst) ", fields[n]);
-      if ((ap = fopen(path, "r")) == NULL)
-	hd_warn("Can't open GHRSST file '%s'\n", path);
-      else {
-	fclose(ap);
+      if (is_mnc == 1) {
+	if (intype == 1) {    /* Assume it is a GHRSST file          */
+	  if (n == nfiles-1)
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error)", fields[n]);
+	  else
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error) ", fields[n]);
+	  if ((ap = fopen(path, "r")) == NULL)
+	    hd_warn("Can't open GHRSST file '%s'\n", path);
+	  else {
+	    fclose(ap);
+	  }
+	} else if (intype == 2) {
+	  /* Filename includes variable substitution                 */
+	  if (n == 0) 
+	    sprintf(fname, fields[n]);
+	  else
+	    sprintf(fname, "%s%s", fname, fields[n]);
+	}
       }
     }
     params->ghrsst = 2;
@@ -7104,6 +7231,11 @@ void create_ghrsst_list(parameters_t *params)
       strcpy(fname2, fields[2]);
       tday = atoi(fields[3]);
       mode = 2;
+    } else if (nfiles == 3) {
+      strcpy(path, fields[0]);
+      strcpy(fname, fields[1]);
+      strcpy(fname2, fields[2]);
+      mode = 3;
     } else {
       hd_warn("create_ghrsst_list: GHRSST input format = <path> <filename>\n");
       return;
@@ -7111,7 +7243,6 @@ void create_ghrsst_list(parameters_t *params)
   }
 
   /* Open the file list                                              */
-  ap = fopen("ghrsst_list.mnc", "w");
   params->ghrsst = 1;
 
   /* Get start and end year, month, day                              */
@@ -7123,27 +7254,55 @@ void create_ghrsst_list(parameters_t *params)
   tm_to_julsecs(start, &ys, &mos, &ds, &hs, &mis, &ss);
   stop = stop / 86400.0 + ep;
   tm_to_julsecs(stop, &ye, &moe, &de, &he, &mie, &se);
+  y = py = ys; m = mos; d = ds; n = 0;
 
   /* Print the file header                                           */
-  fprintf(ap, "multi-netcdf-version 1.0\n\n");
-  fprintf(ap, "nfiles %d\n", nfiles);
+  if (yrmnc) {
+    sprintf(buf, "ghrsst_list-%d.mnc", y);
+    strcpy(files[yrmnc], buf);
+  } else
+    sprintf(buf, "ghrsst_list.mnc");
+  ap = fopen(buf, "w");
+  fprintf(ap, "multi-netcdf-version 1.0\n");
+  fprintf(ap, "nfiles %d\n\n", nfiles);
 
   /* Make a list of files for each day.                              */
   /* Print the list of files                                         */
-  y = ys; m = mos; d = ds; n = 0;
   for (i = 0; i < nfiles; i++) {
     day = yrday(y, m, d);
+    /* Separate .mnc files for each year if required                 */
+    if (yrmnc && y != py) {
+      py = y;
+      rewind(ap);
+      fprintf(ap, "multi-netcdf-version 1.0\n");
+      fprintf(ap, "nfiles %d\n", n);
+      fclose(ap);
+      sprintf(buf, "ghrsst_list-%d.mnc", y);
+      ap = fopen(buf, "w");
+      fprintf(ap, "multi-netcdf-version 1.0\n");
+      fprintf(ap, "nfiles %d\n\n", nfiles);
+      yrmnc++;
+      strcpy(files[yrmnc], buf);
+      n = 0;
+    }
     if (day < 10)
       sprintf(daystr, "00%d", day);
     else if (day < 100)
       sprintf(daystr, "0%d", day);
     else
       sprintf(daystr, "%d", day);
-    if (path[strlen(path) - 1] == '/')
-      sprintf(infile, "%s%d/%s", path, y, daystr);
-    else
-      sprintf(infile, "%s/%d/%s", path, y, daystr);
-    
+    if (!noday) {
+      if (path[strlen(path) - 1] == '/')
+	sprintf(infile, "%s%d/%s", path, y, daystr);
+      else
+	sprintf(infile, "%s/%d/%s", path, y, daystr);
+    } else {
+      if (path[strlen(path) - 1] == '/')
+	sprintf(infile, "%s%d", path, y);
+      else
+	sprintf(infile, "%s/%d/", path, y);
+    }
+
     sprintf(date, "%d", y);
     if (m < 10)
       sprintf(date, "%s0%d", date, m);
@@ -7167,7 +7326,24 @@ void create_ghrsst_list(parameters_t *params)
     }
     if (mode == 1)
       sprintf(infile, "%s/%s%s", infile, date, fname);
-    else {
+    else if (mode == 3) {
+      /*
+      timeseries_t *ts ;
+      ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+      */
+      strcpy(infile2, infile);
+      sprintf(infile, "%s/%s%s", infile, date, fname);
+      if ((ncerr = nc_open(infile, NC_NOWRITE, &fid)) != NC_NOERR) {
+	printf("file%d %s not found\n",n, infile);
+	sprintf(infile2, "%s/%s%s", infile2, date, fname2);
+	if ((ncerr = nc_open(infile2, NC_NOWRITE, &fid)) != NC_NOERR) {
+	  continue;
+	  /*hd_quit("Can't open file%d %s\n", n, infile2);*/
+	}
+	strcpy(infile, infile2);
+      }
+      nc_close(fid);
+    } else {
       if (day <= tday)
 	sprintf(infile, "%s/%s%s", infile, date, fname);
       else
@@ -7181,10 +7357,8 @@ void create_ghrsst_list(parameters_t *params)
       hd_warn("  File = %s\n", infile);
     } else {
     */
-      fprintf(ap, "file%d.filename %s\n", n, infile);
-      nc_close(fid);
-      n++;
-
+    fprintf(ap, "file%d.filename %s\n", n, infile);
+    n++;
   }
   if(!n) {
     hd_quit("No GHRSST SST files found from %d/%d/%d to %d/%d/%d\n",
@@ -7195,6 +7369,26 @@ void create_ghrsst_list(parameters_t *params)
     fprintf(ap, "nfiles %d\n", n);
   }
   fclose(ap);
+
+  /* Write the .mnc files to params->ghrsst_path                     */
+  if (yrmnc) {
+    if (strlen(vars))
+      sprintf(params->ghrsst_path, "%s%s", files[1], vars);
+    else
+      sprintf(params->ghrsst_path, "%s(ghrsst=analysed_sst)(ghrsst_error=analysis_error)", files[1]);
+    for (n = 2; n <= yrmnc; n++) {
+      if (strlen(vars))
+	sprintf(params->ghrsst_path, "%s %s%s", params->ghrsst_path, files[n], vars);
+      else
+	sprintf(params->ghrsst_path, "%s %s(ghrsst=analysed_sst)(ghrsst_error=analysis_error)", 
+	       params->ghrsst_path, files[n]);
+    }
+  } else {
+    if (strlen(vars))
+      sprintf(params->ghrsst_path, "ghrsst_list.mnc%s", vars);
+    else
+      strcpy(params->ghrsst_path, "ghrsst_list.mnc(ghrsst=analysed_sst)(ghrsst_error=analysis_error)");
+  }
 }
 
 /* END create_ghrsst_list()                                          */
@@ -7577,22 +7771,50 @@ void check_TS_relax(parameters_t *params, FILE *fp)
 	    if (prm_read_char(fp, keyword, buf) > 0) {
 	      int nf = parseline(buf, fields, MAXNUMARGS);
 	      if (strcmp(name, "salt") == 0) {
+		/*
 		if (nf <= 2) {
 		  params->rsalt = RLX_FILE;
 		  params->atr += 1;
 		  params->ntr += 1;
-		} else { /*Adaptive relaxation */
+		*/
+		if (strcmp(fields[0], "obc") == 0) {
+		  params->rsalt = RLX_OBC;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (strcmp(fields[0], "region") == 0) {
+		  params->rsalt = RLX_REG;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (endswith(fields[0], ".nc")) {
+		  params->rsalt = RLX_FILE;
+		  params->atr += 1;
+		  params->ntr += 1;
+		} else { /* Adaptive relaxation */
 		  params->rsalt = RLX_ADPT;
 		  params->atr += 2;
 		  params->ntr += 2;
 		}
 	      }
 	      if (strcmp(name, "temp") == 0) {
+		/*
 		if (nf <= 2) {
 		  params->rtemp = RLX_FILE;
 		  params->atr += 1;
 		  params->ntr += 1;
-		} else { /*Adaptive relaxation */
+		*/
+		if (strcmp(fields[0], "obc") == 0) {
+		  params->rtemp = RLX_OBC;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (strcmp(fields[0], "region") == 0) {
+		  params->rtemp = RLX_REG;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (endswith(fields[0], ".nc")) {
+		  params->rtemp = RLX_FILE;
+		  params->atr += 1;
+		  params->ntr += 1;
+		} else { /* Adaptive relaxation */
 		  params->rtemp = RLX_ADPT;
 		  params->atr += 2;
 		  params->ntr += 2;

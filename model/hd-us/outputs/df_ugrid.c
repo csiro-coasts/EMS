@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_ugrid.c 6326 2019-09-13 04:36:59Z her127 $
+ *  $Id: df_ugrid.c 6403 2019-11-21 23:01:37Z her127 $
  *
  */
 
@@ -45,7 +45,7 @@ void pack_ugrid_ri2a(int size, int np, int **var, int **pack, int oset);
 
 void check_window_map_us(geometry_t **window, char *name);
 
-#define UGRID_ALL_VARS "u1av uav vav wind1 wtop eta patm u1 u v w dens dens_0 Kz Vz Cd u1kh topz "
+#define UGRID_ALL_VARS "u1av u2av uav vav wind1 wtop eta patm u1 u2 u v w dens dens_0 Kz Vz Cd u1kh topz "
 
 double percentiles1[] = {0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
 			0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85,

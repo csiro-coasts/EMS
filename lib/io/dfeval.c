@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfeval.c 5833 2018-06-27 00:21:35Z riz008 $
+ *  $Id: dfeval.c 6237 2019-05-29 03:32:55Z her127 $
  */
 
 #include <stdio.h>
@@ -30,6 +30,7 @@ static double* get_dist_from_hash(hash_table_t** ht, int *coordids,
 				  df_variable_t* vars);
 
 static double find_close(datafile_t *df, df_variable_t *v, int r, int *is);
+static double find_close_bathy(datafile_t *df, df_variable_t *v, int r, int *is);
 
 /** Evaluate a zero dimension datafile variable for
   * a particular record value.
@@ -761,7 +762,7 @@ double interp_linear(datafile_t *df, df_variable_t *v, int record,
     int coffsets[MAXNUMDIMS * MAXNUMDIMS - 1][MAXNUMDIMS];
     int dsize[MAXNUMDIMS];
     int ncorners = 1 << nd;
-    
+
 #if 0
     fprintf(stderr, "Coords =");
     for (i = 0; i < v->csystem->nc; ++i)
@@ -773,8 +774,8 @@ double interp_linear(datafile_t *df, df_variable_t *v, int record,
       fprintf(stderr, " %g", indices[i]);
     fprintf(stderr, "\n");
 #endif
-    
-    
+
+
     /* Compute the fraction indices and integer indicies. Trim at
        boundaries if necessary. */
     for (i = 0; i < nd; ++i) {
@@ -824,9 +825,110 @@ double interp_linear(datafile_t *df, df_variable_t *v, int record,
         val += term * df_get_data_value(df, v, record, corner);
     }
   }
-  
+
   return (val);
 }
+
+
+/*
+MH: Routine to interpolate grid spatial data using a simple bilinear-like
+interpolation scheme for variables with a range 0-360.
+Values separated by more than 180 (e.g. across the transition 0/360), are 
+wrapped (i.e. 360 is added / subtracted to one value).
+*/
+double interp_linear_degrees(datafile_t *df, df_variable_t *v, int record,
+			     double coords[])
+{
+  int i, j;
+  double val = 0.0;
+  double indices[MAXNUMDIMS];
+  int nd = df_get_num_dims(df, v);
+  int *dimids = df_get_dim_ids(df, v);
+  double pi2 = 360.0;
+ 
+  if (df_ctoi(df, v, coords, indices) == nd) {
+    double findices[MAXNUMDIMS];
+    int iindices[MAXNUMDIMS];
+    int corner[MAXNUMDIMS];
+    int coffsets[MAXNUMDIMS * MAXNUMDIMS - 1][MAXNUMDIMS];
+    int dsize[MAXNUMDIMS];
+    int ncorners = 1 << nd;
+    double dval[ncorners];
+    double term[ncorners];
+
+#if 0
+    fprintf(stderr, "Coords =");
+    for (i = 0; i < v->csystem->nc; ++i)
+      fprintf(stderr, " %g", coords[i]);
+    fprintf(stderr, "\n");
+    
+    fprintf(stderr, "Indices =");
+    for (i = 0; i < nd; ++i)
+      fprintf(stderr, " %g", indices[i]);
+    fprintf(stderr, "\n");
+#endif
+
+
+    /* Compute the fraction indices and integer indicies. Trim at
+       boundaries if necessary. */
+    for (i = 0; i < nd; ++i) {
+      dsize[i] = df->dimensions[dimids[i]].size - 1;
+      findices[i] = indices[i];
+      if (findices[i] < 0)
+        findices[i] = 0.0;
+      if (findices[i] > dsize[i])
+        findices[i] = (double)dsize[i];
+      iindices[i] = (int)floor(findices[i]);
+      findices[i] -= iindices[i];
+    }
+    
+    /* Create the corner indice offsets (0 or 1) */
+    for (i = 0; i < ncorners; ++i)
+      for (j = 0; j < nd; ++j)
+        coffsets[i][j] = (i >> j) & 0x01;
+
+    /* Now step though all of the corners and perform the linear
+       interpolation */
+    for (j = 0; j < ncorners; ++j) {
+      term[j] = 1.0;
+      for (i = 0; i < nd; ++i) {
+        corner[i] = iindices[i] + coffsets[j][i];
+        if (corner[i] > dsize[i])
+          corner[i] = dsize[i];
+        if (coffsets[j][i])
+          term[j] *= findices[i];
+        else
+          term[j] *= (1 - findices[i]);
+      }
+      
+#if 0
+      fprintf(stderr, "Corner(%d) =", j);
+      for (i = 0; i < nd; ++i)
+        fprintf(stderr, " %d", corner[i]);
+      fprintf(stderr, "\n");
+#endif
+      
+      /* Round term if very close to a corner. */
+      if (fabs(term[j]) < 1e-5)
+        term[j] = 0.0;
+      else if (fabs(1.0 - term[j]) < 1e-5)
+        term[j] = 1.0;
+    }
+    for (j = 0; j < ncorners; ++j) {
+      dval[j] = df_get_data_value(df, v, record, corner);
+      if (j > 0 && dval[0] - dval[j] > 180.0) dval[j] += pi2;
+      if (j > 0 && dval[0] - dval[j] < -180.0) dval[j] -= pi2;
+    } 
+    for (j = 0; j < ncorners; ++j) {
+      if (term[j] > 0.0)
+        val += term[j] * dval[j];
+    }
+    val = (val < 0.0) ? val + pi2 : val;
+    val = fmod(val, pi2);
+  }
+  return (val);
+}
+
 
 #define CF  1  /* Cloud flag    */
 #define LF  2  /* Land flag     */
@@ -1059,6 +1161,107 @@ double interp_linear_filled(datafile_t *df, df_variable_t *v, int record,
       }
     }
   }
+  return (val);
+}
+
+#define LANDCELL 99
+/*
+MH: Routine to interpolate grid spatial data using a simple bilinear-like
+interpolation scheme. Fills missing or land (99) values with the nearest 
+valid value.
+*/
+double interp_linear_bathy(datafile_t *df, df_variable_t *v, int record,
+			    double coords[])
+{
+  int i, j, ii=0;
+  double val = (v->type & VT_BATHY) ? NaN : 0.0;
+  double dval;
+  double indices[MAXNUMDIMS];
+  int nd = df_get_num_dims(df, v);
+  int *dimids = df_get_dim_ids(df, v);
+
+  if (df_ctoi(df, v, coords, indices) == nd) {
+    double findices[MAXNUMDIMS];
+    int iindices[MAXNUMDIMS];
+    int corner[MAXNUMDIMS];
+    int coffsets[MAXNUMDIMS * MAXNUMDIMS - 1][MAXNUMDIMS];
+    int dsize[MAXNUMDIMS];
+    int ncorners = 1 << nd;
+    double term[ncorners];
+    double dval[ncorners];
+    int mask[ncorners];
+    val = 0.0;
+#if 0
+    fprintf(stderr, "Coords =");
+    for (i = 0; i < v->csystem->nc; ++i)
+      fprintf(stderr, " %g", coords[i]);
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "Indices =");
+    for (i = 0; i < nd; ++i)
+      fprintf(stderr, " %g", indices[i]);
+    fprintf(stderr, "\n");
+#endif
+
+
+    /* Compute the fraction indices and integer indicies. Trim at
+       boundaries if necessary. */
+    for (i = 0; i < nd; ++i) {
+      dsize[i] = df->dimensions[dimids[i]].size - 1;
+      findices[i] = indices[i];
+      if (findices[i] < 0)
+        findices[i] = 0.0;
+      if (findices[i] > dsize[i])
+        findices[i] = (double)dsize[i];
+      iindices[i] = (int)floor(findices[i]);
+      findices[i] -= iindices[i];
+    }
+
+    /* Create the corner indice offsets (0 or 1) */
+    for (i = 0; i < ncorners; ++i)
+      for (j = 0; j < nd; ++j)
+        coffsets[i][j] = (i >> j) & 0x01;
+
+    /* Now step though all of the corners and perform the linear
+       interpolation */
+    for (j = 0; j < ncorners; ++j) {
+      mask[j] = 0;
+      term[j] = 1.0;
+      for (i = 0; i < nd; ++i) {
+        corner[i] = iindices[i] + coffsets[j][i];
+        if (corner[i] > dsize[i])
+          corner[i] = dsize[i];
+        if (coffsets[j][i])
+          term[j] *= findices[i];
+        else
+          term[j] *= (1 - findices[i]);
+      }
+      dval[j] = df_get_data_value(df, v, record, corner);
+      if (isnan(dval[j]) || dval[j] == LANDCELL) {
+	mask[j] |= MV;
+	dval[j] = find_close_bathy(df, v, record, corner);
+      }
+
+#if 0
+      fprintf(stderr, "Corner(%d) =", j);
+      for (i = 0; i < nd; ++i)
+        fprintf(stderr, " %d (%d)", corner[i], mask[i]);
+      fprintf(stderr, "\n");
+#endif
+    }
+
+    for (j = 0; j < ncorners; ++j) {
+      /* Round term if very close to a corner. */
+      if (fabs(term[j]) < 1e-5)
+        term[j] = 0.0;
+      else if (fabs(1.0 - term[j]) < 1e-5)
+        term[j] = 1.0;
+
+      if (term[j] > 0.0) {
+        val += term[j] * dval[j];
+      }
+    }
+  }
   
   return (val);
 }
@@ -1153,6 +1356,120 @@ static double find_close(datafile_t *df, df_variable_t *v, int r, int *is)
 	    is[2] = i;
 	  }
           if ((val = df_get_data_value(df, v, r, is)) != v->missing) {
+	    double  dist = (double)((ic - i) * (ic - i) + (jc - j) * (jc - j));
+            if (dist < mindist) {
+              ci = i;
+              cj = j;
+              mindist = dist;
+	      nval = val;
+            }
+          }
+        }
+      }
+    }
+    ++level;
+  }
+  if (v->nd == 2) {
+    is[0] = cj;
+    is[1] = ci;
+  } else if (v->nd == 3) {
+    is[0] = kc;
+    is[1] = cj;
+    is[2] = ci;
+  }
+  return(nval);
+}
+
+/* Locate the closest cell to is[1], is[0] that contains valid data.
+ * This is not very efficient but so what, we don't run this
+ * program very often.
+ */
+static double find_close_bathy(datafile_t *df, df_variable_t *v, int r, int *is)
+                 
+{
+  int i, j, ci, cj;
+  double mindist;
+  int level;
+  int xlim, ylim;
+  int ic, jc, kc;
+  double val, nval;
+
+  /* Get the indexes */
+  if (v->nd == 2) {
+    kc = 0;
+    jc = is[0];
+    ic = is[1];
+  } else if (v->nd == 3) {
+    kc = is[0];
+    jc = is[1];
+    ic = is[2];
+  } else {
+    quit("Landfill only possible for 2D or 3D datafiles.\n");
+  }
+
+  /* Get the horizontal grid size */
+  for (i = 0; i < v->nd; i++) {
+    df_variable_t *dv = &df->variables[v->dimids[i]];
+    if (dv->type & VT_LONGITUDE) xlim = df->dimensions[v->dimids[i]].size;
+    if (dv->type & VT_LATITUDE) ylim = df->dimensions[v->dimids[i]].size;
+  }
+
+  mindist = 1e38;
+  level = 1;
+  ci = -1;
+  cj = -1;
+  while (ci < 0) {
+    int finishedLevel = 0;
+    int edge = 0;
+
+    /* Scanned the whole grid, must be solid every where. */
+    if (level > xlim && level > ylim)
+      return(v->fillvalue);
+
+    while (!finishedLevel) {
+
+      int jfrom = jc - level;
+      int jto = jc + level;
+      int ifrom = ic - level;
+      int ito = ic + level;
+
+      switch (edge) {
+      case 0:                  /* Left edge */
+        ito = ifrom;
+        break;
+
+      case 1:                  /* Bottom edge */
+        ++ifrom;
+        jto = jfrom;
+        break;
+
+      case 2:                  /* Right edge */
+        ifrom = ito;
+        ++jfrom;
+        break;
+
+      case 3:                  /* Top edge */
+        ++ifrom;
+        jfrom = jto;
+        finishedLevel = 1;
+        break;
+      }
+      ++edge;
+
+      for (j = jfrom; j <= jto; ++j) {
+        for (i = ifrom; i <= ito; ++i) {
+          if ((i < 0) || (j < 0) || (i >= xlim) || (j >= ylim))
+            continue;
+	  if (v->nd == 2) {
+	    is[0] = j;
+	    is[1] = i;
+	  } else if (v->nd == 3) {
+	    is[0] = kc;
+	    is[1] = j;
+	    is[2] = i;
+	  }
+	  val = df_get_data_value(df, v, r, is);
+          if (!isnan(val) && val != LANDCELL) {
 	    double  dist = (double)((ic - i) * (ic - i) + (jc - j) * (jc - j));
             if (dist < mindist) {
               ci = i;

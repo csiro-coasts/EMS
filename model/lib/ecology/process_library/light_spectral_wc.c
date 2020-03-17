@@ -11,21 +11,27 @@
  *  - scalar irradiance and absorption by each model autotroph in precalc (output time - ECOLOGY_DT).
  *  - simulated fluoresecence and turbidity in postcalc (output time)
  *  - the component of light returned to the surface from each layer for calculating simulated 
- *    satelitte products in postcalc (output time).
+ *    satellite products in postcalc (output time).
  *
- *  WARNING: variables last calculated in precalc (PAR etc.) are output at the output time but are the value from 
- *                 output time - ECOLOGY_DT from calculation at 
- *            variables calculated in postcalc are at the correct time.
+ *  CAVEATS: 1. variables last calculated in precalc (PAR etc.) are output at the output time but are the value from 
+ *              output time - ECOLOGY_DT from calculation at variables calculated in postcalc are at the correct time.
+ *           2. PAR_z is the downwelling irradiance on the z-grid, but when it is written to file, its dimension is
+ *              given as cell z_centre. Infact its location is at the interface above.  
  *
- *  Options: light_spectral_wc(G|H|C,G|H)
+ *  Options: light_spectral_wc(G|H|C|M|T,G|H,X|M)
  *  
  *  First argument:  G - GBR waters, B2p0 configuration.
- *                   H - GBR waters, B3p0 configuration.
+ *                   H - GBR waters, B3p0 configuration (uses cdom_gbr tracer if available).
  *                   C - Chilean waters.
+ *                   M - Macquarie Harbour.
+ *                   T - Tasmanian shelf water (uses pale, amber and dark CDOM tracers).
  * 
  *  Second argument: G - Gaussian approx. of chl-a and non chl-a specific absorption.
  *                   H - HPLC-determined of pigment-specific absorption.
  *  
+ *  Third argument:  X - no Moonlight calculation.
+ *                   M - Moonlight from ROLO model.
+ * 
  *  To output remote-sensing relectance at wavelenth XXX requires a 2D tracer named: R_XXX 
  *
  *  Optical model described in:
@@ -41,7 +47,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_wc.c 6036 2018-11-28 00:24:02Z bai155 $
+ *  $Id: light_spectral_wc.c 6383 2019-11-13 06:03:41Z bai155 $
  *
  */
 
@@ -63,6 +69,7 @@ typedef struct {
 
   char domain;
   char pig;
+  char moon;
 
   /*
    * parameters
@@ -122,6 +129,19 @@ typedef struct {
   int Mud_i;
   int Dust_i;
 
+  int cdom_pale_i;
+  int cdom_amber_i;
+  int cdom_dark_i;
+  int cdom_gbr_i;
+
+  double Scdom_pale;
+  double Scdom_amber;
+  double Scdom_dark;
+
+  double a440cdom_pale;
+  double a440cdom_amber;
+  double a440cdom_dark;
+
   int MPB_N_i;
   int MPB_Chl_i;
   int MPB_I_i;
@@ -153,6 +173,9 @@ typedef struct {
   int w678;
   int wPAR_top;
 
+  int w709;
+  int w665;
+
   int Fluorescence_i;
   int w470; 
 
@@ -173,6 +196,11 @@ typedef struct {
    */
   int cv_lighttop_s_i;
   int cv_zenith_i;
+
+  int cv_lunar_zenith_i;
+  int cv_lunar_phase_i;
+  int cv_moonlight_i;
+  int cv_moon_fulldisk_i;
 
   int z_secchi_i;
   int E_secchi_i;
@@ -246,9 +274,22 @@ void light_spectral_wc_init(eprocess* p)
     ws->FineSed_i = e->find_index(e->tracers, "FineSed", e);
     ws->Dust_i = e->find_index(e->tracers, "Dust", e);
     eco_write_setup(e,"\nUsing BGC3p0 mineral-based optical properties \n");
+    ws->cdom_gbr_i = e->try_index(e->tracers, "cdom_gbr", e);
+    if (ws->cdom_gbr_i > -1)
+      eco_write_setup(e,"\nUsing cdom_gbr river tracer to determine CDOM absorption \n");
     break;
   case 'C' :
     eco_write_setup(e,"\nUsing Chilean optical properties \n");
+    break;
+  case 'T' :
+    eco_write_setup(e,"\nUsing Tasmanian coastal waters optical properties: requires cdom_pale, cdom_amber, cdom_dark tracers \n");
+    ws->cdom_pale_i = e->find_index(e->tracers, "cdom_pale", e);
+    ws->cdom_amber_i = e->find_index(e->tracers, "cdom_amber", e);
+    ws->cdom_dark_i = e->find_index(e->tracers, "cdom_dark", e);
+    break;
+  case 'M' :
+    eco_write_setup(e,"\nUsing Macquarie Harbour optical properties: requires cdom_dark \n");
+    ws->cdom_dark_i = e->find_index(e->tracers, "cdom_dark", e);
     break;
   default: 
     e->quitfn("ecology: error: \"%s\": \"%s(%s)\": unexpected domain for light model.", e->processfname, p->name, prm);
@@ -259,6 +300,13 @@ void light_spectral_wc_init(eprocess* p)
     ws->pig = prm[0];
   }else{
     ws->pig = 'G';   // default is Guassian.
+  }
+
+  if (p->prms->n==3){
+    prm = p->prms->se[2]->s;
+    ws->moon = prm[0];
+  }else{
+    ws->moon = 'X';   // default is no moolight.
   }
   
   p->workspace = ws;
@@ -401,7 +449,7 @@ void light_spectral_wc_init(eprocess* p)
     eco_write_setup(e,"Code default of clear water backscatter bbw_ratio = %e \n",ws->bbw_ratio);
   }
 
-  if (ws->domain == 'H'|ws->domain == 'C')
+  if (ws->domain == 'H'||ws->domain == 'C'||ws->domain == 'M'||ws->domain == 'T')
     eco_write_setup(e,"Spectrally-resolved NAP backscattering ratio used. \n");
   else{
     ws->bbnap_ratio = try_parameter_value(e, "bbnap_ratio");
@@ -411,11 +459,59 @@ void light_spectral_wc_init(eprocess* p)
     }
   }
 
-  ws->S_CDOM = try_parameter_value(e, "S_CDOM");
-  if (isnan(ws->S_CDOM)){
-    ws->S_CDOM = 0.012;  // Blondeau-Patissier 2009 JGR: 114: C05003.
-    eco_write_setup(e,"Code default of S_CDOM = %e \n",ws->S_CDOM);
+  if (ws->domain == 'H'||ws->domain == 'C'||ws->domain == 'G'){
+    ws->S_CDOM = try_parameter_value(e, "S_CDOM");
+    if (isnan(ws->S_CDOM)){
+      ws->S_CDOM = 0.012;  // Blondeau-Patissier 2009 JGR: 114: C05003.
+      eco_write_setup(e,"Code default of S_CDOM = %e \n",ws->S_CDOM);
+    }
   }
+  if (ws->domain == 'T'){
+    ws->Scdom_pale = try_parameter_value(e, "Scdom_pale");
+    if (isnan(ws->Scdom_pale)){
+      ws->Scdom_pale = 0.010;
+      eco_write_setup(e,"Code default of Scdom_pale = %e \n",ws->Scdom_pale);
+    }
+    ws->Scdom_amber = try_parameter_value(e, "Scdom_amber");
+    if (isnan(ws->Scdom_amber)){
+      ws->Scdom_amber = 0.0125;
+      eco_write_setup(e,"Code default of Scdom_amber = %e \n",ws->Scdom_amber);
+    }
+    ws->Scdom_dark = try_parameter_value(e, "Scdom_dark");
+    if (isnan(ws->Scdom_dark)){
+      ws->Scdom_dark = 0.015;
+      eco_write_setup(e,"Code default of Scdom_dark = %e \n",ws->Scdom_dark);
+    }
+    ws->a440cdom_pale = try_parameter_value(e, "a440cdom_pale");
+    if (isnan(ws->a440cdom_pale)){
+      ws->a440cdom_pale = 0.1;
+      eco_write_setup(e,"Code default of a440cdom_pale = %e \n",ws->a440cdom_pale);
+    }
+    ws->a440cdom_amber = try_parameter_value(e, "a440cdom_amber");
+    if (isnan(ws->a440cdom_amber)){
+      ws->a440cdom_amber = 1.0;
+      eco_write_setup(e,"Code default of a440cdom_amber = %e \n",ws->a440cdom_amber);
+    }
+    ws->a440cdom_dark = try_parameter_value(e, "a440cdom_dark");
+    if (isnan(ws->a440cdom_dark)){
+      ws->a440cdom_dark = 10.0;
+      eco_write_setup(e,"Code default of a440cdom_dark = %e \n",ws->a440cdom_dark);
+    }
+  }
+  if (ws->domain == 'M'){
+    ws->Scdom_dark = try_parameter_value(e, "Scdom_dark");
+    if (isnan(ws->Scdom_dark)){
+      ws->Scdom_dark = 0.015;
+      eco_write_setup(e,"Code default of Scdom_dark = %e \n",ws->Scdom_dark);
+    }
+    ws->a440cdom_dark = try_parameter_value(e, "a440cdom_dark");
+    if (isnan(ws->a440cdom_dark)){
+      ws->a440cdom_dark = 10.0;
+      eco_write_setup(e,"Code default of a440cdom_dark = %e \n",ws->a440cdom_dark);
+    }
+  }
+
+
   /* Extra parameter for DA perturbations */
 
   ws->SWRscale = try_parameter_value(e, "SWRscale");
@@ -429,6 +525,7 @@ void light_spectral_wc_init(eprocess* p)
     ws->FLtoChl = 1.0;
     eco_write_setup(e,"Code default of FLtoChl = %e \n",ws->FLtoChl);
   }
+
 
   /*
    * Output variables
@@ -446,6 +543,23 @@ void light_spectral_wc_postinit(eprocess* p)
   int large,w;
 
   if (e->pre_build) return;
+
+  if (process_present(e,PT_WC,"recom_extras")){
+    ws->moon = 'M';
+  }
+  
+  if (ws->moon == 'M'){
+    
+    eco_write_setup(e,"\nUsing ROLO moonlight model: Kieffer, H. H and T. C. Stone (2005). \n\n");
+    
+    ws->cv_lunar_zenith_i = find_index_or_add(e->cv_column, "lunar_zenith", e);
+    ws->cv_lunar_phase_i = find_index_or_add(e->cv_column, "lunar_phase", e);
+    ws->cv_moonlight_i = find_index_or_add(e->cv_column, "moonlight", e);
+    ws->cv_moon_fulldisk_i = find_index_or_add(e->cv_column, "moon_fulldisk", e);
+    
+  }else{
+    eco_write_setup(e,"\nNo moonlight forcing \n\n");
+  }
 
   /* 
    * These can only be called when postinit is initiated from the
@@ -538,7 +652,7 @@ void light_spectral_wc_postinit(eprocess* p)
   
   if (ws->pig == 'H'){  // HPLC determined absorption coefficients
 
-    eco_write_setup(e,"\nHPLC determined absorption coefficients in water column \n");
+    eco_write_setup(e,"\nMass-specific absorption coefficients used for microalgae in water column \n");
 
     for (w=0; w<num_waves; w++){
       ws->yC_s[w] = bio->yC_picoplankton[w];
@@ -554,7 +668,20 @@ void light_spectral_wc_postinit(eprocess* p)
       ws->yC_Tricho_rsr[w] = bio->yC_tricho_rsr[w];
       ws->yC_MPB_rsr[w] = bio->yC_microplankton_rsr[w];
       ws->yC_D_rsr[w] = bio->yC_microplankton_rsr[w];
-    }  
+    }
+
+    // Overwrite picophytoplankton pigments with rhodomonas_duplex pigments.
+
+    if (ws->domain == 'M'){
+      eco_write_setup(e,"\nUsing rhodomonas duplex pigment composition for small phytoplankton \n");
+      for (w=0; w<num_waves; w++){
+	ws->yC_s[w] = bio->yC_rhodomonas_duplex[w];
+      }
+      for (w=0; w<e->num_rsr_waves; w++){
+	ws->yC_s_rsr[w] = bio->yC_rhodomonas_duplex_rsr[w];
+      }
+    }
+    
   }else{   // Guassian curve determined absorption coefficients 
     
     eco_write_setup(e,"\nGuassian curve determined absorption coefficients in water column \n");
@@ -640,14 +767,146 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
     for (w=0; w<num_waves; w++) {
       lighttop_s[w] =  bio->landa[w]*light;
     }
+
+    if (ws->moon == 'M'){
+
+      /* Calculate moonlight using USGS ROLO model - see bio_opt.c for spectral coefficients */
+      
+      /* This model accounts for surface variation in albedo (i.e. position of highlands and seas), as 
+	 well as complicated planetary motions and atmospheric effects. */ 
+      
+      /* variables to be obtained from tide calculations - all angles in radians */
+      
+      double *cv_moonlight = col->cv[ws->cv_moonlight_i];
+      double *cv_lunar_zenith = col->cv[ws->cv_lunar_zenith_i];
+      double *cv_lunar_phase = col->cv[ws->cv_lunar_phase_i];
+      double *cv_moon_fulldisk = col->cv[ws->cv_moon_fulldisk_i];
+      
+      // Default values :
+      
+      double moonlat_obs = 0.0; // B from moon_pos
+      double moonlon_obs = 0.0; // L from moon_pos
+      double earth_sun_dist = 1496.0e8; // m 
+      double moon_earth_dist = 384400.0*1000.0;  // m
+      double lunar_angle = 0.0;
+      double sun_angle = 0.0;
+      double moon_phase = 0.0;
+      double lunar_dec = 0.0;
+      
+      ginterface_moonvars(col->model,col->b, &moonlon_obs, &moonlat_obs, &earth_sun_dist,&moon_earth_dist, &lunar_angle, &sun_angle, &moon_phase,&lunar_dec);
+      
+      // Could have an if statement for moon below horizon
+      
+      // printf("moon: lat %e, lon %e, E-S dist %e, M-E dist %e, lunar_angle %e, solar angle %e phase %e \n",moonlat_obs,moonlon_obs,earth_sun_dist,moon_earth_dist,lunar_angle,sun_angle,moon_phase);
+      
+      // Mark to add extra code:
+      
+      double gmo = fabs(moon_phase-M_PI/2.0);
+
+      // Still not given a good number. 
+      
+      double moonlon_sun = 7.0/2.0/M_PI; // pi - (solar hour angle - monlon_obs) excluding librations.
+      // need to be careful with going past pi.
+      
+      // **********************************************************************************************************
+      // wrap this into a function, in matlab syntax:
+      
+      // Ak[w] = moon_full_disk_reflectance(moonlat_obs,moonlon_obs,earth_sun_dist,moon_earth_dist,gmo,moonlon_sun)
+      
+      // gmo = gmo * 180.0/M_PI;
+      double moonlon_obs_deg = moonlon_obs*180.0/M_PI;
+      double moonlat_obs_deg = moonlat_obs*180.0/M_PI;
+      double moonlon_sun_deg = 0.0;
+      
+      double c1 = 0.00034115;
+      double c2 = -0.0013425;
+      double c3 = 0.00095906;
+      double c4 = 0.00066229;
+      double p1 = 4.06054*M_PI/180.0;
+      double p2 = 12.8802*M_PI/180.0;
+      double p3 = -30.5858*M_PI/180.0;
+      double p4 = 16.7498*M_PI/180.0;
+      
+      double Ak[num_waves];
+      
+      double Ak_nonwave = c1*moonlat_obs_deg + c2*moonlon_obs_deg +c3*moonlon_sun_deg*moonlat_obs_deg + c4*moonlon_sun_deg*moonlon_obs_deg;
+      
+      for (w=0; w<num_waves; w++){
+	Ak[w] = bio->a0[w] + bio->a1[w] * gmo + bio->a2[w] * pow(gmo,2.0) + bio->a3[w] * pow(gmo,3.0);
+	Ak[w] += bio->b1[w] * moonlon_sun_deg + bio->b2[w] * pow(moonlon_sun_deg,3.0) + bio->b3[w] * pow(moonlon_sun_deg,5.0);
+	Ak[w] += Ak_nonwave;
+	Ak[w] += bio->d1[w] * exp(-gmo/p1) + bio->d2[w] * exp(-gmo/p2) + bio->d3[w] * cos((gmo-p3)/p4);
+	Ak[w] = exp(Ak[w]);
+      }
+      
+      // *********************************************************************************************************
+      
+      double cloud = ginterface_get_cloud(col->model,col->b);
+
+      /* Mike's albedo function of cloud cover and hour angle */
+ 
+      /* Get the solar elevation */
+      /* hrang *= pi / 180.0; */
+      /* dec*=pi/180.0; */
+      /* lat*=pi/180.0; */
+      // h = sin(moonlat_obs) * sin(lunar_dec) + cos(moonlat_obs) * cos(lunar_dec) * cos(lunar_angle);
+      // if (h < 0.0)
+      // h = 0.0;
+      
+      /*-----------------------------------------------------------------*/
+      /* Get the albedo of the sea surface */
+      // h = asin(h) * 180.0 / pi;
+      // iw = (int)(h / 10.0);
+      // d1 = (double)iw *10.0;
+      // if (iw == 0)
+      // alp = ap[tcld][0];
+      // else
+      // alp = ((ap[tcld][iw + 1] - ap[tcld][iw]) / 10.0) * (h - d1) + ap[tcld][iw];
+
+      // *********************************************************************************************************
+
+      double attenuation_by_clouds = 1.0;  // write interface function to clouds.
+      
+      double airmass = 1.0; // 1.0/(cos(lunar_zenith)+0.15*pow(93.885-lunar_zenith*180.0/M_PI,-1.253));
+
+      double transmission = airmass;
+
+      /* Use solid angle (6.4177e-5 sr), sunlight (attenuation_by_clouds * 1366.0 * bio->landa[w]), normalised earth / sun / moon 
+         distances and above calculated full disk reflectance */
+      
+      double moonlight = 0.0;
+      double moon_tmp = 0.0;
+      
+      for (w=0; w<num_waves; w++) {
+	moon_tmp = Ak[w] * 6.4177e-5 * 1366.0 * bio->landa[w] * pow(earth_sun_dist/1496.0e8 ,2.0) * pow(moon_earth_dist/384400000.0,2.0)/M_PI;
+	lighttop_s[w] = lighttop_s[w] + moon_tmp;
+	moonlight += moon_tmp;
+      }
+      /* Correct zenith following solar calcs. */
+      
+      double lunar_zenith = sin(lunar_dec)*sin(moonlat_obs)+cos(lunar_dec)*cos(moonlat_obs)*cos(lunar_angle);
+      
+      lunar_zenith = acos(lunar_zenith);
+      
+      lunar_zenith = (fabs(lunar_zenith)<1.0e-15)? 1.0e-15:lunar_zenith;
+      lunar_zenith = ((lunar_zenith-M_PI/2.0)-fabs(lunar_zenith-M_PI/2.0))/2.0+M_PI/2.0;
+      
+      cv_lunar_zenith[0] = lunar_zenith;
+      cv_lunar_phase[0] = moon_phase;
+      cv_moon_fulldisk[0] = (lunar_zenith == M_PI/2.0)? 0:moonlight; // zero if below horizon.
+      cv_moonlight[0] = moonlight * cos(lunar_zenith) * attenuation_by_clouds * transmission;
+      
+      // printf("lunar_dec %e, lunar_angle %e, lunar_zenith %e, cos(lunar_zenith) %e \n",lunar_dec,lunar_angle,lunar_zenith,cos(lunar_zenith)); 
+    }
   }
   
+
   /* if night don't do light calculations */
 
   for (w=ws->wPAR_bot; w <= ws->wPAR_top; w++){
     energy += lighttop_s[w];
   }
-  
+
   if (energy < 0.01){
     
     for (w=0; w<num_waves; w++) {
@@ -703,7 +962,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   double  light_s[num_waves];
   double *zenith_cv = col->cv[ws->cv_zenith_i];
   double *at_s;   /* spectrally-resolved total absorption [m-1] */
-  double *bb_s;   /* spectrally-resolved total scattering [m-1] */
+  double *bt_s;   /* spectrally-resolved total scattering [m-1] */
   double delenergy = 0.0;
   energy = 0.0; 
   int i;
@@ -713,7 +972,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
    */
 
   at_s = d_alloc_1d(num_waves);
-  bb_s = d_alloc_1d(num_waves);
+  bt_s = d_alloc_1d(num_waves);
 
   double Kd_s[num_waves];
 
@@ -1073,17 +1332,46 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       /* added if < 34.145 to avoid extrapolation that may result in negative absorption at above 37, and 
          to avoid deep salt minimums acting like estuarine waters */
 
-      if (y[ws->salt_i] < 34.145){
-	at_s[w] += (1.2336 + (-0.0332 * y[ws->salt_i])) * exp(-ws->S_CDOM*(wave[w]-443.0));
-      }
-      at_s[w] += 0.01 * exp(-ws->S_CDOM*(wave[w]-443.0)); // low CDOM absorption in marine waters.
-    }
+      //if (y[ws->salt_i] < 34.145){
+      // 	at_s[w] += (1.2336 + (-0.0332 * y[ws->salt_i])) * exp(-ws->S_CDOM*(wave[w]-443.0));
+      // }
+      //      at_s[w] += 0.01 * exp(-ws->S_CDOM*(wave[w]-443.0)); // low CDOM absorption in marine waters.
 
+      if (ws->cdom_gbr_i > -1){
+	//if (y[ws->salt_i] < 36.855){
+	  double a443 = (1.2336 + (-0.0332 * (1.0-y[ws->cdom_gbr_i])*36.855));//;+ 0.01; // 0.01 open-ocean a_cdom(443)
+	  double S_cdom = 0.0061 * pow(a443,-0.309); // Blondeau-Patissier 2009 JGR: 114: C05003.
+	  at_s[w] += a443 * exp(-S_cdom * (wave[w]-443.0));
+	  //}else{
+	  //at_s[w] += 0.01 * exp(-0.010 * (wave[w]-443.0));
+	  //}
+      }else{
+	if (y[ws->salt_i] < 34.145){
+	  double a443 = (1.2336 + (-0.0332 * y[ws->salt_i])) + 0.01; // 0.01 open-ocean a_cdom(443)
+	  double S_cdom = 0.0061 * pow(a443,-0.309); // Blondeau-Patissier 2009 JGR: 114: C05003.
+	  at_s[w] += a443 * exp(-S_cdom * (wave[w]-443.0));
+	}else{
+	  at_s[w] += 0.01 * exp(-0.010 * (wave[w]-443.0));
+	}
+      }
+    }
     if (ws->domain == 'C'){
       // From cruises in Oct 2017, Mar 2018 - based on 440 nm
       // at_s[w] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) * exp(-ws->S_CDOM*(wave[w]-440.0));
       at_s[w] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) 
 	* exp(-(ws->S_CDOM - max(y[ws->salt_i]-30.0,0.0)*0.007/5.0 ) * (wave[w]-440.0));
+    }
+
+    if (ws->domain == 'T'){
+      at_s[w] += 0.01 * exp(-0.014 * (wave[w]-440.0));
+      at_s[w] += ws->a440cdom_pale * min(y[ws->cdom_pale_i],1.0) * exp(- ws->Scdom_pale * (wave[w]-440.0));
+      at_s[w] += ws->a440cdom_amber * min(y[ws->cdom_amber_i],1.0) * exp(- ws->Scdom_amber * (wave[w]-440.0));
+      at_s[w] += ws->a440cdom_dark * min(y[ws->cdom_dark_i],1.0) * exp(- ws->Scdom_dark * (wave[w]-440.0));
+    }
+    
+    if (ws->domain == 'M'){
+      at_s[w] += 0.01 * exp(-0.014 * (wave[w]-440.0));
+      at_s[w] += ws->a440cdom_dark * min(y[ws->cdom_dark_i],1.0) * exp(- ws->Scdom_dark * (wave[w]-440.0));
     }
 
     switch (ws->domain){     /* Still need to think through NAP */
@@ -1092,15 +1380,23 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       at_s[w] += bio->ad_CarbSand_A[w] * pow(CarbSand, bio->ad_CarbSand_B[w]);
       break;
     case 'H' :
-      at_s[w] += bio->ad_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI); // Gladstone Harbour mud
-      at_s[w] += bio->aC_CAL1[w] * Mud_carbonate * 1000.0 ; // Calcite
+      // at_s[w] += bio->ad_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI); // Gladstone Harbour mud
+      // at_s[w] += bio->aC_CAL2[w] * Mud_carbonate * 1000.0 ; // Calcite
+      at_s[w] += bio->LJCOc_aNAP[w] * Mud_carbonate;
+      at_s[w] += bio->LJCO_aNAP[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
       break;
     case 'C' :
       at_s[w] += bio->aC_ICE2[w] * NAP * 1.0e3;
       break;
+    case 'T' :
+      at_s[w] += bio->aC_ICE2[w] * NAP * 1.0e3;
+      break;
+    case 'M' :
+      at_s[w] += bio->aC_ICE2[w] * NAP * 1.0e3;
+      break;
     }
     
-    bb_s[w] =  bio->bw_s[w];  /* Clear water scattering */
+    bt_s[w] =  bio->bw_s[w];  /* Clear water scattering */
 
     /* Effect of phytoplankton on absorption - no. cells x absorption cross-section */
 
@@ -1110,11 +1406,11 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
 
     if (ws->KI_l_i > -1){
       at_s[w] += (y[ws->PhyL_N_i] / (ws->m_l*red_A_N * 1000.0 * MW_Nitr) ) * aA_s_l[w];
-      bb_s[w] += ws->bphy * y[ws->PhyL_N_i] / ws->NtoCHL; 
+      bt_s[w] += ws->bphy * y[ws->PhyL_N_i] / ws->NtoCHL; 
     }
     if (ws->KI_s_i > -1){
       at_s[w] += (y[ws->PhyS_N_i] / (ws->m_s*red_A_N * 1000.0 * MW_Nitr) ) * aA_s_s[w];
-      bb_s[w] += ws->bphy * y[ws->PhyS_N_i] / ws->NtoCHL ;
+      bt_s[w] += ws->bphy * y[ws->PhyS_N_i] / ws->NtoCHL ;
     }
 
     /* Note that phytoplankton only add to absorption and scattering if KI_MPB_i, which will only 
@@ -1122,28 +1418,36 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
 
     if (ws->KI_MPB_i > -1){
       at_s[w] += (y[ws->MPB_N_i] / (ws->m_MPB*red_A_N * 1000.0 * MW_Nitr) ) * aA_s_MPB[w];
-      bb_s[w] += ws->bphy * y[ws->MPB_N_i] / ws->NtoCHL ;
+      bt_s[w] += ws->bphy * y[ws->MPB_N_i] / ws->NtoCHL ;
     }
     if (ws->KI_PhyD_i > -1){
       at_s[w] += (y[ws->PhyD_N_i] / (ws->m_PhyD*red_A_N * 1000.0 * MW_Nitr) ) * aA_s_PhyD[w];
-      bb_s[w] += ws->bphy * y[ws->PhyD_N_i] / ws->NtoCHL ;
+      bt_s[w] += ws->bphy * y[ws->PhyD_N_i] / ws->NtoCHL ;
     }
     if (ws->KI_Tricho_i > -1){
       at_s[w] += (y[ws->Tricho_N_i] / (ws->m_Tricho*red_A_N * 1000.0 * MW_Nitr) ) * aA_s_Tricho[w];
-      bb_s[w] += ws->bphy * y[ws->Tricho_N_i] / ws->NtoCHL ;
+      bt_s[w] += ws->bphy * y[ws->Tricho_N_i] / ws->NtoCHL ;
     }
 
     switch (ws->domain){
     case 'G':
-     bb_s[w] += bio->bbp_A[w] * pow(NAP, bio->bbp_B[w]); /* NAP scattering */ 
-     bb_s[w] += bio->bbp_CarbSand_A[w] * pow(NAP, bio->bbp_CarbSand_B[w]); /* NAP scattering */ 
+     bt_s[w] += bio->bbp_A[w] * pow(NAP, bio->bbp_B[w]); /* NAP scattering */ 
+     bt_s[w] += bio->bbp_CarbSand_A[w] * pow(NAP, bio->bbp_CarbSand_B[w]); /* NAP scattering */ 
      break;
     case 'H' :
-      bb_s[w] += bio->bC_CAL1[w] * Mud_carbonate * 1.0e3;
-      bb_s[w] += bio->bbp_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
+      //bt_s[w] += bio->bC_CAL2[w] * Mud_carbonate * 1.0e3;
+      //bt_s[w] += bio->bbp_A[w] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
+      bt_s[w] += bio->LJCOc_bNAP[w] * Mud_carbonate; /* NAP backscattering */
+      bt_s[w] += bio->LJCO_bNAP[w] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
       break;
     case 'C' :
-      bb_s[w] += bio->bC_ICE2[w] * NAP * 1.0e3;
+      bt_s[w] += bio->bC_ICE2[w] * NAP * 1.0e3;
+      break;
+    case 'T' :
+      bt_s[w] += bio->bC_ICE2[w] * NAP * 1.0e3;
+      break;
+    case 'M' :
+      bt_s[w] += bio->bC_ICE2[w] * NAP * 1.0e3;
      break;
     }
     /*  
@@ -1151,7 +1455,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
      * pathlength through layer:
      */
     
-    double adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bb_s[w] / at_s[w]) / costhetaw;
+    double adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bt_s[w] / at_s[w]) / costhetaw;
 
     Kd_s[w] = at_s[w] *  adlen;   /* vertical attenuation */
 
@@ -1211,7 +1515,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   }
   
   if (ws->bt_550_i > -1){ /* i.e. outputting */
-    y[ws->bt_550_i] = bb_s[ws->w550];
+    y[ws->bt_550_i] = bt_s[ws->w550];
   }
 
   if (ws->Kd_490_i > -1){ /* i.e. outputting */
@@ -1234,7 +1538,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   }   
   
   d_free_1d(at_s);
-  d_free_1d(bb_s);
+  d_free_1d(bt_s);
 
   if (aA_s_l != NULL)
         d_free_1d(aA_s_l);
@@ -1420,7 +1724,8 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
     }
 
     double *at_r;   /* spectrally-resolved total absorption [m-1] */
-    double *bb_r;   /* spectrally-resolved total scattering [m-1] */
+    double *bt_r;   /* spectrally-resolved total scattering [m-1] */
+    double *bb_r;   /* spectrally-resolved backscattering   [m-1] */
     
     double adlen;
     
@@ -1510,6 +1815,7 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
     NAP = EFI + NAP_noEFI; 
 
     bb_r = d_alloc_1d(e->num_rsr_waves);
+    bt_r = d_alloc_1d(e->num_rsr_waves);
     at_r = d_alloc_1d(e->num_rsr_waves);
 
     if (isnan(w_bot[0])) {
@@ -1662,10 +1968,29 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
       at_r[w2] = bio->kw_s2[w2];
 
       if (ws->domain == 'G'|| ws->domain == 'H'){
-	if (y[ws->salt_i] < 34.145){
-	  at_r[w2] += (1.2336 + (-0.0332 * y[ws->salt_i])) * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0)); 
+	//	if (y[ws->salt_i] < 34.145){
+	//  at_r[w2] += (1.2336 + (-0.0332 * y[ws->salt_i])) * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0)); 
+	//}
+	//at_r[w2] += 0.01 * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0));
+
+	if (ws->cdom_gbr_i > -1){
+	  // if (y[ws->salt_i] < 36.855){
+	    //  double a443 = (1.2336 + (-0.0332 * y[ws->salt_i])) + 0.01; // due to clear water and cdom only.
+	    double a443 = (1.2336 + (-0.0332 * (1.0-y[ws->cdom_gbr_i])*36.855));// + 0.01; // 0.01 open-ocean a_cdom(443)
+	    double S_cdom = 0.0061 * pow(a443,-0.309);  // Blondeau-Patissier 2009 JGR: 114: C05003.
+	    at_r[w2] += a443 * exp(- S_cdom * (e->rsr_waves[w2]-443.0));
+	    //}else{
+	    // at_r[w2] += 0.01 * exp(-0.010 * (e->rsr_waves[w2]-443.0));
+	    //}
+	}else{
+	  if (y[ws->salt_i] < 34.145){   // 36.855 for 0.01, 34.145 for 0.1
+	    double a443 = (1.2336 + (-0.0332 * y[ws->salt_i])) + 0.01; // due to clear water and cdom only.
+	    double S_cdom = 0.0061 * pow(a443,-0.309);  // Blondeau-Patissier 2009 JGR: 114: C05003.
+	    at_r[w2] += a443 * exp(- S_cdom * (e->rsr_waves[w2]-443.0));
+	  }else{
+	    at_r[w2] += 0.01 * exp(-0.010 * (e->rsr_waves[w2]-443.0));
+	  }
 	}
-	at_r[w2] += 0.01 * exp(-(ws->S_CDOM) * (e->rsr_waves[w2]-443.0));
       }
       if (ws->domain == 'C'){
 	// From cruises in Oct 2017, Mar 2018
@@ -1673,10 +1998,22 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	at_r[w2] += (0.2875 - 0.0059 * min(y[ws->salt_i],35.0)) 
 	  * exp(-(ws->S_CDOM - max(y[ws->salt_i]-30.0,0.0)*0.007/5.0 ) * (e->rsr_waves[w2]-440.0));
       }
+      if (ws->domain == 'T'){
+	at_r[w2] += 0.01 * exp(-0.014 * (e->rsr_waves[w2]-440.0));
+	at_r[w2] += ws->a440cdom_pale * min(y[ws->cdom_pale_i],1.0) * exp(- ws->Scdom_pale * (e->rsr_waves[w2]-440.0));
+	at_r[w2] += ws->a440cdom_amber * min(y[ws->cdom_amber_i],1.0) * exp(- ws->Scdom_amber * (e->rsr_waves[w2]-440.0));
+	at_r[w2] += ws->a440cdom_dark * min(y[ws->cdom_dark_i],1.0) * exp(- ws->Scdom_dark * (e->rsr_waves[w2]-440.0));
+      }
 
+      if (ws->domain == 'M'){
+	at_r[w2] += 0.01 * exp(-0.014 * (e->rsr_waves[w2]-440.0));
+	at_r[w2] += ws->a440cdom_dark * min(y[ws->cdom_dark_i],1.0) * exp(- ws->Scdom_dark * (e->rsr_waves[w2]-440.0));
+      }
+
+      bt_r[w2] = bio->bw_s2[w2];  // clear water.
       bb_r[w2] = ws->bbw_ratio * bio->bw_s2[w2];  // clear water.
 
-      switch (ws->domain){     /* Still need to think through NAP */
+      switch (ws->domain){     /* STILL NEED TO ADD TOTAL SCATTERING FOR 'G' OPTION */
       case 'G' : 
 	at_r[w2] += bio->ad_A2[w2] * pow(NAP, bio->ad_B2[w2]);
 	at_r[w2] += bio->ad_CarbSand_A2[w2] * pow(CarbSand, bio->ad_CarbSand_B2[w2]);
@@ -1687,55 +2024,84 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	break;
       case 'H' :
 
-	at_r[w2] += bio->aC_CAL1[w2] * Mud_carbonate * 1000.0 ;
+        // at_r[w2] += bio->aC_CAL1_rsr[w2] * Mud_carbonate * 1000.0 / 4.0;
+	// bt_r[w2] += bio->bC_CAL1_rsr[w2] * Mud_carbonate * 1000.0 / 4.0; /* NAP backscattering */
+        // bb_r[w2] += bio->B_carb_rsr[w2] * bio->bC_CAL1_rsr[w2] * Mud_carbonate * 1000.0 / 4.0; /* NAP backscattering */
+
+	at_r[w2] += bio->LJCOc_aNAP_rsr[w2] * Mud_carbonate;
+	bt_r[w2] += bio->LJCOc_bNAP_rsr[w2] * Mud_carbonate; /* NAP backscattering */
+        bb_r[w2] += bio->B_carb_rsr[w2] * bio->LJCOc_bNAP_rsr[w2] * Mud_carbonate; /* NAP backscattering */
+
+	// at_r[w2] += bio->ad_CarbSand_A2[w2] * pow(CarbSand, bio->ad_CarbSand_B2[w2]);
+	// bb_r[w2] += ws->bbnap_ratio * bio->bbp_CarbSand_A2[w2] * pow(CarbSand, bio->bbp_CarbSand_B2[w2]); /* NAP backscattering */
+	// bt_r[w2] += bio->bbp_CarbSand_A2[w2] * pow(CarbSand, bio->bbp_CarbSand_B2[w2]); /* NAP backscattering */
+
 	//at_r[w2] += bio->aC_KAO1[w2] * (Mud_mineral+FineSed+NAP_noEFI) * 1000.0;
-	at_r[w2] += bio->ad_A2[w2] * (Dust+Mud_mineral+FineSed+NAP_noEFI) ;
-        bb_r[w2] += bio->B_carb_rsr[w2] * bio->bC_CAL1[w2] * Mud_carbonate *1000.0; /* NAP backscattering */
+	//* at_r[w2] += bio->ad_A2[w2] * (Dust+Mud_mineral+FineSed+NAP_noEFI) ;
+	
+        at_r[w2] += bio->LJCO_aNAP_rsr[w2] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
+	bt_r[w2] += bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	bb_r[w2] += bio->B_terr_rsr[w2] * bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+
 	//bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_KAO1[w2] * (Mud_mineral+FineSed+NAP_noEFI) * 1000.0; /* NAP backscattering */
-	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bbp_A2[w2] * (Dust+Mud_mineral+FineSed+NAP_noEFI);
+	//* bt_r[w2] += bio->bbp_A2[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	//* bb_r[w2] += bio->B_terr_rsr[w2] * bio->bbp_A2[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	bt_r[w2] += bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	bb_r[w2] += bio->B_terr_rsr[w2] * bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	
 	break;
       case 'C' :
 	at_r[w2] += bio->aC_ICE2_rsr[w2] * NAP * 1.0e3;
-	// bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_MON1_rsr[w2] * NAP * 1.0e3;
+	bt_r[w2] += bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
 	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
-	//bb_r[w2] += ws->bbnap_ratio * bio->bbp_A2[w2] * pow(NAP, bio->bbp_B2[w2]); /* NAP backscattering */
-	//bb_r[w2] += ws->bbnap_ratio * bio->bbp_CarbSand_A2[w2] * pow(CarbSand, bio->bbp_CarbSand_B2[w2]); /* NAP backscattering */
+	break;
+      case 'T' :
+	at_r[w2] += bio->aC_ICE2_rsr[w2] * NAP * 1.0e3;
+	bt_r[w2] += bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
+	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
+	break;
+      case 'M' :
+	at_r[w2] += bio->aC_ICE2_rsr[w2] * NAP * 1.0e3;
+	bt_r[w2] += bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
+	bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_ICE2_rsr[w2] * NAP * 1.0e3;
        break;
      }
 
-  // bb_r[w2] += ws->bbnap_ratio * bio->bbp_A2[w2] * pow(NAP, bio->bbp_B2[w2]); /* NAP backscattering */
-  // bb_r[w2] += ws->bbnap_ratio * bio->bbp_CarbSand_A2[w2] * pow(CarbSand, bio->bbp_CarbSand_B2[w2]); /* NAP backscattering */
-
       if (ws->KI_l_i > -1){
 	at_r[w2] += cellnum_l * aA_s_l[w2];
+	//bt_r[w2] += ws->bbcell1 * pow(ws->rad_l*2e6, ws->bbcell2)*cellnum_l;
 	bb_r[w2] += bio->scatfrac[w2] * ws->bbcell1 * pow(ws->rad_l*2e6, ws->bbcell2)*cellnum_l;
-	// bb_r[w2] += ws->bphy * y[ws->PhyL_N_i] / ws->NtoCHL; 
+	bt_r[w2] += ws->bphy * y[ws->PhyL_N_i] / ws->NtoCHL; 
       }
       if (ws->KI_s_i > -1){
 	at_r[w2] += cellnum_s * aA_s_s[w2];
+	//bt_r[w2] += ws->bbcell1 * pow(ws->rad_s*2e6, ws->bbcell2)*cellnum_s;
 	bb_r[w2] += bio->scatfrac[w2] * ws->bbcell1 * pow(ws->rad_s*2e6, ws->bbcell2)*cellnum_s;
-        // bb_r[w2] += ws->bphy * y[ws->PhyS_N_i] / ws->NtoCHL ;
+        bt_r[w2] += ws->bphy * y[ws->PhyS_N_i] / ws->NtoCHL ;
       }
       if (ws->KI_MPB_i > -1){
 	at_r[w2] +=  cellnum_MPB * aA_s_MPB[w2];
+	//bt_r[w2] += ws->bbcell1 * pow(ws->rad_MPB*2e6, ws->bbcell2)*cellnum_MPB;
 	bb_r[w2] += bio->scatfrac[w2] * ws->bbcell1 * pow(ws->rad_MPB*2e6, ws->bbcell2)*cellnum_MPB;
-	// bb_r[w2] += ws->bphy * y[ws->MPB_N_i] / ws->NtoCHL ;
+	bt_r[w2] += ws->bphy * y[ws->MPB_N_i] / ws->NtoCHL ;
       }
       if (ws->KI_PhyD_i > -1){
 	at_r[w2] += cellnum_PhyD * aA_s_PhyD[w2];
+	//bt_r[w2] += ws->bbcell1 * pow(ws->rad_PhyD*2e6, ws->bbcell2)*cellnum_PhyD;
 	bb_r[w2] += bio->scatfrac[w2] * ws->bbcell1 * pow(ws->rad_PhyD*2e6, ws->bbcell2)*cellnum_PhyD;
-	// bb_r[w2] += ws->bphy * y[ws->PhyD_N_i] / ws->NtoCHL ;
+	bt_r[w2] += ws->bphy * y[ws->PhyD_N_i] / ws->NtoCHL ;
       }
       if (ws->KI_Tricho_i > -1){
 	at_r[w2] += cellnum_Tricho * aA_s_Tricho[w2];
+	//bt_r[w2] += ws->bbcell1 * pow(ws->rad_Tricho*2e6, ws->bbcell2)*cellnum_Tricho;
 	bb_r[w2] += bio->scatfrac[w2] * ws->bbcell1 * pow(ws->rad_Tricho*2e6, ws->bbcell2)*cellnum_Tricho;
-	// bb_r[w2] += ws->bphy * y[ws->Tricho_N_i] / ws->NtoCHL ;
+	bt_r[w2] += ws->bphy * y[ws->Tricho_N_i] / ws->NtoCHL ;
       }
 
       /* approx. vertical attentuation coefficient */
 
-      adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bb_r[w2] / at_r[w2]) / costhetaw;
-
+      adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bt_r[w2] / at_r[w2]) / costhetaw;
+      
       Kd_r = at_r[w2] * adlen;
 
       double nFLHadd = 0.0;
@@ -1760,9 +2126,9 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 
     /* do Secchi depth calculation */
 
-    if (ws->w488 > -1){    
-      
-      /* calculate secchi depth using 490 nm */
+    if (ws->w488 > -1){
+
+      /* calculate secchi depth using 488 nm */
       if (isnan(E_secchi_cv[0])) {
 	E_secchi_cv[0] = 1.0;    /* Normalised light at top equal 1. */
 	z_secchi_cv[0] = 0.0;
@@ -1770,7 +2136,7 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
       double z_secchi = z_secchi_cv[0];
       double E_secchi = E_secchi_cv[0];
       if (E_secchi > exp(-1.0)){
-	adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bb_r[ws->w488] / at_r[ws->w488]) / costhetaw;
+	adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bt_r[ws->w488] / at_r[ws->w488]) / costhetaw;
 	E_secchi_cv[0] = E_secchi * exp(-at_r[ws->w488] * adlen * dz);
 	if (E_secchi_cv[0] < exp(-1.0)){ // this is the step the disk dissappears from view
 	  z_secchi_cv[0] = z_secchi + log(exp(-1.0)/E_secchi) / (- at_r[ws->w488] * adlen);
@@ -1785,6 +2151,7 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
     }
     
     d_free_1d(at_r);
+    d_free_1d(bt_r);
     d_free_1d(bb_r);
 
     if (aA_s_l != NULL)

@@ -20,7 +20,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_mortality_wc.c 5934 2018-09-12 03:34:13Z bai155 $
+ *  $Id: zooplankton_mortality_wc.c 6448 2020-01-22 01:46:51Z wil00y $
  *
  */
 
@@ -106,7 +106,7 @@ void zooplankton_mortality_wc_init(eprocess* p)
     ws->DIP_i = e->find_index(tracers, "DIP", e);
     ws->DIC_i = e->find_index(tracers, "DIC", e);
     ws->DetPL_N_i = e->find_index(tracers, "DetPL_N", e);
-    ws->COD_i = e->find_index(tracers, "COD", e);
+    ws->COD_i = e->try_index(tracers, "COD", e);
 
   /*non essential diagnostic variables*/
 

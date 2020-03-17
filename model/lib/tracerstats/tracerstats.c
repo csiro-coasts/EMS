@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracerstats.c 5843 2018-06-29 02:17:55Z riz008 $
+ *  $Id: tracerstats.c 6444 2019-12-18 23:43:28Z riz008 $
  *
  */
 
@@ -2259,7 +2259,12 @@ if(i > 0)
 	sectiondata->lastdump = trs->time;
 	read_section_coordinates(pbuf[0],sectiondata,trs->model);
 	emstag(LDEBUG,"Tracerstats:init","Section flux, translated coordiantes...");
+#ifndef HAVE_MPI
 	trstat_add_domain_function(sectiondata->name,trs->ndomainfn3d,2,section_create,section_gather,section_scatter);//,NULL);
+#else
+	emstag(LERROR,"Tracerstats:init","Section fluxes not supported in MPI mode!");
+        exit(0);
+#endif
 	trs->ndomainfn3d++;
 	emstag(LDEBUG,"Tracerstats:init","Section flux calculating for %s, every - %.0f sec, to file: %s, direction %d, starttime %.0f tscale %.1f tunit %s outscale %s ",tr_3d[n][1],
 	       sectiondata->dt,sectiondata->fileout,

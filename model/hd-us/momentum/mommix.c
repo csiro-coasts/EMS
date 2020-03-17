@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommix.c 6323 2019-09-13 04:35:45Z her127 $
+ *  $Id: mommix.c 6400 2019-11-21 22:59:38Z her127 $
  *
  */
 
@@ -160,6 +160,7 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
   /*-----------------------------------------------------------------*/
   /* Set the Smagorinsky diffusivity if required                     */
   if (wincon->smagorinsky != 0.0) {
+    int vc = (wincon->smagcode & U1_SBC) ? window->v3_t : window->b3_t;
     if (!windat->sdc)
       hd_quit("Smagorinsky diffusion requires tracer called smag\n");
     memset(windat->sdc, 0, window->szc*sizeof(double));
@@ -170,7 +171,7 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
 			     0.5 * t12[e] * t12[e] +
 			     t22[e] * t22[e]));
     }
-    for (cc = 1; cc <= window->b3_t; cc++) {
+    for (cc = 1; cc <= vc; cc++) {
       c = window->w3_t[cc];
       cs = window->m2d[c];
       for (n = 1; n <= window->npe[cs]; n++) {

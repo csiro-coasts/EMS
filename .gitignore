@@ -12,8 +12,13 @@ shoc*
 compas*
 makefile
 ems_conf.h
+svn_rev.h
+libjigsaw64r.so
 
 # No other version control files
 .svn
 .hg
+
+# Misc
+sediments-us
 

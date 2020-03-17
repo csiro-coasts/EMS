@@ -110,6 +110,7 @@ misc/eqn_parser.o \
 misc/hash.o \
 misc/hqueue.o \
 misc/memory.o \
+misc/moon.o \
 misc/solar.o \
 misc/string_utils.o \
 misc/stringtable.o \

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: salmon_waste.c 5894 2018-08-21 01:51:27Z wil00y $
+ *  $Id: salmon_waste.c 6219 2019-05-14 23:19:24Z wil00y $
  *
  */
 
@@ -161,7 +161,7 @@ void salmon_waste_precalc(eprocess* p, void* pp)
 
     double Tfactor = (ws->Tfactor_i >= 0) ? cv[ws->Tfactor_i] : 1.0;
 
-    cv[ws->FCR_i] = Tfactor * ws->FCR_t0;
+          cv[ws->FCR_i] = Tfactor * ws->FCR_t0;
     /*    cv[ws->fish_resp_i] = Tfactor * ws->fish_resp_t0;*/
 
     // Bail out if deeper than 24m
@@ -234,8 +234,13 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     /*if (ws->Fish_N_pr_i > -1)*/
     y[ws->Fish_N_pr_i] = (SW_PON + SW_DIN)*(1000.*1000.)/(7.* pen_volume);
     /*if (ws->Fish_P_pr_i > -1)*/
-    y[ws->Fish_P_pr_i] = (SW_POP - (SW_PON * red_W_P) + SW_DIP)*(1000.*1000.)/(7.* pen_volume);
+    //   y[ws->Fish_P_pr_i] = (SW_POP - (SW_PON * red_W_P) + SW_DIP)*(1000.*1000.)/(7.* pen_volume);
+    y[ws->Fish_P_pr_i] = (SW_POP + SW_DIP)*(1000.*1000.)/(7.* pen_volume);
 
+    /* add print statements to check content & trouble shoot */
+    /* printf("DIN is %.5f, PON is %.5f, vol is %.2f and time is %.4f\n",SW_DIN,SW_PON,pen_volume,time);
+       printf("feed is %.5f, z_bot %.5f, Fish_N_pr is %.5f and time is %.4f\n",feed,z_bot,y[ws->Fish_N_pr_i],time);*/
+ 
 }
 
 void salmon_waste_postcalc(eprocess* p, void* pp)

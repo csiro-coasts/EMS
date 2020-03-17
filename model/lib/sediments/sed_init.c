@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed_init.c 5975 2018-09-26 00:09:12Z mar644 $
+ *  $Id: sed_init.c 6442 2019-12-09 01:00:27Z bai155 $
  *
  */
 
@@ -125,6 +125,11 @@ int sinterface_gethindered_svel_patch(FILE* prmfd);
 int sinterface_gethindered_svel(FILE* prmfd);
 double sinterface_reef_scale_depth(FILE* prmfd);
 int sinterface_getshipfile(FILE* prmfd, char *shipfile);
+
+//2019
+double sinterface_get_css_erosion(void* model, char *name);
+double sinterface_get_css_deposition(void* model, char *name);
+
 #if defined(HAVE_OMP)
 int sinterface_get_trans_num_omp(void *model);
 #endif
@@ -450,6 +455,12 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
     tr->psize = sinterface_get_psize(hmodel, tr->name);
     tr->b_dens = sinterface_get_b_dens(hmodel, tr->name);
     tr->i_conc = sinterface_get_i_conc(hmodel, tr->name);
+ 
+//2019
+    tr->css_erosion = sinterface_get_css_erosion(hmodel, tr->name);
+    tr->css_deposition = sinterface_get_css_deposition(hmodel, tr->name);
+    //fprintf(stderr, "css_deposition = %lf \n", tr->css_deposition);
+
     tr->svel = d_alloc_1d(param->ncol);
     for (col = 0; col < param->ncol; col++)
       tr->svel[col] = sinterface_get_svel(hmodel, tr->name);
@@ -691,6 +702,10 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
         n, tr->diffuse, tr->decay);
       fprintf(flog, "n=%d, tr->psize=%f, tr->b_dens=%f,  tr->i_conc=%f \n",
         n, tr->psize , tr->b_dens,  tr->i_conc );
+//2019
+    fprintf(flog, "n=%d, tr->css_erosion=%f, tr->css_deposition=%f \n",
+        n, tr->css_erosion , tr->css_deposition);
+
       if (strlen(param->prmnameS[n]))
 	fprintf(flog,"n=%d, tr->svel (spatially varying) = %s\n", n, param->prmnameS[n]);
       else
@@ -1154,6 +1169,8 @@ void sed_params_est(sediment_t *sediment)
 {
   sed_params_t *param = sediment->msparam;
 
+  // Mark editted these to align with GBR4_H2p0_B3p1_Cq3b.
+
   param->verbose_sed = 0;
   param->quad_bfc = 0.00003;
   param->geomorph = 0;
@@ -1170,11 +1187,42 @@ void sed_params_est(sediment_t *sediment)
   param->css_er_val[1] = 0.6;
   param->css_er_val[2] = 0.4;
   param->css_er_val[3] = 0.2;
+
   param->css_er_depth = d_alloc_1d(param->sednz);
   param->css_er_depth[0] = -0.080;
   param->css_er_depth[1] = -0.020;
   param->css_er_depth[2] = -0.005;
   param->css_er_depth[3] = -0.0;
+
+
+  if (param->sednz == 13){   // BGC3p1 for GBR, CHILE and Macq 0.9 is CSS_SCALE
+    param->css_er_val[0] = 0.7*0.9;
+    param->css_er_val[1] = 0.7*0.9;
+    param->css_er_val[2] = 0.7*0.9;
+    param->css_er_val[3] = 0.7*0.9;
+    param->css_er_val[4] = 0.7*0.9;
+    param->css_er_val[5] = 0.7*0.9;
+    param->css_er_val[6] = 0.7*0.9;
+    param->css_er_val[7] = 0.7*0.9;
+    param->css_er_val[8] = 0.6*0.9;
+    param->css_er_val[9] = 0.50*0.9;
+    param->css_er_val[10] = 0.40*0.9;
+    param->css_er_val[11] = 0.30*0.9;
+
+    param->css_er_depth[0] = -0.5;
+    param->css_er_depth[1] = -0.3;
+    param->css_er_depth[2] = -0.2;
+    param->css_er_depth[3] = -0.13;
+    param->css_er_depth[4] = -0.09;
+    param->css_er_depth[5] = -0.06;
+    param->css_er_depth[6] = -0.04;
+    param->css_er_depth[7] = -0.03;
+    param->css_er_depth[8] = -0.02;
+    param->css_er_depth[9] = -0.01;
+    param->css_er_depth[10] = -0.005;
+    param->css_er_depth[11] = -0.0;
+  }
+
   param->css_dep = 1.e+13;
   param->flocmode = 4;
   param->flocprm1 = 2.e-4;
@@ -1206,17 +1254,21 @@ void sed_params_std(sediment_t *sediment)
 {
   sed_params_t *param = sediment->msparam;
 
-  param->verbose_sed = 0;
-  param->quad_bfc = 0.00003;
-  param->geomorph = 0;
+  // Mark editted these to align with GBR4_H2p0_B3p1_Cba
+
+  param->verbose_sed = 1; // 0;
+  // param->quad_bfc = 0.00003;
+  // param->geomorph = 0;
   param->consolidate =  0;
-  param->minpor_wc = 0.1;
-  param->minpor_sed = 0.1;
+  // param->minpor_wc = 0.1;
+  // param->minpor_sed = 0.1;
   param->minseddz = 0.000001;
   param->finpor_sed = 0.4;
   param->consolrate =  10.0;
   param->cssmode = 4;
-  param->css = 0.2;
+  // param->css = 0.2;
+  param->hindered_svel = 1; // added, not sure if it should be float?
+  param->reef_scale_depth = 70.0; // added, not sure if it should be float?
   param->css_er_val = d_alloc_1d(param->sednz);
   param->css_er_val[0] = 0.7;
   param->css_er_val[1] = 0.6;
@@ -1227,24 +1279,53 @@ void sed_params_std(sediment_t *sediment)
   param->css_er_depth[1] = -0.020;
   param->css_er_depth[2] = -0.005;
   param->css_er_depth[3] = -0.0;
-  param->css_dep = 1.e+13;
+
+  if (param->sednz == 13){   // BGC3p1 for GBR, CHILE and Macq 0.9 is CSS_SCALE, Mark was here.
+    param->css_er_val[0] = 0.7*0.9;
+    param->css_er_val[1] = 0.7*0.9;
+    param->css_er_val[2] = 0.7*0.9;
+    param->css_er_val[3] = 0.7*0.9;
+    param->css_er_val[4] = 0.7*0.9;
+    param->css_er_val[5] = 0.7*0.9;
+    param->css_er_val[6] = 0.7*0.9;
+    param->css_er_val[7] = 0.7*0.9;
+    param->css_er_val[8] = 0.6*0.9;
+    param->css_er_val[9] = 0.50*0.9;
+    param->css_er_val[10] = 0.40*0.9;
+    param->css_er_val[11] = 0.30*0.9;
+
+    param->css_er_depth[0] = -0.5;
+    param->css_er_depth[1] = -0.3;
+    param->css_er_depth[2] = -0.2;
+    param->css_er_depth[3] = -0.13;
+    param->css_er_depth[4] = -0.09;
+    param->css_er_depth[5] = -0.06;
+    param->css_er_depth[6] = -0.04;
+    param->css_er_depth[7] = -0.03;
+    param->css_er_depth[8] = -0.02;
+    param->css_er_depth[9] = -0.01;
+    param->css_er_depth[10] = -0.005;
+    param->css_er_depth[11] = -0.0;
+  }
+
+  // param->css_dep = 1.e+13;
   param->flocmode = 4;
-  param->flocprm1 = 2.e-4;
+  param->flocprm1 = 3.4e-4;// 2.e-4;
   param->flocprm2 = 3.0;
-  param->bbl_nonlinear = 1;
+  // param->bbl_nonlinear = 1;
   param->calc_ripples = 0;
   param->physriph = 0.01;
   param->bioriph = 0.0;
   param->physripl = 0.5;
-  param->bioripl = 0.03;
+  param->bioripl = 0.20; // 0.03;
   param->biodens= 30.0;
   param->maxbiodepth= 0.2;
   param->bi_dissol_kz= 1.0e-9;
   param->bt_partic_kz= 1.0e-10;
   param->bi_dissol_kz_i= 1.0e-13;
-  param->bt_partic_kz_i= 2.0e-13;
+  param->bt_partic_kz_i= 1.0e-13; // 2.0e-13;
   param->biosedprofile = 'p';
-  param->max_thick_sed = 10;
+  param->max_thick_sed = 10.0; // 10;
 }
 
 /* END sed_params_std()                                              */
@@ -1416,6 +1497,7 @@ void sed_params_write(sediment_t *sediment)
       fprintf(flog,"PHYSRIPL=%f \n", param->physripl);
     fprintf(flog,"BIORIPH=%f \n", param->bioriph );
     fprintf(flog,"BIORIPL=%f \n", param->bioripl );
+    fprintf(flog,"Z0_SKIN=%f \n", 0.000001 );
     if (param->biodens_spv)
       fprintf(flog,"BIODENS spatially varying\n");
     else

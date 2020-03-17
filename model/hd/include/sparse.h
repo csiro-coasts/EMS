@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6090 2019-02-08 04:32:56Z her127 $
+ *  $Id: sparse.h 6428 2019-11-22 00:25:04Z her127 $
  *
  */
 
@@ -379,6 +379,7 @@ struct win_priv {
   int means;                    /* Mean velocity diagnostic */
   int da;                       /* Data assimilation */
   int nprof;                    /* Normalized profile flag */
+  int nprof2d;                  /* Surface tracer for profiles */
   double means_dt;              /* Mean velocity averaging interval */
   double means_next;            /* Next time for zeroing means */
   double means_os;              /* Offset for restarts */
@@ -428,6 +429,7 @@ struct win_priv {
   int trout;                    /* Transport file output flag */
   int swr_type;                 /* Type of attenuation */
   int dhwf;                     /* Degree heating diagnostic */
+  double dhwh;                  /* Hour for DHW temperature snapshot */
   int **e1bs, **e1be;           /* Start and end blend indicies in e1 direction */
   int **e2bs, **e2be;           /* Start and end blend indicies in e2 direction */
   int *ne1b, *ne2b;             /* Number of blend indicies */
@@ -436,6 +438,13 @@ struct win_priv {
   blend_t **ble2;               /* e2 blend structure */
 
   double albedo;                /* Albedo for swr */
+  int nswreg;                   /* Number of swr estimation regions */
+  int *swmap;                   /* Mapping of swr region to index */
+  int swr_data;                 /* Short wave estimation data */
+  double swr_depth;             /* Short wave estimation depth */
+  double *swC;                  /* Matrix term for vertical diffusion */
+  double swr_next;              /* Next swr estimation event */
+  double swr_dt;                /* swr estimation time increment */
 
   /* Alert thresholds */
   double amax;
@@ -1084,10 +1093,12 @@ typedef struct {
   char dhdf[MAXSTRLEN];         /* Degree heating day file */
   double dhw_dt;                /* DHW update increment */
   int dhwf;                     /* Degree heating diagnostic flag */
+  double dhwh;                  /* Hour for DHW temperature snapshot */
   int tendf;                    /* Momentum tendency flag */
   char trtend[MAXSTRLEN];       /* Tracer tendency flag */
   int means;                    /* Mean velocity diagnostic */
   char means_dt[MAXSTRLEN];     /* Mean velocity averaging interval */
+  char means_mc[MAXSTRLEN];     /* Counter for MONTHLY, SEASONAL means */
   char means_os[MAXSTRLEN];     /* Offset for restarts */
   char means_tra[MAXSTRLEN];    /* Offset for restarts */
   char regions[MAXSTRLEN];      /* Name of regions file */
@@ -1129,6 +1140,7 @@ typedef struct {
   char avhrr_path[MAXSTRLEN];   /* AVHRR SST data path */
   int ghrsst;                   /* Include GHRSST SST */
   char ghrsst_path[MAXSTRLEN];  /* GHRSST SST data path */
+  char ghrsst_opt[MAXSTRLEN];   /* GHRSST SST data options */
   char alert[MAXSTRLEN];        /* Create alert log */
   char alert_dt[MAXSTRLEN];     /* Time step for alert ts file */
   int eta_f;                    /* Alert action on elevation          */
@@ -1184,6 +1196,7 @@ typedef struct {
   int gint_errfcn;              /* Generic interface error handling flag */
   int riverflow;                /* Include river flow diagnostic tracer */
   char nprof[MAXSTRLEN];        /* Normalized profile flag */
+  char nprof2d[MAXSTRLEN];      /* Surface field for normalized profile */
   /* DATA ASSIM */
   int da;                       /* Data assimilation */
   double da_dt;                 /* Data assimilation time step */
@@ -1197,6 +1210,7 @@ typedef struct {
   int *lande1;                  /* e1 list of defined land cells */
   int *lande2;                  /* e2 list of defined land cells */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
+  char particles[MAXSTRLEN];    /* Auto particle sources */
   int data_infill;              /* Use cascade search on input file data */
   char *da_anom_file;           /* File name for the anomaly fields */
   char *da_anom_states;         /* State names to read from the anomaly fields */
@@ -1401,6 +1415,9 @@ typedef struct {
   double zref;                  /* Reference height */
   double albedo;                /* Albedo */
   double albedo_l;              /* Albedo for light */
+  char swr_regions[MAXSTRLEN];  /* Short wave estimation regions file */
+  char swr_data[MAXSTRLEN];     /* Short wave estimation data */
+  double swreg_dt;              /* Short wave estimation time increment */
   int hfadf;                    /* Advection flag */
   int bulkf;                    /* Bulk scheme for heatflux */
   char hftemp[MAXSTRLEN];       /* Heat flux temperature filename */
@@ -1569,6 +1586,7 @@ struct master {
   int trfilter;                 /* Tracer filtering options */
   int porusplate;               /* Include porus plate sub-gridscale parameterisation */
   int dhwf;                     /* Degree heating diagnostic */
+  double dhwh;                  /* Hour for DHW temperature snapshot */
   char reef_frac[MAXSTRLEN];    /* Cell area blocked by reef */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
@@ -1706,6 +1724,7 @@ struct master {
   double *obc_phase;            /* OBC phase speed (m/s) */
   double *nprof;                /* Normalized profile */
   int nprofn;                   /* Tracer to normalize */
+  int nprofn2d;                 /* Surface tracer for profiles */
   double *sound;                /* Speed of sound */
   double *schan;                /* Sound channel depth */
   double *sonic;                /* Sonic layer depth */
@@ -1727,6 +1746,7 @@ struct master {
   double *eta_inc;              /* Relaxation eta increment */
   double *avhrr;                /* AVHRR SST */
   double *ghrsst;               /* GHRSST SST */
+  double *ghrsste;              /* GHRSST SST error */
   double *shwin;                /* Window partitioning */
   double *alert_a;              /* Actual alert diagnostic */
   double *alert_c;              /* Cumulative alert diagnostic */
@@ -1945,6 +1965,10 @@ struct master {
   int swr_type;                 /* Type of attenuation */
   double *swr_attn;             /* Short wave attenuation (for red) */
   double *swr_attn1;            /* Short wave attenuation for blue-green */
+  double *swreg;                /* swr estimation regions */
+  double *swrms;                /* RMS error from swr estimation */
+  double *attn_mean;            /* Mean swr attenuation */
+  double *tran_mean;            /* Mean swr transmission */
 
   /* Heat flux variables */
   int heatflux;                 /* Type of heatflux specification */
@@ -2447,6 +2471,7 @@ struct window {
   double *lwro;                 /* Long wave output radiation */
   double *avhrr;                /* AVHRR SST */
   double *ghrsst;               /* GHRSST SST */
+  double *ghrsste;              /* GHRSST SST error */
   double *shwin;                /* Window partitioning */
   double *alert_a;              /* Actual alert diagnostic */
   double *alert_c;              /* Cumulative alert diagnostic */
@@ -2456,6 +2481,11 @@ struct window {
   double *swr_attn1;            /* Short wave attenuation for blue-green */
   double *swr_tran;             /* Short wave surface transmission */
   double *swr_babs;             /* Short wave bottom absorption */
+  double *swreg;                /* swr estimation regions */
+  double *swrms;                /* RMS error from swr estimation */
+  double *attn_mean;            /* Mean swr attenuation */
+  double *tran_mean;            /* Mean swr transmission */
+  double swrc;                  /* swr mean counter */
 
   /* To keep track of heatflux diagnostics */
   int lwrn;                     /* Tracer number for lwr */

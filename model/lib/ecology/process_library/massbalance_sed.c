@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_sed.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: massbalance_sed.c 6290 2019-08-12 02:45:41Z bai155 $
  *
  */
 
@@ -45,6 +45,7 @@ typedef struct {
   int COD_i;
   int Oxygen_i;
   int Den_fl_i;
+  int Amm_fl_i;
   int NO3_i;
   
   /*
@@ -75,6 +76,7 @@ void massbalance_sed_init(eprocess* p)
     ws->COD_i = e->try_index(tracers, "COD", e);
     ws->Oxygen_i = e->find_index(tracers, "Oxygen", e);
     ws->Den_fl_i = e->find_index(tracers, "Den_fl", e);
+    ws->Amm_fl_i = e->try_index(tracers, "Amm_fl", e);
     ws->NO3_i = e->find_index(tracers, "NO3", e);
 
     /*
@@ -94,7 +96,7 @@ void massbalance_sed_init(eprocess* p)
 
     stringtable_add_ifabscent(e->cv_model, "massbalance_sed", -1);
 
-    eco_write_setup(e,"\n Mass balance in sediment to %e mg N / m3 \n",MASSBALANCE_EPS);
+    eco_write_setup(e,"\n Mass balance in sediment to fractional difference of %e \n",MASSBALANCE_EPS);
 }
 
 void massbalance_sed_destroy(eprocess* p)
@@ -158,17 +160,21 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
     TP = y[ws->TP_i];
     TC = y[ws->TC_i];
 
+    if (ws->Amm_fl_i > -1){
+      TN += y[ws->Amm_fl_i] / SEC_PER_DAY / c->dz_sed ;
+    }
+
     eps = fabs(TN - cv[ws->TN_old_i]) / (TN + cv[ws->TN_old_i]);
     if (eps > MASSBALANCE_EPS)
-        e->quitfn("ecology: error: N balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
+        e_warn("ecology: error: N balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
     eps = fabs(TP - cv[ws->TP_old_i]) / (TP + cv[ws->TP_old_i]);
 
     if (eps > MASSBALANCE_EPS)
-        e->quitfn("ecology: error: P balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
+        e_warn("ecology: error: P balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
     eps = fabs(TC - cv[ws->TC_old_i]) / (TC + cv[ws->TC_old_i]);
 
     if (eps > MASSBALANCE_EPS)
-        e->quitfn("ecology: error: C balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
+        e_warn("ecology: error: C balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
 
     if (ws->COD_i > -1){
 
@@ -185,6 +191,6 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
       /* The balance for oxygen is Oxygen - Biological Ocean Demand  */ 
       
       if (eps > MASSBALANCE_EPS)
-       	e->quitfn("ecology: error: Oxygen - BOD - COD imbalance (%e,%e) violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
+       	e_warn("ecology: error: Oxygen - BOD - COD imbalance (%e,%e) violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
     }
 }

@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryeval.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: bdryeval.c 6358 2019-10-10 02:29:28Z her127 $
  *
  */
 
@@ -1042,20 +1042,28 @@ void bdry_eval_tr_m(geometry_t *geom, /* Global geometry */
 	    }
 	  }
 	} else {
-	  /* Read the forcing data from file */
-	  for (cc = 1; cc <= open[n]->no3_t; cc++) {
-	    c = open[n]->obc_t[cc];
-	    c2 = geom->m2d[c];
-	    x = geom->cellx[c2];
-	    y = geom->celly[c2];
-	    z = geom->cellz[c] * master->Ds[c2];
-	    tm = open[n]->trm[tn];
-	    open[n]->t_transfer[tm][cc] =
-	      hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
-					       open[n]->tsfiles,
-					       open[n]->filenames, 
-					       data->name,
-					       master->t, x, y, z);
+	  /* Forcing is via tracer */
+	  if (open[n]->trt[tn] >= 0) {
+	    for (cc = 1; cc <= open[n]->no3_t; cc++) {
+	      c = open[n]->obc_t[cc];
+	      open[n]->t_transfer[tm][cc] = master->tr_wc[open[n]->trt[tn]][c];
+	    }
+	  } else {
+	    /* Read the forcing data from file */
+	    for (cc = 1; cc <= open[n]->no3_t; cc++) {
+	      c = open[n]->obc_t[cc];
+	      c2 = geom->m2d[c];
+	      x = geom->cellx[c2];
+	      y = geom->celly[c2];
+	      z = geom->cellz[c] * master->Ds[c2];
+	      tm = open[n]->trm[tn];
+	      open[n]->t_transfer[tm][cc] =
+		hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
+						 open[n]->tsfiles,
+						 open[n]->filenames, 
+						 data->name,
+						 master->t, x, y, z);
+	    }
 	  }
         }
       }

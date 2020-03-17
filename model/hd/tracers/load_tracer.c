@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 6096 2019-02-08 04:43:29Z her127 $
+ *  $Id: load_tracer.c 6433 2019-11-22 00:26:36Z her127 $
  *
  */
 
@@ -536,7 +536,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
 
   /* Initialise */
   master->alert_a = master->alert_c = NULL;
-  master->avhrr = master->ghrsst = master->shwin = master->layth = NULL;
+  master->avhrr = master->ghrsst = master->ghrsste = master->shwin = master->layth = NULL;
   master->cfl2d = master->cfl3d = master->cour = master->lips = master->ahsb = NULL;
   master->mixl = master->steric = NULL;
   master->av = master->rv = master->pv = NULL;
@@ -567,7 +567,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
 
   /* SWR */
   master->swr_attn1 = master->swr_tran = NULL;
-  master->swr_babs = NULL;
+  master->swr_babs = master->swreg = master->swrms = master->attn_mean = master->tran_mean = NULL;
   if (params->swr_type & SWR_2D) master->swr_attn = NULL;
 
   /* Assign the 2D pointers.  */
@@ -1361,10 +1361,19 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    if (params->ghrsst == 2)
-      strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
-    else
-      strcpy(master->trinfo_2d[tn].reset_file, "ghrsst_list.mnc(ghrsst=analysed_sst)");
+    strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
+    strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->ghrsste = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "ghrsst_error");
+    strcpy(master->trinfo_2d[tn].long_name, "GHRSST L4 SST error");
+    strcpy(master->trinfo_2d[tn].units, "degrees C");
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
+    strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
     strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
     master->trinfo_2d[tn].n = tn;
     tn++;
@@ -1599,7 +1608,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     strcpy(master->trinfo_2d[tn].long_name, "SWR bottom absorption");
     strcpy(master->trinfo_2d[tn].units, "");
     /*tr_dataset(params->swr_babs, &master->trinfo_2d[tn], 1.0);*/
-    trn_dataset(params->swr_babs, params->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 1.0);
+    trn_dataset(params->swr_babs, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 1.0);
     master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1;
@@ -1638,7 +1647,49 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     strcpy(master->trinfo_2d[tn].units, "");
     master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
     /*tr_dataset(params->swr_tran, &master->trinfo_2d[tn], 0.26);*/
-    trn_dataset(params->swr_tran, params->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
+    trn_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (strlen(params->swr_regions)) {
+    master->swreg = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "swreg");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR param estimation regions");
+    strcpy(master->trinfo_2d[tn].units, "");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->swrms = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "swrms");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR param estimation RMSE");
+    strcpy(master->trinfo_2d[tn].units, "degrees C");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->attn_mean = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "attn_mean");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR mean attenuation");
+    strcpy(master->trinfo_2d[tn].units, "m-1");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = 0;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    tn++;
+    master->tran_mean = master->tr_wcS[tn];
+    strcpy(master->trinfo_2d[tn].name, "tran_mean");
+    strcpy(master->trinfo_2d[tn].long_name, "SWR mean transmission");
+    strcpy(master->trinfo_2d[tn].units, " ");
+    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1;
     master->trinfo_2d[tn].n = tn;
@@ -2682,7 +2733,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
     }
     tn++;
   }
-  if (params->rtemp & RLX_ADPT &&
+  if (params->rtemp & (RLX_ADPT|RLX_REG|RLX_OBC) &&
       tracer_find_index("temp_tc", master->ntr, master->trinfo_3d) == -1) {
     master->temp_tc = master->tr_wc[tn];
     strcpy(master->trinfo_3d[tn].name, "temp_tc");
@@ -2699,7 +2750,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
     master->trinfo_3d[tn].n = tn;
     tn++;
   }
-  if (params->rsalt & RLX_ADPT &&
+  if (params->rsalt & (RLX_ADPT|RLX_REG|RLX_OBC) &&
       tracer_find_index("salt_tc", master->ntr, master->trinfo_3d) == -1) {
     master->salt_tc = master->tr_wc[tn];
     strcpy(master->trinfo_3d[tn].name, "salt_tc");
@@ -5271,7 +5322,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     }
     tn++;
   }
-  if (params->rtemp & RLX_ADPT) {
+  if (params->rtemp & (RLX_ADPT|RLX_REG|RLX_OBC)) {
     strcpy(trinfo[tn].name, "temp_tc");
     strcpy(trinfo[tn].long_name, "Relaxation temperature time constant");
     strcpy(trinfo[tn].units, "days");
@@ -5287,7 +5338,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].m = tn;
     tn++;
   }
-  if (params->rsalt & RLX_ADPT) {
+  if (params->rsalt & (RLX_ADPT|RLX_REG|RLX_OBC)) {
     strcpy(trinfo[tn].name, "salt_tc");
     strcpy(trinfo[tn].long_name, "Relaxation salinity time constant");
     strcpy(trinfo[tn].units, "days");
@@ -7455,7 +7506,7 @@ void value_init_2d(master_t *master,     /* Master data              */
       for (cc = 1; cc <= nvec; cc++) {
 	c = vec[cc];
 	ret[c] = grid_interp_on_point(gs, geom->cellx[c], geom->celly[c]);
-	    
+
 	/* Check for nan's                                           */
 	if (isnan(ret[c])) ret[c] = fill;
       }
@@ -7749,6 +7800,7 @@ void trn_dataset(char *data, tracer_info_t *trinfo, int tn, int ntr, int atr, do
 {
   double val;
   int n;
+
   if (strlen(data)) {
     for (n = atr; n < ntr; n++) {              /* data is a tracer */
       if (strcmp(data, trinfo[n].name) == 0) {

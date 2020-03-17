@@ -117,3 +117,6 @@
 
 /* See if the JIGSAW library is available */
 #undef HAVE_JIGSAWLIB
+
+/* Define wether to include the Metis library */
+#undef HAVE_METIS

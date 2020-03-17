@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bio_opt.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: bio_opt.h 6373 2019-10-10 06:24:21Z bai155 $
  *
  */
 
@@ -83,6 +83,7 @@ typedef struct {
   double *yC_PE;
   double *yC_PC;
   double *yC_picoplankton;
+  double *yC_rhodomonas_duplex;
   double *yC_microplankton;
   double *yC_tricho;
   double *yC_symbiodinium;
@@ -104,6 +105,7 @@ typedef struct {
   double *yC_PE_rsr;
   double *yC_PC_rsr;
   double *yC_picoplankton_rsr;
+  double *yC_rhodomonas_duplex_rsr;
   double *yC_microplankton_rsr;
   double *yC_tricho_rsr;
   double *yC_symbiodinium_rsr;
@@ -153,6 +155,10 @@ typedef struct {
   double *bC_MON1;
   double *bC_MON2;
   double *bC_SAN1;
+  double *LJCO_aNAP;
+  double *LJCO_bNAP;
+  double *LJCOc_aNAP;
+  double *LJCOc_bNAP;
   double *aC_AUS1_rsr;
   double *aC_AUS2_rsr;
   double *aC_ICE1_rsr;
@@ -199,11 +205,25 @@ typedef struct {
   double *bC_MON1_rsr;
   double *bC_MON2_rsr;
   double *bC_SAN1_rsr;
-
-  // Backscattering ratio from Wozniak et al., 2018.
+  double *LJCO_aNAP_rsr;
+  double *LJCO_bNAP_rsr;
+  double *LJCOc_aNAP_rsr;
+  double *LJCOc_bNAP_rsr;
 
   double *B_carb_rsr;
   double *B_terr_rsr;
+
+  double *a0;
+  double *a1;
+  double *a2;
+  double *a3;
+  double *b1;
+  double *b2;
+  double *b3;
+  double *d1;
+  double *d2;
+  double *d3;
+
 
 } bio_opt_prop;
 

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_tracer_defaults.c 6054 2019-01-23 05:44:18Z bai155 $
+ *  $Id: ecology_tracer_defaults.c 6376 2019-11-06 04:09:47Z bai155 $
  *
  */
 
@@ -204,6 +204,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"NO3",       "mg N m-3", 0.1,   500.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"DIP",       "mg P m-3", 0.5,   100.0,     0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"PIP",       "mg P m-3", 0.1,   100.0,     0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
+    {"PIP_Dust",  "mg P m-3", 0.1,   100.0,     0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"PIPF",      "mg P m-3", 0.0,   100.0,     0, 1, 1, 5, 0, 1, 1, 1, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"PIPI",      "mg P m-3", 0.01,   0.01,     0, 1, 1, 5, 0, 1, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
     {"DIC",       "mg C m-3", 24758.61,24758.61,0, 1, 1, 5, 1, 0, 1, 1, 0, FILEIN, ECOLOGY|PROGNOSTIC},
@@ -253,6 +254,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"PhyD_N_pr", "mg C m-3 d-1", 0.0,   0.0,   1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"Oxy_pr",    "mg O m-3 d-1 ",0.0,   0.0,   1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
     {"Nfix",      "mg N m-3 s-1", 0.0,   0.0,   1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
+    {"Amm_fl",    "mg N m-3 s-1", 0.0,   0.0,   1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
     {"Phy_L_N2_fix","mg N m-3 s-1",0.0,  0.0,   1, 0, 0, 5, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PARAMETER},
     {"SG_N",     "g N m-2",  SG_N,      0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
     {"SGH_N",     "g N m-2",  SGH_N,    0.0,    0, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|PROGNOSTIC},
@@ -380,8 +382,10 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"R_620",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"R_665",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"R_681",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"R_710",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_710",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},    
+    {"R_709",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"R_753",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"R_754",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"R_482",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"R_655",  "sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"nFLH",  "mW cm-2 um-1 sr-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
@@ -393,8 +397,13 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"NH4_sedflux", "mg N m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"NO3_sedflux", "mg N m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"DIP_sedflux", "mg P m-2 s-1", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"xco2_in_air", "ppmv",  390.0,    390.0,      0, 0, 0, 5, 0, 0, 1, 1, 1, NOGRAD, ECOLOGY|PROGNOSTIC},
+    {"Hue", "degrees", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Moonlight", "W m-2", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Lunar_zenith", "radians", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Lunar_phase", "radians", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
+    {"Moon_fulldisk", "W m-2", 0.0,   0.0,    2, 0, 0, 2, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
     {"NULL",      "NULL",     0.0,   0.0,       0, 0, 0, 0, 0, 0, 0, 0, 0, NOGRAD, ECOLOGY|DIAGNOSTIC},
-    {"xco2_in_air", "ppmv",  390.0,    390.0,      0, 0, 0, 2, 0, 0, 1, 1, 0, FILEIN, ECOLOGY|DIAGNOSTIC}, 
   };
   
 /* diagn, advect, diff, type, diss, part, in water, in sed, flag, obc, type */
@@ -435,6 +444,7 @@ void eco_defaults_std(tracer_info_t *tracer, char *trname, ecology *e)
     {"PIP",       1.0,  1e9,   2e8,   2e8, -2e-4   },
     {"PIPF",    2.5e-5, 1e9,   2e8,   2e8,   0.0   },
     {"PIPI",    2.5e-5, 1e9,   2e8,   2e8,  -9e-4  },
+    {"PIP_Dust",2.5e-5, 1e9,   2e8,   2e8,  -1.160000e-05 },
     {"DetR_C",    1e-5, 1e9,   2e6,   2e6, -5.78e-05 },
     {"DetR_N",    1e-5, 1e9,   2e8,   2e8, -5.78e-05 },
     {"DetR_P",    1e-5, 1e9,   2e8,   2e8, -5.78e-05 },

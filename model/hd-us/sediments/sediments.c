@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 6202 2019-04-18 02:19:09Z riz008 $
+ *  $Id: sediments.c 6405 2019-11-21 23:02:16Z her127 $
  *
  */
 
@@ -66,6 +66,10 @@ typedef struct {
   double i_conc;                /* Initial deposit concentration */
   double f_conc;                /* Compacted deposit concentration; 
 				   default = i_conc */
+  //2019                                   default = i_conc */
+  double css_erosion;
+  double css_deposition;
+
   double svel;                  /* Constant settling velocity */
   char svel_name[MAXSTRLEN];    /* Settling velocity name */
   double adsorbkd;              /* Adsorbtion Kd */
@@ -85,6 +89,11 @@ typedef struct {
   double psize;
   double b_dens;
   double i_conc;
+
+  //2019
+  double css_erosion;
+  double css_deposition;
+
   double svel;
   int diagn;
   int advect;
@@ -114,6 +123,11 @@ int sinterface_getshipfile(FILE* prmfd, char *shipfile);
 
 //2016
 double sinterface_erflux_scale(FILE* prmfd);
+
+// 2019 tracer-specific css erosion and css deposition
+// (to overwrire default values when present in the tracer specifications)
+double sinterface_get_css_erosion(void* model, char *name);
+double sinterface_get_css_deposition(void* model, char *name);
 
 /*-------------------------------------------------------------------*/
 /* Sediment specific interface routines
@@ -966,6 +980,31 @@ double sinterface_get_i_conc(void* model, char *name)
     return v;
 }
 
+double sinterface_get_css_erosion(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+
+    double v=-1;
+    if (data)
+      v = data->css_erosion;
+    return v;
+}
+
+double sinterface_get_css_deposition(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+
+    double v=-1;
+    if (data)
+      v = data->css_deposition;
+    return v;
+}
 
 double sinterface_get_svel(void* model, char *name)
 {

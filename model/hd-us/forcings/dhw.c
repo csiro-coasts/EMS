@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dhw.c 6144 2019-03-05 01:57:26Z riz008 $
+ *  $Id: dhw.c 6456 2020-02-18 23:41:45Z her127 $
  *
  */
 
@@ -23,6 +23,8 @@
 #include <math.h>
 #include "hd.h"
 
+/* Hotspot increment: Hotspot = MMM + thresh                         */
+double thresh = 1.0;
 
 /* Local functions */
 static int dhw_init(sched_event_t *event);
@@ -37,6 +39,7 @@ typedef struct {
   double dt;                    /* Relaxation time step */
   char dhdo[MAXSTRLEN];         /* Offset dhd file */
   double offset;                /* Offset dhd increment (sec) */
+  int mtype;                    /* Type of daily mean */
   int checked;
   int first;
 } tr_dhw_data_t;
@@ -97,6 +100,12 @@ void tracer_dhw_init(master_t *master)
   dhw->offset = dt;
   dhw->checked = 0;
   dhw->first = 1;
+  if (params->dhwf & DHW_INT)
+    dhw->mtype = DHW_INT;
+  else if (params->dhwf & DHW_MEAN)
+    dhw->mtype = DHW_MEAN;
+  else
+    dhw->mtype = DHW_SNAP;
 
   /* Register the scheduled function */
   sched_register(schedule, "dhw", dhw_init, dhw_event, dhw_cleanup,
@@ -179,7 +188,15 @@ double dhw_event(sched_event_t *event, double t)
 	dhdo = 0.0;
 	nanf = 1;
       }
-      master->dhw[c] += fact * (master->dhd[c] - dhdo);
+
+      /* DHD is the integral of temp-MMM over the day                */
+      if (dhw->mtype & (DHW_INT|DHW_SNAP))
+	master->dhw[c] += fact * (master->dhd[c] - dhdo);
+      /* DHD is the daily mean temp - MMM                            */
+      if (dhw->mtype & DHW_MEAN) {
+	if (master->dhd[c] > master->dhwc[c] + thresh)
+	  master->dhw[c] += fact * ((master->dhd[c] - master->dhwc[c]) - dhdo);
+      }
 
       /* Reinitialize the dhd value                                  */
       master->dhd[c] = 0.0;
@@ -193,6 +210,7 @@ double dhw_event(sched_event_t *event, double t)
   /* Close the dhd file */
   for (cc = 0; cc < dhw->ntsfiles; ++cc)
     hd_ts_free(master, dhw->tsfiles[cc]);
+  free((cstring *)dhw->tsnames);
 
   return event->next_event;
 }
@@ -232,10 +250,35 @@ void calc_dhd(geometry_t *window,       /* Window geometry       */
 
   if (wincon->dhwf & DHW_NOAA) {
     if (windat->dhd && windat->dhwc) {
-      for (cc = 1; cc <= window->b3_t; cc++) {
-	c = window->w3_t[cc];
-	if (windat->temp[c] > windat->dhwc[c]) {
-	  windat->dhd[c] += fact * (windat->temp[c] - windat->dhwc[c]) * windat->dt;
+      /* DHD is the integral of temp-MMM over the day                */
+      if (wincon->dhwf & DHW_INT) {
+	for (cc = 1; cc <= window->b3_t; cc++) {
+	  c = window->w3_t[cc];
+	  if (windat->temp[c] > windat->dhwc[c] + thresh) {
+	    windat->dhd[c] += fact * (windat->temp[c] - windat->dhwc[c]) * windat->dt;
+	  }
+	}
+      }
+      /* DHD is the daily mean temp                                  */
+      if (wincon->dhwf & DHW_MEAN) {
+	for (cc = 1; cc <= window->b3_t; cc++) {
+	  c = window->w3_t[cc];
+	  windat->dhd[c] += fact * windat->temp[c] * windat->dt;
+	}
+      }
+      /* DHD is the temp at dhwh hours                               */
+      if (wincon->dhwf & DHW_SNAP) {
+	double hrs = floor(windat->days) + fabs(wincon->dhwh) / 24.0;
+	if (windat->days < hrs && wincon->dhwf & DHW_SET)
+	  wincon->dhwf &= ~DHW_SET;
+	if (windat->days >= hrs && !(wincon->dhwf & DHW_SET)) {
+	  wincon->dhwf |= DHW_SET;
+	  for (cc = 1; cc <= window->b3_t; cc++) {
+	    c = window->w3_t[cc];
+	    if (windat->temp[c] > windat->dhwc[c] + thresh) {
+	      windat->dhd[c] = windat->temp[c] - windat->dhwc[c];
+	    }
+	  }
 	}
       }
     }

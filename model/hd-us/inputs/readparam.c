@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 6342 2019-09-17 10:41:17Z riz008 $
+ *  $Id: readparam.c 6463 2020-02-18 23:44:34Z her127 $
  *
  */
 
@@ -22,6 +22,10 @@
 #include <string.h>
 #include <math.h>
 #include "hd.h"
+/* JIGSAW grid generation */
+#ifdef HAVE_JIGSAWLIB
+#include "lib_jigsaw.h"
+#endif
 
 #define DEG2RAD(d) ((d)*M_PI/180.0)
 #define RAD2DEG(r) ((r)*180.0/M_PI)
@@ -111,7 +115,16 @@ void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode);
 void bathy_interp_s(parameters_t *params, char *fname, int mode);
 void write_tile_dump(master_t *master, FILE *op, char *fname, char *vars, int tile, int obc,
 		     double *regionid, int nreg, int *reg, int **flag, int nobc, int fm, int mode);
-
+#ifdef HAVE_JIGSAWLIB
+void create_jigsaw_mesh(coamsh_t *cm, jigsaw_msh_t *J_mesh, jigsaw_msh_t *J_hfun,
+			int powf, int stproj);
+void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode);
+void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode);
+void create_hex_radius(double crad, double x00, double y00,
+		       double rmin, double rmax, double gscale,
+		       jigsaw_msh_t *J_mesh, int powf);
+void neighbour_finder_j(jigsaw_msh_t *msh, int ***neic);
+#endif
 
 /*-------------------------------------------------------------------*/
 /* Routine to set default parameters                                 */
@@ -173,6 +186,7 @@ void set_default_param(parameters_t *params)
   params->trflsh = 0;
   sprintf(params->trage, "%c", '\0');
   sprintf(params->dhw, "%c", '\0');
+  params->dhwf = 0;
   params->tendf = 0;
   sprintf(params->trtend, "%c", '\0');
   params->thin_merge = 1;
@@ -226,6 +240,9 @@ void set_default_param(parameters_t *params)
   params->waves = 0;
   params->decorr = 0;
   params->decf = NONE;
+  sprintf(params->monotr, "%c", '\0');
+  params->monomn = 0.0;
+  params->monomx = 0.0;
   params->orbital = 0;
   params->rampf = 0;
   params->wind_scale = 1.0;
@@ -644,6 +661,21 @@ parameters_t *params_read(FILE *fp)
   if (params->trasc & FFSL && params->osl & (L_BILIN|L_BAYLIN))
     hd_quit("Cannot use FFSL advection with bilinear or baycentric interpolation, due to streamline tracking from edges.\n");
 
+  sprintf(keyword, "FILL_METHOD");
+  if (prm_read_char(fp, keyword, buf)) {
+    if (contains_token(buf, "NONE") != NULL) {
+      params->fillf = NONE;
+    } else {
+      params->fillf = 0;
+      if (contains_token(buf, "MONOTONIC") != NULL)
+	params->fillf |= MONOTONIC;
+      if (contains_token(buf, "CLIP") != NULL)
+	params->fillf |= CLIP;
+    }
+  }
+  if (params->fillf & MONOTONIC)
+    params->ntrS += 1;
+
   /* Setting robust > 1 will cap and smooth smagorinsky              */
   sprintf(keyword, "ROBUST");
   prm_read_int(fp, keyword, &params->robust);
@@ -762,7 +794,7 @@ parameters_t *params_read(FILE *fp)
     prm_set_errfn(hd_silent_warn);
   }
   if (!(params->cfl & NONE))
-    params->ntrS += 5;
+    params->ntrS += 6;
 
   params->vorticity = 0;
   sprintf(keyword, "VORTICITY");
@@ -847,6 +879,7 @@ parameters_t *params_read(FILE *fp)
   read_profile(params, fp);
 
   read_decorr(params, fp, 0);
+  read_monotone(params, fp, 0);
 
   /* Totals diagnostics                                              */
   read_totals(params, fp);
@@ -1386,20 +1419,25 @@ parameters_t *params_read(FILE *fp)
     if ((strcmp(buf, "NET_HEAT") == 0) || 
 	(strcmp(buf, "COMP_HEAT_MOM") == 0) || 
 	(strcmp(buf, "COMP_HEAT") == 0)) {
-    if (strcmp(buf, "COMP_HEAT") == 0)
-      params->heatflux = COMP_HEAT;
-    if (strcmp(buf, "COMP_HEAT_MOM") == 0)
-      params->heatflux = COMP_HEAT_MOM;
-    if (strcmp(buf, "NET_HEAT") == 0)
-      params->heatflux = NET_HEAT;
+      if (strcmp(buf, "COMP_HEAT") == 0)
+	params->heatflux = COMP_HEAT;
+      if (strcmp(buf, "COMP_HEAT_MOM") == 0)
+	params->heatflux = COMP_HEAT_MOM;
+      if (strcmp(buf, "NET_HEAT") == 0)
+	params->heatflux = NET_HEAT;
 
       /* Read the swr parameters                                     */
-    read_swr(params, fp, 0);
+      read_swr(params, fp, 0);
     }
 
+    if (contains_token(buf, "ADVANCED") != NULL) params->heatflux = ADVANCED;
+    if (contains_token(buf, "BULK") != NULL) params->heatflux = ADVANCED;
+    if (params->heatflux & ADVANCED) {
+      /*
     if (strcmp(buf, "ADVANCED") == 0 || strcmp(buf, "BULK") == 0 || 
 	params->heatflux & ADVANCED) {
       params->heatflux = ADVANCED;
+    */
 
       /* Read the swr parameters                                     */
       read_swr(params, fp, 0);
@@ -1432,6 +1470,22 @@ parameters_t *params_read(FILE *fp)
 	if (!(prm_get_time_in_secs(fp, keyword, &params->hftc))) {
 	  hd_warn
 	    ("params_read() : AVHRR heatflux requires HEATFLUX_TC constant.\n");
+	  params->hftc = 86400.0;
+	}
+      }
+    }
+
+    if (contains_token(buf, "GHRSST") != NULL) {
+      params->heatflux |= GHRSST;
+      if (!strlen(params->ghrsst_path)) {
+	hd_warn
+	  ("params_read() : GHRSST heatflux requires a GHRSST diagnostic path name.\n");
+	params->heatflux = NONE;
+      } else {
+	sprintf(keyword, "HEATFLUX_TC");
+	if (!(prm_get_time_in_secs(fp, keyword, &params->hftc))) {
+	  hd_warn
+	    ("params_read() : GHRSST heatflux requires HEATFLUX_TC constant.\n");
 	  params->hftc = 86400.0;
 	}
       }
@@ -1763,6 +1817,12 @@ parameters_t *params_read(FILE *fp)
   prm_read_char(fp, keyword, params->nodal_dir);
   sprintf(keyword, "TIDE_CONSTITUENTS");
   prm_read_char(fp, keyword, params->tide_con_file);
+  sprintf(keyword, "TIDE_CONSTITUENTS_TRAN");
+  if (prm_read_char(fp, keyword, params->tide_con_file)) 
+    params->tidef |= TD_TRAN;
+  sprintf(keyword, "TIDE_CONSTITUENTS_VEL");
+  if (prm_read_char(fp, keyword, params->tide_con_file)) 
+    params->tidef |= TD_VEL;
   for (n = 0; n < params->nobc; n++) {
     if(params->open[n]->bcond_ele & TIDALH) {
       prm_set_errfn(hd_quit);
@@ -2408,7 +2468,7 @@ parameters_t *auto_params(FILE * fp, int autof)
 
   /* CFL                                                             */
   if (!(params->cfl & NONE))
-    params->ntrS += 5;
+    params->ntrS += 6;
 
   /* Momentum tendency (optional)                                    */
   sprintf(keyword, "MOM_TEND");
@@ -2640,6 +2700,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 	params->roammode = A_ROAM_R2;
       else if (strcmp(buf, "ROAMv3") == 0)
 	params->roammode = A_ROAM_R3;
+      else if (strcmp(buf, "ROAMv4") == 0)
+	params->roammode = A_ROAM_R4;
       else if (strcmp(buf, "6") == 0 || strcmp(buf, "RECOMv1") == 0)
 	params->roammode = A_RECOM_R1;
       else if (strcmp(buf, "7") == 0 || strcmp(buf, "RECOMv2") == 0)
@@ -2653,6 +2715,8 @@ parameters_t *auto_params(FILE * fp, int autof)
     else if (params->roammode == A_ROAM_R2)
       auto_params_roam_pre2(fp, params);
     else if (params->roammode == A_ROAM_R3)
+      auto_params_roam_pre3(fp, params);
+    else if (params->roammode == A_ROAM_R4)
       auto_params_roam_pre3(fp, params);
     else
       auto_params_roam_pre1(fp, params);
@@ -3019,10 +3083,11 @@ parameters_t *auto_params(FILE * fp, int autof)
       params->layers[n] = (double)m / d1;
     }
   }
-
-  if (params->hmin == 0.0)
-    params->hmin = min(0.1, 0.07 * (params->layers[params->nz] -
-                                    params->layers[params->nz - 1]));
+  if (!prm_skip_to_end_of_key(fp, "HMIN")) {
+    if (params->hmin == 0.0)
+      params->hmin = min(0.1, 0.07 * (params->layers[params->nz] -
+				      params->layers[params->nz - 1]));
+  }
 
   if (DEBUG("init_m"))
     dlog("init_m", "\nBathymetry processed OK\n");
@@ -3087,6 +3152,12 @@ parameters_t *auto_params(FILE * fp, int autof)
 	prm_read_char(fp, keyword, params->nodal_dir);
 	sprintf(keyword, "TIDE_CONSTITUENTS");
 	prm_read_char(fp, keyword, params->tide_con_file);
+	sprintf(keyword, "TIDE_CONSTITUENTS_TRAN");
+	if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	  params->tidef |= TD_TRAN;
+	sprintf(keyword, "TIDE_CONSTITUENTS_VEL");
+	if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	  params->tidef |= TD_VEL;
       }
     }
     return (params);
@@ -3191,6 +3262,12 @@ parameters_t *auto_params(FILE * fp, int autof)
       prm_read_char(fp, keyword, params->nodal_dir);
       sprintf(keyword, "TIDE_CONSTITUENTS");
       prm_read_char(fp, keyword, params->tide_con_file);
+      sprintf(keyword, "TIDE_CONSTITUENTS_TRAN");
+      if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	params->tidef |= TD_TRAN;
+      sprintf(keyword, "TIDE_CONSTITUENTS_VEL");
+      if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	params->tidef |= TD_VEL;
       break;
     }
   }
@@ -3358,6 +3435,8 @@ parameters_t *auto_params(FILE * fp, int autof)
       auto_params_roam_post5(fp, params);
     if (params->roammode == A_ROAM_R3)     /* A_ROAM_R2 with alternative robust parameterisations */
       auto_params_roam_post5(fp, params);
+    if (params->roammode == A_ROAM_R4)     /* A_ROAM_R3 with TPXO tide                            */
+      auto_params_roam_post6(fp, params);
     if (params->roammode == A_RECOM_R1)    /* RECOM                  */
       auto_params_recom_post1(fp, params);
     if (params->roammode == A_RECOM_R2)    /* RECOM + ROBUST         */
@@ -3753,6 +3832,7 @@ void autoset(parameters_t *params, master_t *master, geometry_t *geom)
 
   /* Initialise the surface elevation if required                    */
   eta_init(geom, params, master);
+
   /* Initialise the velocity if required                             */
   vel_init(geom, params, master);
 
@@ -5378,7 +5458,7 @@ int read_dhw(parameters_t *params, FILE *fp)
       ret = 3;
       params->dhwf = DHW_RT;
     }
-    if (n == 2) {
+    if (n >= 2) {
       strcpy(params->dhw, fields[0]);
       strcpy(params->dhdf, fields[1]);
       sprintf(keyword, "DHW_DT");
@@ -5387,6 +5467,15 @@ int read_dhw(parameters_t *params, FILE *fp)
       else
 	params->dhw_dt = 86400.0;
       params->dhwf = DHW_NOAA;
+      if (n == 3) {
+	if (strcmp(fields[2], "mean") == 0 || strcmp(fields[2], "MEAN") == 0) 
+	  params->dhwf |= DHW_MEAN;
+	else {
+	  params->dhwf |= DHW_SNAP;
+	  params->dhwh = atof(fields[2]);
+	}
+      } else
+	params->dhwf |= DHW_INT;
       ret = 3;
     }
     return(ret);
@@ -6100,9 +6189,9 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
 
   fprintf(op, "# Open boundaries\n");
   fprintf(op, "NBOUNDARIES           %d\n\n", params->nobc);
-  if (strlen(params->orthoweights))
-    fprintf(op, "TIDE_CSR_CON_DIR %s\n", params->nodal_dir);
   if (strlen(params->nodal_dir))
+    fprintf(op, "TIDE_CSR_CON_DIR %s\n", params->nodal_dir);
+  if (strlen(params->orthoweights))
     fprintf(op, "TIDE_CSR_ORTHOWEIGHTS %s\n\n", params->orthoweights);
   if (strlen(params->tide_con_file))
     fprintf(op, "TIDE_CONSTITUENTS %s\n\n", params->tide_con_file);
@@ -6197,10 +6286,15 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     if (open->adjust_flux)
       fprintf(op, "BOUNDARY%1.1d.ADJUST_FLUX   %s\n", n,
 	      otime(open->adjust_flux, tag));      
+    if (open->adjust_flux_s)
+      fprintf(op, "BOUNDARY%1.1d.ADJUST_TIDE   %s\n", n,
+	      otime(open->adjust_flux_s, tag));      
     if (open->relax_zone_nor)
       fprintf(op, "BOUNDARY%1.1d.RELAX_ZONE_NOR %d\n", n, open->relax_zone_nor);
     if (open->relax_zone_tan)
       fprintf(op, "BOUNDARY%1.1d.RELAX_ZONE_TAN %d\n", n, open->relax_zone_tan);
+    if (strlen(open->tide_con))
+      fprintf(op, "BOUNDARY%1.1d.T_CONSTITUENTS  %s\n", open->tide_con);
     if (open->stagger & INFACE)
       fprintf(op, "BOUNDARY%1.1d.STAGGER       INFACE\n", n);
     if (open->bathycon)
@@ -6507,6 +6601,23 @@ void read_grid(parameters_t *params)
     coamsh_t *cm;
     int powf = (params->us_type & US_POW) ? 1 : 0;
     int stproj = (params->us_type & US_STER) ? 1 : 0;
+    int mode;
+
+    mode = 0;
+    if(endswith(buf,".nc"))
+      mode |= (H_BATHY|H_NC);
+    if(endswith(buf,".bty"))
+      mode |= (H_BATHY|H_BTY);
+    if(endswith(buf,".msh"))
+      mode |= (H_BATHY|H_MSH);
+    if (contains_token(buf, "COAST") != NULL)
+      mode |= (H_COAST|H_CST);
+    if (contains_token(buf, "POINT") != NULL)
+      mode |= (H_COAST|H_POINT);
+    if (contains_token(buf, "POLY") != NULL)
+      mode |= (H_COAST|H_POLY);
+    if (!(mode & (H_BATHY|H_COAST)))
+      mode |= (H_COAST|H_CONST);
 
     /* Set up the bounding perimeters                                */ 
     cm = cm_alloc();
@@ -6518,12 +6629,20 @@ void read_grid(parameters_t *params)
 
     /* Build the hfun file                                           */
     jigsaw_init_msh_t (&J_hfun);
+    if (mode & H_COAST)
+      hfun_from_coast(params, cm, &J_hfun, mode);
+    if (mode & H_BATHY)
+      hfun_from_bathy(params, buf, cm, &J_hfun, mode);
+    /*
     if (strcmp(buf, "COAST") == 0)
       hfun_from_coast(params, cm, &J_hfun, 0);
     else if (strcmp(buf, "POINT") == 0)
       hfun_from_coast(params, cm, &J_hfun, 1);
+    else if (strcmp(buf, "POLY") == 0)
+      hfun_from_coast(params, cm, &J_hfun, 2);
     else
       hfun_from_bathy(params, buf, cm, &J_hfun);
+    */
 
     /* Initialise JISGSAW output mesh                                */
     jigsaw_init_msh_t(&J_mesh);
@@ -7732,7 +7851,7 @@ void read_window_info(parameters_t *params, FILE *fp)
   sprintf(keyword, "DUMP_WIN_MAP");
   prm_read_char(fp, keyword, params->wind_file);
   sprintf(keyword, "READ_WIN_MAP");
-  prm_read_char(fp, keyword, params->win_file);
+  if (prm_read_char(fp, keyword, params->win_file)) params->win_type = WIN_FILE;
   if (params->nwindows > 1 && params->trasc & LAGRANGE)
     hd_quit("Multiple windows not supported with advection scheme 'LAGRANGE'\n");
   if (params->tmode & (SP_CHECK|TR_CHECK)) params->nwindows = 1;
@@ -7841,6 +7960,12 @@ void read_win_type(parameters_t *params, FILE *fp)
     }
     if (strcmp(fields[0], "EXPLICIT") == 0)
       params->win_type = WIN_EXP;
+    if (strcmp(fields[0], "METIS") == 0)
+      params->win_type = WIN_METIS;
+    if (strcmp(fields[0], "REGION") == 0) {
+      params->win_type = WIN_REG;
+      strcpy(params->win_file, fields[1]);
+    }
   }
 }
 
@@ -8527,6 +8652,35 @@ void read_decorr(parameters_t *params, FILE *fp, int mode)
 
 
 /*-------------------------------------------------------------------*/
+/* Routine to read monotonicity diagnostic                           */
+/*-------------------------------------------------------------------*/
+void read_monotone(parameters_t *params, FILE *fp, int mode)
+{
+  char buf[MAXSTRLEN];
+  char keyword[MAXSTRLEN];
+  sprintf(keyword, "MONOTONE");
+  if (prm_read_char(fp, keyword, buf)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    int n = parseline(buf, fields, MAXNUMARGS);
+    if (n >= 3) {
+      strcpy(params->monotr, fields[0]);
+      params->monomn = atof(fields[1]);
+      params->monomx = atof(fields[2]);
+      if (mode)
+	params->atr += 2;
+      else
+	params->ntr += 2;
+    } else {
+      hd_warn("format: MONOTONE <tracer> <min> <max>\n");
+    }
+  }
+}
+
+/* END read_monotone()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to create the AVHRR file list                             */
 /*-------------------------------------------------------------------*/
 void create_avhrr_list(parameters_t *params)
@@ -8745,9 +8899,9 @@ void create_ghrsst_list(parameters_t *params)
       if (is_mnc == 1) {
 	if (intype == 1) {    /* Assume it is a GHRSST file          */
 	  if (n == nfiles-1)
-	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error)", fields[n]);
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsst_error=analysis_error)", fields[n]);
 	  else
-	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error) ", fields[n]);
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsst_error=analysis_error) ", fields[n]);
 	  if ((ap = fopen(path, "r")) == NULL)
 	    hd_warn("Can't open GHRSST file '%s'\n", path);
 	  else {
@@ -9098,7 +9252,7 @@ void read_means(parameters_t *params, FILE *fp, int mode)
     if (contains_token(buf, "TIDAL") != NULL)
       params->means |= TIDAL;
     if (contains_token(buf, "TRANSPORT") != NULL)
-      params->means |= TRANSPORT;
+      params->means |= (TRANSPORT|VEL3D|VOLFLUX|KZ_M);
     if (contains_token(buf, "VOLFLUX") != NULL)
       params->means |= VOLFLUX;
     for (n = 0; n < ntr; n++) {
@@ -9326,22 +9480,50 @@ void check_TS_relax(parameters_t *params, FILE *fp)
 	    if (prm_read_char(fp, keyword, buf) > 0) {
 	      int nf = parseline(buf, fields, MAXNUMARGS);
 	      if (strcmp(name, "salt") == 0) {
+		/*
 		if (nf <= 2) {
 		  params->rsalt = RLX_FILE;
 		  params->atr += 1;
 		  params->ntr += 1;
-		} else { /*Adaptive relaxation */
+		*/
+		if (strcmp(fields[0], "obc") == 0) {
+		  params->rsalt = RLX_OBC;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (strcmp(fields[0], "region") == 0) {
+		  params->rsalt = RLX_REG;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (endswith(fields[0], ".nc")) {
+		  params->rsalt = RLX_FILE;
+		  params->atr += 1;
+		  params->ntr += 1;
+		} else { /* Adaptive relaxation */
 		  params->rsalt = RLX_ADPT;
 		  params->atr += 2;
 		  params->ntr += 2;
 		}
 	      }
 	      if (strcmp(name, "temp") == 0) {
+		/*
 		if (nf <= 2) {
 		  params->rtemp = RLX_FILE;
 		  params->atr += 1;
 		  params->ntr += 1;
-		} else { /*Adaptive relaxation */
+		*/
+		if (strcmp(fields[0], "obc") == 0) {
+		  params->rtemp = RLX_OBC;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (strcmp(fields[0], "region") == 0) {
+		  params->rtemp = RLX_REG;
+		  params->atr += 2;
+		  params->ntr += 2;
+		} else if (endswith(fields[0], ".nc")) {
+		  params->rtemp = RLX_FILE;
+		  params->atr += 1;
+		  params->ntr += 1;
+		} else { /* Adaptive relaxation */
 		  params->rtemp = RLX_ADPT;
 		  params->atr += 2;
 		  params->ntr += 2;
@@ -9654,7 +9836,14 @@ int read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj)
 #define R_TAN  16
 
 /*-------------------------------------------------------------------*/
-/* Cookie cuts a mesh given a .bncc region file                      */
+/* Cookie cuts a mesh given a .bncc region file.                     */
+/* Format:                                                           */
+/* COOKIE_CUT file.bncc t1 t2 ... tn tname                           */
+/* makes .prm file tnamet1.prm, tnamet2.prm etc.                     */
+/* For 2 way nesting:                                                */
+/* COOKIE_CUT file.bncc t1 t2 ... tn tname sf bf 2way                */
+/* sf = separation interface (cells)                                 */
+/* bf = 0 no barotropic coupling, bf = 1 for barotropic coupling     */
 /*-------------------------------------------------------------------*/
 void cookie_cut(master_t *master, parameters_t *params)
 {
@@ -9669,19 +9858,23 @@ void cookie_cut(master_t *master, parameters_t *params)
   int *nobc, *nobn, *nobt, *obc, *obe, tobc;
   int found[geom->nobc];
   double *regionid;
-  int sf = 0;
+  int barof = 0;          /* Barotropic coupling for 2 way           */
+  int sf = 0;             /* Interface separation for 2 way          */
   int verbose = 0;
 
   if (!strlen(params->cookiecut)) return;
   n = parseline(params->cookiecut, fields, MAXNUMARGS);
   if (strcmp(fields[n-1], "2way") == 0) {
-    sf = 1;
-    mr = n - 3;
-    fn = n - 2;
+    sf = 2;
+    mr = n - 5;           /* Number of tiles to produce              */
+    fn = n - 4;           /* Index of file name argument             */
+    barof = atoi(fields[n-2]);
+    sf = atoi(fields[n-3]);
   } else {
     mr = n - 2;
     fn = n - 1;
   }
+
   if (n < 1) hd_quit("COOKIE_CUT format = region.bncc region_no output.prm\n");
   if (!(endswith(fields[0], ".bncc")))
     hd_quit("COOKIE_CUT requires a .bncc (COMPAS) region file\n");
@@ -9723,6 +9916,23 @@ void cookie_cut(master_t *master, parameters_t *params)
 	    if (!mask[cn] && n != NOTVALID && n != rgn) {
 	      reg[nreg++] = cn;
 	      mask[cn] = 1;
+	    }
+	  }
+	}
+      }
+    }
+
+    /* Extend the interface separation                               */
+    for (ns = 1; ns < sf; ns++) {
+      for (cc = 1; cc <= geom->b2_t; cc++) {
+	c = geom->w2_t[cc];
+	if (rgn != (int)regionid[c] && mask[c] == ns) {
+	  for (j = 1; j <= geom->npe[c]; j++) {
+	    cn = geom->c2c[j][c];
+	    n = (int)regionid[cn];
+	    if (!mask[cn] && n != NOTVALID && n != rgn && !geom->wgst[cn]) {
+	      reg[nreg++] = cn;
+	      mask[cn] = ns+1;
 	    }
 	  }
 	}
@@ -9917,8 +10127,12 @@ void cookie_cut(master_t *master, parameters_t *params)
 	fprintf(op, "BOUNDARY%d.TYPE        u1\n", nb);
 	sprintf(key, "bdry%d-%d_", n, rgn);
 	fprintf(op, "BOUNDARY%d.BCOND0      SOLID\n", nb);
-	fprintf(op, "#BOUNDARY%d.BCOND0      NEST2WAY %seta.mpk %sts.mpk %suv_nor.mpk %suv_tan.mpk\n", 
-		nb, key, key, key, key);
+	if (barof)
+	  fprintf(op, "#BOUNDARY%d.BCOND0      NEST2WAY %seta.mpk %sts.mpk %suv_nor.mpk %suv_tan.mpk\n", 
+		  nb, key, key, key, key);
+	else
+	  fprintf(op, "#BOUNDARY%d.BCOND0      NEST2WAY %sets.mpk %suv_nor.mpk %suv_tan.mpk\n", 
+		  nb, key, key, key);
 	fprintf(op, "BOUNDARY%d.UPOINTS     %d\n",nb, nobn[n]);
 	for (cc = 0; cc < nreg; cc++) {
 	  c = reg[cc];
@@ -9951,11 +10165,17 @@ void cookie_cut(master_t *master, parameters_t *params)
 	/* this tile.                                                */
 	sprintf(key, "df_tile%d-%d.txt",n,rgn);
 	bp = fopen(key, "w");
-	fprintf(bp, "OutputFiles           4\n\n");
 	ns = 0;
-	write_tile_dump(master, bp, "eta", "eta", n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
-	sprintf(key, "temp salt");
-	write_tile_dump(master, bp, "ts", key, n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
+	if (barof) {
+	  fprintf(bp, "OutputFiles           4\n\n");
+	  write_tile_dump(master, bp, "eta", "eta", n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
+	  sprintf(key, "temp salt");
+	  write_tile_dump(master, bp, "ts", key, n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
+	} else {
+	  fprintf(bp, "OutputFiles           3\n\n");
+	  sprintf(key, "eta temp salt");
+	  write_tile_dump(master, bp, "ets", key, n, rgn, regionid, nreg, reg, flag, nobc[n], ns++, R_OBC);
+	}
 	sprintf(key, "u v");
 	write_tile_dump(master, bp, "uv_nor", key, n, rgn, regionid, nreg, reg, flag, nobn[n], ns++, R_NOR);
 	write_tile_dump(master, bp, "uv_tan", key, n, rgn, regionid, nreg, reg, flag, nobt[n], ns++, R_TAN);
@@ -10056,6 +10276,8 @@ void write_tile_dump(master_t *master,   /* Master data              */
   fprintf(op, "file%d.fill_rule       cascade_search\n", fn);
   fprintf(op, "file%d.bytespervalue   4\n", fn);
   fprintf(op, "file%d.vars            %s\n", fn, vars);
+  if (mode & R_NOR) fprintf(op, "file%d.obc            NOR\n", fn);
+  if (mode & R_TAN) fprintf(op, "file%d.obc            TAN\n", fn);
   fprintf(op, "file%d.points          %d\n", fn, nobc);
 
   if (mode == R_OBC) {

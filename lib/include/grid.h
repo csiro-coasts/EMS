@@ -12,13 +12,13 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: grid.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: grid.h 6437 2019-11-27 23:58:45Z riz008 $
  */
 
 
 #ifndef _GRID_H
 #define _GRID_H
-
+#include "emsmath.h"
 #include "xytoij.h"
 
 void grid_gen_rect_coord(double **x, double **y, double **h1, double **h2,

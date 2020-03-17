@@ -5,7 +5,9 @@
  *  File: model/lib/ecology/process_library/values_common.c
  *  
  *  Description:
- *  Process implementation
+ *  
+ *  Process that generates diagnostic variables (DIN,EFI, EPO) that are used in 
+ *  ecology calculations, and recalculated in postcalc for output.  
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: values_common.c 5903 2018-08-28 06:09:16Z bai155 $
+ *  $Id: values_common.c 6374 2019-11-04 02:54:06Z bai155 $
  *
  */
 
@@ -149,6 +151,20 @@ void values_common_init(eprocess* p)
 
   eco_write_setup(e,"\n");
 
+  /* Output particles used in EFO */
+
+  if (ws->EPO_i > -1){
+
+    eco_write_setup(e,"\nOrganic particles used in EFO: PhyS_N PhyL_N MPB_N ZooS_N ZooL_N DetPL_N DetBL_N DetR_C ");
+
+    if (ws->PhyD_N_i > -1)
+      eco_write_setup(e,"PhyD_N ");
+
+    if (ws->Tricho_N_i > -1)
+      eco_write_setup(e,"Tricho_N  ");
+
+    eco_write_setup(e,"\n");
+  }
 }
 
 void values_common_post_init(eprocess* p)
@@ -163,7 +179,8 @@ void values_common_post_init(eprocess* p)
     ws->k_w = get_parameter_value(e, "k_w");
     ws->k_C_fw = get_parameter_value(e, "k_C_fw");
     ws->k_TSS = get_parameter_value(e, "k_TSS");
-    ws->Kd_i = e->find_index(e->tracers, "Kd", e);   
+    ws->Kd_i = e->find_index(e->tracers, "Kd", e);
+    eco_write_setup(e,"\nCalculating Kd for old non-spectrally-resolving model.");
   }
 }
 
@@ -214,7 +231,7 @@ void values_common_postcalc(eprocess* p, void* pp)
     double* y = ((cell*) pp)->y;
 
     if (ws->EPO_i > -1){
-      y[ws->EPO_i] = ((y[ws->PhyS_N_i] + y[ws->PhyL_N_i] + y[ws->MPB_N_i] + y[ws->ZooS_N_i] + y[ws->ZooL_N_i] + y[ws->DetPL_N_i]) * red_W_C + y[ws->DetBL_N_i] * atk_W_C + y[ws->DetR_C_i]) / (1.0e-6);  // kg C m-3
+      y[ws->EPO_i] = ((y[ws->PhyS_N_i] + y[ws->PhyL_N_i] + y[ws->MPB_N_i] + y[ws->ZooS_N_i] + y[ws->ZooL_N_i] + y[ws->DetPL_N_i]) * red_W_C + y[ws->DetBL_N_i] * atk_W_C + y[ws->DetR_C_i]) / 1.0e6;  // kg C m-3
 
       if (ws->PhyD_N_i > -1){
 	y[ws->EPO_i] +=  y[ws->PhyD_N_i] * (106.0*12.01/16.0/14.01)/1.0e6;

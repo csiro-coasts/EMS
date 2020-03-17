@@ -19,7 +19,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: eta_relax.c 6311 2019-09-13 04:30:50Z her127 $
+ *  $Id: eta_relax.c 6440 2019-12-04 03:00:23Z riz008 $
  *
  */
 
@@ -230,7 +230,11 @@ double eta_relax_event(sched_event_t *event, double t)
   eta_relax_data_t *relax = (eta_relax_data_t *)schedGetPrivateData(event);
   relax_info_t *rlx = master->eta_rlx;
 
-  if (relax->vid < 0) return;
+  /*
+   * this causes a compilter warning but not needed anyway as the init 
+   * has a quit for this case
+   */
+  /* if (relax->vid < 0) return; */
 
   /* Check whether the current time exceeds the next update time */
   if (t >= (event->next_event - SEPS)) {

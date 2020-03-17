@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 6299 2019-08-28 07:13:02Z riz008 $
+ *  $Id: tracers.c 6478 2020-02-18 23:54:19Z her127 $
  *
  */
 
@@ -155,6 +155,7 @@ void tracer_step(master_t *master,    /* Master data                 */
   /* Solve the tracer equation in each window                        */
   for (nn = 1; nn <= nwindows; nn++) {
     n = wincon[1]->twin[nn];
+
     /*---------------------------------------------------------------*/
     /* Set the lateral boundary conditions for tracers.              */
 #if !GLOB_BC
@@ -271,6 +272,11 @@ void tracer_step_3d(geometry_t *window, /* Window geometry           */
     get_tend(window, window->w3_t, window->b3_t, windat->tr_wc[wincon->trtend],
              wincon->tendency, windat->tr_vdif);
   TIMING_DUMP_WIN(2, "  vert_diffuse", window->wn);
+
+  /*-----------------------------------------------------------------*/
+  /* If FFSL is used with mean velocity transport, revert arrays     */
+  if (wincon->means & TRANSPORT)
+    ffsl_trans_post(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
   /* Do the diagnostics and interfaced library routines              */
@@ -419,7 +425,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   int ii = 0, jj = 0, kk = 0;   /* (i,j,k) location of sub-step violation */
   double vm = 0.0, vs = 0.0;    /* Sub-step Courant number & grid spacing */
   char vt[4];                   /* Name of sub-step velocity component */
-  double *u1, *w;
+  double *u1, *u, *v, *w;
   double kzlim;
   int cdb = 0;
 
@@ -452,25 +458,28 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   vcs = wincon->vcs;
   vcs1 = wincon->vcs1;
   u1 = windat->u1;
+  u = windat->u;
+  v = windat->v;
   w = windat->w;
   if (!(wincon->alertf & NONE)) {
     memcpy(windat->salb, windat->sal, window->szc * sizeof(double));
     memcpy(windat->tempb, windat->temp, window->szc * sizeof(double));
   }
-  if (wincon->tmode & SP_FFSL) itermax = 200;
 
   /*-----------------------------------------------------------------*/
   /* Reset the fluxes for mean velocity transport                    */
   if (wincon->means & TRANSPORT) {
     if (windat->dttr == 0.0)
       return(0);
-    set_flux_3d(window, windat, wincon, TRANSPORT);
-    set_lateral_BC_vel(master->u1flux3d, window->nbpte1,
+    set_lateral_BC_vel(master->u1vm, window->nbpte1,
                        window->bpte1, window->bine1);
-    set_lateral_BC_vel(master->u1m, window->nbpte1,
+    set_lateral_BC_vel(master->ume, window->nbpte1,
                        window->bpte1, window->bine1);
-    u1 = windat->u1m;
+    u1 = windat->ume;
+    u = windat->u1m;
+    v = windat->u2m;
     w = windat->wm;
+    ffsl_trans_prep(window, windat, wincon);
   }
 
   /* Reset the river flow to a parabolic profile if required         */
@@ -500,12 +509,34 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   if (wincon->trasc == LAGRANGE) {
     /* Find the origin of the streamline & grid Courant numbers      */
     semi_lagrange_c(window, windat, wincon);
-  } else if (wincon->trasc & (VANLEER|FFSL)) {
+  } else if (wincon->trasc & VANLEER) {
     /* Get the mean cell spacings                                    */
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
       wincon->w9[c] = 0.5 * (wincon->dz[c] + wincon->dz[window->zm1[c]]);
     }
+
+  } else if (wincon->trasc & FFSL) {
+    itermax = 200;
+    memset(wincon->nw, 0, window->sgsiz * sizeof(double));
+    /* Get the grid spacing.                                         */
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      wincon->w9[c] = 0.5 * (wincon->dz[c] + wincon->dz[window->zm1[c]]);
+      zp1 = window->zp1[c];
+
+      /* Calculate cell-centered u1 velocity. The choice of velocity */
+      /* for each cell can be either an average of the face values,  */
+      /* or one of the face values depending on those values - see   */
+      /* Leonard et al. (1996).                                      */
+      wincon->nw[c] = 0.0;
+      zp1 = window->zp1[c];
+      if ((w[c] >= 0.0) && (w[zp1] > 0.0)) 
+        wincon->nw[c] = w[c];
+      else if ((w[c] < 0.0) && (w[zp1] <= 0.0))
+        wincon->nw[c] = w[zp1];
+    }
+    ffsl_init(window, windat, wincon);
   } else {
     /* Get the mean cell spacings                                    */
     for (cc = 1; cc <= window->b3_t; cc++) {
@@ -528,6 +559,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   /* Note that the FFSL advection scheme is limited by the velocity  */
   /* gradients (Lipschitz number) not the Courant number.            */
   dtm = dtu = windat->dt;
+  if (wincon->means & TRANSPORT)   dtm = dtu = windat->dttr;
   if (wincon->stab & (SUB_STEP | SUB_STEP_NOSURF | SUB_STEP_TRACER)) {
 
     for (cc = 1; cc <= vc; cc++) {
@@ -564,8 +596,8 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	e2 = window->m2de[e1];
 	if (wincon->trasc == FFSL) {
 	  int c1 = window->c2c[j][c];
-	  d4 = (windat->u[c] * window->costhu1[e2] + windat->v[c] * window->sinthu1[e2]) -
-  	       (windat->u[c1] * window->costhu1[e2] + windat->v[c1] * window->sinthu1[e2]);
+	  d4 = (u[c] * window->costhu1[e2] + v[c] * window->sinthu1[e2]) -
+  	       (u[c1] * window->costhu1[e2] + v[c1] * window->sinthu1[e2]);
 	} else
 	  d4 = u1[e1];
 
@@ -604,6 +636,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
         kk = window->s2k[c];
       }
     }
+
     if (dtm != dtu) {
       dtm = floor(dtm);
       hd_warn
@@ -700,6 +733,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
       /* surface layer, and hence the sub-step elevation, is not     */
       /* required.                                                   */
       if (!wincon->sigma) {
+	double dt = (wincon->means & TRANSPORT) ? windat->dttr : windat->dt;
 #if defined(HAVE_OMP)
 #pragma omp parallel for private(c,c2)
 #endif
@@ -707,7 +741,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
           c = wincon->s1[cc];
           c2 = window->m2d[c];
           subeta[c2] =
-            wincon->oldeta[c2] + (1.0 + (dtu - trem) / windat->dt) *
+            wincon->oldeta[c2] + (1.0 + (dtu - trem) / dt) *
 	    (windat->eta[c2] - wincon->oldeta[c2]);
         }
 	/*
@@ -728,6 +762,11 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
       /*-------------------------------------------------------------*/
       /* Save the region volume fluxes                               */
       region_volume_flux_coup(window, windat, wincon, dtu, trem);
+
+      /*-------------------------------------------------------------*/
+      /* If the FFSL scheme is used, calculate trajectories          */
+      if (wincon->trasc == FFSL)
+        prep_ff_sl(window, windat, wincon, dtu);
 
       /*-------------------------------------------------------------*/
       /* Tracer loop                                                 */
@@ -879,7 +918,6 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	  for (j = 1; j <= window->npe[c2]; j++) {
 	    e = window->c2e[j][c];
 	    dtracer[c] += (window->eSc[j][c2] * Fx[e] * dtu);
-
 	    if(c==cdb)printf("dtracer %d %d %d : %f %f %f %f : %f\n",c,j,e,windat->u1[e],windat->u1flux3d[e],Fx[e]/windat->u1flux3d[e],Fx[e]*dtu, dtracer[c]);
 	  }
 	  if(c==cdb) {
@@ -944,7 +982,6 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
         /*-----------------------------------------------------------*/
         /* Get the tracer concentration in the surface cells         */
         else {
-
           if (!wincon->sigma && wincon->advect[n]) {
             for (cc = 1; cc <= kefs; cc++) {
               c = wincon->s1[cc];
@@ -958,7 +995,6 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 		tr[c] : surftr;
 	    }
           }
-
           if (wincon->sigma && wincon->advect[n]) {
             /* SIGMA surface calculation : w=0 at the free surface   */
             /* Fz[zp1]=0 at this layer.                              */
@@ -997,14 +1033,13 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
             }
           }
 	}
+
 	/* Reset boundary tracer values if required                  */
 	if (bgzf) save_OBC_tr(window, windat, wincon, Fx, tr, n, 2);
-
 	if (cdb) printf("end %f\n",tr[cdb]);
 	/* Clip the tracer for FFSL schemes                          */
-	if (wincon->trasc & (FFSL))
+	if (wincon->trasc & FFSL && wincon->fillf & (MONOTONIC|CLIP))
 	  clip_ffsl(window, windat, wincon, tr);
-
       }                         /* Tracer loop end                   */
       TIMING_DUMP(2, "    t-loop");
 
@@ -1012,7 +1047,6 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
       TIMING_SET;
       tr_bounds(window, windat, wincon);
       TIMING_DUMP(2, "    tr_bounds");
-
 
       /* Set the old sub-stepped elevation                           */
       if (!wincon->sigma) {
@@ -1058,7 +1092,10 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 
   /* Revert river flow to original profile if required               */
   reset_flow(window, windat, wincon, 1);
-
+  /*
+  if (wincon->means & TRANSPORT)
+    ffsl_trans_post(window, windat, wincon);
+  */
   return(0);
 }
 
@@ -1489,7 +1526,7 @@ void advect(geometry_t *window,               /* Window geometry     */
   if (trasc == ORDER1)
     order1(window, windat, wincon, tr, Fx, Fz, dtu);
   else if (trasc == FFSL)
-    ffsl_do(window, windat, wincon, tr, Fx, Fz, dtu);
+    ffsl_don(window, windat, wincon, tr, Fx, Fz, dtu);
   else {
     if (trasc == ORDER2)
       order2(window, windat, wincon, tr, Fx, Fz);
@@ -2280,6 +2317,173 @@ void order2_upwind_do(double *F,   /* Flux array                     */
 
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
+/* Routine to initialize variables for the full 3D flux-form         */
+/* semi-lagrangian advective scheme, based on Leonard et al. (1996). */
+/* Take the cell-centered velocities in each direction, calculate a  */
+/* trajectory distance and identify the cell at the head of the      */ 
+/* trajectory. Repeat for the cell faces.                            */
+/*-------------------------------------------------------------------*/
+void prep_ff_sl(geometry_t *window, /* Window structure */
+		window_t *windat,   /* Window data structure */
+		win_priv_t *wincon, /* Window geometry / constants */
+		double dt           /* sub-time step */
+  )
+{
+  double *crfzf; /* Fractional factors of total trajectories for faces */
+  double *crfzc; /* Fractional factors of total trajectories for cell centres */
+  int *clzf;     /* Cell counter at head of trajectory, for faces    */
+  int *clzc;     /* Cell counter at head of trajectory, for cell centres */
+  double *nw;            /* Cell-centered velocities */
+  double *w;             /* Velocities at faces */
+  int c, cc, cp1;
+
+  /* Set pointers. */
+  clzf = wincon->clzf;
+  clzc = wincon->clzc;
+  crfzf = wincon->crfzf;
+  crfzc = wincon->crfzc;
+  nw = wincon->nw;
+  w = (wincon->means & TRANSPORT) ? windat->wm : windat->w;
+
+  /* Initialise */
+  memset(crfzf, 0, window->sgsiz * sizeof(double));
+  memset(crfzc, 0, window->sgsiz * sizeof(double));
+  memset(clzf, 0, window->sgsiz * sizeof(int));
+  memset(clzc, 0, window->sgsiz * sizeof(int));
+
+  /* Calculate the cell-averaged velocities in the z direction, and  */
+  /* identify the cell from which to start the backward trajectory   */
+  /* (which is dependent on the velocity sense).                     */
+  for (cc = 1; cc <= window->a3_t; cc++) {
+    c = window->w3_t[cc];
+    cp1 = window->zp1[c];
+    clzc[c] = (nw[c] < 0.0) ? window->zp1[c] : window->w3_t[cc];
+  }
+  
+  /* Get trajectory distances and origins for the transverse terms  */
+  /* based on the cell-centered velocities.                         */
+  ff_sl_do_vert(nw, dt, wincon->w9, 1, window->a3_t,
+       window->w3_t, window->zp1, window->zm1, clzc, crfzc);
+
+  /* Get trajectory distance and origin for advection using */
+  /* cell face velocities for each direction.               */
+  /* z direction */
+  for (cc = 1; cc <= wincon->vc; cc++) {
+    c = wincon->s1[cc];
+    clzf[c] = (w[c] > 0.0) ? window->zm1[c] : wincon->s1[cc];
+  }
+  ff_sl_do_vert(w, dt, wincon->dz, 1, wincon->vc, wincon->s1, window->zp1,
+     window->zm1, clzf, crfzf);
+}
+
+/* END prep_ff_sl()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* First order routine to track the backwards trajectory to the      */
+/* source, and note the start sparse location and fractional         */
+/* component of the trajectory.                                      */
+/*-------------------------------------------------------------------*/
+void ff_sl_do_vert(double *vel,   /* Velocity at the cell face */
+		   double dt,     /* time step */
+		   double *h,     /* cell width/height at face/centre */
+		   int ss,        /* Start sparse coordinate */
+		   int se,        /* End sparse coordinate */
+		   int *sdo,      /* Points to process array */
+		   int *fmap,     /* Forward map */
+		   int *bmap,     /* Backward map */
+		   int *cl,        /* Index of trajectory source cell */
+		   double *crf     /* Fractional component of trajectory */
+  )
+{
+  int c, cc, cp, cpb, c2;
+  double ltraj, lrem, dz;
+
+  for (cc = ss; cc <= se; cc++) {
+    c = sdo[cc];
+    if (vel[c] == 0.0)
+      continue;
+    ltraj = fabs(vel[c]) * dt;
+    lrem = ltraj;
+    cp = cpb = cl[c];
+    dz = fabs((h[cp] > 0) ? h[cp] : h[c]);
+
+    while (dz < lrem) {
+      lrem  -= dz;
+      cp = (vel[c] < 0.0) ? fmap[cp] : bmap[cp];
+      if (cpb == cp) {
+	lrem = fmod(lrem, dz);
+	break;
+      }
+      if (h[cp] > 0)
+        dz = fabs(h[cp]);
+      cpb = cp;
+    }
+
+    crf[c] = max(min(lrem / dz, 1.0), 0.0);
+    cl[c] = cp;
+ }
+}
+
+/* END ff_sl_do_vert()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to get the tracer concentration on a cell face using      */
+/* VanLeer's method. Used with the FFSL advection scheme.            */
+/*-------------------------------------------------------------------*/
+void ff_sl_van_leer(double *F,  /* Flux array */
+		    double *tr, /* df_variable_t to advect */
+		    double *vel,/* Velocity at the cell center/face */
+		    double *crf,/* Fractional component of lagrange time step */
+		    int *cl,    /* Upstream coordinate for long time steps */ 
+		    int ss,     /* Start sparse coordinate */
+		    int se,     /* End sparse coordinate */
+		    int *sdo,   /* Points to process array */
+		    int *fmap,  /* Forward map */
+		    int *bmap   /* Backward map */
+		   )
+{
+  int c, cc, cp;
+  int bm1, bm2;
+  double df;
+
+  for (cc = ss; cc <= se; cc++) {
+    c = sdo[cc];
+    if (crf[c] == 0.0)
+      continue;
+    cp = cl[c];
+    if (vel[c] > 0.0)
+      cp = fmap[cp];
+    bm1 = bmap[cp];
+    bm2 = bmap[bm1];
+
+    if (vel[c] > 0.0) {
+      df = (tr[bm1] - tr[bm2]) * (tr[cp] - tr[bm1]);
+      if (df > 0.0)
+        df = 2.0 * df / (tr[cp] - tr[bm2]);
+      else
+        df = 0.0;
+      F[c] = tr[bm1] + 0.5 * (1.0 - crf[c]) * df;
+    } else if (vel[c] < 0.0) {
+      df = (tr[cp] - tr[bm1]) * (tr[fmap[cp]] - tr[cp]);
+      if (df > 0.0)
+        df = 2.0 * df / (tr[fmap[cp]] - tr[bm1]);
+      else
+        df = 0.0;
+      F[c] = tr[cp] - 0.5 * (1.0 - crf[c]) * df;
+    }
+  }
+}
+
+/* END ff_sl_van_leer()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
 /* Calculates updated tracer concentration of surface cells          */
 /*-------------------------------------------------------------------*/
 double surf_conc(geometry_t *window, /* Window geometry              */
@@ -2405,7 +2609,7 @@ double surf_conc(geometry_t *window, /* Window geometry              */
     }
     dtr += dtracer[c];
     cnt = window->cellarea[c2] * (osubeta - subeta) - (hf + vf);
-    printf("%f %d %d %e : %f %f : %f %f : %f\n",windat->t/86400,
+    printf("surf_conc %f %d %d %e : %f %f : %f %f : %f\n",windat->t/86400,
 	   c,window->s2k[c],cnt,hf,dtr/tr[c],vf,
 	   fcbot/tr[c],surftr/svol);
   }
@@ -3477,6 +3681,11 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
   double dz, **xc, **yc, **zc;
   int nuc = 4;    /* Number of polynomial coefficients               */
   int size = 3;   /* One row surrounding the centre                  */
+  int df = 2;     /* Dimension of interpolation (2D or 3D)           */
+
+  if (df == 2) wincon->trasf |= TR_LIND2;
+  if (df == 3) wincon->trasf |= TR_LIND3;
+  if (df == 2) nuc = 3;
 
   if (wincon->lw == NULL) {
 
@@ -3498,26 +3707,28 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
 
       /* Get the stencil at location c                               */
       sz = size;
-      st = stencil(geom, c, &sz, ST_SIZED, 0);
+      st = stencil(window, c, &sz, ST_SIZED, 0);
       szc = sz;
       lw->ncells = 0;
       /* Ghost cells to include                                      */
       add_cells_to_lsq(window, windat, wincon, sz, st, c);
 
-      /* Get the stencil at location in the layer above c            */
-      if (c != zp1) {
-	sz = size;
-	st = stencil(geom, zp1, &sz, ST_SIZED, 0);
-      }
-      add_cells_to_lsq(window, windat, wincon, sz, st, c);
+      if (df == 3) {
+	/* Get the stencil at location in the layer above c          */
+	if (c != zp1) {
+	  sz = size;
+	  st = stencil(window, zp1, &sz, ST_SIZED, 0);
+	}
+	add_cells_to_lsq(window, windat, wincon, sz, st, c);
 
-      /* Get the stencil at location in the layer below c            */
-      sz = szc;
-      if (zm1 != window->zm1[zm1]) {
-	sz = size;
-	st = stencil(geom, zm1, &sz, ST_SIZED, 0);
+	/* Get the stencil at location in the layer below c          */
+	sz = szc;
+	if (zm1 != window->zm1[zm1]) {
+	  sz = size;
+	  st = stencil(window, zm1, &sz, ST_SIZED, 0);
+	}
+	add_cells_to_lsq(window, windat, wincon, sz, st, c);
       }
-      add_cells_to_lsq(window, windat, wincon, sz, st, c);
       szm = max(szm, lw->ncells);
     }
 
@@ -3532,20 +3743,21 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
 	zm1 = window->zm1[c];
 	for (i = 0; i < open->bgz; i++) {
 	  sz = size;
-	  st = stencil(geom, c, &sz, ST_SIZED, 0);
+	  st = stencil(window, c, &sz, ST_SIZED, 0);
 	  lw->ncells = szc = sz;
-
-	  if (c != zp1) {
-	    sz = size;
-	    st = stencil(geom, zp1, &sz, ST_SIZED, 0);
+	  if (df == 3) {
+	    if (c != zp1) {
+	      sz = size;
+	      st = stencil(window, zp1, &sz, ST_SIZED, 0);
+	    }
+	    lw->ncells += sz;
+	    sz = szc;
+	    if (zm1 != window->zm1[zm1]) {
+	      sz = size;
+	      st = stencil(window, zm1, &sz, ST_SIZED, 0);
+	    }
+	    lw->ncells += sz;
 	  }
-	  lw->ncells += sz;
-	  sz = szc;
-	  if (zm1 != window->zm1[zm1]) {
-	    sz = size;
-	    st = stencil(geom, zm1, &sz, ST_SIZED, 0);
-	  }
-	  lw->ncells += sz;
 	  szm = max(szm, lw->ncells);
 	  c = open->omape[ee][c];
 	}
@@ -3577,7 +3789,7 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
       /* Get the stencil at location c                               */
       m = 0;
       sz = size;
-      st = stencil(geom, c, &sz, ST_SIZED, 0);
+      st = stencil(window, c, &sz, ST_SIZED, 0);
       szc = sz;
 
       /* Ghost cells to include                                      */
@@ -3601,60 +3813,62 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
 	}
       }
 
-      /* Get the stencil at location in the layer above c            */
-      if (c != zp1) {
-	sz = size;
-	st = stencil(geom, zp1, &sz, ST_SIZED, 0);
-      }
-      /* Ghost cells to include                                      */
-      for (i = 0; i < sz; i++) {
-	lw->cells[m] = cn = st[i];
-	cns = window->m2d[cn];
-	xc[c][m] = window->cellx[cns];
-	yc[c][m] = window->celly[cns];
-	dz = 2.0 * (window->cellz[cn] - window->gridz[cn]);
-	zc[c][m] = (c == zp1) ? window->cellz[cn] + dz : window->cellz[cn];
-	m++;
-	for(n = 1; n <= window->npe[cns]; n++) {
-	  cg = window->c2c[n][cn];
-	  cgs = window->m2d[cg];
-	  if (window->wgst[cg]) {
-	    lw->cells[m] = cg;
-	    xc[c][m] = window->cellx[cgs];
-	    yc[c][m] = window->celly[cgs];
-	    zc[c][m] = (c == zp1) ? window->cellz[cn] + dz : window->cellz[cn];
-	    m++;
+      if (df == 3) {
+	/* Get the stencil at location in the layer above c          */
+	if (c != zp1) {
+	  sz = size;
+	  st = stencil(window, zp1, &sz, ST_SIZED, 0);
+	}
+	/* Ghost cells to include                                    */
+	for (i = 0; i < sz; i++) {
+	  lw->cells[m] = cn = st[i];
+	  cns = window->m2d[cn];
+	  xc[c][m] = window->cellx[cns];
+	  yc[c][m] = window->celly[cns];
+	  dz = 2.0 * (window->cellz[cn] - window->gridz[cn]);
+	  zc[c][m] = (c == zp1) ? window->cellz[cn] + dz : window->cellz[cn];
+	  m++;
+	  for(n = 1; n <= window->npe[cns]; n++) {
+	    cg = window->c2c[n][cn];
+	    cgs = window->m2d[cg];
+	    if (window->wgst[cg]) {
+	      lw->cells[m] = cg;
+	      xc[c][m] = window->cellx[cgs];
+	      yc[c][m] = window->celly[cgs];
+	      zc[c][m] = (c == zp1) ? window->cellz[cn] + dz : window->cellz[cn];
+	      m++;
+	    }
 	  }
 	}
-      }
-
-      /* Get the stencil at location in the layer below c            */
-      sz = szc;
-      if (zm1 != window->zm1[zm1]) {
-	sz = size;
-	st = stencil(geom, zm1, &sz, ST_SIZED, 0);
-      } else {
-	sz = size;
-	st = stencil(geom, c, &sz, ST_SIZED, 0);
-      }
-      /* Ghost cells to include                                      */
-      for (i = 0; i < sz; i++) {
-	lw->cells[m] = cn = st[i];
-	cns = window->m2d[cn];
-	xc[c][m] = window->cellx[cns];
-	yc[c][m] = window->celly[cns];
-	dz = 2.0 * (window->cellz[cn] - max(window->gridz[cn], window->botz[cns]));
-	zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[cn] - dz : window->cellz[cn];
-	m++;
-	for(n = 1; n <= window->npe[cns]; n++) {
-	  cg = window->c2c[n][cn];
-	  cgs = window->m2d[cg];
-	  if (window->wgst[cg]) {
-	    lw->cells[m] = cg;
-	    xc[c][m] = window->cellx[cgs];
-	    yc[c][m] = window->celly[cgs];
-	    zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[cn] - dz : window->cellz[cn];
-	    m++;
+	
+	/* Get the stencil at location in the layer below c          */
+	sz = szc;
+	if (zm1 != window->zm1[zm1]) {
+	  sz = size;
+	  st = stencil(window, zm1, &sz, ST_SIZED, 0);
+	} else {
+	  sz = size;
+	  st = stencil(window, c, &sz, ST_SIZED, 0);
+	}
+	/* Ghost cells to include                                      */
+	for (i = 0; i < sz; i++) {
+	  lw->cells[m] = cn = st[i];
+	  cns = window->m2d[cn];
+	  xc[c][m] = window->cellx[cns];
+	  yc[c][m] = window->celly[cns];
+	  dz = 2.0 * (window->cellz[cn] - max(window->gridz[cn], window->botz[cns]));
+	  zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[cn] - dz : window->cellz[cn];
+	  m++;
+	  for(n = 1; n <= window->npe[cns]; n++) {
+	    cg = window->c2c[n][cn];
+	    cgs = window->m2d[cg];
+	    if (window->wgst[cg]) {
+	      lw->cells[m] = cg;
+	      xc[c][m] = window->cellx[cgs];
+	      yc[c][m] = window->celly[cgs];
+	      zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[cn] - dz : window->cellz[cn];
+	      m++;
+	    }
 	  }
 	}
       }
@@ -3675,7 +3889,7 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
 	for (i = 0; i < open->bgz; i++) {
 	  m = 0;
 	  sz = size;
-	  st = stencil(geom, c, &sz, ST_SIZED, 0);
+	  st = stencil(window, c, &sz, ST_SIZED, 0);
 	  szc = sz;
 	  for (i = 0; i < sz; i++) {
 	    lw->cells[m] = cn = st[i];
@@ -3685,32 +3899,34 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
 	    zc[c][m] = window->cellz[ci];
 	    m++;
 	  }
-	  if (c != zp1) {
-	    sz = size;
-	    st = stencil(geom, zp1, &sz, ST_SIZED, 0);
-	  }
-	  for (i = 0; i < sz; i++) {
-	    lw->cells[m] = cn = st[i];
-	    cns = window->m2d[cn];
-	    xc[c][m] = window->cellx[cns];
-	    yc[c][m] = window->celly[cns];
-	    dz = 2.0 * (window->cellz[ci] - window->gridz[ci]);
-	    zc[c][m] = (c == zp1) ? window->cellz[ci] + dz : window->cellz[ci];
-	    m++;
-	  }
-	  sz = szc;
-	  if (zm1 != window->zm1[zm1]) {
-	    sz = size;
-	    st = stencil(geom, zm1, &sz, ST_SIZED, 0);
-	  }
-	  for (i = 0; i < sz; i++) {
-	    lw->cells[m] = cn = st[i];
-	    cns = window->m2d[cn];
-	    xc[c][m] = window->cellx[cns];
-	    yc[c][m] = window->celly[cns];
-	    dz = 2.0 * (window->cellz[ci] - max(window->gridz[ci], window->botz[window->m2d[ci]]));
-	    zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[ci] - dz : window->cellz[ci];
-	    m++;
+	  if (df == 3) {
+	    if (c != zp1) {
+	      sz = size;
+	      st = stencil(window, zp1, &sz, ST_SIZED, 0);
+	    }
+	    for (i = 0; i < sz; i++) {
+	      lw->cells[m] = cn = st[i];
+	      cns = window->m2d[cn];
+	      xc[c][m] = window->cellx[cns];
+	      yc[c][m] = window->celly[cns];
+	      dz = 2.0 * (window->cellz[ci] - window->gridz[ci]);
+	      zc[c][m] = (c == zp1) ? window->cellz[ci] + dz : window->cellz[ci];
+	      m++;
+	    }
+	    sz = szc;
+	    if (zm1 != window->zm1[zm1]) {
+	      sz = size;
+	      st = stencil(window, zm1, &sz, ST_SIZED, 0);
+	    }
+	    for (i = 0; i < sz; i++) {
+	      lw->cells[m] = cn = st[i];
+	      cns = window->m2d[cn];
+	      xc[c][m] = window->cellx[cns];
+	      yc[c][m] = window->celly[cns];
+	      dz = 2.0 * (window->cellz[ci] - max(window->gridz[ci], window->botz[window->m2d[ci]]));
+	      zc[c][m] = (zm1 == window->zm1[zm1]) ? window->cellz[ci] - dz : window->cellz[ci];
+	      m++;
+	    }
 	  }
 	  c = open->omape[ee][c];
 	}
@@ -3793,6 +4009,9 @@ void get_linear_metrics(geometry_t *window,    /* Processing window  */
   int npem = lw->ncells;
   int *cells = lw->cells;
   int cs = window->m2d[co];
+  int df = (wincon->trasf & TR_LIND2) ? 2 : 3;
+
+  if (df == 2) nuc = 3;
 
   p = d_alloc_2d(nuc, npem);
   b = d_alloc_2d(nuc, npem);
@@ -3812,7 +4031,7 @@ void get_linear_metrics(geometry_t *window,    /* Processing window  */
     p[jj][0] = 1.0;
     p[jj][1] = x;
     p[jj][2] = y;
-    p[jj][3] = z;
+    if (df == 3) p[jj][3] = z;
     s[jj] = 1.0;
     std[jj] = 0.0;
     jj++;
@@ -3865,14 +4084,18 @@ double get_linear_value(geometry_t *window, /* Processing window     */
   qweights *lw = &wincon->lw[co];
   int cs = window->m2d[co];
   double val, x, y, z;
+  int df = (wincon->trasf & TR_LIND2) ? 2 : 3;
 
   /* Get the value                                                   */
   x = window->cellx[cs] - xi;
   y = window->celly[cs] - yi;
   z = window->cellz[co] - zi;
 
-  val = lw->w[0] + lw->beta * (lw->w[1] * x + lw->w[2] * y + lw->w[3] * z);
-
+  if (df == 3)
+    val = lw->w[0] + lw->beta * (lw->w[1] * x + lw->w[2] * y + lw->w[3] * z);
+  else
+    val = lw->w[0] + lw->beta * (lw->w[1] * x + lw->w[2] * y);
+  /*val = lw->w[0];*/
   return(val);
 }
 
@@ -3893,11 +4116,14 @@ void get_linear_limit(geometry_t *window,   /* Processing window     */
   qweights *lw;
   int nuc = 4;    /* Number of polynomial coefficients to use        */
   int cc, c, cn, cs, c1, zp1, zm1;
-  int j, jj, v, vp1, vm1, vs;
+  int j, jj, v, vp1, vm1, vs, n;
   double vmin, vmax, cmax, cmin, beta;
   double x, y, z, d, val;
+  int df = (wincon->trasf & TR_LIND2) ? 2 : 3;
 
-  for (cc = 1; cc <= window->b3_t; cc++) {
+  if (df == 2) nuc = 3;
+
+  for (cc = 1; cc <= window->a3_t; cc++) {
     c = window->w3_t[cc];
     cs = window->m2d[c];
     zp1 = window->zp1[c];
@@ -3940,29 +4166,23 @@ void get_linear_limit(geometry_t *window,   /* Processing window     */
 	vs = window->m2dv[v];
 	x = window->gridx[vs];
 	y = window->gridy[vs];
+	z = window->cellz[c];
+	val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
+
+	d = val - lw->w[0];
+	/* Get the min/max values in the current layer c             */
+	n = 0;
 	for (jj = 1; jj <= window->nvc[vs]; jj++) {
 	  c1 = window->v2c[v][jj];
+	  if (!c1) continue;
 	  vmin = min(vmin, tr[c1]);
 	  vmax = max(vmax, tr[c1]);
+	  n++;
 	}
 	cmax = vmax;
 	cmin = vmin;
+	/*if (n <= 1) continue;*/
 
-	/*-----------------------------------------------------------*/
-	/* Get interpolated values at vertices of the upper layer of */
-	/* the volumetric cell and limit.                            */
-	z = window->cellz[c] + (window->cellz[c] - window->gridz[c]);
-	val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
-	d = val - lw->w[0];
-	/* Get the min/max values in the layer above c if not the    */
-	/* surface layer.                                            */
-	if (vp1 && c != zp1) {
-	  for (jj = 1; jj <= window->nvc[vs]; jj++) {
-	    c1 = window->v2c[vp1][jj];
-	    vmin = min(vmin, tr[c1]);
-	    vmax = max(vmax, tr[c1]);
-	  }
-	}
 	/* Find the slope limiting factor that keeps the             */
 	/* interpolated value monotonic.                             */
 	if (d != 0.0 && val > vmax) {
@@ -3973,34 +4193,81 @@ void get_linear_limit(geometry_t *window,   /* Processing window     */
 	}
 
 	/*-----------------------------------------------------------*/
-	/* Get interpolated values at vertices of the lower layer of */
+	/* Get interpolated values at vertices of the upper layer of */
 	/* the volumetric cell and limit.                            */
-	z = window->cellz[c] - (window->cellz[c] - max(window->gridz[c], window->botz[cs]));
-	val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
-	d = val - lw->w[0];
-	/* Get the min/max values in the layer below c if not the    */
-	/* bottom layer.                                             */
-	vmax = cmax; vmin = cmin;
-	if (vm1 && zm1 != window->zm1[zm1]) {
-	  for (jj = 1; jj <= window->nvc[vs]; jj++) {
-	    c1 = window->v2c[vm1][jj];
-	    vmin = min(vmin, tr[c1]);
-	    vmax = max(vmax, tr[c1]);
+	if (df == 3) {
+	  z = window->cellz[c] + (window->cellz[c] - window->gridz[c]);
+	  val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
+	  d = val - lw->w[0];
+	  /* Get the min/max values in the layer above c if not the  */
+	  /* surface layer.                                          */
+	  if (vp1 && c != zp1) {
+	    for (jj = 1; jj <= window->nvc[vs]; jj++) {
+	      c1 = window->v2c[vp1][jj];
+	      vmin = min(vmin, tr[c1]);
+	      vmax = max(vmax, tr[c1]);
+	    }
 	  }
-	}
-	/* Find the slope limiting factor that keeps the             */
-	/* interpolated value monotonic.                             */
-	if (d != 0.0 && val > vmax) {
-	  beta = max(min((vmax - lw->w[0]) / d, beta), 0.0);
-	}
-	if (d != 0.0 && val < vmin) {
-	  beta = max(min((vmin - lw->w[0]) / d, beta), 0.0);
+
+	  /* Find the slope limiting factor that keeps the           */
+	  /* interpolated value monotonic.                           */
+	  if (d != 0.0 && val > vmax) {
+	    beta = max(min((vmax - lw->w[0]) / d, beta), 0.0);
+	  }	
+	  if (d != 0.0 && val < vmin) {
+	    beta = max(min((vmin - lw->w[0]) / d, beta), 0.0);
+	  }
+
+	  /*---------------------------------------------------------*/
+	  /* Get interpolated values at vertices of the lower layer  */
+	  /* of the volumetric cell and limit.                       */
+	  z = window->cellz[c] - (window->cellz[c] - max(window->gridz[c], window->botz[cs]));
+	  val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
+	  d = val - lw->w[0];
+	  /* Get the min/max values in the layer below c if not the  */
+	  /* bottom layer.                                           */
+	  vmax = cmax; vmin = cmin;
+	  if (vm1 && zm1 != window->zm1[zm1]) {
+	    for (jj = 1; jj <= window->nvc[vs]; jj++) {
+	      c1 = window->v2c[vm1][jj];
+	      vmin = min(vmin, tr[c1]);
+	      vmax = max(vmax, tr[c1]);
+	    }
+	  }
+	  /* Find the slope limiting factor that keeps the           */
+	  /* interpolated value monotonic.                           */
+	  if (d != 0.0 && val > vmax) {
+	    beta = max(min((vmax - lw->w[0]) / d, beta), 0.0);
+	  }
+	  if (d != 0.0 && val < vmin) {
+	    beta = max(min((vmin - lw->w[0]) / d, beta), 0.0);
+	  }
 	}
       }
     }
     lw->beta = min(max(beta, 0.0), 1.0);
     /*lw->beta = 0.0;*/
   }
+  /*
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    cs = window->m2d[c];
+    for (j = 1; j <= window->npe[cs]; j++) {
+      v = window->c2v[j][c];
+      if (v) {
+	vs = window->m2dv[v];
+	x = window->gridx[vs];
+	y = window->gridy[vs];
+	z = window->cellz[c];
+	val = get_linear_value(window, windat, wincon, tr, c, x, y, z);
+
+	if (j == 1)windat->dum1[c] = val;
+	if (j == 2)windat->dum2[c] = val;
+	if (j == 3)windat->dum3[c] = val;
+      }
+    }
+  }
+  */
 }
 
 /* END get_linear_limit()                                            */
@@ -4326,7 +4593,13 @@ void vert_diffuse_3d(geometry_t *window, /* Window geometry          */
   memset(wincon->d2, 0, window->szcS * sizeof(double));
   memset(cth, 0, window->szcS * sizeof(int));
   memcpy(dzcell, wincon->dz, window->szc * sizeof(double));
-  memcpy(Kz, windat->Kz, window->szc * sizeof(double));
+
+  if (wincon->means & TRANSPORT) {
+    if (windat->dttr == 0.0)
+      return;
+    memcpy(Kz, windat->Kzm, window->szc * sizeof(double));
+  } else
+    memcpy(Kz, windat->Kz, window->szc * sizeof(double));
 
   /*-----------------------------------------------------------------*/
   /* Merge thin layers if required                                   */
@@ -4427,7 +4700,7 @@ void vert_diffuse_3d(geometry_t *window, /* Window geometry          */
 	  topflux = windat->heatf;
 	}
       }
-      if (wincon->heatflux & (SURF_RELAX|AVHRR))
+      if (wincon->heatflux & (SURF_RELAX|AVHRR|GHRSST))
         surf_relax(window, windat, wincon);
     }
     if (n == windat->sno) {
@@ -4738,6 +5011,11 @@ void auxiliary_routines(geometry_t *window, /* Window geometry       */
   if (!(wincon->vorticity & NONE))
     vorticity(window, windat, wincon);
 
+  /*-----------------------------------------------------------------*/
+  /* Calculate the monotinicity diagnostic if required               */
+  if (wincon->monon >= 0)
+    calc_monotonic(window, windat, wincon);
+  
   /*-----------------------------------------------------------------*/
   /* Get diagnostic numbers if required                              */
   if (!(wincon->numbers & NONE) || !(wincon->numbers1 & NONE))
@@ -5954,6 +6232,7 @@ void set_dz(geometry_t *window,     /* Window geometry               */
   /*-----------------------------------------------------------------*/
   /* 'z' coordinates                                                 */
   else {
+
     /*---------------------------------------------------------------*/
     /* Get the vector containing the cell locations of the new       */
     /* surface (i.e. the surface after the 2D mode is complete).     */
@@ -6011,13 +6290,12 @@ void set_dz(geometry_t *window,     /* Window geometry               */
       top = wincon->oldeta[cs];
       top = min(windat->eta[cs], wincon->oldeta[cs]);
       bot = DRY_FRAC * wincon->hmin + window->botz[cs];
-
-      if (top > bot && c != window->zm1[c]) {
+      if (top >= bot && c != window->zm1[c]) {
         wincon->s1[vc] = c;
 	wincon->i1[vc] = window->bot_t[cc];
         wincon->i2[vc] = window->nsur_t[cc];
         wincon->i3[vc] = window->sur_t[cc];
-        if (cc == window->v2_t)
+        if (cc <= window->v2_t)
           wincon->vcs1 = vc;
         vc++;
       }
@@ -6060,6 +6338,7 @@ void set_dz(geometry_t *window,     /* Window geometry               */
         top = bot;
         c3 = window->zm1[c3];
       }
+
       /* Set the cell thickness at the bottom                        */
       wincon->dz[cbot] = top - window->botz[c2];
 
@@ -6360,10 +6639,11 @@ void do_ts_relax(geometry_t *window,  /* Window geometry             */
       windat->temp[c] -= windat->dt * rr * (windat->temp[c] - windat->rtemp[c]);
     }
   }
-  if (windat->rtemp && windat->temp_tc && tcf & RLX_ADPT) {
+  if (windat->rtemp && windat->temp_tc && tcf & (RLX_ADPT|RLX_REG|RLX_OBC)) {
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
-      windat->temp[c] -= windat->dt * (windat->temp[c] - windat->rtemp[c]) * sf / windat->temp_tc[c];
+      rr = (windat->temp_tc[c]) ? sf / windat->temp_tc[c] : 0.0;
+      windat->temp[c] -= windat->dt * (windat->temp[c] - windat->rtemp[c]) * rr;
     }
   }
 
@@ -6389,10 +6669,11 @@ void do_ts_relax(geometry_t *window,  /* Window geometry             */
       windat->sal[c] -= windat->dt * rr * (windat->sal[c] - windat->rsalt[c]);
     }
   }
-  if (windat->rsalt && windat->salt_tc && tcf & RLX_ADPT) {
+  if (windat->rsalt && windat->salt_tc && tcf & (RLX_ADPT|RLX_REG|RLX_OBC)) {
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
-      windat->sal[c] -= windat->dt * (windat->sal[c] - windat->rsalt[c]) * sf /	windat->salt_tc[c];
+      rr = (windat->salt_tc[c]) ? sf / windat->salt_tc[c] : 0.0;
+      windat->sal[c] -= windat->dt * (windat->sal[c] - windat->rsalt[c]) * rr;
     }
   }
 
@@ -7845,7 +8126,7 @@ double swr_params_event(geometry_t *window,
   double attni = 0.05;          /* Atten increment for ensemble      */
 
   /* Return if next swr event isn't scheduled                        */
-  if (windat->t < wincon->swr_next) return;
+  if (windat->t < wincon->swr_next) return(wincon->swr_next);
   wincon->swr_next = windat->t + wincon->swr_dt;
 
   /*-----------------------------------------------------------------*/

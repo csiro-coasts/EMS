@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: process_defaults.c 6039 2018-11-28 11:31:16Z bai155 $
+ *  $Id: process_defaults.c 6330 2019-09-13 06:51:32Z bai155 $
  *
  */
 
@@ -499,11 +499,11 @@ const int NUM_SED_PROCESS_BGC2p0 =
 
 
 /*
- * BGC3p0 for nesting RECOM\.
+ * BGC3p1 for nesting RECOM\.
  */
 
-// "BGC3p0" water column
-const char *WC_PROCESS_BGC3p0[] = {
+// "BGC3p1" water column
+const char *WC_PROCESS_BGC3p1[] = {
   "tfactor",
   "viscosity",
   "moldiff",
@@ -529,11 +529,11 @@ const char *WC_PROCESS_BGC3p0[] = {
   "age_wc",
   "recom_extras"
 };
-const int NUM_WC_PROCESS_BGC3p0 =
-  (int)(sizeof(WC_PROCESS_BGC3p0)/sizeof(char *));
+const int NUM_WC_PROCESS_BGC3p1 =
+  (int)(sizeof(WC_PROCESS_BGC3p1)/sizeof(char *));
 
-// "BGC3p0" epibenthos
-const char *EPI_PROCESS_BGC3p0[] = {
+// "BGC3p1" epibenthos
+const char *EPI_PROCESS_BGC3p1[] = {
   "tfactor_epi",
   "values_common_epi",
   "macroalgae_spectral_grow_epi",
@@ -550,18 +550,18 @@ const char *EPI_PROCESS_BGC3p0[] = {
   "light_spectral_uq_epi",
   "diffusion_epi"
 };
-const int NUM_EPI_PROCESS_BGC3p0 =
-  (int)(sizeof(EPI_PROCESS_BGC3p0)/sizeof(char *));
+const int NUM_EPI_PROCESS_BGC3p1 =
+  (int)(sizeof(EPI_PROCESS_BGC3p1)/sizeof(char *));
 
 // "standard" sediment
-const char *SED_PROCESS_BGC3p0[] = {
+const char *SED_PROCESS_BGC3p1[] = {
   "tfactor",
   "viscosity",
   "moldiff",
   "values_common",
   "remineralization",
-  "microphytobenthos_spectral_grow_sed",
   "light_spectral_sed(HPLC)",
+  "microphytobenthos_spectral_grow_sed",
   "carbon_chemistry_wc",
   "microphytobenthos_spectral_mortality_sed",
   "phytoplankton_spectral_mortality_sed(small)",
@@ -574,8 +574,8 @@ const char *SED_PROCESS_BGC3p0[] = {
   "massbalance_sed",
   "recom_extras"
 };
-const int NUM_SED_PROCESS_BGC3p0 =
-  (int)(sizeof(SED_PROCESS_BGC3p0)/sizeof(char *));
+const int NUM_SED_PROCESS_BGC3p1 =
+  (int)(sizeof(SED_PROCESS_BGC3p1)/sizeof(char *));
 
 
 
@@ -839,27 +839,27 @@ static void eco_processes_bgc2p0(int type, const char **procs[], int *nprocs)
 }
 
 /*
- * "BGC3p0" processes
+ * "BGC3p1" processes
  */
-static void eco_processes_bgc3p0(int type, const char **procs[], int *nprocs)
+static void eco_processes_bgc3p1(int type, const char **procs[], int *nprocs)
 {
 
   /* Key off process type */
   switch(type) {
   case PT_WC:
-    *procs  = WC_PROCESS_BGC3p0;
-    *nprocs = NUM_WC_PROCESS_BGC3p0;
+    *procs  = WC_PROCESS_BGC3p1;
+    *nprocs = NUM_WC_PROCESS_BGC3p1;
     return;
   case PT_EPI:
-    *procs  = EPI_PROCESS_BGC3p0;
-    *nprocs = NUM_EPI_PROCESS_BGC3p0;
+    *procs  = EPI_PROCESS_BGC3p1;
+    *nprocs = NUM_EPI_PROCESS_BGC3p1;
     return;
   case PT_SED:
-    *procs  = SED_PROCESS_BGC3p0;
-    *nprocs = NUM_SED_PROCESS_BGC3p0;
+    *procs  = SED_PROCESS_BGC3p1;
+    *nprocs = NUM_SED_PROCESS_BGC3p1;
     return;
   default:
-    e_quit("eco_processes_bgc3p0: Unknown Process Type '%d'\n", type);
+    e_quit("eco_processes_bgc3p1: Unknown Process Type '%d'\n", type);
   }
 }
 
@@ -972,7 +972,7 @@ int get_eco_processes(char *name, int type, const char **procs[], int *nprocs)
     {"gbr4_coral", "GBR4 + coral bleaching processes", eco_processes_gbr4_coral},
     {"gbr4_small", "GBR4 SMALL ecology processes", eco_processes_gbr4_small},
     {"BGC2p0", "BGC 2.0 processes", eco_processes_bgc2p0},
-    {"BGC3p0", "BGC 3.0 processes", eco_processes_bgc3p0},
+    {"BGC3p1", "BGC 3.1 processes", eco_processes_bgc3p1},
     {NULL, NULL, NULL}
   };
   void (*init) (int type, const char **procs[], int *nprocs) = NULL;

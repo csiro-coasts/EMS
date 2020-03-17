@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6315 2019-09-13 04:32:17Z her127 $
+ *  $Id: sparse.h 6460 2020-02-18 23:43:24Z her127 $
  *
  */
 
@@ -435,6 +435,11 @@ struct win_priv {
   int trout;                    /* Transport file output flag */
   int swr_type;                 /* Type of attenuation */
   int dhwf;                     /* Degree heating diagnostic */
+  int obcf;                     /* Open boundary flags */
+  double dhwh;                  /* Hour for DHW temperature snapshot */
+  int monon;                    /* Monotinicity tracer number */
+  double monomn;                /* Monotinicity minimum */
+  double monomx;                /* Monotinicity maximum */
 
   double albedo;                /* Albedo for swr */
   int nswreg;                   /* Number of swr estimation regions */
@@ -560,6 +565,9 @@ struct win_priv {
   double *one;                  /* 2D work array set to 1.0 */
   double *tendency;             /* Buffer array for tendency diagnostics */
   double **wgt;                 /* Semi-Lagrange weights */
+  int *suro;                    /* Old surface for TRANSPORT FFSL */
+  double *dzo;                  /* Old thickness for TRANSPORT FFSL */
+  double *etao;                 /* Old elevation for TRANSPORT FFSL */
   double *dzz;                  /* cellz thickness for Lagrange */
   double *cellz;                /* cellz levels for Lagrange */
   int **lmap;                   /* Semi-Lagrange map */
@@ -575,6 +583,8 @@ struct win_priv {
   int *s3;                      /* 3D integer work array */
   int *s4;                      /* 3D integer work array */
   int *s5;                      /* 3D integer work array */
+  int *s6;                      /* 3D integer work array */
+  int *s7;                      /* 3D integer work array */
   char *c1;                     /* 3D byte work array */
   char *c2;                     /* 2D byte work array */
   int *m2d;                     /* 3D to 2D map */
@@ -586,18 +596,12 @@ struct win_priv {
   int *i5;                      /* 2D integer work array */
   int *i6;                      /* 2D integer work array */
   int *i7;                      /* 2D integer work array */
-  int *kth_e1;                  /* Thin layer vector for e1 velocity */
-  int nkth_e1;                  /* Number of cells in kthin, e1 */
-  int *kth_e2;                  /* Thin layer vector for e2 velocity */
-  int nkth_e2;                  /* Number of cells in kthin, e2 */
-  int *cdry_e1;                 /* Dry cell vector for e1 velocity */
-  int ncdry_e1;                 /* Number of cells in cdry, e1 */
-  int *cdry_e2;                 /* Dry cell vector for e2 velocity */
-  int ncdry_e2;                 /* Number of cells in cdry, e2 */
-  int *cbot_e1;                 /* Bottom cell vector for e1 velocity */
-  int ncbot_e1;                 /* Number of cells in cbot, e1 */
-  int *cbot_e2;                 /* Bottom cell vector for e2 velocity */
-  int ncbot_e2;                 /* Number of cells in cbot, e2 */
+  int *kth_e1;                  /* Thin layer vector for velocity */
+  int nkth_e1;                  /* Number of cells in kthin */
+  int *cdry_e1;                 /* Dry cell vector for velocity */
+  int ncdry_e1;                 /* Number of cells in cdry */
+  int *cbot_e1;                 /* Bottom cell vector for velocity */
+  int ncbot_e1;                 /* Number of cells in cbot */
   int vc;                       /* Scalar dummy */
   int vcs;                      /* Scalar dummy */
   int vca;                      /* Scalar dummy */
@@ -721,6 +725,7 @@ struct geometry {
   int *s2k;                     /* Sparse to k Cartesian map */
   unsigned long ***map;         /* Map from Cartesian to sparse space */
   int *mgc;                     /* Linked list of multiple ghost cells */
+  int *s2c;                     /* Structured grid to unstructured mesh map */
 
   /* Global - window map */
   /* For the global sparse array this contains all wet cells ordered */
@@ -1047,6 +1052,7 @@ struct geometry {
   int compatible;               /* Backwards compatible flag */
   int *sask;                    /* Stencil mask */
   double b1, b2, b3, b4;
+  df_filter_t **filter;
 };
 
 
@@ -1175,6 +1181,7 @@ typedef struct {
   char dhdf[MAXSTRLEN];         /* Degree heating day file */
   double dhw_dt;                /* DHW update increment */
   int dhwf;                     /* Degree heating diagnostic flag */
+  double dhwh;                  /* Hour for DHW temperature snapshot */
   int tendf;                    /* Momentum tendency flag */
   char trtend[MAXSTRLEN];       /* Tracer tendency flag */
   int means;                    /* Mean velocity diagnostic */
@@ -1191,6 +1198,9 @@ typedef struct {
   int decf;                     /* Decorrelation variable flag */
   char decv[MAXSTRLEN];         /* Decorrelation variable */
   char decs[MAXSTRLEN];         /* Decorrelation scaling */
+  char monotr[MAXSTRLEN];       /* Monotinicity variable */
+  double monomn;                /* Monotinicity minimum */
+  double monomx;                /* Monotinicity maximum */
   int sharp_pyc;                /* Pycnocline sharpening for ROAM */
   int vorticity;                /* Vorticity diagnostic */
   int numbers, numbers1;        /* Numbers diagnostic */
@@ -1659,10 +1669,12 @@ struct master {
   int filter;                   /* Filtering options */
   int trfilter;                 /* Tracer filtering options */
   int porusplate;               /* Include porus plate sub-gridscale parameterisation */
+  int obcf;                     /* Open boundary flags */
   char reef_frac[MAXSTRLEN];    /* Cell area blocked by reef */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
   int dhwf;                     /* Degree heating diagnostic */
+  double dhwh;                  /* Hour for DHW temperature snapshot */
   int dbc;                      /* Sparse coordinate to debug */
   int dbj;                      /* Edge direction to debug */
   int dbgf;                     /* Debug flag */
@@ -1680,6 +1692,11 @@ struct master {
   double decs;                  /* Decorrelation length scaling */
   int decf;                     /* Decorrelation length flag */
   int decn;                     /* Decorrelation length tracer number */
+  double *mono;                 /* Monotinicity diagnostic */
+  int monon;                    /* Monotinicity tracer number */
+  double monomn;                /* Monotinicity minimum */
+  double monomx;                /* Monotinicity maximum */
+
   int gint_errfcn;              /* Generic interface error handling flag */
   int ntrmap_s2m_3d;            /* Number of tracers to transfer from
 				   slave to master. This is ntr minus
@@ -1746,6 +1763,7 @@ struct master {
   double *cfl2d;                /* 2D cfl time-step */
   double *cfl3d;                /* 3D cfl time-step */
   double *cour;                 /* Courant stability */
+  double *courn;                /* Courant number */
   double *lips;                 /* Lipshitz stability */
   double *ahsb;                 /* Horizontal diffusion stability */
   double *mixl;                 /* Pointer to mixed layer depth */
@@ -1936,6 +1954,7 @@ struct master {
   double dtu1;                  /* Time step for the 3D u1 velocity (s) */
   double dtu2;                  /* Time step for the 3D u2 velocity (s) */
   double dttr;                  /* Time step for the tracers (s) */
+  double dttc;                  /* Counter for tracer timestep (s) */
   double t3d;                   /* Time at the end of 3D step */
   double dtf;                   /* Forward part of leapfrog dt */
   double dtb;                   /* Backward part of leapfrog dt */
@@ -2569,6 +2588,7 @@ struct window {
   double *cfl2d;                /* 2D cfl time-step */
   double *cfl3d;                /* 3D cfl time-step */
   double *cour;                 /* Courant stability */
+  double *courn;                /* Courant number */
   double *lips;                 /* Lipshitz stability */
   double *ahsb;                 /* Horizontal diffusion stability */
   double *mixl;                 /* Pointer to mixed layer depth */
@@ -2734,6 +2754,7 @@ struct window {
   double *dhd;                  /* Degree heating day */
   double *dhwc;                 /* Offset degree heating day */
   double *dhw;                  /* Degree heating day */
+  double *mono;                 /* Monotinicity diagnostic */
   double sederrstep;            /* Sediment error step */
   double ecoerrstep;            /* Ecology error step */
   int ntot;                     /* Number of additional total tracers */

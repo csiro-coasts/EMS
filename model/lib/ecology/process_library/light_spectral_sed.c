@@ -26,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_sed.c 6036 2018-11-28 00:24:02Z bai155 $
+ *  $Id: light_spectral_sed.c 6238 2019-05-29 06:34:36Z bai155 $
  *
  */
 
@@ -177,7 +177,7 @@ void light_spectral_sed_postinit(eprocess* p)
   
   if (ws->pig == 'H'){  // HPLC determined absorption coefficients
 
-    eco_write_setup(e,"\nHPLC determined absorption coefficients in sediments \n");
+    eco_write_setup(e,"\nMass-specific absorption coefficients used for microalgae in sediments \n");
     
     if (e->bio_opt==NULL){
       ecology_find_rsr_waves(e);

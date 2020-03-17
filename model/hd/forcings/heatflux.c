@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: heatflux.c 5901 2018-08-28 02:10:22Z riz008 $
+ *  $Id: heatflux.c 6424 2019-11-22 00:23:49Z her127 $
  *
  */
 
@@ -664,9 +664,10 @@ void calc_heatf(geometry_t *window,
   )
 {
   double fact = -4.0e3 * 1025.0;  /* Conversion Wm-2 to ms-1K */
+  int dof = 0;
 
   /* Surface relaxation is done in the windows */
-  if (wincon->heatflux & (NONE | SURF_RELAX | AVHRR))
+  if (!(wincon->heatflux & (ADVANCED | INVERSE | NET_HEAT | COMP_HEAT | COMP_HEAT_MOM | COMP_HEAT_NONE)))
     return;
 
   /* No heatflux before the ramp time */
@@ -681,6 +682,35 @@ void calc_heatf(geometry_t *window,
   /* Get the heat flux for ADVANCED and INVERSE methods. Time series */
   /* of heatflux is read from file via the scheduler if a file is */
   /* present in the input file.  */
+  if (wincon->heatflux & ADVANCED) {
+    surf_heat_flux(window, windat, wincon);
+  } else if (wincon->heatflux & INVERSE) {
+    calc_heatflux(window, windat, wincon);
+  } else if (wincon->heatflux & NET_HEAT) {
+    /* Nothing to do : heatflux read from file via the scheduler */
+    /* Copy heatfluxs to the diagnostic tracers if required      */
+    if (windat->heatf) {
+      int c, cc;
+      for (cc = 1; cc <= window->b2_t; cc++) {
+	c = window->w2_t[cc];
+	windat->nhfd[c] = windat->heatf[c] * fact;
+      }
+    }
+    if (windat->swr) {
+      int c, cc;
+      for (cc = 1; cc <= window->b2_t; cc++) {
+	c = window->w2_t[cc];
+	windat->swrd[c] = windat->swr[c];
+      }
+    }
+  } else if (wincon->heatflux & COMP_HEAT) {
+    comp_heat_inv(window, windat, wincon);
+  } else if (wincon->heatflux & COMP_HEAT_MOM) {
+    comp_heat_mom(window, windat, wincon);
+  } else if (wincon->heatflux & COMP_HEAT_NONE) {
+    comp_heat_none(window, windat, wincon);
+  }
+  if (dof) {
   switch (wincon->heatflux) {
   case ADVANCED:
     surf_heat_flux(window, windat, wincon);
@@ -715,6 +745,7 @@ void calc_heatf(geometry_t *window,
   case COMP_HEAT_NONE:
     comp_heat_none(window, windat, wincon);
     break;
+  }
   }
 }
 
@@ -2467,6 +2498,8 @@ void surf_relax(geometry_t *window, /* Processing window */
     sst = windat->hftemp;
   else if(wincon->heatflux & AVHRR)
     sst = windat->avhrr;
+  else if(wincon->heatflux & GHRSST)
+    sst = windat->ghrsst;
   else
     return;
 

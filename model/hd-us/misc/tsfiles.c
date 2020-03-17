@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tsfiles.c 6275 2019-08-08 04:27:29Z her127 $
+ *  $Id: tsfiles.c 6470 2020-02-18 23:50:08Z her127 $
  *
  */
 
@@ -34,6 +34,7 @@ double ts_eval_sparse(timeseries_t *ts, int id, double t, int cc);
 double df_eval_sparse(datafile_t *df, df_variable_t *v, double r, int cc);
 int dump_choose_multifile(datafile_t *df, double t);
 int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz);
+int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, int nz);
 double median(geometry_t *geom, double *a, int sz, int c);
 double s_median(geometry_t *geom, double *a, int sz, int c);
 void order (double *a, double *b);
@@ -611,7 +612,17 @@ void hd_trans_multifile_eval(master_t *master,
   if (mode & SP_EXACT) {
     hd_ts_multifile_eval_sparse(ntsfiles, tsfiles, names, var,
 				master->d3, t, nvec, master->thIO);
-    unpack_sparse3(vec, nvec, master->d3, v, oset);
+    if (mode & (U1STRUCT|U2STRUCT)) {
+      unpack_sparse3(vec, nvec, master->d3, dumpdata->w1, oset);
+      for (cc = 1; cc < geom->b3_t; cc++) {
+	int c = geom->w3_t[cc];
+	int e;
+	if (mode & U1STRUCT) e = geom->c2e[1][c];
+	if (mode & U2STRUCT) e = geom->c2e[4][c];
+	v[e] = dumpdata->w1[c];
+      }
+    } else
+      unpack_sparse3(vec, nvec, master->d3, v, oset);
   }
   else if (mode & SP_TINT) {
     hd_ts_multifile_eval_isparse(ntsfiles, tsfiles, names, var,
@@ -1173,7 +1184,11 @@ int check_sparse_dumpfile(geometry_t *geom, int ntsfiles,
   if (ntsfiles > 0) {
     for (i = 0; i < ntsfiles; ++i) {
       char *fname = fv_get_filename(names[i], buf);
-      if ((n = read_sparse_dims(fname, szcS, szc, szeS, sze, nz))) {
+      if (master->tmode & SP_STRUCT)
+	n = read_sparse_dims_struct(fname, szcS, szc, geom->nce1, geom->nce2, nz);
+      else
+	n = read_sparse_dims(fname, szcS, szc, szeS, sze, nz);
+      if (n) {
 	if (n == 2) return(1);
 	if ((fp = fopen(fname, "r")) != NULL) {
 	  prm_set_errfn(quiet);
@@ -1237,6 +1252,96 @@ int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz)
   return(1);
 }
 
+
+int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, int nz)
+		      
+{
+  size_t ms2 = -1, ms3 = -1;
+  size_t mce1 = -1, mce2 = -1, mz = -1;
+  int mc1, mc2;
+  int ncid; 
+  int cc, c, i, j, k, n;
+  size_t start[4];
+  size_t count[4];
+  int *s2i, *s2j, *s2k, i1f, i2f, i3f;
+  double **x, **y;
+
+  start[0] = 0;
+  start[1] = 0;
+  start[2] = 0;
+  start[3] = 0;
+  /* time independent variables */
+  count[0] = 0;
+  count[1] = 0;
+  count[2] = 0;
+  count[3] = 0;
+
+  /* Get the cell centre coordinates */
+  if (nc_open(name, NC_NOWRITE, &ncid) == NC_NOERR) {
+    nc_inq_dimlen(ncid, ncw_dim_id(ncid, "ns2"), &ms2);
+    nc_inq_dimlen(ncid, ncw_dim_id(ncid, "ns3"), &ms3);
+    nc_inq_dimlen(ncid, ncw_dim_id(ncid, "i_centre"), &mce1);
+    nc_inq_dimlen(ncid, ncw_dim_id(ncid, "j_centre"), &mce2);
+    nc_inq_dimlen(ncid, ncw_dim_id(ncid, "k_grid"), &mz);
+
+    count[0] = ms3;
+    s2i = i_alloc_1d(ms3+1);
+    s2j = i_alloc_1d(ms3+1);
+    s2k = i_alloc_1d(ms3+1);
+    x = d_alloc_2d(mce1, mce2);
+    y = d_alloc_2d(mce1, mce2);
+    if ((i1f = ncw_var_id(ncid, "s2i")) >= 0) {
+      nc_get_vara_int(ncid, ncw_var_id(ncid, "s2i"), start, count, s2i);  
+    }
+    else {
+      hd_warn("Can't find s2i in %s : is this a structured sparse file?\n", name);
+      return(2);
+    }
+    if ((i2f = ncw_var_id(ncid, "s2j")) >= 0) {
+      nc_get_vara_int(ncid, ncw_var_id(ncid, "s2j"), start, count, s2j);
+    } else {
+      hd_warn("Can't find s2i in %s : is this a structured sparse file?\n", name);
+      return(2);
+    }
+    if ((i3f = ncw_var_id(ncid, "s2k")) >= 0)
+      nc_get_vara_int(ncid, ncw_var_id(ncid, "s2k"), start, count, s2k);
+    else {
+      hd_warn("Can't find s2i in %s : is this a structured sparse file?\n", name);
+      return(2);
+    }
+    count[0] = mce2;
+    count[1] = mce1;
+    nc_get_vara_double(ncid, ncw_var_id(ncid, "x_centre"), start, count, x[0]);
+    nc_get_vara_double(ncid, ncw_var_id(ncid, "y_centre"), start, count, y[0]);  
+    /*
+    nc_get_att_int(ncid, NC_GLOBAL, "NCE1", &mce1);
+    nc_get_att_int(ncid, NC_GLOBAL, "NCE2", &mce2);
+    */
+    nc_close(ncid);
+    if (nce1 != mce1 || nce2 != mce2 || nz != mz-1) {
+      hd_warn("Different dimensions in %s to the input file\n", name);
+      return(2);
+    }
+    /* Get the mapping via s2i and s2j arrays                        */
+    geom->s2c = i_alloc_1d(ms3 + 1);
+    geom->ns2 = ms2;
+    geom->ns3 = ms3;
+    for (cc = 0; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      for (n = 0; n < ms3; n++) {
+	if (geom->s2i[c] == s2i[n] && geom->s2j[c] == s2j[n] && geom->s2k[c] == s2k[n]) {
+	  geom->s2c[n+1] = c;
+	  break;
+	}
+      }
+    }
+    i_free_1d(s2i);
+    i_free_1d(s2j);
+    i_free_1d(s2k);
+    return(0);
+  }
+  return(1);
+}
 
 /*-------------------------------------------------------------------*/
 /* Routine to perform a global fill and smooth the GHRSST SST data.  */

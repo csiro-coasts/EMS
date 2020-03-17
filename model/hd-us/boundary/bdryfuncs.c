@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryfuncs.c 6306 2019-09-13 04:16:26Z her127 $
+ *  $Id: bdryfuncs.c 6385 2019-11-21 22:54:56Z her127 $
  *
  */
 
@@ -392,7 +392,6 @@ void bf_uv_to_u1_m(geometry_t *geom, master_t *master,
     getuv(master->t, geom->u1x[es], geom->u1y[es], z,
           tsf->ntsfiles, tsf->tsfiles, tsf->filenames, &u, &v, "u", "v");
     open->transfer_u1[ee] = cos(thetau1) * u + sin(thetau1) * v;
-    /*if(es==7215)printf("nor %f %s %d %d %d %f %f (%f %f)\n",master->days,open->name,geom->e2e[e][0],es,e,thetau1,open->transfer_u1[ee],u,v);*/
   }
 }
 
@@ -481,7 +480,6 @@ void bf_uv_to_u2_m(geometry_t *geom, master_t *master,
     getuv(master->t, geom->u1x[es], geom->u1y[es], z,
           tsf->ntsfiles, tsf->tsfiles, tsf->filenames, &u, &v, "u", "v");
     open->transfer_u2[ee] = cos(thetau1) * u + sin(thetau1) * v;
-    /*if(ee==sb)printf("tan %s %d %f %f\n",open->name,e,thetau1*180./PI,open->transfer_u2[ee]);*/
   }
 }
 

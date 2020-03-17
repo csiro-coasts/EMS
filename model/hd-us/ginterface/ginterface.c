@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6250 2019-07-31 05:19:38Z riz008 $
+ *  $Id: ginterface.c 6436 2019-11-25 02:10:14Z riz008 $
  *
  */
 
@@ -2645,4 +2645,25 @@ void w_get_brsm(void *hmodel, int *brsm)
   */
 }
 
+/*
+ * Fractional cloud cover
+ */
+double ginterface_get_cloud(void *hmodel, int c)
+{
+  /* stub only */
+  return(0);
+}
+
+/*
+ * Moon angle interface
+ */
+void ginterface_moonvars(void *hmodel, int c,
+			 double *mlon, double *mlat,
+			 double *dist_earth_sun, double *dist_moon_earth,
+			 double *lunar_angle, double *sun_angle,
+			 double *moon_phase,
+			 double *lunar_dec)
+{
+  /* stub only */
+}
 #endif

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 6124 2019-02-27 04:55:42Z riz008 $
+ *  $Id: sediments.c 6351 2019-09-20 14:05:26Z bai155 $
  *
  */
 
@@ -72,6 +72,10 @@ typedef struct {
   double i_conc;                /* Initial deposit concentration */
   double f_conc;                /* Compacted deposit concentration; 
 				   default = i_conc */
+  //2019                                   default = i_conc */
+  double css_erosion;
+  double css_deposition;
+
   double svel;                  /* Constant settling velocity */
   char svel_name[MAXSTRLEN];    /* Settling velocity name */
   double adsorbkd;              /* Adsorbtion Kd */
@@ -91,6 +95,11 @@ typedef struct {
   double psize;
   double b_dens;
   double i_conc;
+
+  //2019
+  double css_erosion;
+  double css_deposition;
+
   double svel;
   int diagn;
   int advect;
@@ -120,6 +129,11 @@ int sinterface_getshipfile(FILE* prmfd, char *shipfile);
 
 //2016
 double sinterface_erflux_scale(FILE* prmfd);
+
+// 2019 tracer-specific css erosion and css deposition
+// (to overwrire default values when present in the tracer specifications)
+double sinterface_get_css_erosion(void* model, char *name);
+double sinterface_get_css_deposition(void* model, char *name);
 
 /*-------------------------------------------------------------------*/
 /* Sediment specific interface routines
@@ -269,7 +283,7 @@ double sinterface_getvalueofBtracer(void* hmodel, int n, int c) {
   return ginterface_getvalueofBtracer(hmodel, n, c);
 }
 double *sinterface_getpointerBtracer(void* hmodel, int n, int c) {
-  return sinterface_getpointerBtracer(hmodel, n, c);
+  return ginterface_getpointerBtracer(hmodel, n, c);
 }
 int si_gettracernames(void* hmodel, char **tracername) {
   return gi_gettracernames(hmodel, tracername);
@@ -304,9 +318,11 @@ double sinterface_get_decay(void* model, char *name) {
 void sinterface_get_tracerunits(void* model, char *name, char *units) {
   ginterface_get_tracerunits(model, name, units);
 }
+#if defined(HAVE_OMP)
 int sinterface_get_trans_num_omp(void *model) {
   return ginterface_get_trans_num_omp(model);
 }
+#endif
 void sinterface_gettheta(void* hmodel, double *theta, int ncol) {
   ginterface_gettheta(hmodel, theta, ncol);
 }
@@ -388,7 +404,8 @@ void sed_step(geometry_t *window)
   double *nw = wincon->w10;
   int cc, c, nomp = 1;
   int sed_nstep;
-
+  int ncols = wincon->vcs2;
+    
 #if defined(HAVE_OMP)
   nomp = wincon->trans_num_omp;
 #endif
@@ -404,7 +421,7 @@ void sed_step(geometry_t *window)
   vel_center(window, windat, wincon, nu, nv, nw);
 
   // Set global
-  wincon->sediment->msparam->ncol = wincon->vca2;
+  wincon->sediment->msparam->ncol = ncols;
 
   /* Do this outside the loop - pulled out from hd2sed */
   sed_nstep = (wincon->sediment->msparam->nstep += 1);
@@ -420,7 +437,7 @@ void sed_step(geometry_t *window)
 #if defined(HAVE_OMP)
 #pragma omp parallel for private(c)
 #endif
-  for (cc = 1; cc <= wincon->vca2; cc++) {
+  for (cc = 1; cc <= ncols; cc++) {
     sed_column_t *sm = wincon->sediment->sm;
     c = wincon->s2[cc];
     
@@ -920,6 +937,33 @@ double sinterface_get_i_conc(void* model, char *name)
     double v=0;
     if (data)
       v = data->i_conc;
+    return v;
+}
+
+
+double sinterface_get_css_erosion(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+
+    double v=-1;
+    if (data)
+      v = data->css_erosion;
+    return v;
+}
+
+double sinterface_get_css_deposition(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+
+    double v=-1;
+    if (data)
+      v = data->css_deposition;
     return v;
 }
 
@@ -1484,20 +1528,29 @@ void sed_set_tracer_defaults(tracer_info_t *tracer, char *trname, char *defname)
 /*-------------------------------------------------------------------*/
 void sed_defaults_std(tracer_info_t *tracer, char *trname)
 {
+
  sed_def_t sed_def[] = {
-    /* name         unit     type fill_sed   psize    b_dens    i_conc   svel dg ad df coh cv fl re de  obc*/  
-    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03, -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03, -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
-    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"depth_sedi",  "m    ",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,     0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    /* name         unit     type fill_sed   psize    b_dens    i_conc  css_ero css_depo svel dg ad df coh cv fl re de  obc*/
+    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03,  -1., -1.,       -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"Gravel-mineral",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03,  -1., -1.,       -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Sand-mineral",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Mud-mineral",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"Gravel-carbonate",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03,  -1., -1.,       -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Sand-carbonate",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Mud-carbonate",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,  -1., -1.,       -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
+    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,      -1., -1.,       0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,      -1., -1.,       0.0,    2, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,      -1., -1.,       0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"depth_sedi",  "m    ",  T3, 0.0,     0.0,     0.0,      0.0,      -1., -1.,       0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"erdepflux_total_ac",   "kg m-2",  T3,  0.0,   0.0,      0.0, 0.0, -1., -1.,       0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,      -1., -1.,       0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
   };
+
+
 
   /* Init attributes */
   init_tracer_atts_sed(tracer, trname, sed_def, "standard");
@@ -1511,21 +1564,24 @@ void sed_defaults_std(tracer_info_t *tracer, char *trname)
 /*-------------------------------------------------------------------*/
 static void sed_defaults_est(tracer_info_t *tracer, char *trname)
 {
+
   sed_def_t sed_def[] = {
-    /* name         unit     type fill_sed   psize    b_dens    i_conc   svel dg ad df coh cv fl re de  obc*/  
-    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03, -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03, -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"CarbSand",    "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
-    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"depth_sedi",   "m   ",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,     0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    /* name         unit     type fill_sed   psize    b_dens    i_conc css_er css_dep    svel dg ad df coh cv fl re de  obc*/
+    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03,  -1.,  -1.,      -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03,   -1.,  -1.,     -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03,   -1.,  -1.,     -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"CarbSand",    "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,   -1.,  -1.,     -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,   -1.,  -1.,     -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,   -1.,  -1.,     -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
+    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,       -1.,  -1.,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,       -1.,  -1.,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,       -1.,  -1.,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"depth_sedi",   "m   ",  T3, 0.0,     0.0,     0.0,      0.0,       -1.,  -1.,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,    0.0,      0.0, 0.0,  -1.,  -1.,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,       -1.,  -1.,     0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
   };
+
+
 
   /* Init attributes */
   init_tracer_atts_sed(tracer, trname, sed_def, "estuarine");
@@ -1540,19 +1596,19 @@ static void sed_defaults_est(tracer_info_t *tracer, char *trname)
 /*-------------------------------------------------------------------*/
 static void sed_defaults_shf(tracer_info_t *tracer, char *trname)
 {
-  sed_def_t sed_def[] = {
-    /* name         unit     type fill_sed   psize    b_dens    i_conc   svel dg ad df coh cv fl re de  obc*/  
-    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03, -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03, -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
-    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOGRAD},
-    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"depth_sedi",   "m   ",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,     0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+ sed_def_t sed_def[] = {
+    /* name         unit     type fill_sed   psize    b_dens    i_conc  css_er css_dep  svel dg ad df coh cv fl re de  obc*/
+    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03,  -1.,  -1.,      -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
+    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOGRAD},
+    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"depth_sedi",   "m   ",  T3, 0.0,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,    0.0,      0.0, 0.0, -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
   };
 
   /* Init attributes */
@@ -1567,20 +1623,22 @@ static void sed_defaults_shf(tracer_info_t *tracer, char *trname)
 /*-------------------------------------------------------------------*/
 static void sed_defaults_bsc(tracer_info_t *tracer, char *trname)
 {
+
   sed_def_t sed_def[] = {
-    /* name         unit     type fill_sed   psize    b_dens    i_conc   svel dg ad df coh cv fl re de  obc*/  
-    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03, -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03, -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
-    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
-    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03, -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
-    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOGRAD},
-    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"depth_sedi",   "m   ",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,     0.0,     0.0,      0.0,     0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
-    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,     0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    /* name         unit     type fill_sed   psize    b_dens    i_conc  css_er css_dep svel    dg ad df coh cv fl re de  obc*/
+    {"Gravel",      "kg m-3", T1, 200.0,   0.0005,  2.65e+03, 1.2e+03,  -1.,  -1.,      -0.7,   0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Sand",        "kg m-3", T1, 400.0,   0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -2e-3,  0, 0, 1, 0, 1, 0, 0, 1, TRCONC|FILEIN},
+    {"Mud",         "kg m-3", T1, 600.0,   0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"FineSed",     "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -2.e-4, 0, 1, 1, 1, 1, 1, 1, 1, TRCONC|FILEIN},
+    {"Dust",        "kg m-3", T1, 0.0,     0.00025, 2.65e+03, 1.2e+03,  -1.,  -1.,      -1.e-5, 0, 1, 1, 1, 1, 0, 1, 1, TRCONC|FILEIN},
+    {"tss",         "kg m-3", T2, 0.0,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOGRAD},
+    {"porosity",    "-",      T2, 0.5,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"ustrcw_skin", "m s-1",  T3, 0.0,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"depth_sedi",   "m   ",  T3, 0.0,     0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"erdepflux_total_ac",   "kg m-2",  T3, 0.0,    0.0,      0.0, 0.0, -1.,  -1.,      0.0,    1, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
+    {"NULL",        "NULL",   1, 0.0,      0.0,     0.0,      0.0,      -1.,  -1.,      0.0,    0, 0, 0, 0, 0, 0, 0, 0, NOTHIN},
   };
+
 
   /* Init attributes */
   init_tracer_atts_sed(tracer, trname, sed_def, "basic");
@@ -1652,6 +1710,11 @@ static void init_tracer_atts_sed(tracer_info_t *tracer, char *trname,
     data->b_dens = sed_def[n].b_dens;
     data->i_conc = sed_def[n].i_conc;
     data->f_conc = sed_def[n].i_conc;  // by default
+
+   //2019
+    data->css_erosion = sed_def[n].css_erosion;
+    data->css_deposition = sed_def[n].css_deposition;
+
     data->svel   = sed_def[n].svel;
     sprintf(data->svel_name, "%c", '\0');
     data->cohesive  = sed_def[n].cohesive;
@@ -1688,6 +1751,11 @@ static trinfo_priv_sed_t *get_private_data_sed(tracer_info_t *tr)
     data->b_dens = 0.0;
     data->i_conc = 0.0;
     data->f_conc = 0.0;
+
+  //2019
+    data->css_erosion = -1.0;
+    data->css_deposition = -1.0;
+
     data->svel = 0.0;
     sprintf(data->svel_name, "%c", '\0');
     data->cohesive = 1;
@@ -1762,6 +1830,15 @@ void sed_set_tr_att(tracer_info_t *tr, char *key, void *value)
     {
       data->f_conc = *(double *)value;
     }
+ else if (strcmp(key, "css_erosion") == 0)
+    { //2019
+      data->css_erosion = *(double *)value;
+    }
+ else if (strcmp(key, "css_deposition") == 0)
+    {
+      data->css_deposition = *(double *)value;
+    }
+
   else if (strcmp(key, "svel") == 0) 
     {
       data->svel = *(double *)value;
@@ -1855,7 +1932,16 @@ void sed_read_tr_atts(tracer_info_t *tr, FILE *fp, char *keyname)
   sprintf(key, "%s.f_conc", keyname);
   if (prm_read_double(fp, key, &d_val))
     sed_set_tr_att(tr, "f_conc", &d_val);
-  
+ 
+//2019
+ sprintf(key, "%s.css_erosion", keyname);
+  if (prm_read_double(fp, key, &d_val))
+    sed_set_tr_att(tr, "css_erosion", &d_val);
+
+ sprintf(key, "%s.css_deposition", keyname);
+  if (prm_read_double(fp, key, &d_val))
+    sed_set_tr_att(tr, "css_deposition", &d_val);
+ 
   sprintf(key, "%s.svel", keyname);
   /* See if its a number */
   if (prm_read_double(fp, key, &d_val))
@@ -1978,6 +2064,10 @@ void sed_write_tr_atts(tracer_info_t *tr, FILE *fp, int n)
     fprintf(fp, "TRACER%1.1d.psize           %-4.2e\n", n, data->psize);
     fprintf(fp, "TRACER%1.1d.b_dens          %-4.2e\n", n, data->b_dens);
     fprintf(fp, "TRACER%1.1d.i_conc          %-4.2e\n", n, data->i_conc);
+//2019
+    fprintf(fp, "TRACER%1.1d.css_erosion          %-4.2e\n", n, data->css_erosion);
+    fprintf(fp, "TRACER%1.1d.css_deposition          %-4.2e\n", n, data->css_deposition);
+
     if (strlen(data->svel_name))
       fprintf(fp, "TRACER%1.1d.svel_name       %s\n", n, data->svel_name);
     fprintf(fp, "TRACER%1.1d.svel            %f\n", n, data->svel);

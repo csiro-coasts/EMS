@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 6317 2019-09-13 04:33:03Z her127 $
+ *  $Id: readdump.c 6462 2020-02-18 23:44:11Z her127 $
  *
  */
 
@@ -43,7 +43,7 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 double smooth_bathy(unsigned long ***flag, int nz, int i, int j, int **xm, int **xp, 
 		    int **ym, int **yp, double **bathy, double bmin, double bmax);
 double bathy_smooth_us(mesh_t *m, double *bathy, int cc);
-
+void testest(parameters_t *params, double bmin);
 
 /*-------------------------------------------------------------------*/
 /* Routine to set variables at ghost cells                           */
@@ -575,10 +575,10 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
       /*
       find_closest_nonnan(dumpdata, dumpdata->eta, geom->s2i[c], geom->s2j[c],
 			  geom->nz-1, &ci, &cj);
+			  master->eta[c] = dumpdata->eta[cj][ci];
       */
-      master->eta[c] = dumpdata->eta[cj][ci];
-      hd_warn("eta_init: Found NaN at (%d %d); replaced with (%d %d).\n", 
-	      geom->s2i[c], geom->s2j[c], ci, cj);
+      master->eta[c] = con_median(geom, master->eta, 10.0, c, ST_SQ3);
+      hd_warn("eta_init: Found NaN at %d(%d %d)\n", c, geom->s2i[c], geom->s2j[c]);
     }
   }
   set_lateral_bc_eta(master->eta, geom->nbptS, geom->bpt, geom->bin,
@@ -1297,6 +1297,9 @@ void set_bathy_us(parameters_t *params)
   }
 
   /*-----------------------------------------------------------------*/
+  /* Localized minimum bathymetry                                    */
+
+  /*-----------------------------------------------------------------*/
   /* Average bathymetry from surrounding cells                       */
   if (params->bathyfill & B_AVERAGE) {
     for (cc = 1; cc <= mesh->ns2; cc++) {
@@ -1458,6 +1461,8 @@ void set_bathy_us(parameters_t *params)
 	  }
 	  fclose(fp);
 	}
+	/* polygon input: set the bathymetry value in a polygon to   */
+	/* BATHY_MASK_VAL.                                           */
 	if (m == 3 && strcmp(fields[0], "poly") == 0) {
 	  FILE *fp;
 	  poly_t *pl = poly_create();
@@ -1468,6 +1473,26 @@ void set_bathy_us(parameters_t *params)
 	      if (poly_contains_point(pl, mesh->xloc[mesh->eloc[0][cc][0]], 
 				          mesh->yloc[mesh->eloc[0][cc][0]])) {
 		if (bathy[cc] != LANDCELL && bathy[cc] != NOTVALID) {
+		  bathy[cc] = -fabs(mdh);
+		}
+	      }
+	    }
+	    fclose(fp);
+	  }
+	  poly_destroy(pl);
+	}
+	/* polygon input: set the minimum bathymetry value in a      */
+	/* polygon to BATHY_MASK_VAL.                                */
+	if (m == 3 && strcmp(fields[0], "min") == 0) {
+	  FILE *fp;
+	  poly_t *pl = poly_create();
+	  mdh = atof(fields[1]);
+	  if ((fp = fopen(fields[2], "r")) != NULL) {
+	    m = poly_read(pl, fp);
+	    for (cc = 1; cc <= ns2; cc++) {
+	      if (poly_contains_point(pl, mesh->xloc[mesh->eloc[0][cc][0]], 
+				          mesh->yloc[mesh->eloc[0][cc][0]])) {
+		if (bathy[cc] != LANDCELL && bathy[cc] != NOTVALID && bathy[cc] > -fabs(mdh)) {
 		  bathy[cc] = -fabs(mdh);
 		}
 	      }
@@ -1862,6 +1887,7 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
   char dir = '\0';
 
   if (params->us_type & US_RUS) return(NULL);
+  /*testest(params, 20.0);*/
 
   /* Allocate memory */
   bathy = d_alloc_2d(nce1, nce2);
@@ -1924,6 +1950,8 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
   } else
     hd_quit
       ("set_bathy: bad bathymetry data (neither 0 nor number of cells)\n");
+
+
 
   /*-----------------------------------------------------------------*/
   /* Set boundary OUTSIDE OBC cells if required                      */
@@ -3232,7 +3260,7 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 	    !(flag[nz-1][jm][i] & (SOLID | OUTSIDE)) &&
 	    !(flag[nz-1][jp][i] & (SOLID | OUTSIDE))) {
 	  bathy[j][i] = LANDCELL;
-	  for (k = 0; k < nz; k++) {
+	  for (k = 0; k < nz; k++) {	
 	    flag[k][j][i] |= SOLID;
 	  }
 	}
@@ -3287,6 +3315,72 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 }
 
 /* END remove_channel()                                              */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+void testest(parameters_t *params, double bmin)
+{
+  mesh_t *mesh = params->mesh;
+  int nce1 = params->nce1;
+  int nce2 = params->nce2;
+  int i, ii, j, j1, j2;
+  int cc, c;
+  int imid = (int)(0.6 * (nce1 - 2));
+  int dmid = (int)(0.4 * (nce1 - 2));
+  int jmid = (int)(0.5 * (nce2 - 2))+1;
+  double slope, rd = 5.0;
+  double **bathy = d_alloc_2d(nce1, nce2);
+  int verbose = 0;
+
+  for (j = 0; j < nce2; j++)
+    for (i = 0; i < nce1; i++)
+      bathy[j][i] = LANDCELL;
+
+  /* Set the main basin */
+  for (j = 1; j < nce2-1; j++) {
+    for (i = dmid+1; i < nce1-1; i++) {
+      bathy[j][i] = -fabs(bmin);
+    }
+  }
+
+  /* Set the river */
+  slope = (bmin - rd) / (double)(imid - 1);
+  for (i = 1; i <= imid; i++) {
+    bathy[jmid][i] = -(slope * (double)(i - 1) + rd);
+  }
+
+  /* Open boundaries */
+  for (j = 1; j < nce2-1; j++) {
+    bathy[j][nce1-1] = -9999.0;
+  }
+  bathy[jmid][0] = -9999;
+
+  /* Delta */
+  j1 = jmid + 1;
+  j2 = jmid - 1;
+  i = imid - 1;
+  while (i > dmid) {
+    for (ii = i; ii > 0; ii--) {
+      bathy[j1][ii] = LANDCELL;
+      bathy[j2][ii] = LANDCELL;
+    }
+    j1++;
+    j2--;
+    i--;
+  }
+
+  cc = 0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (verbose) printf("%4.0f ",bathy[j][i]);
+      params->bathy[cc++] = -bathy[j][i];
+    }
+    if (verbose) printf("\n");
+  }
+  d_free_2d(bathy);
+}
+
 /*-------------------------------------------------------------------*/
 
 

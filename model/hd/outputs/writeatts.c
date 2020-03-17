@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 6149 2019-03-05 01:59:20Z her127 $
+ *  $Id: writeatts.c 6244 2019-06-13 04:10:56Z riz008 $
  *
  */
 
@@ -46,6 +46,7 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
   int ns2 = dumpdata->ns2;
   int ns3 = dumpdata->ns3;
   char buf[MAXSTRLEN];
+  char buf2[MAXSTRLEN];
 
   /* time independent variables */
   vid = ncw_var_id(cdfid, "z_grid");
@@ -507,12 +508,15 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
   }
 
   /* global attributes */
-  write_text_att(cdfid, NC_GLOBAL, "title", codeheader);
+  write_text_att(cdfid, NC_GLOBAL, "title", dumpdata->grid_name);
+  write_text_att(cdfid, NC_GLOBAL, "codehead", codeheader);
   write_text_att(cdfid, NC_GLOBAL, "paramhead", parameterheader);
+  write_text_att(cdfid, NC_GLOBAL, "description", dumpdata->grid_desc);
   getcwd(buf, MAXSTRLEN);
-  sprintf(buf, "%s/%s", buf, dumpdata->prmname);
-  write_text_att(cdfid, NC_GLOBAL, "paramfile", buf);
+  sprintf(buf2, "%s/%s", buf, dumpdata->prmname);
+  write_text_att(cdfid, NC_GLOBAL, "paramfile", buf2);
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
+  write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries/SHOC");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
@@ -668,6 +672,16 @@ static void write_grid_atts(dump_data_t *dumpdata, int fid, int ilower,
   }
 }
 
+void write_date_created(int cdfid)
+{
+  time_t now = time(NULL);
+  char buf[32];
+  sprintf(buf, "%s", ctime(&now));
+  /* Remove trailing newline */
+  buf[strlen(buf)-1] = '\0';
+  write_text_att(cdfid, NC_GLOBAL, "date_created", buf);
+}
+
 void read_grid_atts(parameters_t *params, int fid)
 {
   nc_get_att_text(fid, NC_GLOBAL, "gridtype", params->gridtype);
@@ -731,21 +745,15 @@ void read_mean_atts(master_t *master, int fid)
 {
   geometry_t *geom = master->geom;
   parameters_t *params = master->params;
-  char buf[MAXSTRLEN];
   double d1;
-  int i, cc;
+  int cc;
 
   if (!(params->means & NONE)) {
     nc_get_att_double(fid, NC_GLOBAL, "mean_c", &d1);
     for (cc = 1; cc < geom->sgsizS; cc++)
       master->meanc[cc] = d1;
     nc_get_att_double(fid, NC_GLOBAL, "mean_next", &master->means_next);
-    if (master->means_dt == SEASONAL || master->means_dt == MONTHLY || master->means_dt == DAILY) {
-      char *fields[MAXSTRLEN * MAXNUMARGS];
-      nc_get_att_text(fid, NC_GLOBAL, "mean_mc", buf);
-      cc = parseline(buf, fields, MAXNUMARGS);
-      for (i = 1; i <= cc; i++)
-	master->meancs[i] = atof(fields[i-1]);
-    }
+    if (nc_get_att_text(fid, NC_GLOBAL, "mean_mc", params->means_mc) != NC_NOERR)
+      sprintf(params->means_mc, "%c", '\0');
   }
 }

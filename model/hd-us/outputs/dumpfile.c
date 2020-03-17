@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 6341 2019-09-16 23:57:49Z her127 $
+ *  $Id: dumpfile.c 6473 2020-02-18 23:52:03Z her127 $
  *
  */
 
@@ -123,7 +123,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
 void read_filter(dump_file_t *df, FILE *fp, char *key);
 double df_filter_ij(dump_file_t *df, double **a, unsigned long **flag, 
 		    int ne1, int ne2, int i, int j);
-double df_filter(dump_file_t *df, double *a, int c);
+double df_filter(geometry_t *geom, dump_file_t *df, double *a, int c);
 void df_filter_1d(dump_file_t *df, dump_data_t *dumpdata, double ***a, int i, int j);
 void df_filter_2d(dump_file_t *df, dump_data_t *dumpdata, double **a, 
 		  int is, int ie, int js, int je);
@@ -364,6 +364,7 @@ void dump_f_snapshot(sched_event_t *event, int f, double t)
 /* END dump_f_snapshot()                                            */
 /*------------------------------------------------------------------*/
 
+
 /*------------------------------------------------------------------*/
 /* Output the model results to for dumpfiles of type 'memory'.      */
 /*------------------------------------------------------------------*/
@@ -456,13 +457,17 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
       }
       /* Transfer to dumpdata */
       if (doeta && df->flag & DF_ETA) {
-	s2c_2d(geom, master->eta, dumpdata->eta, geom->nce1, geom->nce2);
-	s2c_3d(geom, master->temp, dumpdata->tr_wc[master->tno], geom->nce1, geom->nce2, geom->nz);
+	if (dumpdata->us_type & US_IJ) {
+	  s2c_2d(geom, master->eta, dumpdata->eta, geom->nce1, geom->nce2);
+	  s2c_3d(geom, master->temp, dumpdata->tr_wc[master->tno], geom->nce1, geom->nce2, geom->nz);
+	}
 	doeta = 0;
       }
       if (dov2d && df->flag & DF_V2D) {
-	s2c_2d(geom, master->u1av, dumpdata->u1av, geom->nfe1, geom->nce2);
-	s2c_3d(geom, master->u1, dumpdata->u1, geom->nfe1, geom->nce2, geom->nz);
+	if (dumpdata->us_type & US_IJ) {
+	  s2c_2d(geom, master->u1av, dumpdata->u1av, geom->nfe1, geom->nce2);
+	  s2c_3d(geom, master->u1, dumpdata->u1, geom->nfe1, geom->nce2, geom->nz);
+	}
 	dov2d = 0;
       }
       /* Dump */
@@ -477,6 +482,35 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
 }
 
 /* END dump_eta_snapshot()                                            */
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Set flags for 2 way nesting.                                     */
+/*------------------------------------------------------------------*/
+void init_2way(master_t *master, 
+	       geometry_t **window, 
+	       window_t **windat, 
+	       win_priv_t **wincon)
+{
+  int f, n;
+  geometry_t *geom = master->geom;
+  dump_data_t *dumpdata = master->dumpdata;
+  dump_file_t *df;
+
+  for (f = 0; f < dumpdata->ndf; f++) {
+    df = &dumpdata->dumplist[f];
+    if (df->flag & DF_MPK && df->flag & DF_ETA && df->flag & DF_V2D) {
+      master->obcf = DF_BARO;
+      for (n = 1; n <= master->nwindows; n++) {
+	wincon[n]->obcf = DF_BARO;
+      }
+    }
+  }
+
+}
+
+/* END init_2way()                                                  */
 /*------------------------------------------------------------------*/
 
 
@@ -890,7 +924,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   int i, mapIndex = 0;
 
   list->flag = 0;
-  list->append = forced_restart;
+  list->append = forced_restart || nrt_restart;
 
   /* Get file name */
   sprintf(key, "file%d.name", f);
@@ -1005,13 +1039,15 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
 	list->flag |= DF_BARO;
       }
     }
-    if (strcmp(list->vars[i], "uav") == 0 ||
+    if (strcmp(list->vars[i], "u1av") == 0 ||
+	strcmp(list->vars[i], "uav") == 0 ||
 	strcmp(list->vars[i], "vav") == 0) {
       int ii, bf = 0;
       list->flag |= DF_V2D;
       for (ii = 0; ii < list->nvars; ++ii) {
 	if (strcmp(list->vars[ii], "u") == 0 ||
-	    strcmp(list->vars[ii], "v") == 0) bf = 1;
+	    strcmp(list->vars[ii], "v") == 0 ||
+	    strcmp(list->vars[ii], "u1") == 0) bf = 1;
       }
       if (!bf && !(list->flag & DF_BARO) && !barof) {
 	barof = 1;
@@ -1019,6 +1055,12 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
       }
     }
   }
+
+  sprintf(key, "file%d.obc", f);
+  prm_read_char(fp, key, buf);
+  if (strcmp(buf, "TRACER") == 0) list->flag |= DF_TRA;
+  if (strcmp(buf, "NOR") == 0) list->flag |= DF_NOR;
+  if (strcmp(buf, "TAN") == 0) list->flag |= DF_TAN;
 
   prm_set_errfn(hd_silent_warn);
   /* Read the time modulo */
@@ -1063,12 +1105,13 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
       list->sinc = list->tinc;
     } else
       list->sinc = list->tinc;
-  }
+ }
+  /*
   if (list->flag & DF_MPK && barof) {
     if (!(list->flag & (DF_ETA|DF_V2D)) && !(list->flag & DF_BARO))
       list->sinc -= SEPS;
   }
-
+  */
   sprintf(key, "file%d.filter", f);
   read_filter(list, fp, key);
 
@@ -1116,7 +1159,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
     list->landfill = locate_landfill_function("default");
   sprintf(key, "file%d.i_rule", f);
   if (!(prm_read_char(fp, key, list->irule)))
-    strcpy(list->irule, "linear");
+    strcpy(list->irule, "nearest");
   if(strcmp(list->irule, "linear") == 0)
     list->osl = L_LINEAR;
   else if(strcmp(list->irule, "bilinear") == 0)
@@ -2083,9 +2126,43 @@ double df_filter_ij(dump_file_t *df,
   if (ks) b *= 1.0 / ks;
   return(b);
 }
- 
-double df_filter(dump_file_t *df, 
-		 double *a, 
+
+double df_filter(geometry_t *geom,
+		 dump_file_t *df, 
+		 double *a,
+		 int c)
+{
+  int cc, cn;
+  double b, s, k;
+  df_filter_t *f = df->filter;
+  df_filter_t *fc = geom->filter[c];
+  int *st = NULL, sz;
+
+  if(f->type & M3PT) {
+    sz = fc->map3;
+    s = fc->f;
+  }
+  if(f->type & M5PT) {
+    sz = fc->map5;
+    s = 1.0;
+  }
+
+  if (geom->wgst[c]) {
+    b = a[c];
+    return(b);
+  }
+  b = k = 0.0;
+
+  for (cc = 0; cc < sz; cc++) {
+    cn = fc->map[cc];
+    b += fc->k[cc] * s * a[cn];
+    k += fc->k[cc] * s;
+  }
+  return(b);
+}
+
+double df_filtero(dump_file_t *df, 
+		 double *a,
 		 int c)
 {
   int n, s, cn;
@@ -5163,6 +5240,7 @@ int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
     set_xyloc_vector(var, CL_SP3|CL_EDGE, CL_SP3|CL_EDGE);
     set_zloc_vector(var, CL_CENTRE, CL_CENTRE);
     var->vector_mode = VM_NOR;
+    strcpy(var->units,"ms-1");
   }
 
   else if (strcmp(name, "u2") == 0) {
@@ -5173,6 +5251,7 @@ int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
     set_xyloc_vector(var, CL_SP3|CL_EDGE, CL_SP3|CL_EDGE);
     set_zloc_vector(var, CL_CENTRE, CL_CENTRE);
     var->vector_mode = VM_TAN;
+    strcpy(var->units,"ms-1");
   }
 
   else if (strcmp(name, "w") == 0) {
@@ -5180,6 +5259,7 @@ int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
     set_xyloc(var, CL_SP3|CL_FACE);
     set_zloc(var, CL_CENTRE);
     var->ndims = 3;
+    strcpy(var->units,"ms-1");
   }
 
   else if (strcmp(name, "u1mean") == 0) {
@@ -5390,12 +5470,6 @@ static double get_var_value_2d(dump_file_t *df, df_parray_var_t *var, int id, in
     x = data->d[k]->points[id].x;
     y = data->d[k]->points[id].y;
   }
-
-  if(strcmp(df->name,"/home/her127/work/meco/compas/est/tile0/bdry0-1_uv_nor.mpk.nc")==0) {
-    int i;
-    for (i=0; i<data->d[k]->npoints;i++)
-      printf("%f %f\n",data->d[k]->points[i].x,data->d[k]->points[i].y);
-  }
     
   if (var != NULL && var->fptype == NC_SHORT)
     return (v - var->offset) / var->scale;
@@ -5444,7 +5518,7 @@ static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
       k = data->c2k[i];
       d[k]->vid = 0;
       if (df->filter)
-	d[k]->points[id].v[0] = df_filter(df, values, c);
+	d[k]->points[id].v[0] = df_filter(geom, df, values, c);
       else
 	d[k]->points[id].v[0] = values[c];
       d[k]->points[id].z = d[k]->points[id].v[0];
@@ -5469,7 +5543,7 @@ static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
 	id = data->ids[i];
 	k = data->c2k[i];
 	if (df->filter)
-	  d[k]->points[id].v[0] = df_filter(df, values, c);
+	  d[k]->points[id].v[0] = df_filter(geom, df, values, c);
 	else
 	  d[k]->points[id].v[0] = values[c];
       }
@@ -5521,7 +5595,7 @@ static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
     k = data->c2k[i];
     d[k]->vid = 0;
     if (df->filter)
-      d[k]->points[id].v[0] = df_filter(df, values, c);
+      d[k]->points[id].v[0] = df_filter(geom, df, values, c);
     else
       d[k]->points[id].v[0] = values[c];
     d[k]->points[id].z = d[k]->points[id].v[0];
@@ -5546,7 +5620,7 @@ static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
       id = data->ids[i];
       k = data->c2k[i];
       if (df->filter)
-	d[k]->points[id].v[0] = df_filter(df, values, c);
+	d[k]->points[id].v[0] = df_filter(geom, df, values, c);
       else
 	d[k]->points[id].v[0] = values[c];
     }
@@ -5601,7 +5675,7 @@ static void df_parray_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
     k = data->e2k[i];
     d[k]->vid = 0;
     if (df->filter)
-      d[k]->points[id].v[0] = df_filter(df, values, e);
+      d[k]->points[id].v[0] = df_filter(geom, df, values, e);
     else
       d[k]->points[id].v[0] = values[e];
     d[k]->points[id].z = d[k]->points[id].v[0];
@@ -5663,7 +5737,7 @@ static void df_parray_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
       k = data->e2k[i];
       d[k]->vid = 0;
       if (df->filter)
-	d[k]->points[id].v[0] = df_filter(df, values, e);
+	d[k]->points[id].v[0] = df_filter(geom, df, values, e);
       else
 	d[k]->points[id].v[0] = values[e];
       d[k]->points[id].z = d[k]->points[id].v[0];
@@ -6229,8 +6303,8 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	dm = HUGE;
 	for (j = 1; j <= geom->npe[c2]; j++) {
 	  x = df->x[i] - geom->u1x[geom->c2e[j][c2]];
-	  x = df->y[i] - geom->u1y[geom->c2e[j][c2]];
-	  dist =sqrt(x * x + y * y);
+	  y = df->y[i] - geom->u1y[geom->c2e[j][c2]];
+	  dist = sqrt(x * x + y * y);
 	  if (dist < dm) {
 	    dm = dist;
 	    e = geom->c2e[j][c];
@@ -6562,6 +6636,10 @@ void *df_memory_create(dump_data_t *dumpdata, dump_file_t *df)
 
   for (n = 0; n < df->nvars; n++) {
     df_parray_var_t *var = &mem->vars[n];
+    if (df->flag & DF_TAN && strcmp(var->name, "u1") == 0)
+      strcpy(var->name, "u2");
+    if (df->flag & DF_TAN && strcmp(var->name, "u1av") == 0)
+      strcpy(var->name, "u2av");
     if (var->ndims == 2)
       n2d++;
     else if (var->ndims == 3)
@@ -6719,7 +6797,7 @@ static void df_memory_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
       k = mem->c2k[i];
       d[k]->vid = 0;
       if (df->filter)
-	d[k]->points[id].v[0] = df_filter(df, values, c);
+	d[k]->points[id].v[0] = df_filter(geom,df, values, c);
       else
 	d[k]->points[id].v[0] = values[c];
       d[k]->points[id].z = d[k]->points[id].v[0];
@@ -6744,7 +6822,7 @@ static void df_memory_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
 	id = mem->ids[i];
 	k = mem->c2k[i];
 	if (df->filter)
-	  d[k]->points[id].v[0] = df_filter(df, values, c);
+	  d[k]->points[id].v[0] = df_filter(geom, df, values, c);
 	else
 	  d[k]->points[id].v[0] = values[c];
       }
@@ -6779,7 +6857,7 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
     k = mem->c2k[i];
     d[k]->vid = 0;
     if (df->filter)
-      d[k]->points[id].v[0] = df_filter(df, values, c);
+      d[k]->points[id].v[0] = df_filter(geom, df, values, c);
     else
       d[k]->points[id].v[0] = values[c];
     d[k]->points[id].z = d[k]->points[id].v[0];
@@ -6804,7 +6882,7 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
       id = mem->ids[i];
       k = mem->c2k[i];
       if (df->filter)
-	d[k]->points[id].v[0] = df_filter(df, values, c);
+	d[k]->points[id].v[0] = df_filter(geom, df, values, c);
       else
 	d[k]->points[id].v[0] = values[c];
     }
@@ -6825,6 +6903,7 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
       if (d[k] != NULL) {
 	id = mem->ids[i];
 	v3d[c] = get_var_value(df, var, id, i, k);
+	/*if(k==geom->nz-1&&df->x[i]==34874 && df->y[i]==13464)printf("dump %f %d %s %f\n",master->days,c,var->name,v3d[c]);*/
       }
       c++;
     }
@@ -6851,7 +6930,7 @@ static void df_memory_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
       k = mem->e2k[i];
       d[k]->vid = 0;
       if (df->filter)
-	d[k]->points[id].v[0] = df_filter(df, values, e);
+	d[k]->points[id].v[0] = df_filter(geom, df, values, e);
       else
 	d[k]->points[id].v[0] = values[e];
       d[k]->points[id].z = d[k]->points[id].v[0];
@@ -6891,45 +6970,24 @@ static void df_memory_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
     id = mem->eds[i];
     k = mem->e2k[i];
     d[k]->vid = 0;
-    d[k]->points[id].z = d[k]->points[id].v[0];
-  }
-}
-
-static void df_memory_writevec_3do(dump_data_t *dumpdata, dump_file_t *df,
-                                  int vid, double *values, int klower,
-                                  int nz, double *v3d)
-{
-  df_parray_data_t *mem = (df_parray_data_t *)df->private_data;
-  df_parray_var_t *var = &mem->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = mem->de;
-  GRID_SPECS **gs = mem->ge;
-  int i, k, e, id;
-  printf("a\n");
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < mem->neells; i++) {
-    e = mem->eells[i];
-    id = mem->eds[i];
-    k = mem->e2k[i];
-    d[k]->vid = 0;
     if (df->filter)
-      d[k]->points[id].v[0] = df_filter(df, values, e);
+      d[k]->points[id].v[0] = df_filter(geom, df, values, e);
     else
       d[k]->points[id].v[0] = values[e];
     d[k]->points[id].z = d[k]->points[id].v[0];
   }
-  printf("b\n");
+
   /* Rebuild the weights.                                            */
   for (k = 0; k < geom->nz; k++) {
     if (d[k] == NULL) continue;
-    mem->gs[k]->rebuild(mem->gs[k]->interpolator, d[k]->points);
+    gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
   }
-  printf("b\n");
+
   e = 0;
   for (i = 0; i < df->npoints; ++i) {
     for (k = 0; k < nz; ++k){
       v3d[e] = get_missing(var);
+      v3d[e] = 0.0;
       if (d[k] != NULL) {
 	id = mem->eds[i];
 	v3d[e] = get_var_value(df, var, id, i, k);
@@ -6937,7 +6995,6 @@ static void df_memory_writevec_3do(dump_data_t *dumpdata, dump_file_t *df,
       e++;
     }
   }
-  printf("c\n");
 }
 
 

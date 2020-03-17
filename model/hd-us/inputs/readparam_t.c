@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6272 2019-08-08 04:26:30Z her127 $
+ *  $Id: readparam_t.c 6465 2020-02-18 23:45:21Z her127 $
  *
  */
 
@@ -321,13 +321,6 @@ FILE *fp;
   read_totals(params, fp);
   /* Regions */
   read_region_info(params, fp);
-  if (strlen(params->regions) || params->fillf & (LOCAL|LOCALER)) {
-    params->tmode |= SET_AIJ;
-    /*
-    if (params->osl > 1) 
-      hd_quit("REGIONS and local fill only operates with 1st order semi-Lagrange.\n");
-    */
-  }
   /* AVHRR SST */
   if (prm_read_char(fp, "AVHRR", params->avhrr_path)) {
     create_avhrr_list(params);
@@ -343,6 +336,7 @@ FILE *fp;
   params->ntr += numbers_init(params);
 
   read_decorr(params, fp, 0);
+  read_monotone(params, fp, 0);
   /* Means */
   read_means(params, fp, 0);
   /* Alerts */
@@ -423,7 +417,7 @@ FILE *fp;
     prm_set_errfn(hd_silent_warn);
   }
   if (!(params->cfl & NONE))
-    params->ntrS += 5;
+    params->ntrS += 6;
 
   /* Waves */
   read_waves(params, fp, 0);
@@ -1058,6 +1052,11 @@ void read_tmode_params(FILE *fp, parameters_t *params)
       if (params->runmode & TRANS) params->tmode |= SP_U1VM;
       params->ntrS += 1;    
     }
+    if (contains_token(buf, "SP_FFSLS") != NULL) {
+      params->tmode = (SP_FFSL|SP_EXACT|SP_STRUCT);
+      if (params->runmode & TRANS) params->tmode |= SP_U1VM;
+      params->ntrS += 1;    
+    }
   }
 
   if (params->runmode & TRANS)
@@ -1073,6 +1072,8 @@ void read_tmode_params(FILE *fp, parameters_t *params)
 	params->fillf |= GLOBAL;
       if (contains_token(buf, "MONOTONIC") != NULL)
 	params->fillf |= MONOTONIC;
+      if (contains_token(buf, "CLIP") != NULL)
+	params->fillf |= CLIP;
       if (contains_token(buf, "OBC_ADJUST") != NULL)
 	params->fillf |= OBC_ADJUST;
       if (contains_token(buf, "WEIGHTED") != NULL)
@@ -1085,11 +1086,9 @@ void read_tmode_params(FILE *fp, parameters_t *params)
 	params->fillf |= LOCAL;
       if (contains_token(buf, "MONO+GLOB") != NULL)
 	params->fillf |= (MONGLOB|MONOTONIC);
-      if (contains_token(buf, "GLOB+VERR") != NULL)
-	params->fillf |= LOCALER;
     }
   }
-  if (params->fillf & (WEIGHTED|MONOTONIC|LOCALER))
+  if (params->fillf & (WEIGHTED|MONOTONIC))
     params->ntrS += 1;
   if (params->fillf & LOCAL) {
     if(params->fillf & DIAGNOSE)

@@ -626,6 +626,8 @@ MLIB
 PROJLIB
 PROJINC
 PTHREAD_CFLAG
+METIS_LIB
+METIS_INC
 OPENMP_CFLAGS
 MPI_LIB
 MPI_INC
@@ -734,6 +736,7 @@ enable_do_timing
 enable_da
 with_mpi
 enable_openmp
+with_metis
 enable_omp
 '
       ac_precious_vars='build_alias
@@ -1376,6 +1379,7 @@ Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-mpi=<path>       Path of MPI
+  --with-metis=<path>       Path of METIS
 
 Some influential environment variables:
   CC          C compiler command
@@ -3491,12 +3495,6 @@ fi
 
 
 
-case $CC in #(
-  *icc) :
-    CFLAGS+=" -no-gcc" ;; #(
-  *) :
-     ;;
-esac
 
 
 ac_ext=c
@@ -5391,6 +5389,92 @@ $as_echo "$ac_cv_prog_c_openmp" >&6; }
 $as_echo "$as_me: WARNING: '(MPI) Could not find OpenMP support on this machine'" >&2;}
    fi
    $as_echo "#define HAVE_OMP 1" >>confdefs.h
+
+   includedir=$oldincludedir
+   libdir=$oldlibdir
+fi
+
+
+# Check whether --with-metis was given.
+if test "${with_metis+set}" = set; then :
+  withval=$with_metis; METIS_ROOT=$withval
+else
+  METIS_ROOT=
+fi
+
+if test "$METIS_ROOT"; then
+   oldincludedir=$includedir
+   oldlibdir=$libdir
+
+   includedir="$includedir $METIS_ROOT/include"
+   libdir="$libdir $METIS_ROOT/lib"
+
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for -lmetis" >&5
+$as_echo_n "checking for -lmetis... " >&6; }
+rqst_lib=metis
+lib_path=
+found_lib=no
+# Look for the library file in a standard set of common directories.
+   for ac_dir in                \
+      $libdir               \
+      $prefix/lib${LIBEXT}           \
+      /usr/lib64                     \
+      /usr/lib${LIBEXT}              \
+      /usr/lib/x86_64-linux-gnu      \
+      /usr/local/lib${LIBEXT}        \
+      ; \
+do
+  for ac_extension in a so sl; do
+    if test -r $ac_dir/lib${rqst_lib}.$ac_extension; then
+      lib_path=$ac_dir
+      found_lib=yes
+      break 2
+    fi
+  done
+done
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $found_lib" >&5
+$as_echo "$found_lib" >&6; }
+
+test "$found_lib" = yes && METIS_LIB=$lib_path
+test "$found_lib" = no && METIS_LIB=
+
+   if test -z "$METIS_LIB"; then
+      as_fn_error $? "'Unable to find libmetis in $METIS_ROOT/lib64'" "$LINENO" 5
+   fi
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for metis.h" >&5
+$as_echo_n "checking for metis.h... " >&6; }
+header_path=
+found_header=no
+# Look for the header file in a standard set of common directories.
+   for ac_dir in                \
+      $includedir               \
+      $prefix/include           \
+      /usr/include              \
+      /usr/include/sys          \
+      /usr/local/include        \
+      ; \
+   do
+     if test -r "$ac_dir/metis.h"; then
+        header_path=$ac_dir
+	found_header=yes
+	break
+     fi
+   done
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $found_header" >&5
+$as_echo "$found_header" >&6; }
+
+test "$found_header" = yes && METIS_INC=$header_path
+test "$found_header" = no && METIS_INC=
+
+   if test -z "$METIS_LIB"; then
+      as_fn_error $? "'Unable to find libmetis in $METIS_ROOT/lib64'" "$LINENO" 5
+   fi
+   METIS_INC="-I${METIS_INC}"
+   METIS_LIB="-L${METIS_LIB} -lmetis"
+
+
+   $as_echo "#define HAVE_METIS 1" >>confdefs.h
+
 
    includedir=$oldincludedir
    libdir=$oldlibdir

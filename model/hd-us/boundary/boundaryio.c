@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 6307 2019-09-13 04:17:20Z her127 $
+ *  $Id: boundaryio.c 6452 2020-02-18 23:39:37Z her127 $
  *
  */
 
@@ -118,6 +118,8 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   sprintf(keyword, "BOUNDARY%1d.ADJUST_TIDE", n);
   if (prm_read_char(fp, keyword, buf) > 0)
     tm_scale_to_secs(buf, &open->adjust_flux_s);
+  sprintf(keyword, "BOUNDARY%1d.ADJUST_RATIO", n);
+  prm_read_double(fp, keyword, &open->afr);
   if(strlen(params->patm)) {
     sprintf(keyword, "BOUNDARY%1d.INVERSE_BAROMETER", n);
     if (prm_read_char(fp, keyword, buf))
@@ -381,7 +383,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       hd_quit("Boundary %d: Unsupported elevation boundary condition type %s.\n", n, bname);
     }
   }
-  if (open->adjust_flux == 0.0 && open->nbstd == 0)
+  if (open->adjust_flux == 0.0 && open->afr == 0.0 && open->nbstd == 0)
     get_relax_time(open, fp, bname, n, open->bcond_ele, NOTHIN);
   if (open->bcond_ele & TIDEBC) {
     prm_set_errfn(hd_quit);
@@ -413,8 +415,11 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     open->bcond_ele |= FLATHE;
   }
   if (!(params->compatible & V1670) && open->adjust_flux && 
-      !(open->bcond_ele & (FILEIN|TIDALC)) && !strlen(open->bstd[0]))
+      !(open->bcond_ele & (FILEIN|TIDALC|TIDALH)) && !strlen(open->bstd[0]))
 	hd_quit("Boundary%d elevation DATA must be supplied using ADJUST_FLUX.\n", open->id);
+  if (!(params->compatible & V1670) && open->afr && 
+      !(open->bcond_ele & (FILEIN|TIDALC|TIDALH)) && !strlen(open->bstd[0]))
+	hd_quit("Boundary%d elevation DATA must be supplied using ADJUST_RATIO.\n", open->id);
 
   open->relax_zone_ele = 0;
   sprintf(keyword, "BOUNDARY%1d.RELAX_ZONE_ELE", n);
@@ -463,7 +468,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   sprintf(keyword, "BOUNDARY%1d.LINEAR_ZONE_TAN", n);
   prm_read_int(fp, keyword, &open->linear_zone_tan);
 
-  if (open->adjust_flux == 0.0) {
+  if (open->adjust_flux == 0.0 && open->afr == 0.0) {
     if ((open->bcond_nor & (FILEIN | CUSTOM)) && 
 	open->bcond_ele & (FILEIN | CUSTOM))
       hd_warn("Multiple forcing (nor. velocity and eta) specified for %s.\n",
@@ -610,6 +615,11 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     prm_read_char(fp, keyword, open->scale_d[i]);
   }
 
+  /* Nudging zone for T and S                                        */
+  sprintf(open->nzone, "%c", '\0');
+  sprintf(keyword, "BOUNDARY%1d.NUDGE_ZONE", n);
+  prm_read_char(fp, keyword, open->nzone);
+
   /*-----------------------------------------------------------------*/
   /* Options                                                         */
   sprintf(keyword, "BOUNDARY%1d.OPTIONS", n);
@@ -712,6 +722,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->bflux_3d = 0.0;
   open->adjust_flux = 0.0;
   open->adjust_flux_s = 0.0;
+  open->afr = 0.0;
   open->spf = 0.0;
   open->relax_ele = 0.0;
   open->file_dt = 0.0;
@@ -719,6 +730,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->rele_b = open->rele_i = 0.0; 
   open->stagger = OUTFACE;
   sprintf(open->bflow, "%c", '\0');
+  sprintf(open->nzone, "%c", '\0');
   open->rlen = 0.0;
   open->bhc = NOTVALID;
   open->bgz = 0;
@@ -825,6 +837,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->rele_i = io->rele_i;
   open->adjust_flux = io->adjust_flux;
   open->adjust_flux_s = io->adjust_flux_s;
+  open->afr = io->afr;
   open->spf = io->spf;
   open->stagger = io->stagger;
   open->meanc = io->meanc;
@@ -861,6 +874,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->rlen = io->rlen;
   open->options = io->options;
   strcpy(open->tsfn, io->tsfn);
+  strcpy(open->nzone, io->nzone);
   open->sbcond = io->sbcond;
   open->bstdf = io->bstdf;
   open->nbstd = io->nbstd;
@@ -913,7 +927,7 @@ void get_OBC_relax(parameters_t *params, open_bdrys_t *open, FILE *fp, int n)
 {
   char buf[MAXSTRLEN];
 
-  if (open->relax_ele || (open->adjust_flux && params->compatible & V1670)) {
+  if (open->relax_ele || ((open->adjust_flux || open->afr) && params->compatible & V1670)) {
     if(strlen(params->etarlxn)) {
       hd_warn("Eta relaxation file for boundary %d = %s\n", n,
 	      params->etarlxn);
@@ -931,6 +945,7 @@ void get_OBC_relax(parameters_t *params, open_bdrys_t *open, FILE *fp, int n)
 	open->relax_ele = 0;
 	open->rele_b = open->rele_i = 0.0; 
 	open->adjust_flux = 0.0;
+	open->afr = 0.0;
       }
     }
   }
@@ -2131,6 +2146,7 @@ int bdry_reinit(geometry_t *geom,        /* Global geometry          */
 	  open_w->bcond_Kz = open->bcond_Kz;
 	  open_w->adjust_flux = open->adjust_flux;
 	  open_w->adjust_flux_s = open->adjust_flux_s;
+	  open_w->afr = open->afr;
 	  open_w->inverse_barometer = open->inverse_barometer;
 	  strcpy(open_w->bflow, open->bflow);
 	  open_w->bhc = open->bhc;

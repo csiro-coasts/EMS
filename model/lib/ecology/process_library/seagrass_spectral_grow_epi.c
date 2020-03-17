@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_epi.c 6051 2019-01-21 02:37:59Z bai155 $
+ *  $Id: seagrass_spectral_grow_epi.c 6199 2019-04-15 06:05:58Z bai155 $
  *
  */
 
@@ -39,6 +39,8 @@
              determined respiration. 
 
 	  3. Additional to Baird et al., (2016): (1) preferential nutrient uptake by roots; (2) oxygen balance includes NO3.
+
+	  4. Mass balance acheieved by putting NO3_sed into TN, and NO3_sed*48/12 into BOD.
 
 */
 
@@ -427,7 +429,7 @@ void seagrass_spectral_grow_epi_precalc(eprocess* p, void* pp)
     if (cv[ws->rootbot_i] < 0)
       cv[ws->rootbot_i] = 0;
 
-    /* mass balance - add sediment dissolved nutrients for one species. */
+    /* mass balance - add sediment dissolved nutrients for one species, not including top layer */
 
     if (ws->species == 'Z'){
       for (k = col->topk_sed-1; k >= col->botk_sed; k--){
@@ -441,7 +443,7 @@ void seagrass_spectral_grow_epi_precalc(eprocess* p, void* pp)
       y[ws->EpiTN_i] += SG_N + SGROOT_N + NO3_sed + NH4_sed;
       y[ws->EpiTP_i] += (SG_N + SGROOT_N)* atk_W_P + DIP_sed;
       y[ws->EpiTC_i] += (SG_N + SGROOT_N)* atk_W_C;
-      y[ws->EpiBOD_i] += (SG_N + SGROOT_N)* atk_W_O;
+      y[ws->EpiBOD_i] += (SG_N + SGROOT_N)* atk_W_O - NO3_sed*48.0/14.01;
     }
 
     /* Calculated photorespiration term */
@@ -485,7 +487,7 @@ void seagrass_spectral_grow_epi_calc(eprocess* p, void* pp)
     double NH4frac[ws->nsed];
     double DIPfrac[ws->nsed];
     double sumdz = 0.0;
-    double sumdzNO3 = 0;double sumdzNH4 = 0;double sumdzDIP = 0;
+    double sumdzNO3 = 0.0;double sumdzNH4 = 0.0;double sumdzDIP = 0.0;
     
     double NO3_water = y[ws->NO3_wc_i];
     double NH4_water = y[ws->NH4_wc_i];
@@ -500,9 +502,11 @@ void seagrass_spectral_grow_epi_calc(eprocess* p, void* pp)
       NH4_multi_sed[k] = max(y[ws->NH4_multi_sed_i[k]],EPS_DIN);
       DIP_multi_sed[k] = max(y[ws->DIP_multi_sed_i[k]],EPS_DIP);
       sumdz += dz_multi_sed[k]*porosity_multi_sed[k];
-      sumdzNO3 += dz_multi_sed[k]*porosity_multi_sed[k]*NO3_multi_sed[k];
-      sumdzNH4 += dz_multi_sed[k]*porosity_multi_sed[k]*NH4_multi_sed[k];
-      sumdzDIP += dz_multi_sed[k]*porosity_multi_sed[k]*DIP_multi_sed[k];
+      if (dz_multi_sed[k] > 0.001){
+	sumdzNO3 += dz_multi_sed[k]*porosity_multi_sed[k]*NO3_multi_sed[k];
+	sumdzNH4 += dz_multi_sed[k]*porosity_multi_sed[k]*NH4_multi_sed[k];
+	sumdzDIP += dz_multi_sed[k]*porosity_multi_sed[k]*DIP_multi_sed[k];
+      }
     }
 
     /* Calculate a single "effective" nutrient concentration. */
@@ -516,9 +520,15 @@ void seagrass_spectral_grow_epi_calc(eprocess* p, void* pp)
     /* Calculated fraction taken from each layer */
 
     for (k = col->topk_sed; k >= rootbot; k--) {
-      NO3frac[k] = NO3_multi_sed[k]*dz_multi_sed[k]*porosity_multi_sed[k]/sumdzNO3;
-      NH4frac[k] = NH4_multi_sed[k]*dz_multi_sed[k]*porosity_multi_sed[k]/sumdzNH4;
-      DIPfrac[k] = DIP_multi_sed[k]*dz_multi_sed[k]*porosity_multi_sed[k]/sumdzDIP;
+      if (dz_multi_sed[k] > 0.001){
+	NO3frac[k] = NO3_multi_sed[k]*dz_multi_sed[k]*porosity_multi_sed[k]/sumdzNO3;
+	NH4frac[k] = NH4_multi_sed[k]*dz_multi_sed[k]*porosity_multi_sed[k]/sumdzNH4;
+	DIPfrac[k] = DIP_multi_sed[k]*dz_multi_sed[k]*porosity_multi_sed[k]/sumdzDIP;
+      }else{
+	NO3frac[k] = 0.0;
+	NH4frac[k] = 0.0;
+	DIPfrac[k] = 0.0; 
+      }
     }
 
     double umax = cv[ws->umax_i]; /* s-1 */
@@ -581,7 +591,7 @@ void seagrass_spectral_grow_epi_calc(eprocess* p, void* pp)
       double kP = kP_sed + kP_water;           
       double growth = SG_N * growthrate;
       
-      if (growth > 0.0){
+      if (kN > 1.0e-12){   // kN is s-1 
 
 	y1[ws->SG_N_i] += growth;
 	
@@ -589,13 +599,13 @@ void seagrass_spectral_grow_epi_calc(eprocess* p, void* pp)
 	
 	/* PARTITION NUTRIENT UPTAKE BELOW */
 	
-	double NH4uptake_frac_from_water = kN_NH4_water/(kN+EPS_DIN);
-	double NO3uptake_frac_from_water = kN_NO3_water/(kN+EPS_DIN);
-	double DIPuptake_frac_from_water = kP_water/(kP+EPS_DIP);
+	double NH4uptake_frac_from_water = kN_NH4_water/kN;
+	double NO3uptake_frac_from_water = kN_NO3_water/kN;
+	double DIPuptake_frac_from_water = kP_water/kP;
 	
-	// Assume even NO3 taken up in sediments releases O2 in water column  !!!!
+	// Assume even NO3 taken up in sediments releases O2 in water column - i.e. comes up xylem as NO3
 	
-	double Oxy_pr = (growth * unitch * atk_W_O + growth * (NO3uptake_frac_from_water + kNO3_sed) * unitch * 48.0/14.01)/ dz_wc;
+	double Oxy_pr = (growth * unitch * atk_W_O + (growth * NO3uptake_frac_from_water + SG_N * kNO3_sed) * unitch * 48.0/14.01)/ dz_wc;
 	
 	/* PARTITION NUTRIENT UPTAKE ABOVE */
 	
@@ -612,7 +622,7 @@ void seagrass_spectral_grow_epi_calc(eprocess* p, void* pp)
 	y1[ws->NH4_wc_i] -= growth * NH4uptake_frac_from_water * unitch / dz_wc;
 	y1[ws->NO3_wc_i] -= growth * NO3uptake_frac_from_water * unitch / dz_wc;
 	y1[ws->DIP_wc_i] -= growth * atk_W_P * DIPuptake_frac_from_water * unitch / dz_wc;
-	
+
 	/* ADDED DERIVATIVE FOR WC NUTRIENTS ABOVE */
 	
 	y1[ws->Oxygen_wc_i] += Oxy_pr;
@@ -659,7 +669,7 @@ void seagrass_spectral_grow_epi_postcalc(eprocess* p, void* pp)
     double SG_N = y[ws->SG_N_i] * unitch;
     double SGROOT_N = y[ws->SGROOT_N_i] * unitch;
 
-    /* mass balance - can count sediment change for one seagrass species. */
+    /* mass balance - only count sediment change for one seagrass species. */
     if (ws->species == 'Z'){
       for (k = col->topk_sed-1; k >= col->botk_sed; k--){
 	NO3_sed += y[ws->NO3_multi_sed_i[k]]*dz_multi_sed[k]*porosity_multi_sed[k];
@@ -667,9 +677,9 @@ void seagrass_spectral_grow_epi_postcalc(eprocess* p, void* pp)
 	DIP_sed += y[ws->DIP_multi_sed_i[k]]*dz_multi_sed[k]*porosity_multi_sed[k];
       }
     }
-    
+
     y[ws->EpiTN_i] += SG_N + SGROOT_N + NO3_sed + NH4_sed;
     y[ws->EpiTP_i] += (SG_N + SGROOT_N)* atk_W_P + DIP_sed;
     y[ws->EpiTC_i] += (SG_N + SGROOT_N)* atk_W_C;
-    y[ws->EpiBOD_i] += (SG_N + SGROOT_N)* atk_W_O;
+    y[ws->EpiBOD_i] += (SG_N + SGROOT_N)* atk_W_O - NO3_sed*48.0/14.01;
 }

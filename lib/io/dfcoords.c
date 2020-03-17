@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfcoords.c 5900 2018-08-28 02:09:26Z riz008 $
+ *  $Id: dfcoords.c 6242 2019-06-12 06:24:07Z riz008 $
  */
 
 #include <stdlib.h>
@@ -106,6 +106,10 @@ double interp_linear_flagged(datafile_t *df, df_variable_t *v, int record,
 			     double coords[]);
 double interp_linear_filled(datafile_t *df, df_variable_t *v, int record,
 			    double coords[]);
+double interp_linear_bathy(datafile_t *df, df_variable_t *v, int record,
+			   double coords[]);
+double interp_linear_degrees(datafile_t *df, df_variable_t *v, int record,
+			     double coords[]);
 
 int df_default_hashtable_size = 0;
 int df_default_geotype = GT_NONE;
@@ -413,6 +417,7 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
   df_coord_mapping_t cmaps[MAXNUMCMAPS];
   df_coord_mapping_t *cm;
   int coordids[MAXNUMCOORDS];
+  int inferred = 0;
 
   /* No coordinate system required if 0 dimensional */
   if (v->nd == 0)
@@ -463,13 +468,14 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
     case VT_UNKNOWN_COORD:
     case VT_DATA:
       warn
-        ("df_infer_coord_system: '%s' is a data variable or an unsupport coordinate variable\n",
-         cv->name);
+        ("df_infer_coord_system: '%s' is a data variable or an unsupport coordinate variable: variable=%s file=%s\n",
+         cv->name, v->name, df->name);
       return 0;
 
     default:
       break;
     }
+    if (cv->type & VT_INFERRED) inferred += 1;
 
     /* Check the dimensions */
     for (j = 0; j < cv->nd; ++j) {
@@ -595,9 +601,18 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
 	(v->cflag && v->cflag != v->add_offset))
       /* land or cloud flags exist */  
       v->interp = interp_linear_flagged;
+    else if (v->type & VT_BATHY)
+      v->interp = interp_linear_bathy;
     else if (v->type & VT_INFERRED && v->missing && v->missing != v->add_offset)
+      /*else if (inferred == nc && v->missing && v->missing != v->add_offset)*/
       /* missing_value exists */
       v->interp = interp_linear_filled;
+    else if (v->type & VT_COORD && v->fillvalue && v->fillvalue != v->add_offset)
+      /* FillValue exists */
+      v->interp = interp_linear_flagged;
+    /*v->interp = interp_linear;*/
+    else if (v->units && strcmp(v->units, "degrees") == 0)
+      v->interp = interp_linear_degrees;
     else
       v->interp = interp_linear;
   }
@@ -938,7 +953,6 @@ void decode_coords(datafile_t *df, df_variable_t *v, char *coords)
     }
   }
 
-
   /* Allocate the array, and copy the charaters */
   coordids = (int *)malloc(maxnc * sizeof(int));
   memset(coordids, 0, maxnc * sizeof(int));
@@ -960,7 +974,6 @@ void decode_coords(datafile_t *df, df_variable_t *v, char *coords)
         for (j = 0; (j < df->nv) && (not_found); ++j) {
           if (strcasecmp(df->variables[j].name, &line[i]) == 0) {
             int duplicated = 0;
-
             /* Now check this isn't already duplicated */
             for (k = 0; (k < nc) && (!duplicated); ++k) {
               if (coordids[k] == j)
@@ -1579,10 +1592,18 @@ void set_2d_coords(datafile_t *df, df_variable_t *v,
        * have NaN in land cells though - use zero_fill or cascade_search in
        * the file to interpolate from
        */
-      if ( (ta = df_get_global_attribute(df, "title")) != NULL &&
-	   strncmp(ATT_TEXT(ta), "SHOC", 4) == 0  && /* This is a SHOC file */
-	   strcmp(coordvar0->name, "x_centre") == 0 && /* and we're dealing */
-	   strcmp(coordvar1->name, "y_centre") == 0 )  /* with cell centred */
+      // 11/06/2019 : This test isn't valid anymore not that title has swtiched
+      /*
+	if ( (ta = df_get_global_attribute(df, "title")) != NULL &&
+	strncmp(ATT_TEXT(ta), "SHOC", 4) == 0  && This is a SHOC file
+	strcmp(coordvar0->name, "x_centre") == 0 && and we're dealing
+	strcmp(coordvar1->name, "y_centre") == 0 )  with cell centred
+      */
+      /* Infer SHOC standard file */
+      if ( strcmp(coordvar0->name, "x_centre") == 0 &&
+	   strcmp(coordvar1->name, "y_centre") == 0 &&
+	   df_get_index(df, "x_grid") > -1 &&
+	   df_get_index(df, "y_grid") > -1 )
 	{
 	  /* 
 	   * Always default to the grid corners

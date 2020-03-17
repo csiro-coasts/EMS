@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 6319 2019-09-13 04:33:53Z her127 $
+ *  $Id: hd_init.c 6468 2020-02-18 23:47:02Z her127 $
  *
  */
 
@@ -31,6 +31,7 @@
 #define SW 8
 #define EPS 1e-10
 
+/*
 #define nm3d 22
 #define nm2d 5
 char *mn_3d[nm3d] = {
@@ -55,7 +56,7 @@ int mf_2d[nm2d] = {
   VEL2D, VEL2D,
   WIND, WIND
 };
-
+*/
 
 void set_geo2index(master_t *master, geometry_t **window);
 xytoij_tree_t *xytoij_init_sparse(geometry_t *geom);
@@ -199,6 +200,7 @@ hd_data_t *hd_init(FILE * prmfd)
   }
   master->dt2d = master->grid_dt / master->iratio;
   master->dtb = master->dtf = master->grid_dt;
+  master->dttc = 0.0;
 
   /* Initialze the boundary conditions */
   bdry_custom_m(params, sgrid, master);
@@ -275,6 +277,9 @@ hd_data_t *hd_init(FILE * prmfd)
 
   /* Write out the win_mp file */
   write_window_map(window, params);
+
+  /* Set up 2 way nesting flags */
+  init_2way(master, window, windat, wincon);
 
 #ifdef HAVE_MPI
   if (mpi_check_multi_windows_sparse_arrays(geom))
@@ -642,6 +647,9 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->decs = 1.0;
   if (strcmp(params->decs, "km") == 0) master->decs = 1e3;
 
+  master->monomn = params->monomn;
+  master->monomx = params->monomx;
+  master->monon = tracer_find_index(params->monotr, master->ntr, master->trinfo_3d);
   master->mixlayer = params->mixlayer;
   master->show_layers = params->show_layers;
   master->lnm = fabs(params->lnm);
@@ -667,6 +675,8 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->porusplate = params->porusplate;
   strcpy(master->reef_frac, params->reef_frac);
   master->gint_errfcn = params->gint_errfcn;
+  master->dhwf = params->dhwf;
+  master->dhwh = params->dhwh;
   master->swr_type = params->swr_type;
   master->togn = TOPRIGHT;
   master->crf = NONE;
@@ -719,124 +729,15 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
 
   /* Means                                                           */
-  master->means = params->means;
-  if (master->means & VEL3D) {
-    master->ume = d_alloc_1d(geom->sze);
-    memset(master->ume, 0, geom->sze * sizeof(double));
-  }
-  if (master->means & VEL2D) {
-    master->uame = d_alloc_1d(geom->szeS);
-    memset(master->uame, 0, geom->szeS * sizeof(double));
-  }
-  if (master->means & VOLFLUX || master->tmode & SP_U1VM) {
-    master->u1vm = d_alloc_1d(geom->sze);
-    memset(master->u1vm, 0, geom->sze * sizeof(double));
-  }
-  if (strlen(params->means_dt)) {
-    if (tm_scale_to_secs(params->means_dt, &master->means_dt))
-      master->means_next = master->t + master->means_dt;
-    else if (contains_token(params->means_dt, "YEARLY")) {
-      master->means_dt = YEARLY;
-      master->means_next = master->t + next_year(master->t, master->timeunit);
-    } else if (contains_token(params->means_dt, "SEASONAL")) {
-      master->means_dt = SEASONAL;
-      master->meancs = d_alloc_1d(13);
-      memset(master->meancs, 0, 13 * sizeof(double));
-      master->means_next = master->t + next_season(master->t, 
-						   master->timeunit, &c);
-    } else if (contains_token(params->means_dt, "MONTHLY")) {
-      master->means_dt = MONTHLY;
-      master->meancs = d_alloc_1d(13);
-      memset(master->meancs, 0, 13 * sizeof(double));
-      master->means_next = master->t + next_month(master->t, 
-						  master->timeunit, &c);
-    } else if (contains_token(params->means_dt, "DAILY")) {
-      master->means_dt = DAILY;
-      master->meancs = d_alloc_1d(366);
-      memset(master->meancs, 0, 366 * sizeof(double));
-      master->means_next = master->t + next_day(master->t, 
-						master->timeunit, &c);
-    } else
-      master->means_dt = 0.0;
-    if (strlen(params->means_mc) && master->means_dt == SEASONAL || 
-	       master->means_dt == MONTHLY || master->means_dt == DAILY) {
-      char *fields[MAXSTRLEN * MAXNUMARGS];
-      cc = parseline(params->means_mc, fields, MAXNUMARGS);
-      for (c = 1; c <= cc; c++) {
-	master->meancs[c] = atof(fields[c-1]);
-      }
-    }
-    if (strlen(params->means_os)) {
-      tm_scale_to_secs(params->stop_time, &master->means_os);
-      for (cc = 1; cc <= geom->enonS; cc++) {
-        master->meanc[cc] = master->means_os;
-      }
-    } else
-      master->means_os = 0.0;
-  } else
-    master->means_dt = 0.0;
+  init_means(master, params);
 
-  if (master->means & TRANSPORT) {
-    if (master->means_dt == 0.0)
-      hd_warn("constants : Must set MEAN_DT using TRANSPORT with MEAN\n");
-    else {
-      if (fmod(master->means_dt, master->dt) != 0.0) {
-        hd_warn
-          ("constants : MEAN_DT is not integrally divisable by DT : resetting.\n");
-        c = (int)master->means_dt / master->dt;
-        master->means_dt = (double)c *master->dt;
-      }
-    }
-    master->tratio = (int)master->means_dt / master->dt;
-  }
-  /* Store all 3d mean tracers in tm_3d                              */
-  master->ntm_3d = 0;
-  if (master->means & VEL3D) master->ntm_3d += 3;
-  if (master->means & TS) master->ntm_3d += 2;
-  if (master->means & KZ_M) master->ntm_3d += 1;
-  if (master->means & FLUX) master->ntm_3d += 4;
-  if (master->means & TENDENCY) master->ntm_3d += 12;
-  /*if (master->means & VOLFLUX) master->ntm_3d += 2;*/
-  if (master->means & MTRA3D) {
-    master->ntm_3d += 1;
-    if ((master->means_tra = tracer_find_index(params->means_tra, master->ntr, master->trinfo_3d)) < 0) {
-      hd_warn("compute_constants: Can't find 3D tracer %s for MEAN tracer.\n", params->means_tra);
-      master->means &= ~MTRA3D;
-    }
-  }
-  if (master->ntm_3d) {
-    master->tm_3d = i_alloc_1d(master->ntm_3d);
-    ns = 0;
-    for (tn = 0; tn < nm3d; tn++) {
-      c = tracer_find_index(mn_3d[tn], master->ntr, master->trinfo_3d);
-      if (master->means & mf_3d[tn] && c >= 0) {
-	master->tm_3d[ns] = c;
-	ns++;
-      }
-    }
-  }
-
-  /* Store all 2d mean tracers in tm_2d                              */
-  master->ntm_2d = 0;
-  if (master->means & VEL2D) master->ntm_2d += 2;
-  if (master->means & ETA_M) master->ntm_2d += 1;
-  if (master->means & WIND) master->ntm_2d += 2;
-  if (master->means & MTRA2D) {
-    master->ntm_2d += 1;
-    if ((master->means_tra = tracer_find_index(params->means_tra, master->ntrS, master->trinfo_2d)) < 0) {
-      hd_warn("compute_constants: Can't find 2D tracer %s for MEAN tracer.\n", params->means_tra);
-      master->means &= ~MTRA2D;
-    }
-  }
-  if (master->ntm_2d) {
-    master->tm_2d = i_alloc_1d(master->ntm_2d);
-    ns = 0;
-    for (tn = 0; tn < nm2d; tn++) {
-      c = tracer_find_index(mn_2d[tn], master->ntrS, master->trinfo_2d);
-      if (master->means & mf_2d[tn] && c >= 0) {
-	master->tm_2d[ns] = c;
-	ns++;
-      }
+  if (master->mono && master->monomn == master->monomx) {
+    master->monomn = HUGE;
+    master->monomx = -HUGE;
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      master->monomn = min(master->monomn, master->tr_wc[master->monon][c]);
+      master->monomx = max(master->monomx, master->tr_wc[master->monon][c]);
     }
   }
 
@@ -1401,6 +1302,11 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   /* Set the normal boundary cells to the cell centre depth          */
   for (m = 0; m < geom->nobc; m++) {
     open_bdrys_t *open = geom->open[m];
+    /* Set the flux adjustment as a ratio of 2D timestep if required */
+    if (open->afr) {
+      open->adjust_flux = open->afr * master->grid_dt / master->iratio;
+      hd_warn("OBC %s uses flux adjustment = %f s\n", open->name, open->adjust_flux);
+    }
     for (ee = 1; ee <= open->no2_e1; ee++) {
       e = open->obc_e1[ee];
       c = open->obc_e2[ee];
@@ -1526,7 +1432,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 
   /* Set the edge centered horizontal diffusivity                    */
   if (params->u1kh > 0.0 || params->bkue1 > 0.0) {
-    double vh = (params->u1kh > 0.0) ? params->u1vh : params->bkue1;
+    double vh = (params->u1kh > 0.0) ? params->u1kh : params->bkue1;
     for (ee = 1; ee <= geom->n3_e1; ee++) {
       int etype = 1;
       e = geom->w3_e1[ee];
@@ -2033,17 +1939,20 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   }
   if (params->smagorinsky > 0.0 && params->u1kh < 0.0) {
     int n;
+    tn = tracer_find_index("smagorinsky", master->ntr, master->trinfo_3d);
     if (params->smagorinsky == 1.0 && params->kue1 != 1.0) 
       master->smagcode |= U1_SAK;
-    for (n = 0; n < params->nobc; ++n)
+    for (n = 0; n < params->nobc; ++n) {
       if (params->open[n]->sponge_zone_h)
 	master->smagcode |= U1_SAK;
+      if (params->open[n]->bcond_tra[tn] == FILEIN)
+      	master->smagcode |= U1_SBC;
+    }
     if (master->smagcode & U1_SAK) {
       master->u1kh = d_alloc_1d(geom->szc);
       if (!master->sde) master->sde = d_alloc_1d(geom->sze);
       master->u2kh = d_alloc_1d(geom->sze);
-    }
-    else {
+    } else {
       master->u1kh = master->sdc;
       if (!master->sde) master->sde = d_alloc_1d(geom->sze);
       master->u2kh = master->sde;

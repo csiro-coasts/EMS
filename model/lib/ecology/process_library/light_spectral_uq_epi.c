@@ -34,7 +34,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_uq_epi.c 6044 2018-12-12 00:20:19Z bai155 $
+ *  $Id: light_spectral_uq_epi.c 6375 2019-11-06 02:15:11Z bai155 $
  *
  */
 
@@ -124,6 +124,9 @@ typedef struct {
   int w678;
   int w667;
   int w748;
+  int w709;
+  int w665;
+  int w490;
 
   int OC3M_i;
   int TSSM_i;
@@ -131,6 +134,7 @@ typedef struct {
   int OC3V_i;
   int OC4Me_i;
   int nFLH_i;
+  int Hue_i;
 
   int *RRS_i;
 
@@ -169,6 +173,16 @@ typedef struct {
   int EpiPAR_sg_i;
   int Secchi_i;
   int Zenith_i;
+
+  int cv_moonlight_i;
+  int cv_lunar_zenith_i;
+  int cv_lunar_phase_i;
+  int cv_moon_fulldisk_i;
+  int Moonlight_i;
+  int Lunar_zenith_i;
+  int Lunar_phase_i;
+  int Moon_fulldisk_i;
+  
 
 } workspace;
 
@@ -236,11 +250,38 @@ void light_spectral_uq_epi_init(eprocess* p)
   ws->Zenith_i = e->try_index(epis, "Zenith2D", e);
   if (ws->Zenith_i >=0)
     ws->Zenith_i += OFFSET_EPI;
+
+  ws->Moonlight_i = e->try_index(epis, "Moonlight", e);
+  if (ws->Moonlight_i >=0){
+    ws->Moonlight_i += OFFSET_EPI;
+    ws->cv_moonlight_i = find_index_or_add(e->cv_column, "moonlight", e);
+  }
+
+  if (ws->Moonlight_i >=0){
+
+    ws->Lunar_zenith_i = e->try_index(epis, "Lunar_zenith", e);
+    if (ws->Lunar_zenith_i >=0){
+      ws->Lunar_zenith_i += OFFSET_EPI;
+      ws->cv_lunar_zenith_i = find_index_or_add(e->cv_column, "lunar_zenith", e);
+    }
+    
+    ws->Lunar_phase_i = e->try_index(epis, "Lunar_phase", e);
+    if (ws->Lunar_phase_i >=0){
+      ws->Lunar_phase_i += OFFSET_EPI;
+      ws->cv_lunar_phase_i = find_index_or_add(e->cv_column, "lunar_phase", e);
+    }
+    
+    ws->Moon_fulldisk_i = e->try_index(epis, "Moon_fulldisk", e);
+    if (ws->Moon_fulldisk_i >=0){
+      ws->Moon_fulldisk_i += OFFSET_EPI;
+      ws->cv_moon_fulldisk_i = find_index_or_add(e->cv_column, "moon_fulldisk", e);
+    }
+  }
   
   ws->SWR_bot_abs_i = e->try_index(epis, "SWR_bot_abs", e);
   if (ws->SWR_bot_abs_i >= 0)
     ws->SWR_bot_abs_i += OFFSET_EPI;
-
+  
   ws->Epilight_i = e->try_index(epis, "Epilight", e);
   if (ws->Epilight_i >= 0)
     ws->Epilight_i += OFFSET_EPI;
@@ -260,6 +301,10 @@ void light_spectral_uq_epi_init(eprocess* p)
   ws->nFLH_i = e->try_index(epis, "nFLH", e);
   if (ws->nFLH_i >= 0)
     ws->nFLH_i += OFFSET_EPI;
+
+  ws->Hue_i = e->try_index(epis, "Hue", e);
+  if (ws->Hue_i >= 0)
+    ws->Hue_i += OFFSET_EPI;
 
   ws->TSSM_i = e->try_index(epis, "TSSM", e);
   if (ws->TSSM_i >= 0)
@@ -394,6 +439,12 @@ void light_spectral_uq_epi_postinit(eprocess* p)
       ws->w678 = w2;
     if (ws->rrs_wave[w2] == 748.0)
       ws->w748 = w2;
+    if (ws->rrs_wave[w2] == 709.0)
+      ws->w709 = w2;
+    if (ws->rrs_wave[w2] == 665.0)
+      ws->w665 = w2;
+    if (ws->rrs_wave[w2] == 490.0)
+      ws->w490 = w2;
   }
 
   ws->CS_Xp_i = e->try_index(epis, "CS_Xp", e);
@@ -872,6 +923,29 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
 
   bio_opt_prop *bio = e->bio_opt;
 
+  /* Moonlight */
+  
+  if (ws->Moonlight_i > -1){
+    
+    double* cv_moonlight = col->cv[ws->cv_moonlight_i];
+    y[ws->Moonlight_i] = cv_moonlight[0];
+   
+    if (ws->Lunar_zenith_i > -1){
+      double* cv_lunar_zenith = col->cv[ws->cv_lunar_zenith_i];
+      y[ws->Lunar_zenith_i] = cv_lunar_zenith[0];
+    }
+
+    if (ws->Lunar_phase_i > -1){
+      double* cv_lunar_phase = col->cv[ws->cv_lunar_phase_i];
+      y[ws->Lunar_phase_i] = cv_lunar_phase[0];
+    }
+
+    if (ws->Moon_fulldisk_i > -1){
+      double* cv_moon_fulldisk = col->cv[ws->cv_moon_fulldisk_i];
+      y[ws->Moon_fulldisk_i] = cv_moon_fulldisk[0];
+    }
+  }
+
   double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
   
   if (ws->Zenith_i > -1)
@@ -894,6 +968,8 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
 	y[ws->OC4Me_i]= 0.0;
       if (ws->nFLH_i > -1)
 	y[ws->nFLH_i]= 0.0;
+      if (ws->Hue_i > -1)
+	y[ws->Hue_i]= 0.0;
       if (ws->OC3V_i > -1)
 	y[ws->OC3V_i]= 0.0;
       if (ws->TSSM_i > -1)
@@ -1160,7 +1236,7 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
       u_surf[w2] = u_surf[w2] + u_bot[w2] * w_bot[w2];
     }
 
-    /* Save mean bottom reflectance - problem with this calculation is it is operating on w2, now w wavelenghts. */
+    /* Save mean bottom reflectance - problem with this calculation is it is operating on w2, not w wavelenghts. */
     
     if (ws->SWR_bot_abs_i > -1){
       y[ws->SWR_bot_abs_i] = 0.0;
@@ -1193,7 +1269,8 @@ static void finalise_reflectances(workspace *ws, cell *c)
   int w2;
 
   for (w2=0; w2<ws->num_rrs_waves; w2++) {
-    rs = u_surf[w2] * (ws->g0 + ws->g1 * u_surf[w2]);
+     rs = u_surf[w2] * (ws->g0 + ws->g1 * u_surf[w2]);
+    //rs = u_surf[w2] / 4.0 / 3.145926535;
     y[ws->RRS_i[w2]] = 0.52 * rs / (1.0 - 1.7 * rs);
   }
 
@@ -1230,8 +1307,32 @@ static void finalise_reflectances(workspace *ws, cell *c)
     y[ws->OC4Me_i] = pow(10.0,a_oc4[0] + ratio *(a_oc4[1] + ratio *(a_oc4[2] + ratio *(a_oc4[3] + ratio * a_oc4[4]))));
   }
 
-  /* MODIS nFLH */
+  if (ws->Hue_i > -1){     // Hue angle algorithm used for Sentinal-3.
+   
+    double x_tris_MSI = 11.756*y[ws->RRS_i[ws->w443]] + 6.423*y[ws->RRS_i[ws->w490]] + 53.696*y[ws->RRS_i[ws->w560]] + 32.028*y[ws->RRS_i[ws->w665]] + 0.529*y[ws->RRS_i[ws->w709]];
+    double y_tris_MSI = 1.744*y[ws->RRS_i[ws->w443]] + 22.289*y[ws->RRS_i[ws->w490]] + 65.702*y[ws->RRS_i[ws->w560]] + 16.808*y[ws->RRS_i[ws->w665]] + 0.192*y[ws->RRS_i[ws->w709]];
+    double z_tris_MSI = 62.696*y[ws->RRS_i[ws->w443]] + 31.101*y[ws->RRS_i[ws->w490]] + 1.778*y[ws->RRS_i[ws->w560]] + 0.015*y[ws->RRS_i[ws->w665]] + 0.000*y[ws->RRS_i[ws->w709]];
 
+    double cx_MSI = x_tris_MSI/(x_tris_MSI+y_tris_MSI+z_tris_MSI+1.0e-6);
+    double cy_MSI = y_tris_MSI/(x_tris_MSI+y_tris_MSI+z_tris_MSI+1.0e-6);
+    
+    double xw_MSI = cx_MSI - 0.333333333;
+    double yw_MSI = cy_MSI - 0.333333333;
+
+    double atanterm = atan(yw_MSI/(xw_MSI+1.0e-6));
+    
+    y[ws->Hue_i] = atanterm*180.0/M_PI;
+
+    if (xw_MSI<0.0){
+      if (yw_MSI<0.0){
+	y[ws->Hue_i] = 180.0 + atanterm*180.0/M_PI;
+      }else{
+	y[ws->Hue_i] = 180.0 - atanterm*180.0/M_PI;
+      }
+    }
+  }
+  /* MODIS nFLH */
+  
   /* nFLH uses nLw, which is normalised (to zero zenith) water leaving irradiance 
      for MODIS 678, and has units mW / cm2 / um / sr-1. This includes a factor fo = 148.097 mW / cm2 / um
      pi - sr-1 */

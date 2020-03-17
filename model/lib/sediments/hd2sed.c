@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd2sed.c 5955 2018-09-17 00:23:31Z mar644 $
+ *  $Id: hd2sed.c 6247 2019-07-17 01:09:37Z mar644 $
  *
  */
 
@@ -75,6 +75,9 @@ void hd2sed(sediment_t *sediment, sed_column_t *sm, int c)
   col_index=sm->col_number-1;
   sm->hd_col_index = c;
   sm->sed_start=1;
+  /* Increment time step (2019) */
+  if(col_index == 0) 
+    param->nstep += 1;
   /* Copy internal spatial sediment variables */
   hd2sed_internal(sediment, sm, col_index);
   sm->i=sinterface_getcelli(hmodel, c);
@@ -649,8 +652,9 @@ void reef_scale_depth(sediment_t *sediment, sed_column_t *sm)
    }
 
  for(k=0;k<param->sednz;k++) {
-   sm->dissol_kz[k] = sm->dissol_kz[k]*rab1+1e-25;
-   sm->partic_kz[k] = sm->partic_kz[k]*rab1+1e-25;
+// 2019 May
+//   sm->dissol_kz[k] = sm->dissol_kz[k]*rab1+1e-25;
+//   sm->partic_kz[k] = sm->partic_kz[k]*rab1+1e-25;
    sm->css[k] = sm->css[k]*rab2;
  }
  sm->dissol_kz_i = sm->dissol_kz_i*(rab1+0.1);

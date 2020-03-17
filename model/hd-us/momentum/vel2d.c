@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 6324 2019-09-13 04:36:09Z her127 $
+ *  $Id: vel2d.c 6471 2020-02-18 23:50:34Z her127 $
  *
  */
 
@@ -294,7 +294,9 @@ void mode2d_step(geometry_t *geom,    /* Global geometry             */
     }
 
     /* Couple at the barotropic level for 2-way nesting              */
-    /*dump_eta_snapshot(master, window, windat, wincon);*/
+    if (master->obcf & DF_BARO) {
+      dump_eta_snapshot(master, window, windat, wincon);
+    }
   }
 
   /* This is to synchronise the master time onto 3D time-steps.      */
@@ -430,6 +432,7 @@ void vel_u1av_update(geometry_t *window,  /* Window geometry         */
     vel_cen(window, windat, wincon, wincon->w8, NULL, windat->tau_be1, windat->tau_be2,
 	    windat->tau_bm, NULL, 1);
   }
+  /*tpxo_error(window, windat, wincon);*/
 }
 
 /* END vel_u1av_update()                                             */
@@ -1102,6 +1105,7 @@ void vel_tan_2d(geometry_t *window,    /* Window geometry            */
   )
 {
   int e, ee, es, eoe, n;
+  double fs = 1.0;
 
   /*-----------------------------------------------------------------*/
   /* Get the u2 velocity at the e1 face. Note : yp1 map must be able */
@@ -1114,7 +1118,8 @@ void vel_tan_2d(geometry_t *window,    /* Window geometry            */
     for (n = 1; n <= window->nee[e]; n++) {
       eoe = window->eSe[n][e];
       if (!eoe) continue;
-      windat->u2av[e] += window->wAe[n][e] * windat->u1av[eoe];
+      fs = window->h1au1[eoe] / window->h2au1[e];
+      windat->u2av[e] += fs * window->wAe[n][e] * windat->u1av[eoe];
     }
   }
 }
@@ -1223,7 +1228,11 @@ void eta_step(geometry_t *window,   /* Window geometry               */
   int n, ee, e;                 /* Edge coordinates, counters        */
   double colflux;               /* Velocity transport divergence     */
   double *u1flux = wincon->d2;  /* Flux in e1 direction              */
-
+  double d1;
+  /*
+  FILE *fp = fopen("aa.ts","a");
+  FILE *op = fopen("bb.ts","w");
+  */
   /*-----------------------------------------------------------------*/
   /* Get the fluxes at time t over the whole window                  */
   memset(u1flux, 0, window->szeS * sizeof(double));
@@ -1273,7 +1282,7 @@ void eta_step(geometry_t *window,   /* Window geometry               */
   /* Note : elevations are calculated on the boundaries here and     */
   /* overwritten in the boundary routine. A boundary condition of    */
   /* NOTHIN will use the elevations calculated here.                 */
-  set_map_eta(window);
+  /*set_map_eta(window);*/
   for (cc = 1; cc <= window->b2_t; cc++) {
     c = window->w2_t[cc];
 
@@ -1300,6 +1309,19 @@ void eta_step(geometry_t *window,   /* Window geometry               */
       (wincon->neweta[c] - windat->etab[c]) / windat->dt2d;
 
   }
+  /*
+  colflux=0.0;
+  c=999;
+  while(windat->eta[c]>0.05) {
+    c=window->c2c[2][c];
+    colflux+=200.0;
+    fprintf(op,"%d %f\n",window->s2j[c]*200,windat->eta[c]);
+  }
+  d1 = windat->u1[window->c2e[4][999]];
+  fprintf(fp,"%f %f %f\n",windat->days,colflux,wincon->g*windat->eta[999]*windat->eta[999]/(2.0*wincon->Cd[999]*d1*d1));
+  fclose(fp);
+  fclose(op);
+  */
 
   /*-----------------------------------------------------------------*/
   /* Adjust the updated elevation due to eta relaxation.             */

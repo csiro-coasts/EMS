@@ -28,7 +28,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_grow_bleach_epi.c 5954 2018-09-15 12:57:55Z bai155 $
+ *  $Id: coral_spectral_grow_bleach_epi.c 6329 2019-09-13 06:49:35Z bai155 $
  *
  */
 
@@ -83,6 +83,8 @@ typedef struct {
   double ROSthreshold;
   double ROSmult;
   double RubiscoOffTemp;
+  double CSmaxbleachrate;
+  double photon2ros;
 
   /*
    * epis
@@ -196,6 +198,8 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
     ws->CSvol = (4.0*M_PI/3.0) * ws->CSrad * ws->CSrad * ws->CSrad;
     ws->CSm = PhyCellMass(ws->CSrad);
 
+    eco_write_setup(e,"Calculated value of CSm = %e \n",ws->CSm);
+
     ws->C2Chlmin = try_parameter_value(e,"C2Chlmin");
     if (isnan(ws->C2Chlmin)){
       ws->C2Chlmin = 20.0;
@@ -233,14 +237,27 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
 
     ws->ROSthreshold = try_parameter_value(e, "ROSthreshold");
     if (isnan(ws->ROSthreshold)){
-      ws->ROSthreshold = 5.0e-4;  // empirical fit to field observations
+      ws->ROSthreshold = 1.418e-14;  // empirical fit to field observations
       eco_write_setup(e,"Code default of ROSthreshold = %e \n",ws->ROSthreshold);
+    }
+
+    ws->CSmaxbleachrate = try_parameter_value(e, "CSmaxbleachrate");
+    if (isnan(ws->CSmaxbleachrate)){
+      ws->CSmaxbleachrate = 1.0;        // 1 d-1 sounds reasonable.
+      eco_write_setup(e,"Code default of CSmaxbleachrate = %e \n",ws->CSmaxbleachrate);
     }
 
     ws->ROSmult = try_parameter_value(e, "ROSmult");
     if (isnan(ws->ROSmult)){
-      ws->ROSmult = 100.0;        // empirical fit to field observations
+      ws->ROSmult = 1.0; 
+        // empirical fit to field observations
       eco_write_setup(e,"Code default of ROSmult = %e \n",ws->ROSmult);
+    }
+
+    ws->photon2ros = try_parameter_value(e, "CS_photon2ros");
+    if (isnan(ws->photon2ros)){
+      ws->photon2ros = 7000.0;  // empirical fit to field observations
+      eco_write_setup(e,"Code default of photon2ros = %e \n",ws->photon2ros);
     }
 
     // Calculated assuming absorption cross section is pi r^2 m cell-1, and Suggett 2008 measured absorption cross section of PSII per photon.
@@ -259,7 +276,7 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
 
     ws->RubiscoOffTemp = try_parameter_value(e, "RubiscoOffTemp");
     if (isnan(ws->RubiscoOffTemp)){
-      ws->RubiscoOffTemp = 2.0;   // fraction of maximum growth rate.
+      ws->RubiscoOffTemp = 2.0;  // temperature above climatology at which bleaching rate maximum 
       eco_write_setup(e,"Code default of RubiscoOffTemp = %e \n",ws->RubiscoOffTemp);
     }
 
@@ -699,10 +716,10 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double Oxygen2 = y[ws->Oxygen_wc_i] * y[ws->Oxygen_wc_i];
     double sigmoid = Oxygen2 / (ws->KO_aer * ws->KO_aer + Oxygen2 );
 
-    y1[ws->Oxygen_wc_i] -= (polypmort * CS_N  + translocate) * red_W_C * Iquota / dz_wc * C_O_W * sigmoid;
+    y1[ws->Oxygen_wc_i] -= (32.00 / 12.01) * (polypmort * CS_N  + translocate) * red_W_C * Iquota / dz_wc * sigmoid;
 
     if (ws->COD_wc_i > -1){
-      y1[ws->COD_wc_i] += (polypmort * CS_N  + translocate) * red_W_C * Iquota / dz_wc * C_O_W * (1.0 - sigmoid);
+       y1[ws->COD_wc_i] += (32.00 / 12.01) * (polypmort * CS_N  + translocate) * red_W_C * Iquota / dz_wc * (1.0 - sigmoid);
     }
     /* respiration, carbon fixation and nitrate uptake */
 
@@ -747,6 +764,8 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
       y1[ws->NH4_wc_i] += loss * (PhyS_NR + PhyL_NR); 
 
       y1[ws->DIC_wc_i] += loss * (PhyS_I + PhyL_I) * 106.0/1060.0 * 12.01;
+      y1[ws->Oxygen_wc_i] -= 32.00 * loss * (PhyS_I + PhyL_I) * 106.0/1060.0;
+
     }
 
     y1[ws->DetPL_N_wc_i] += (((1.0 - CHremin) * polypmort * CH_N + mucus) * unitch + polypmort * CS_N) / dz_wc;
@@ -827,7 +846,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
       y1[ws->CS_Qox_i]  += - C_notfixed + Qi2Qox;  
       y1[ws->CS_Qred_i] += C_notfixed - absorb * (CS_Qred / CS_Qt);
       y1[ws->CS_Qi_i]   += - Qi2Qox + absorb * (CS_Qred / CS_Qt);
-      y1[ws->CS_RO_i]   += - ARO + 0.5 * (CS_Qi / CS_Qt) * absorb / ws->photon2rcii / 7000.0;
+      y1[ws->CS_RO_i]   += - ARO + 0.5 * (CS_Qi / CS_Qt) * absorb / ws->photon2rcii / ws->photon2ros;
     }
 
     /* symbiont expulsion - assuming a 1:1 relationship between ROS and C destruction, and only affects 
@@ -837,9 +856,20 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     /* don't expel to low ROS concentrations */
 
-    double ROSpercell = CS_RO * (14.0 / 32.0) * (16.0 / 138.0) / (PN_max * cellnum);
+    // double ROSpercell = CS_RO * (14.0 / 32.0) * (16.0 / 138.0) / (PN_max * cellnum);
 
-    double expulsion = max(0.0,min(1.0, ws->ROSmult * (ROSpercell - ws->ROSthreshold))) / 86400.0;
+    // double expulsion = max(0.0,min(1.0, ws->ROSmult * (ROSpercell - ws->ROSthreshold))) / 86400.0;
+
+    /* redo above line in a more robust way */
+
+    /* 1.418e-14 of the order what Suggett has (0.3 pmol cell-1 per day H2O2 production) */
+
+    double ROSpercell = CS_RO / cellnum;
+
+    // double expulsion = max(0.0,min(1.0,(ROSpercell - 1.418e-14)/1.418e-14)) / 86400.0;
+
+    double expulsion = max(0.0,min(ws->CSmaxbleachrate,ws->ROSmult * (ROSpercell - ws->ROSthreshold)/ws->ROSthreshold/86400.0));
+
 
     y1[ws->CS_N_i] -= expulsion * CS_N;
     y1[ws->CS_Chl_i] -= expulsion * CS_Chl;
@@ -906,6 +936,6 @@ void coral_spectral_grow_bleach_epi_postcalc(eprocess* p, void* pp)
     y[ws->EpiTN_i] += Coral_N + y[ws->CS_NR_i];
     y[ws->EpiTP_i] += Coral_N * red_W_P + y[ws->CS_PR_i];
     y[ws->EpiTC_i] += Coral_N * red_W_C + y[ws->CS_I_i] * 106.0/1060.0*12.01;
-    y[ws->EpiBOD_i] += (Coral_N * red_W_C + y[ws->CS_I_i] *106.0/1060.0*12.01)*C_O_W;
+    y[ws->EpiBOD_i] += (Coral_N * red_W_C + y[ws->CS_I_i] * 106.0/1060.0*12.01)*C_O_W;
   }
 }

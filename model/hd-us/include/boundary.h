@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundary.h 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: boundary.h 6457 2020-02-18 23:42:08Z her127 $
  *
  */
 
@@ -288,6 +288,7 @@ struct open_bdrys {
   int relax_zone_tan;           /* Tangential velocity relaxation zone */
   int relax_zone_ele;           /* Elevation flow relaxation zone */
   int *relax_zone_tra;          /* Tracer flow relaxation zone */
+  char nzone[MAXSTRLEN];        /* Nudging zone for T and S */
   double *rtra_b;               /* Relaxation timescale on boundary */
   double *rtra_i;               /* Relaxation timescale in interior */
   int relax_ele;                /* Elevation relaxation zone */
@@ -351,6 +352,7 @@ struct open_bdrys {
   scale_details_t *sdata_e;     /* Scaling data for eta */
   double adjust_flux;           /* Flag to adjust normal flow */
   double adjust_flux_s;         /* Flag to adjust normal flow (short time-scale) */
+  double afr;                   /* Adjust flux ratio relative to 2D timestep */
   fa_info_t *fas;               /* Flux adjustment relaxation structure */
   double bflux_2d;              /* 2D normal integrated flux */
   double bflux_3d;              /* 3D normal integrated flux */

@@ -4,16 +4,19 @@
  *  
  *  File: model/lib/ecology/process_library/nitrification_denitrification_sed.c
  *  
- *  Description:
- *  Process implementation
+ *  Description:  Sediment processes include:
+ *                Nitrification 
+ *                Denitrification 
+ *                Anammox (anaerobic ammonium oxidation)
  *  
+ *                
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: nitrification_denitrification_sed.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: nitrification_denitrification_sed.c 6289 2019-08-12 02:39:20Z bai155 $
  *
  */
 
@@ -40,6 +43,8 @@ typedef struct {
   double r_den_t0;
   double KO_Nit;
   double KO_Den;
+  double KO_Amm;
+  double r_amm_t0;
   
   /*
    * tracers
@@ -51,6 +56,7 @@ typedef struct {
   int COD_i;
   int Oxy_pr_i;
   int Den_fl_i;
+  int Amm_fl_i;
   
   int salt_i; 
   int temp_i;	   /* temperature in degree c*/
@@ -63,6 +69,7 @@ typedef struct {
   int Tfactor_i;
   int r_nit_sed_i;
   int r_den_i;
+  int r_amm_i;
 } workspace;
 
 void nitrification_denitrification_sed_init(eprocess* p)
@@ -81,6 +88,18 @@ void nitrification_denitrification_sed_init(eprocess* p)
   ws->KO_Nit = get_parameter_value(e, "KO_Nit");
   ws->KO_Den = get_parameter_value(e, "KO_Den");
   
+  ws->KO_Amm = try_parameter_value(e,"KO_Amm");
+  if (isnan(ws->KO_Amm)){
+      ws->KO_Amm = 10000.0;
+      eco_write_setup(e,"Anammox not implenented: add KO_Amm to parameter file to implement. \n");
+  }
+  ws->r_amm_t0 = try_parameter_value(e,"r_amm");
+  if (isnan(ws->r_amm_t0)){
+      ws->r_amm_t0 = 0.0;
+      eco_write_setup(e,"Anammox not implenented: add KO_Amm to parameter file to implement. \n");
+  }
+
+
   /*
    * tracers
    */
@@ -95,6 +114,7 @@ void nitrification_denitrification_sed_init(eprocess* p)
   /*non essential diagnostic tracers*/
   ws->Oxy_pr_i = e->try_index(tracers, "Oxy_pr", e);
   ws->Den_fl_i = e->try_index(tracers, "Den_fl", e);
+  ws->Amm_fl_i = e->try_index(tracers, "Amm_fl", e);
   ws->NH4_pr_i = e->try_index(tracers, "NH4_pr", e);
   ws->oxy_sat_i = e->try_index(tracers, "Oxy_sat", e);
   /*
@@ -102,6 +122,7 @@ void nitrification_denitrification_sed_init(eprocess* p)
    */
   ws->Tfactor_i = try_index(e->cv_cell, "Tfactor", e);
   ws->r_nit_sed_i = find_index_or_add(e->cv_cell, "r_nit_sed", e);
+  ws->r_amm_i = find_index_or_add(e->cv_cell, "r_amm", e);
   ws->r_den_i = find_index_or_add(e->cv_cell, "r_den", e);
 }
 
@@ -131,6 +152,7 @@ void nitrification_denitrification_sed_precalc(eprocess* p, void* pp)
   
   cv[ws->r_nit_sed_i] = ws->r_nit_sed_t0 * Tfactor;
   cv[ws->r_den_i] = ws->r_den_t0 * Tfactor;
+  cv[ws->r_amm_i] = ws->r_amm_t0 * Tfactor;
 }
 
 void nitrification_denitrification_sed_calc(eprocess* p, void* pp)
@@ -149,15 +171,28 @@ void nitrification_denitrification_sed_calc(eprocess* p, void* pp)
   double Oxygen = e_max(y[ws->Oxygen_i]);
   double Nitrification = cv[ws->r_nit_sed_i] * NH4 * Oxygen * Oxygen / (ws->KO_Nit * ws->KO_Nit + Oxygen * Oxygen);
   double Denitrification = cv[ws->r_den_i] * NO3 * ws->KO_Den / (ws->KO_Den + Oxygen);
-  
-  y1[ws->NH4_i] -= Nitrification;
-  y1[ws->NO3_i] += Nitrification - Denitrification;
+
+
+  // B3p0
+
+  // double Anammox = cv[ws->r_amm_i] * NH4 * exp(- Oxygen / ws->KO_Amm);
+
+  // y1[ws->NH4_i] += - Nitrification - Anammox;
+  // y1[ws->NO3_i] += Nitrification - Denitrification;
+
+  double Anammox = cv[ws->r_amm_i] * sqrt(max(0.0,NH4 * NO3)) * exp(- Oxygen / ws->KO_Amm);
+
+  y1[ws->NH4_i] += - Nitrification - Anammox/2.0;
+  y1[ws->NO3_i] += Nitrification - Denitrification - Anammox/2.0;
     
   if (ws-> NH4_pr_i > -1)
     y1[ws->NH4_pr_i] -= Nitrification * SEC_PER_DAY * c->dz_sed * porosity;
   
   if (ws-> Den_fl_i > -1)
     y1[ws->Den_fl_i] += Denitrification * SEC_PER_DAY * c->dz_sed * porosity;
+
+  if (ws-> Amm_fl_i > -1)
+    y1[ws->Amm_fl_i] += Anammox * SEC_PER_DAY * c->dz_sed * porosity;
   
   /*
    * KWA added : 2 moles of DO lost for every mole of N == 4.57 g (NIT_N_0)

@@ -15,12 +15,13 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ellipt_coord.c 5831 2018-06-26 23:48:06Z riz008 $
+ *  $Id: ellipt_coord.c 6437 2019-11-27 23:58:45Z riz008 $
  */
 
 
 #include <math.h>
 #include <stdio.h>
+#include "emsmath.h"
 #include "grid.h"
 
 #define	DEG2RAD		(M_PI/180.0)
