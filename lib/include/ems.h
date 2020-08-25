@@ -66,6 +66,7 @@ int strncasecmp(const char *s1, const char *s2, int n);
 #include "interp.h"
 #include "stringtable.h"
 #include "cstmesh.h"
+#include "moon.h"
 /*
   #include "dyn_loading.h"
 */
