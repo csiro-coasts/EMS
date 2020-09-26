@@ -1576,7 +1576,7 @@ void hgrid_zoom_p(geometry_t *geom,       /* Global geometry         */
   int c, lc, cc;
   int n, zc, nn, ll;
   int zs1, zs2; 
-  int cp, cm;
+
   double h1, h2;
 
   if (geom->zoomf == 1)
@@ -1765,7 +1765,7 @@ void zflux_e1(geometry_t *geom, /* Sparse global geometery */
     }
   } else {
     int zc, zs = window->zmee2;
-    int zm1;
+
     for (cc = 1; cc <= nvec; cc++) {
       lc = vec[cc];
       c = c1 = c2 = evec[cc];
@@ -1824,7 +1824,7 @@ void zflux_e2(geometry_t *geom, /* Sparse global geometery */
     }
   } else {
     int zc, zs = window->zmee1;
-    int zm1;
+
     for (cc = 1; cc <= nvec; cc++) {
       lc = vec[cc];
       c = c1 = c2 = evec[cc];
@@ -1886,8 +1886,8 @@ void zvel_filter(geometry_t *geom, /* Sparse global geometery */
     }
   } else {
     int zc;
-    int zm1;
-    double area, wgt;
+
+    double area;
     for (cc = 1; cc <= nvec; cc++) {
       lc = vec[cc];
       c = c1 = c2 = evec[cc];
@@ -1952,8 +1952,8 @@ void zvel_e2(geometry_t *geom, /* Sparse global geometery */
     }
   } else {
     int zc, zs = window->zmee2;
-    int zm1;
-    double area, wgt;
+
+    double area;
     for (cc = 1; cc <= nvec; cc++) {
       lc = vec[cc];
       c = c1 = c2 = evec[cc];
@@ -2446,7 +2446,7 @@ void geom_interp_e1(geometry_t *geom, /* Sparse global geometery */
   int *mx = NULL;
   int *my = NULL;
   int i, j;
-  int zm1, cp, c3;
+  int cp, c3;
 
   if (!geom->zoomf)
     return;
@@ -4832,7 +4832,7 @@ void geom_sinterp_e2(geometry_t *geom, /* Sparse global geometery */
 /*-------------------------------------------------------------------*/
 void fill_zoom_cell(geometry_t *geom, double *A, int c, int ze1, int ze2)
 {
-  int cc, n1, n2;
+  int n1, n2;
   int c1, cs, cg = c;
   int z1 = (int)(ze1 / 2);
   int z2 = (int)(ze2 / 2);

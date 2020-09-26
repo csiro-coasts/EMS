@@ -1601,7 +1601,7 @@ void coriolis_u1(geometry_t *window,  /* Window geometry             */
     windat->nu1[c] += windat->dt * wincon->u1c5[cs] * u2au1[c] * midx[cs];
   }
   if(wincon->waves & STOKES_DRIFT) {
-    double sdc, vf;
+    double sdc;
     double *tend;
     /* Stokes drift                                                  */
     tend = (wincon->tendf) ? windat->u1_sto : wincon->w2;
@@ -2262,7 +2262,7 @@ void bdry_u1_3d(geometry_t *window, /* Window geometry               */
   for (n = 0; n < window->nobc; n++) {
     if (open[n]->stagger & INFACE) {
       int c, cc, c1;
-      int *mi = (open[n]->ocodex & L_EDGE) ? window->xm1 : window->xp1;
+
       for (cc = 1; cc <= open[n]->no3_e1; cc++) {
 	c = open[n]->obc_e1[cc];
 	c1 = open[n]->obc_t[cc];
@@ -2297,7 +2297,7 @@ void extract_u1_3d(geometry_t *window, /* Window geometry            */
                    win_priv_t *wincon  /* Window constants           */
   )
 {
-  int c, cc, cs, n;             /* Local sparse coordinate / counter */
+  int c, cc, cs;             /* Local sparse coordinate / counter */
 
   /* Extract the u1 velocity from velocity transport.                */
   /* Note : the water depths at the forward time steps have been     */
@@ -2324,7 +2324,7 @@ void extract_u2_3d(geometry_t *window,  /* Window geometry           */
                    win_priv_t *wincon   /* Window constants          */
   )
 {
-  int c, cc, cs, n;             /* Local sparse coordinate / counter */
+  int c, cc, cs;             /* Local sparse coordinate / counter */
 
   if (wincon->sigma) {
     for (cc = 1; cc <= window->b3_e2; cc++) {
@@ -2453,7 +2453,7 @@ void set_wvel(geometry_t *window,           /* Window geometry       */
 	      int mode                      /* Mode=0:e1, mode=1:e2  */
 	      )
 {
-  int c, cc, cs, cb, zm1, zp1;
+  int c, cc, cs, cb, zm1;
   int *w2, *vec, *bot, *sur, a2, n2;
   int *map, m1;
   double top;
@@ -3959,7 +3959,7 @@ void bdry_u2_3d(geometry_t *window, /* Window geometry               */
   for (n = 0; n < window->nobc; n++) {
     if (open[n]->stagger & INFACE) {
       int c, cc, c1;
-      int *mi = (open[n]->ocodey & B_EDGE) ? window->ym1 : window->yp1;
+
       for (cc = 1; cc <= open[n]->no3_e2; cc++) {
 	c = open[n]->obc_e2[cc];
 	c1 = open[n]->obc_t[cc];
@@ -4046,7 +4046,7 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
 {
   int c, cc, cs;                /* Sparse coodinate / counter        */
   double *u, *v;
-  int n;
+ 
 
   /*-----------------------------------------------------------------*/
   /* Set pointers and initialise                                     */
@@ -4912,7 +4912,7 @@ void ff_sl_w_update(geometry_t *window, /* Window geometry           */
   double fcbot;       /* Flux at the bottom face of the cell         */
   int xp1, yp1;       /* Sparse coordinates east and south of cell c */
   int zp1, zm1;       /* Sparse coordinate below cell c              */
-  int dw = 0;         /* Window for diagnostic continuity            */
+
   double detadt;      /* Rate of change of elevation                 */
   double *deta;       /* Elevation rate of change for SIGMA          */
   double *oldw;       /* w at start of step                          */
@@ -4998,7 +4998,7 @@ void ff_sl_w_update(geometry_t *window, /* Window geometry           */
     /* in this case).                                                */
     if (wincon->conserve & CONS_WS) {
       for (cc = 1; cc <= wincon->vc; cc++) {
-	double iratio = 200;
+
 	double sf = 0.8;
 	double minval = 1e-10;
 	double ws, dto, dtn;
@@ -5614,7 +5614,7 @@ void blend_vel(geometry_t *window,
 	       int mode,
 	       double *vel)
 {
-  int n, bn = 0, c, cc, c3;
+  int n, bn = 0, c, cc;
   int nb;
   int *p1, *m1, *index, i, i1, i2, c1, c2;
   double frac, v1, v2;
@@ -5928,7 +5928,7 @@ void get_sdc_e1(geometry_t *window,
   int c, cc, cs;
   double w;                                      /* Angular freq     */
   double k;                                      /* Wave number      */
-  double uso, u1, u2, depth;
+  double uso, depth;
   double ramp = (wincon->rampf & STOKES) ? windat->rampval : 1.0;
 
   for (cc = 1; cc <= window->b2_t; cc++) {
@@ -5964,7 +5964,7 @@ void get_sdc_e2(geometry_t *window,
   int c, cc, cs;
   double w;                                      /* Angular freq     */
   double k;                                      /* Wave number      */
-  double uso, u1, u2, depth;
+  double uso, depth;
   double ramp = (wincon->rampf & STOKES) ? windat->rampval : 1.0;
 
   for (cc = 1; cc <= window->b2_t; cc++) {

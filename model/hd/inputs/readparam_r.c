@@ -31,7 +31,7 @@
 void auto_params_roam_pre1(FILE * fp, parameters_t *params)
 {
   int n;                        /* Counters */
-  open_bdrys_t *open;           /* Pointer to boundary structure */
+  
   char keyword[MAXSTRLEN];      /* Input dummy */
   char buf[MAXSTRLEN];          /* Input dummy */
 
@@ -347,7 +347,7 @@ void auto_params_roam_pre1(FILE * fp, parameters_t *params)
 void auto_params_roam_pre2(FILE * fp, parameters_t *params)
 {
   int n;                        /* Counters */
-  open_bdrys_t *open;           /* Pointer to boundary structure */
+  
   char keyword[MAXSTRLEN];      /* Input dummy */
   char buf[MAXSTRLEN];          /* Input dummy */
 
@@ -675,7 +675,7 @@ void auto_params_roam_pre2(FILE * fp, parameters_t *params)
 void auto_params_roam_pre3(FILE * fp, parameters_t *params)
 {
   int n;                        /* Counters */
-  open_bdrys_t *open;           /* Pointer to boundary structure */
+  
   char keyword[MAXSTRLEN];      /* Input dummy */
   char buf[MAXSTRLEN];          /* Input dummy */
 
@@ -981,7 +981,7 @@ void auto_params_roam_pre3(FILE * fp, parameters_t *params)
 void auto_params_recom_pre1(FILE * fp, parameters_t *params)
 {
   int n;                        /* Counters */
-  open_bdrys_t *open;           /* Pointer to boundary structure */
+  
   char keyword[MAXSTRLEN];      /* Input dummy */
   char buf[MAXSTRLEN];          /* Input dummy */
 
@@ -1161,7 +1161,7 @@ void auto_params_recom_pre1(FILE * fp, parameters_t *params)
 void auto_params_recom_pre2(FILE * fp, parameters_t *params)
 {
   int n;                        /* Counters */
-  open_bdrys_t *open;           /* Pointer to boundary structure */
+  
   char keyword[MAXSTRLEN];      /* Input dummy */
   char buf[MAXSTRLEN];          /* Input dummy */
 
@@ -1437,12 +1437,12 @@ void auto_params_roam_post1(FILE * fp, parameters_t *params)
 {
   int n, tn;                    /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
     if (strcmp(tracer->name, "temp") == 0 && strlen(params->tdata))
       strcpy(buf, params->tdata);
@@ -1463,7 +1463,7 @@ void auto_params_roam_post1(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -1527,7 +1527,7 @@ void auto_params_roam_post2(FILE * fp, parameters_t *params)
 {
   int n, tn;                    /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
 
 
@@ -1536,7 +1536,7 @@ void auto_params_roam_post2(FILE * fp, parameters_t *params)
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
     if (strcmp(tracer->name, "temp") == 0 && strlen(params->tdata))
       strcpy(buf, params->tdata);
@@ -1557,7 +1557,7 @@ void auto_params_roam_post2(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -1633,7 +1633,7 @@ void auto_params_roam_post3(FILE * fp, parameters_t *params)
 {
   int n, tn;                    /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
   int nvf = 1;                  /* 0 : bcond_nor2d = FLATHR|CLAMPD  */
                                 /* 1 : bcond_nor2d = FLATHR|CUSTOM  */
@@ -1646,7 +1646,7 @@ void auto_params_roam_post3(FILE * fp, parameters_t *params)
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
     if (strcmp(tracer->name, "temp") == 0 && strlen(params->tdata))
       strcpy(buf, params->tdata);
@@ -1667,7 +1667,7 @@ void auto_params_roam_post3(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -1746,7 +1746,7 @@ void auto_params_roam_post4(FILE * fp, parameters_t *params)
 {
   int n, tn;                    /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
   int nvf = 0;                  /* 0 : bcond_nor = CUSTOM            */
                                 /* 1 : bcond_nor2d = CUSTOM          */
@@ -1759,7 +1759,7 @@ void auto_params_roam_post4(FILE * fp, parameters_t *params)
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
     if (strcmp(tracer->name, "temp") == 0 && strlen(params->tdata))
       strcpy(buf, params->tdata);
@@ -1780,7 +1780,7 @@ void auto_params_roam_post4(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -1884,7 +1884,7 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
 {
   int n, tn;                    /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
   int nvf = 0;                  /* 0 : bcond_nor = CUSTOM            */
                                 /* 1 : bcond_nor2d = CUSTOM          */
@@ -1895,7 +1895,7 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
 
     if (strcmp(tracer->name, "temp") == 0) {
@@ -1931,7 +1931,7 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -2044,7 +2044,7 @@ void auto_params_roam_post6(FILE * fp, parameters_t *params)
 {
   int n, tn;                    /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
   int nvf = 0;                  /* 0 : bcond_nor = CUSTOM            */
                                 /* 1 : bcond_nor2d = CUSTOM          */
@@ -2055,7 +2055,7 @@ void auto_params_roam_post6(FILE * fp, parameters_t *params)
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
 
     if (strcmp(tracer->name, "temp") == 0) {
@@ -2091,7 +2091,7 @@ void auto_params_roam_post6(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -2205,7 +2205,7 @@ void auto_params_recom_post1(FILE * fp, parameters_t *params)
 {
   int n, m;                     /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
 
   /* Changes to _pre fromulation */
@@ -2213,7 +2213,7 @@ void auto_params_recom_post1(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -2284,7 +2284,7 @@ void auto_params_recom_post2(FILE * fp, parameters_t *params)
 {
   int n, m;                     /* Counters */
   open_bdrys_t *open;           /* Pointer to boundary structure */
-  char keyword[MAXSTRLEN];      /* Input dummy */
+  
   char buf[MAXSTRLEN];          /* Input dummy */
 
   /* Changes to _pre fromulation */
@@ -2293,7 +2293,7 @@ void auto_params_recom_post2(FILE * fp, parameters_t *params)
 
   /* Tracer relaxation */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     tracer_info_t *tracer = &params->trinfo_3d[n];
     if (strcmp(tracer->name, "temp") == 0 && strlen(params->tdata))
       strcpy(buf, params->tdata);
@@ -2317,7 +2317,7 @@ void auto_params_recom_post2(FILE * fp, parameters_t *params)
 
   /* Tracer reset */
   for (n = 0; n < params->ntr; n++) {
-    int tm = params->trinfo_3d[n].m;
+    
     if (strlen(params->trinfo_3d[n].reset_file))
       strcpy(params->trrest[n], params->trinfo_3d[n].reset_file);
     if (strlen(params->trinfo_3d[n].reset_dt))
@@ -2425,7 +2425,7 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
   geometry_t *geom = master->geom;
 
   int n, cc, c, lc;             /* Sparse counters */
-  int i, j, k;                  /* Cartesian counters */
+
   double cif = 2.0;             /* Scaling factor for internal wave speed */
   double sf = 0.4;              /* Safety factor for cfl calculations */
   double hf = 0.05;             /* Factor for horizontal diffusion */
@@ -2433,7 +2433,7 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
   double eps = 1e5;             /* Large value for cfl calculations */
   double cfl2d, cfl3d;          /* CFL timesteps */
   double hmax;                  /* Maximum horizontal diffusion */
-  double lat, lon;              /* Latitude and longitude for Coriolis */
+  
   double d1, d2, d3;            /* Dummies */
   double btws, btwsm = 0.0;
   double bcws, bcwsm = 0.0;

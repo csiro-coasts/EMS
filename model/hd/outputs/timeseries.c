@@ -46,7 +46,7 @@ static void ts_add_point(double t, int n)
   int m;
   master_t *master = tslist[n].master;
   geometry_t *geom = master->geom;
-  int i, j, c, cs, t_index;
+  int i, j, c, cs;
   double sinth, costh;
   int xp1, yp1;
   double u1val, u2val;
@@ -141,7 +141,7 @@ static void ts_add_point(double t, int n)
  */
 static double ts_event(sched_event_t *event, double t)
 {
-  int n, c;
+  int n;
   timeseries_t *loc_ts = NULL;
   double tsout = schedule->stop_time;
   int fill_all = 0;
@@ -913,7 +913,7 @@ static int depth2c(master_t *master,   /* Master data structure */
 void timeseries_init_m(FILE * prmfd, master_t *master,geometry_t *geom,
 		       geometry_t **window, dump_data_t *dumpdata)
 {
-  int n, wn;
+  int n;
   int i;
   int j;
   int c, cs = 0;
@@ -1308,7 +1308,7 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
     cstring *filenames;
     char *names[MAXSTRLEN * MAXNUMARGS];
     char *thresholds[MAXSTRLEN * MAXNUMARGS];
-    int nvars;
+
 
     sprintf(v_name, "%c", '\0');
     sprintf(key, "TS%1d.data_name", n);
@@ -1582,10 +1582,10 @@ int read_ts_data(master_t *master, ts_point_t *tslist, double t, int c)
 	/* Add the density to the glider array                       */
 	char var[MAXSTRLEN];
 	double tzm1, nvals;
-	int cu, cd, cb, cud, cdd;
-	int zp1 = geom->zp1[c];
+	int cu, cd, cud, cdd;
+
 	int zm1 = geom->zm1[c];
-	int dof = 0;
+
 
 	/* If the glider has not entered this cell, then average its */
 	/* data while in the cell.                                   */
@@ -1695,7 +1695,7 @@ int read_ts_data(master_t *master, ts_point_t *tslist, double t, int c)
 	}
       }
     } else if (tslist->metric & TS_DIFF && tslist->thresh != NULL) {
-      double thresh, d1 = 0.0;
+      double thresh;
       tslist->val[tn] = 0.0;
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
@@ -1826,7 +1826,7 @@ double average_glider_data(master_t *master,   /* Master data        */
   double val = 0.0, v1;
   double tg = t;
   double frac;
-  double x, y, z;
+
   timeseries_t **tsdata = tslist->tsdata;
   timeseries_t *loc_ts = &tslist->ts;
   datafile_t *df;

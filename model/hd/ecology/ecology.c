@@ -597,8 +597,8 @@ static void einterface_epimap(void* model, ecology *e, int ntr)
 
 int einterface_get_eco_flag(void* model, char* name)
 {
-  geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
+
+  
   tracer_info_t *tr = i_get_tracer(model, name);
   trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
   int flag = ECO_NONE;
@@ -626,8 +626,8 @@ quitfntype einterface_getquitfn(void)
 void einterface_ecologyinit(void *model, void *_e)
 {
   geometry_t *window = (geometry_t *)model;
-  win_priv_t *wincon = window->wincon;
-  window_t *windat = window->windat;
+  
+  
   ecology* e = (ecology*) _e;
 
   /*
@@ -904,11 +904,11 @@ void set_eco_atts(tracer_info_t *tr, FILE *fp, char *keyname)
 /*-------------------------------------------------------------------*/
 void eco_tracer_custom(master_t *master)
 {
-  tracer_info_t *tr2d =  master->trinfo_2d;
-  tracer_info_t *tr3d =  master->trinfo_3d;
-  tracer_info_t *trsed =  master->trinfo_sed;
-  char buf[MAXSTRLEN];
-  int n, m;
+  
+  
+  
+  
+  
 
 }
 
@@ -1129,8 +1129,8 @@ int eco_get_obc(tracer_info_t *tr)
 int ecology_autotracer_write(master_t *master, FILE *op, int tn)
 {
   parameters_t *params = master->params;
-  char key[MAXSTRLEN];
-  int i, n, m, trn, sn;
+  
+  int i, n, m, trn;
 
   if (!params->do_eco || strlen(params->eco_vars) == 0) return(0);
 

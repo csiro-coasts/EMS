@@ -433,7 +433,7 @@ int advect_diffuse(geometry_t *window, /* Processing window          */
   double vm = 0.0, vs = 0.0;    /* Sub-step Courant number & grid spacing */
   char vt[4];                   /* Name of sub-step velocity component */
   double *u1, *u2, *w;
-  double kzlim;
+
 
   /*-----------------------------------------------------------------*/
   /* Assignment of work arrays */
@@ -2275,7 +2275,7 @@ void ff_sl(geometry_t *window, /* Window structure */
   double *u1vm, *u2vm;             /* Volume fluxes */
   double dx, dy, dz;
   double ltraj, lrem;
-  int c, cc, cp, cp1, up1, c2;
+  int c, cc, cp, up1, c2;
 
   /* Set pointers. */
   clxf = wincon->clxf;
@@ -2467,7 +2467,7 @@ void ff_sl3d(geometry_t *window, /* Window structure */
   double dx, dy, dz;
   double ltraj, lrem;
   double onesixth = 1.0 / 6.0;
-  int c, cc, cp, cp1, up1, c2;
+  int c, cc, cp, up1, c2;
 
   /* Set pointers. */
   clxf = wincon->clxf;
@@ -2828,7 +2828,7 @@ void ff_sl_do_vert(double *vel,   /* Velocity at the cell face */
 		   double *crf     /* Fractional component of trajectory */
   )
 {
-  int c, cc, cp, cpb, c2;
+  int c, cc, cp, cpb;
   double ltraj, lrem, dz;
 
   for (cc = ss; cc <= se; cc++) {
@@ -3017,7 +3017,7 @@ void order2_upwind_do(double *F,     /* Flux array */
 {
   int c, cc;
   int bm1, bm2;
-  double df;
+
 
   for (cc = ss; cc <= se; cc++) {
     c = sdo[cc];
@@ -3069,8 +3069,8 @@ double surf_conc(geometry_t *window,  /* Window geometry             */
   double osubeta;        /* Old surface elevation                    */
   int dc = 0;            /* Diagnostic continuity surface coordinate */
   int dw = 1;            /* Window for diagnostic continuity         */
-  double div = 0.0;
-  double diff;
+
+
   double dtu = wincon->b1;
 
   /*-----------------------------------------------------------------*/
@@ -3336,7 +3336,7 @@ void tr_set_surf(geometry_t *window,  /* Window structure            */
 		 win_priv_t *wincon   /* Window geometry / constants */
   )
 {
-  int c, cs, cc, n, nn;
+  int c, cs, cc, n;
 
   /* Set all layers above the surface to surface layer               */
   if (!wincon->sigma) {
@@ -3455,7 +3455,7 @@ void check_fluxes(int n,                         /* Tracer number    */
   double d1, f1, f2, f3;
 
   if (strcmp(trname, wincon->trname[n]) == 0) {
-    double min = wincon->mintr[n];
+
     double max = wincon->maxtr[n];
     for (cc = 1; cc <= wincon->vc1; cc++) {
       c = wincon->s1[cc];
@@ -4298,8 +4298,8 @@ void auxiliary_routines(geometry_t *window,  /* Processing window */
   )
 {
   int nn;
-  int cc, c, c2, cb;
-  double h1, h2, diff;
+
+
 
   /*-----------------------------------------------------------------*/
   /* Reset dz and the cells to process to correspond to the updated */
@@ -4935,7 +4935,7 @@ void set_OBC_tr(int tn,             /* Tracer number                 */
   /* Fit a value to the surface and bottom and a profile by          */
   /* incrementing this value by a scaled vertical density difference.*/ 
   if (bcond & DESCAL && scale.type & TRSC_DEN) {
-    int zm1, zp1, cs, cb, cm;
+    int zm1, zp1, cs, cm;
     double dt, db, vs, ov;
     /* Fix the tracer to a mid-depth value from file and construct   */
     /* the profile upwards and downwards.                            */
@@ -5250,7 +5250,7 @@ void upstrm(geometry_t *window,  /* Processing window                */
     }
     /* Tracer in boundary ghost cell is updated using face velocity  */
     else if (mode & GHOST) {
-      double d1;
+
       if (open->rlen) {
 	for (cc = 1; cc <= open->no3_t; cc++) {
 	  c = open->ogc_t[cc];
@@ -5442,7 +5442,7 @@ void reset_tr_OBCflux(geometry_t *window,  /* Processing window      */
 	       int mode     
 	       )
 {
-  int c, cc, c2, n, m, nn, zm1, nc;
+  int c, cc, n, nn;
   double sgn = 1.0;
 
   /* Return if no tracers in this window have OBCs TRFLUX            */
@@ -5573,7 +5573,7 @@ void set_lateral_BC_tr(double **tr, /* Tracer array */
                        int *bin /* Interior cells to bpt */
   )
 {
-  int c1, c2, cc, n, nn;            /* Counters */
+  int c1, c2, cc, n;            /* Counters */
 
   /* Set the boundary conditions (no flux) */
   for (cc = 1; cc <= sgbpt; cc++) {
@@ -5988,7 +5988,7 @@ void set_map_t(geometry_t *window /* Window data structure */
   )
 {
   int n;
-  int cc, cs, c;
+  int cc, c;
   open_bdrys_t **open = window->open;
 
   for (n = 0; n < window->nobc; n++) {
@@ -6866,7 +6866,7 @@ void init_age(master_t *master,  /* Master data structure */
   )
 {
   geometry_t *geom = master->geom;
-  int c, gc, cc, m, n, i, j;
+  int c, gc, cc, m, n;
   FILE *fp = master->prmfd;
   char *files[MAXSTRLEN * MAXNUMARGS], buf[MAXSTRLEN];
   double d1, d2, top, bot;
@@ -6983,12 +6983,12 @@ void init_trperc(master_t *master,    /* Master data structure */
   )
 {
   geometry_t *geom = master->geom;
-  int c, gc, cc, m, n, i, j;
+  int c, gc, cc, m, n;
   FILE *fp = master->prmfd;
   char *files[MAXSTRLEN * MAXNUMARGS], buf[MAXSTRLEN];
   double d1, d2, top, bot;
   short *percmsk;
-  int nf, kl;
+  int nf;
   int surff = 0;
 
   n = 0;
@@ -7550,7 +7550,7 @@ void get_bdry_cellno(geometry_t *window, /* Processing window        */
 		     win_priv_t *wincon  /* Window constants         */
   )
 {
-  int n, nn, c, cc, c2, zm1;
+  int nn, c, cc, c2, zm1;
 
   for (nn = 0; nn < window->nobc; nn++) {
     open_bdrys_t *open = window->open[nn]; 
@@ -7805,11 +7805,11 @@ double swr_params_event(geometry_t *window,
 			int n
 			)
 {
-  int tn, k, c, cc, cs, cb, c2, cd, ks, kb, m;
+  int k, c, cc, cs, cb, c2, cd, ks, kb, m;
   int i1, i2, zm1, zp1;
   double *tr = windat->tr_wc[n];    /* Temperature tracer            */
-  double *ghrsst;                   /* GHRSST tracer                 */
-  double *topflux = windat->heatf;  /* Surface flux                  */
+
+
   double *Splus = wincon->w8;   /* swr source                        */
   int *ctp = wincon->i2;        /* Old surface sparse coordinate     */
   int *cbt = wincon->i5;        /* Bottom sparse coordinate          */
@@ -7817,7 +7817,7 @@ double swr_params_event(geometry_t *window,
   double *dzcell = wincon->w9;  /* Cell centered cell thickness      */
   double *Kz = wincon->w10;     /* Vertical diffusivity              */
   double *Cm1 = wincon->w1;     /* Constant for implicit calculation */
-  double *C = wincon->w2;       /* Constant for implicit calculation */
+
   double *Cp1 = wincon->w3;     /* Constant for implicit calculation */
   double *temp = wincon->v1;    /* Temperature vector                */
   double attn;                  /* swr attenuation                   */

@@ -2526,7 +2526,7 @@ void init_fetch(master_t *master, parameters_t *params, unsigned long **flag)
   int nz = geom->nz - 1;
   /* 0 1 2 3 4 5 6 7 : Mask to set fetch = 0 if mask=0 */
   int mask[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
-  int xp1, xm1, yp1, ym1;
+
   double **fdata = NULL;
   char buf[MAXSTRLEN];
   char *fname[8] = {"fetch_n","fetch_ne","fetch_e","fetch_se",
@@ -2851,8 +2851,8 @@ void trans_sourcegrid_init(parameters_t *params,
   int **iloc;     /* Boundary x location list   */
   int **jloc;     /* Boundary y location list   */
   int *type;      /* Boundary orientation       */
-  double w1, w2;
-  short **mask;
+
+  
   int xm1, xp1, yp1, ym1;
 
   if (!(master->tmode & SP_ORIGIN) && geom->nwindows > 1)
@@ -3395,7 +3395,7 @@ void get_ts_map(geometry_t *geom, geometry_t **window, win_priv_t **wincon,
   xytoij_tree_t *s_xyij_tree;
   int c, cs, c2, c1, cc, n, i, j, clast;
   double x, y, z, d1, d2, top, bot;
-  double *dzz = wc->w9;
+
   int bl_flag;
   double eps = 1.e-9;
 
@@ -3419,7 +3419,7 @@ void get_ts_map(geometry_t *geom, geometry_t **window, win_priv_t **wincon,
       i = (int)x; j = (int)y;
       /* Find the closest wet cell if c maps onto land               */
       if (cs == 0) {
-	int in, jn, k = ws->nz - 1;
+	int in, jn;
 	in = (int)floor(x);
 	jn = (int)floor(y);
 	if (in < 0 || in > ws->nce1 || jn < 0 || jn > ws->nce2)
@@ -3691,12 +3691,12 @@ void set_trans_grid(int nce1, int nce2, double **sx, double **sy,
 int get_st_map(master_t *master, geometry_t *wt, geometry_t *ws, double **sx, double **sy,
 	       double **gridx, double **gridy, int *s2t, double *xoset, double *yoset)
 {
-  double **d1, **d2;
+
   double **tx, **ty;
   xytoij_tree_t *t_xyij_tree;
   int nce1, nce2, nfe1, nfe2;
-  int i, j, k, c, cc, ii, jj, cs, ct, c1, c2, clast;
-  double w1, w2;
+  int i, j, k, c, cc, ii, jj, cs, ct, c2, clast;
+  double w1;
   double z, top, bot;
   double x, y;
   double xo, xe, xn, xne;
@@ -4101,7 +4101,7 @@ int check_quad(geometry_t *wt,             /* Target geometry        */
 {
   double xo, xe, xn, xne;
   double yo, ye, yn, yne;
-  int ret, c, ir, jr;
+  int c, ir, jr;
   int io, ie, in, ine;
   int jo, je, jn, jne;
 
@@ -4437,7 +4437,7 @@ void set_tp(geometry_t *geom, master_t *master, geometry_t **window)
 /*-------------------------------------------------------------------*/
 int find_nearest(geometry_t *geom, double x, double y)
 {
-  int c, cc, c1, cs;
+  int c, cc, cs;
   double dx, dy, dist, mindist = HUGE;
 
   for (cc = 1; cc < geom->b2_t; cc++) {

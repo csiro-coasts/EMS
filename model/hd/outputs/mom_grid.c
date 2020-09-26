@@ -716,7 +716,7 @@ void get_metrics_old(momgrid_t *momgrid, int mode)
   int im, ic, ip;
   int jm, jc, jp;
 
-  int ii, jj;
+
 
   int nx, ny;
 

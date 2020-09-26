@@ -99,9 +99,9 @@ int patm_init(sched_event_t *event)
   master_t *master = (master_t *)schedGetPublicData(event);
   parameters_t *params = master->params;
   patm_mdata_t *data = NULL;
-  char files[MAXNUMTSFILES][MAXSTRLEN];
-  cstring *filenames;
-  int t;
+  
+  
+  
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);

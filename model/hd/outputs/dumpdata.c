@@ -635,7 +635,7 @@ void sigma_vmap(master_t *master,       /* Global geometry structure */
   geometry_t *geom = master->geom;
   int i, j, k, kk, c, cs;
   int nz = geom->nz - 1;
-  double d;
+
 
   dumpdata->vmap = i_alloc_3d(geom->nfe1, geom->nfe2, geom->nz);
 

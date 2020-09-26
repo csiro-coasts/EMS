@@ -513,7 +513,7 @@ void closure_k_w_implicit(geometry_t *window, /* Processing window */
     c = cb;
     do {
 
-      double L, aN, aM, cmu, cmu_d, Lk, sqrttke, d, Lmax;
+      double L, aN, aM, cmu, cmu_d, Lk, sqrttke, Lmax;
       double c3 = sqrt(2.0) / CM0c;
 
       zm1 = c;
@@ -847,7 +847,7 @@ void fcw_f(geometry_t *window,  /* Processing window */
 double K_w(geometry_t *window, int cs, double wflux, double N2, double fcu, double z0)
 {
   window_t *windat = window->windat;
-  double stke, somega, tkeL, L, Lmax, cmu; 
+  double stke, somega, L, Lmax, cmu; 
 
   stke = 0.5 * (windat->tke[cs] + windat->tke[window->zm1[cs]]);
   somega = 0.5 * (windat->omega[cs] + windat->omega[window->zm1[cs]]);

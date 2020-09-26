@@ -472,8 +472,6 @@ void w_check_wave_data(int *wa, int *wp, int *wd, int *wu, int *wif, int *stv)
 /* Called by run_setup to write the setup.txt file */
 void webf_write_setup(FILE *fp, sched_event_t * event)
 {
-  char buf[MAXSTRLEN];
-  char files[MAXNUMTSFILES][MAXSTRLEN];
   int t;
   int count = 0;
   webf_data_t *data = (webf_data_t *)schedGetPrivateData(event);

@@ -33,7 +33,7 @@ void hvisc_init(master_t *master,    /* Master data                  */
 		win_priv_t **wincon  /* Window private data          */
   )
 {
-  int i, n;
+  int n;
 
   /* Set the horizontal mixing method                              */
   for (n = 1; n <= master->nwindows; n++) {
@@ -121,8 +121,8 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
   int xp1s, xm1s;             /* 2D sparse coordinate at i+1, i-1    */
   int yp1s, ym1s;             /* 2D sparse coordinate at j+1, j-1    */
   int xmym1s;                 /* Sparse coordinate at (i-1,j-1)      */
-  int xmyp1s;                 /* Sparse coordinate at (i-1,j+1)      */
-  int xmyp1;                  /* Sparse coordinate at (i-1,j+1)      */
+
+
   double *t11;                /* Horizontal stress tensor, (x,x)     */
   double *t12;                /* Horizontal stress tensor, (x,y)     */
   double *t22;                /* Horizontal stress tensor, (y,y)     */
@@ -255,7 +255,7 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
   )
 {
   int c, cc;                  /* Sparse coordinate / counter         */
-  int cs;                     /* Surface sparse coordinates          */
+
   int sf = 0;                 /* Sponge flag                         */
 
   /*-----------------------------------------------------------------*/
@@ -446,8 +446,8 @@ void hvisc_setup_old(geometry_t *window,  /* Window geometry         */
   int xp1s, xm1s;             /* 2D sparse coordinate at i+1, i-1    */
   int yp1s, ym1s;             /* 2D sparse coordinate at j+1, j-1    */
   int xmym1s;                 /* Sparse coordinate at (i-1,j-1)      */
-  int xmyp1s;                 /* Sparse coordinate at (i-1,j+1)      */
-  int xmyp1;                  /* Sparse coordinate at (i-1,j+1)      */
+
+
   int sf = 0;                 /* Sponge flag                         */
   double *t11;                /* Horizontal stress tensor, (x,x)     */
   double *t12;                /* Horizontal stress tensor, (x,y)     */
@@ -731,7 +731,7 @@ void hvisc_u1_3d(geometry_t *window,  /* Window geometry             */
 {
   int c, cc;                  /* Sparse coordinate / counter         */
   int cs;                     /* Surface sparse coordinates          */
-  int zm1;                    /* 3D sparse coordinate at k-1         */
+
   int xm1;                    /* 3D sparse coordinate at i-1         */
   int yp1;                    /* 3D sparse coordinate at j+1         */
   int xm1s;                   /* 2D sparse coordinate at i-1         */
@@ -1024,7 +1024,7 @@ void hvisc_setup_2d(geometry_t *window,  /* Window geometry          */
 		    double *tzp          /* Pointer to surface level */
   )
 {
-  int c, cc;                    /* Sparse coordinate / counter */
+  int c;                        /* Sparse coordinate / counter */
   int xp1, xm1;                 /* Sparse coordinate at i+1, i-1 */
   int yp1, ym1;                 /* Sparse coordinate at j+1, j-1 */
   int xmym1;                    /* Sparse coordinate at (i-1,j-1) */
@@ -1034,7 +1034,7 @@ void hvisc_setup_2d(geometry_t *window,  /* Window geometry          */
   double *t12;                  /* Horizontal stress tensor, (x,y) */
   double *t22;                  /* Horizontal stress tensor, (y,y) */
   double c1;                    /* Constant for x diffusion */
-  double c2;                    /* Constant for y diffusion */
+
 
   /*-----------------------------------------------------------------*/
   /* Assign pointers */
@@ -1115,7 +1115,7 @@ void hvisc_setup_2d_old(geometry_t *window,  /* Window geometry      */
 			double *tzp      /* Pointer to surface level */
   )
 {
-  int c, cc;                    /* Sparse coordinate / counter */
+  int c;                        /* Sparse coordinate / counter */
   int xp1, xm1;                 /* Sparse coordinate at i+1, i-1 */
   int yp1, ym1;                 /* Sparse coordinate at j+1, j-1 */
   int xmym1;                    /* Sparse coordinate at (i-1,j-1) */
@@ -1125,7 +1125,7 @@ void hvisc_setup_2d_old(geometry_t *window,  /* Window geometry      */
   double *t12;                  /* Horizontal stress tensor, (x,y) */
   double *t22;                  /* Horizontal stress tensor, (y,y) */
   double c1;                    /* Constant for x diffusion */
-  double c2;                    /* Constant for y diffusion */
+
 
   /*-----------------------------------------------------------------*/
   /* Assign pointers */
@@ -1279,9 +1279,9 @@ void hvisc_u1_2d(geometry_t *window,  /* Processing window */
   )
 {
   int c, cc;                    /* Sparse coordinate / counter */
-  int xp1, xm1;                 /* Sparse coordinate at i+1, i-1 */
-  int yp1, ym1;                 /* Sparse coordinate at j+1, j-1 */
-  int xmym1;                    /* Sparse coordinate at (i-1,j-1) */
+  int xm1;                     /* Sparse coordinate at i+1, i-1 */
+  int yp1;                      /* Sparse coordinate at j+1, j-1 */
+
   int xmyp1;                    /* Sparse coordinate at (i-1,j+1) */
   int *ctp;                     /* Cells to process vector           */
   int vcs;                      /* Number of cells to process        */
@@ -1530,7 +1530,7 @@ void set_hdiff(geometry_t *window,      /* Window geometry           */
 	       int mode                 /* 0 = e1, 1 = e2            */
 	       )
 {
-  window_t *windat = window->windat;    /* Window data               */
+
   win_priv_t *wincon = window->wincon;  /* Window constants          */
   double *h1, hm;                       /* Cell size                 */
   int cc, c, c2;                        /* Counters, cell locations  */
@@ -1571,7 +1571,7 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
 		 int mode                 /* 0 = e1, 1 = e2          */
 		 )
 {
-  window_t *windat = window->windat;    /* Window data               */
+
   win_priv_t *wincon = window->wincon;  /* Window constants          */
   double *h1, hm;                       /* Cell size                 */
   int cc, c, c2;                        /* Counters, cell locations  */
@@ -1784,7 +1784,7 @@ void reset_hor_diff(master_t *master, double u1vh, double u2vh, int flag)
 {
   geometry_t *geom = master->geom;
   double vh1, vh2;
-  int c, cc, c2;
+  int c, cc;
 
   master->u1vh0 = u1vh;
   master->u2vh0 = u2vh;
@@ -1793,7 +1793,7 @@ void reset_hor_diff(master_t *master, double u1vh, double u2vh, int flag)
     double step = 1;              /* Integral step of diffusion > 1  */
     double hmax = 1e10;
     double d1, d2;
-    int u1khf = 0, u1vhf = 0, u2khf = 0, u2vhf = 0, i1, cs;
+    int u1vhf = 0, u2vhf = 0, i1, cs;
     if (u1vh <= 0.0) u1vhf = 1;      
     if (u2vh <= 0.0) u2vhf = 1;
     for (cc = 1; cc <= geom->n3_t; cc++) {

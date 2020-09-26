@@ -457,9 +457,9 @@ double windstress_kondo(master_t *master, wind_data_t *data,
   double qs = NOTVALID;  /* Specific humidity at surface (kg/kg)     */
   double q = NOTVALID;   /* Specific humidity at 10m (kg/kg)         */
   double es;       /* Vapour pressure at the air temp (HPa)          */
-  double esat;     /* Saturation vapour pressure (HPa)               */
+  
   double ew;       /* Vapour pressure at water temp. (Hpa)           */
-  double rh;       /* Relative humidity (%)                          */
+ 
 
   /* Convert pressure to HPa                                         */
   pres /= 100.0;

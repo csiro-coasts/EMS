@@ -392,7 +392,7 @@ void dump_f_snapshot(sched_event_t *event, int f, double t)
 void dump_m_snapshot(master_t *master)
 {
   int f;
-  geometry_t *geom = master->geom;
+
   dump_data_t *dumpdata = master->dumpdata;
 
   /* Output dump and test point values if required */
@@ -425,7 +425,7 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
 		       win_priv_t **wincon
 		       )
 {
-  int n, m, bn, cc, c, gc, i, f;
+  int n, bn, cc, c, gc, f;
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
   dump_file_t *df;
@@ -539,7 +539,7 @@ void dumpfile_setup(master_t *master)
 int dump_init(sched_event_t *event)
 {
   master_t *master = (master_t *)schedGetPublicData(event);
-  dump_data_t *dumpdata = master->dumpdata;
+
   char buf[MAXSTRLEN];
 
 #ifdef HAVE_PTHREADS
@@ -573,7 +573,7 @@ void trans_check_dump(master_t *master, dump_data_t *dumpdata, char *trdata)
   FILE *fp = master->prmfd;
   int i, ndf;
   double tinc;
-  char key[MAXSTRLEN], buf[MAXSTRLEN], fname[MAXSTRLEN];
+  char key[MAXSTRLEN], buf[MAXSTRLEN];
 
   dumpdata->ndf = 0;
   if (prm_read_int(fp, "OutputFiles", &ndf)) {
@@ -676,11 +676,11 @@ void dump_cleanup(sched_event_t *event, double t)
 /*------------------------------------------------------------------*/
 void master_fill_dump(master_t *master, double t) 
 {
-  int i, j, k, c, n, f;
-  int is, ie, js, je, ks, ke;
-  dump_file_t *df;
+  int f;
+
+
   dump_data_t *dumpdata = master->dumpdata;
-  geometry_t *geom = master->geom;
+
 
   /* Loop through dump file dumplist, writing any file which needs it */
   for (f = 0; f < dumpdata->ndf; f++) {
@@ -1329,8 +1329,8 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
 {
   char key[50];
   char buf[MAXSTRLEN];
-  char buf2[MAXLINELEN];
-  char path[MAXLINELEN];
+
+
   dump_file_t *list = NULL;
   int f;
  /* int i = 0; */
@@ -1499,7 +1499,7 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
 /*------------------------------------------------------------------*/
 void dumpfile_resetup(master_t *master)
 {
-  geometry_t *geom = master->geom;
+
   dump_data_t *dumpdata = master->dumpdata;
   int n, f, ndf, fr = forced_restart;
   char **dname;
@@ -2076,7 +2076,7 @@ double df_filter(dump_file_t *df,
   int n, s;
   int ii, jj, ip, jp;
   double b;
-  double aa, ks;
+  double ks;
   df_filter_t *f = df->filter;
 
   s = sqrt(f->size) / 2;
@@ -2124,10 +2124,10 @@ void df_filter_2d(dump_file_t *df,
 		  int is, int ie, int js, int je)
 {
   int i, j;
-  int ii, jj, ip, jp;
-  double **b = dumpdata->w2;
-  double aa, ks;
-  df_filter_t *f = df->filter;
+
+
+
+
 
   for (j = js; j < je; j++)
     for (i = is; i < ie; i++)
@@ -4274,7 +4274,7 @@ void nc_d_writesub_2d(int fid, int varid, size_t * start,
   double **nvals = NULL;
   size_t nstart[4];
   unsigned int i, j;
-  int status;
+
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 2);
@@ -4311,7 +4311,7 @@ void nc_d_writesub_3d(int fid, int varid, size_t * start,
   double ***nvals = NULL;
   size_t nstart[4];
   unsigned int i, j, k;
-  int status;
+
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 3);
@@ -6101,9 +6101,9 @@ static void df_memory_print(dump_file_t *df)
 static void df_memory_dump(dump_file_t *df)
 {
   char buf[MAXSTRLEN];
-  int i, k, m, n;
+  int i, m, n;
   FILE *fp;
-  char *vars[256], *units[256];
+
 
   if (endswith(df->name, ".nc")) {
     n = strlen(df->name);
@@ -6183,7 +6183,7 @@ void set_longitude(dump_data_t *dumpdata, dump_file_t *df, int mode)
 /*------------------------------------------------------------------*/
 double next_year(double time, char *unit)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -6201,7 +6201,7 @@ double next_year(double time, char *unit)
 double next_season(double time, char *unit, int *smon)
 {
   int season;
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -6233,7 +6233,7 @@ double next_season(double time, char *unit, int *smon)
 /*------------------------------------------------------------------*/
 double prev_season(double time, char *unit, int *season, int *smon)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double prev;
   int yr, mon, day;
@@ -6268,7 +6268,7 @@ double prev_season(double time, char *unit, int *season, int *smon)
 /*------------------------------------------------------------------*/
 double next_month(double time, char *unit, int *smon)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -6293,7 +6293,7 @@ double next_month(double time, char *unit, int *smon)
 /*------------------------------------------------------------------*/
 double prev_month(double time, char *unit, int *smon)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double prev;
   int yr, mon, day;
@@ -6321,7 +6321,7 @@ double prev_month(double time, char *unit, int *smon)
 /*------------------------------------------------------------------*/
 double next_day(double time, char *unit, int *sday)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -6346,7 +6346,7 @@ double next_day(double time, char *unit, int *sday)
 /*------------------------------------------------------------------*/
 double prev_day(double time, char *unit, int *sday)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double prev;
   int yr, mon, day;
@@ -6377,9 +6377,9 @@ double prev_day(double time, char *unit, int *sday)
 /*------------------------------------------------------------------*/
 int get_transfiles(dump_data_t *dumpdata, FILE * fp) {
   double time;
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
-  double next;
+
   int n, yr, mon, pmon, day;
   int st, et, nf;
 
@@ -6405,13 +6405,13 @@ int set_transfiles(int fn, char *key, dump_data_t *dumpdata, dump_file_t *list,
 		   double t, FILE *fp) {
   FILE *tp;
   double time;
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
-  double next;
+
   int n, m, yr, mon, pmon, nmon, day, tr;
   int st, et, nf;
-  char *mons[13] = {"dum","jan","feb","mar","apr","may","jun","jul","aug",
-		    "sep","oct","nov","dec"};
+
+
 
   /* Get the month of the start time */
   date = tm_time_to_datestr(dumpdata->start_time - 86400.0, dumpdata->timeunit);

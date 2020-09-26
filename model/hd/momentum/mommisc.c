@@ -1182,8 +1182,8 @@ void blend_var(open_bdrys_t *open,
 	       int c
 	       )
 {
-  int lc, sc, bn, n;
-  double vh;
+  int lc, bn;
+
 
   lc = c;
   get_blend_val(var, lc, spgn, open->tmpp, mask);

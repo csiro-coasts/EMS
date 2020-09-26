@@ -600,7 +600,7 @@ void pt_params_init(master_t *master, FILE * fp)
 void pt_auto_init(master_t *master)
 {
   parameters_t *params = master->params;
-  char buf[MAXSTRLEN];
+
   char *fields[MAXSTRLEN * MAXNUMARGS];
   int n, m, i;
 
@@ -856,7 +856,7 @@ void pt_split(master_t *master, long np, particle_t *p,
 {
   int i = 0;
   int n = 0;
-  int raninit = 0;
+
 
   int count = 0;
 
@@ -864,8 +864,8 @@ void pt_split(master_t *master, long np, particle_t *p,
   while (count < 1) {
     /* Look for inactive or lost particles */
     if (!(p[n].flag & PT_ACTIVE) || (p[n].flag & PT_LOST)) {
-      double r1 = ran3(&raninit);
-      double r2 = ran3(&raninit);
+
+
 
       /* Having computed the frational hrizontal and vertical */
       /* distances, compute the XYZ location and convert the XY */
@@ -1040,7 +1040,7 @@ void pt_update(master_t *master)
   if (master->t + master->dt / 2 >= master->ptnext_t) {
     int n;
     int cc, c, c2;
-    double x, y, z;
+
     double maxdh;
     pt_ts_t *u_i = master->uvel_i;
     pt_ts_t *v_i = master->vvel_i;
@@ -1810,7 +1810,7 @@ int hd_pt_create(master_t *master,
   int t_dim, n_dim, m_dim, l_dim;
   /* variable ids */
   int t_id, x_id, y_id, z_id, flag_id;
-  int age_id, size_id, source_id, vid;
+  int age_id, size_id, vid;
   /* variable shapes */
   int n, dims[2];
   int np = master->ptn;

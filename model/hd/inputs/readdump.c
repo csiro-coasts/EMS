@@ -57,7 +57,7 @@ int dump_read(geometry_t *geom, /* Sparse global geometry structure */
               master_t *master, /* Master data structure */
               int cdfid, int ti)
 {
-  int c, cc, i, j, k, n;
+  int c, cc, k, n;
   size_t ndumps;
   size_t start[4];
   size_t count[4];
@@ -183,7 +183,7 @@ int dump_read(geometry_t *geom, /* Sparse global geometry structure */
 
   /* Check for NaNs                                                  */
   for (cc = 1; cc <= geom->b2_t; cc++) {
-    int ci, cj;
+    
     c = geom->w2_t[cc];
     if (isnan(master->eta[c])) {
       hd_warn("dump_read: Found NaN at (%d %d).\n", geom->s2i[c], geom->s2j[c]);
@@ -263,7 +263,7 @@ int dump_re_read(master_t *master, /* Master data structure */
 		 int cdfid, int ti)
 {
   geometry_t *geom = master->geom;
-  int c, cc, i, j, k, n;
+  int c, cc, k, n;
   size_t ndumps;
   size_t start[4];
   size_t count[4];
@@ -342,7 +342,7 @@ int dump_re_read(master_t *master, /* Master data structure */
 
   /* Check for NaNs                                                  */
   for (cc = 1; cc <= geom->b2_t; cc++) {
-    int ci, cj;
+    
     c = geom->w2_t[cc];
     if (isnan(master->eta[c])) {
       hd_warn("dump_read: Found NaN at (%d %d).\n", geom->s2i[c], geom->s2j[c]);
@@ -637,7 +637,7 @@ void master_setghosts(geometry_t *geom, /* Sparse global geometry    */
     open->meandep = open->maxdep = 0.0;
     open->mindep = -1e10;
     for (cc = 1; cc <= open->no2_t; cc++) {
-      int cs;
+      
       c = open->obc_t[cc];
       open->maxdep = min(open->maxdep, geom->botz[c]);
       open->mindep = max(open->mindep, geom->botz[c]);
@@ -2936,8 +2936,8 @@ void read_sed_layers(geometry_t *geom,      /* Global geometry       */
 		     dump_data_t *dumpdata  /* Dump data             */
 		     )
 {
-  FILE *fp = params->prmfd;
-  int i, j, k, m;
+  
+  int i, j, k;
 
   /*-----------------------------------------------------------------*/
   /* Read the sediment layer structure from file                     */

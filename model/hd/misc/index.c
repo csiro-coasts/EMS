@@ -124,7 +124,7 @@ int xyztoindex_w(geometry_t *window, double x, double y, double z,
                  int *cr, int *cs, int *cb)
 {
   int c, cc;
-  win_priv_t *wincon = window->wincon;
+
   double h1, h2, dx, dy, d, centreToCorner;
 
   /* Search the cells linearly. Only those cells for whom point lies
@@ -647,7 +647,7 @@ int hd_grid_interp_3d(geometry_t *geom, double *ret)
 int hd_grid_interp_2d(GRID_SPECS *gs, double *ret)
 {
   int c, cc;
-  double x, y, z;
+  double x, y;
   if (geom->gs == NULL) return(0);
 
   for (cc = 1; cc <= geom->b2_t; cc++) {

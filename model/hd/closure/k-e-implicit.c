@@ -286,7 +286,7 @@ void closure_k_e_implicit(geometry_t *window, /* Processing window */
       double c3e;
       double plus;
       double minus;
-      double ustar;
+
 
       zm1 = c;
       c = window->zp1[c];

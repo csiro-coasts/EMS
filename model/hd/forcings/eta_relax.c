@@ -362,7 +362,7 @@ void do_eta_increment(geometry_t *window   /* Window geometry        */
   window_t *windat = window->windat;    /* Window data               */
   win_priv_t *wincon = window->wincon;  /* Window constants          */
   double einc;
-  double *eta = wincon->neweta;
+  
   int n, c, cc;
 
   for (n = 0; n < windat->ntrS; n++) {
@@ -398,7 +398,7 @@ void do_vel_increment_3d(geometry_t *window   /* Window geometry     */
 {
   window_t *windat = window->windat;    /* Window data               */
   win_priv_t *wincon = window->wincon;  /* Window constants          */
-  double *vel3d;
+  
   int n, c, cc;
 
   for (n = 0; n < windat->ntr; n++) {

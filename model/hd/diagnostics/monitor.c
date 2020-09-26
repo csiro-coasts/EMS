@@ -2139,7 +2139,7 @@ void shapiro(geometry_t *window,     /* Window geometry              */
   int c, cc;
   int cp, cm, n;
   int *p1, *m1;
-  double ret, sgn;
+  double sgn;
 
   order -= 1;
   memcpy(buf, a, window->sgsiz * sizeof(double));
@@ -2730,16 +2730,6 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
   double me;     /* Mechanical energy (Jm-3)                         */
   double ke;     /* Kinetic energy (Jm-3)                         */
   double pi = 3.14159;          /* Value of pi */
-  double co = 1493.0;           /* Constants for speed of sound */
-  double ao =  3.0;
-  double bo = -0.006;
-  double go = -0.04;
-  double d0 = 1.2;
-  double eo = -0.01;
-  double ho = 0.0164;
-  double To = 10.0;
-  double T1 = 18.0;
-  double So = 35.0;
   double *P = wincon->w8;
 
   /* Get the pressure (Bar) for sound calculations */
@@ -2802,7 +2792,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     }
   }
   if (windat->wetcell) {
-    double bot, dd = DRY_FRAC * wincon->hmin;
+    double dd = DRY_FRAC * wincon->hmin;
     for (cc = 1; cc <= window->b2_t; cc++) {
       c = window->w2_t[cc];
       windat->wetcell[c] = 100.0;
@@ -3076,7 +3066,6 @@ void sound_channel(geometry_t *window,  /* Processing window         */
 {
   int c, cc, cs;
   int zm1, zp1, zm2, zp2;
-  double cz, db, df, face, grad, curv;
   double *tr;
   double *Fz = wincon->w4;
   double *depth = wincon->w8;
@@ -3890,7 +3879,6 @@ void reset_means(geometry_t *window,  /* Window geometry             */
   )
 {
   int c, cc;                    /* Counters                          */
-  double ns;                    /* Time increment                    */ 
   double ttime = 24;            /* Predominant tidal period (hours)  */
   double time;                  /* Cumulative time counter           */
   double *detadt = wincon->d4;  /* Mean forward eta difference       */
@@ -4498,8 +4486,6 @@ void mass_diag(geometry_t *window,     /* Window geometry            */
   )
 {
   int c, cc, cs, k, n, trn;
-  int sn = windat->sno;
-  int tn = windat->tno;
   int npor;
 
   /* Sum the water column mass                                       */
@@ -4901,8 +4887,6 @@ void calc_perc(FILE *fp)
   char outfile[MAXSTRLEN];
   char vlist[MAXSTRLEN];
   char buf[MAXSTRLEN];
-  char timeunit[MAXSTRLEN];
-  char iunits[MAXSTRLEN];
   cstring *filenames;
   timeseries_t **tsfiles;
   datafile_t *df;
@@ -4918,14 +4902,12 @@ void calc_perc(FILE *fp)
   int ndims;
   int *sdump;
   int *edump;
-  int nargs;
   int sparse, spf;
   int first = 1;
   int mnc = 0;
   int *mncid;
-  int r0, r1;
+  int r1;
   int dsize = 0, asize;
-  int varids[MAXNUMTSFILES];
   int vid;
   int ad;
   int inc;
@@ -5041,7 +5023,6 @@ void calc_perc(FILE *fp)
   params->ns2 = params->ns3 = params->nce1 = params->nce2 = 0;
   for (n = 0; n < ntsfiles; n++) {
     int nfiles;
-    df_variable_t *var;
     df_multi_t *fd;
     spf = 0;
     df = tsfiles[n]->df;
@@ -5438,9 +5419,7 @@ static int create_output(parameters_t *params,   datafile_t *df,
 			 int *s2i, int *s2j, int *s2k)
 {
   int cdfid = -1;
-  int ingeog;
-  int recdimid, e1id, e2id, e3id, xid, yid, zid, tid, vid, ns3id, i, j;
-  int s2iid, s2jid, s2kid, kgridid;
+  int recdimid, e1id, e2id, e3id, xid, yid, zid, tid, vid, i, j;
   char buf[MAXSTRLEN];
   int dims[4];
   size_t start[4];
@@ -5696,7 +5675,6 @@ void bathy_compare(master_t *master)
   size_t count[4];
   double **bathy;
   double *lat, *lon;
-  double **gridx, **gridy;
   char bathyvar[MAXSTRLEN];
   char bathyname[MAXSTRLEN];
   double val, d1;

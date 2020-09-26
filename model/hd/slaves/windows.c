@@ -673,7 +673,7 @@ void window_cells_linear_e1(geometry_t *geom, /* Global geometery    */
     wsizeS[n] = cc - 1;
     i_free_1d(mask);
   } else {
-    int nn, cbc, cb;
+    int nn;
     c = 1;
     for (n = 1; n <= nwindows; n++) {
       for (cc = 1; cc <= wsizeS[n]; cc++) {
@@ -715,7 +715,7 @@ void window_cells_linear_e2(geometry_t *geom, /* Global geometery    */
   )
 {
   int c, cc, n, m;
-  int c1, i, j;
+  int i, j;
   int *mask, *wetc;
 
   /*-----------------------------------------------------------------*/
@@ -782,7 +782,7 @@ void window_cells_linear_e2(geometry_t *geom, /* Global geometery    */
 	mask[c] = 1;
 	cc++;
         if (cc > wsizeS[n]) {
-	  int bf = 1, nn, cb, cbc;
+	  int bf = 1, nn;
 	  /* Don't allow window transition to occur on OBCs          */
 	  for (nn = 0; nn < geom->nobc; nn++) {
 	    open_bdrys_t *open = geom->open[nn];
@@ -1437,8 +1437,8 @@ void window_cells_check(geometry_t *geom, /* Global geometery        */
 			int *wsizeS   /* Number of 2D wet cells      */
 			)
 {
-  int wn, n, m, c, ci, co, cc;
-  int *wmap, *cmap, *mask;
+  int wn, n, c, ci, co, cc;
+  int *wmap, *cmap;
   int **ws, *wsz;
 
   wmap = i_alloc_1d(geom->enonS + 1);
@@ -3145,7 +3145,7 @@ void get_local_obc_a(int *vec,            /* Global work array       */
 		     int nwindows         /* Number of windows       */
 		     )
 {
-  int c, cc, n, nn, wn;         /* Counters */
+  int c, cc, n, nn;         /* Counters */
   int ac, cgm;                  /* Sparse coordinates */
   short **mask;                 /* Set to 1 when cell is processed */
   int *wm;                      /* Window / ghost cell mask */
@@ -7567,7 +7567,7 @@ void set_reef_frac(master_t *master,
 /*-------------------------------------------------------------------*/
 void tidalc_setup(geometry_t *geom, geometry_t *window, open_bdrys_t *open)
 {
-  win_priv_t *wincon = window->wincon;
+
   int c, cc;
 
   if (open->bcond_nor & TIDALC || open->bcond_nor2d & TIDALC || 

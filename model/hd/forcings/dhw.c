@@ -78,13 +78,13 @@ static void open_dhd_tsfiles(master_t *master, char *fnames,
 void tracer_dhw_init(master_t *master)
 {
   parameters_t *params = master->params;
-  char fname[MAXSTRLEN];
-  char buf[MAXSTRLEN];
+
+
   char *oset = "12 week";
   double dt;
-  int i;
+ 
   tr_dhw_data_t *dhw = NULL;
-  int rst[master->ntr];
+  
 
   if (!(master->dhwf & DHW_NOAA)) return;
 
@@ -245,7 +245,7 @@ void calc_dhd(geometry_t *window,       /* Window geometry       */
 	      win_priv_t *wincon        /* Window constants      */
 	      )
 {
-  int c, cc, cs;
+  int c, cc;
   double fact = 1.0 / 86400.0;
 
   if (wincon->dhwf & DHW_NOAA) {

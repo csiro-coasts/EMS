@@ -798,7 +798,7 @@ void tracer_write_nc(int fid, int ntr, tracer_info_t tracers[], int nattr,
  */
 void tracer_write_2d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
 {
-  parameters_t *params = master->params;
+
   char key[MAXSTRLEN];
 
   fprintf(op, "TRACER%1.1d.name            %s\n", n, tracer->name);

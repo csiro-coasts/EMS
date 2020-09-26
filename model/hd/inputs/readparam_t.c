@@ -37,7 +37,7 @@ FILE *fp;
   char buf1[MAXSTRLEN];
   char keyword[MAXSTRLEN];
   int m, n;
-  int cc;
+  
 
   /* Allocate memory for the parameter data structure                */
   params = params_alloc();

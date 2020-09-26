@@ -364,14 +364,13 @@ void u1av_local(geometry_t *window,   /* Window geometry             */
 		)
 {
   int c, cc;                    /* Sparse coodinate / counter */
-  int xp1, xm1;                 /* Sparse locations at i+1, i-1 */
-  int yp1, ym1;                 /* Sparse locations at j+1, j-1 */
+  int xm1;                      /* Sparse locations at i+1, i-1 */
+  int yp1;                      /* Sparse locations at j+1, j-1 */
   int xmyp1;                    /* Sparse location at (i-1,y+1) */
   double pgt = 0.0;             /* Pressure gradient term */
   double cot = 0.0;             /* Coriolis term */
   double bft;                   /* Bottom friction term */
   double sft;                   /* Surface friction term */
-  double *tzp;                  /* Surface height array */
   double *depth;                /* Depth of the water column */
   double midx;                  /* Water depth at the cell face */
   double val;                   /* Dummy */
@@ -458,14 +457,13 @@ void u2av_local(geometry_t *window,   /* Window geometry             */
 		)
 {
   int c, cc;                    /* Sparse coodinate / counter */
-  int xp1, xm1;                 /* Sparse locations at i+1, i-1 */
-  int yp1, ym1;                 /* Sparse locations at j+1, j-1 */
+  int xp1;                      /* Sparse locations at i+1, i-1 */
+  int ym1;                      /* Sparse locations at j+1, j-1 */
   int xpym1;                    /* Sparse location at (i-1,y+1) */
   double pgt = 0.0;             /* Pressure gradient term */
   double cot = 0.0;             /* Coriolis term */
   double bft;                   /* Bottom friction term */
   double sft;                   /* Surface friction term */
-  double *tzp;                  /* Surface height array */
   double *depth;                /* Depth of the water column */
   double midy;                  /* Water depth at the cell face */
   double val;                   /* Dummy */

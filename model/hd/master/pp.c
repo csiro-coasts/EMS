@@ -204,8 +204,8 @@ void build_sparse_grid(parameters_t *params,
   int *ocodex;       /* x location of OBCs                           */
   int *ocodey;       /* y location of OBCs                           */
   double bmax;       /* Maximum depth                                */
-  int ewet;          /* Number of 3D wet cells                       */
-  int ewetS;         /* Number of 2D wet cells                       */
+
+
   int sigma = 0;     /* Set to 1 for sigma model                     */
 
   /* Read the grid dimensions                                        */
@@ -1504,7 +1504,7 @@ void build_sparse_grid(parameters_t *params,
     /* Get the bottom coordinate vector                              */
     sgrid->open[n]->bot_t = i_alloc_1d(sgrid->open[n]->no2_t + 1);
     for (cc = 1; cc <= sgrid->open[n]->no2_t; cc++) {
-      int cl;
+
       c = c2 = sgrid->open[n]->obc_t[cc];
       while(c != sgrid->zm1[c])
 	c = sgrid->zm1[c];

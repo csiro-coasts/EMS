@@ -6713,7 +6713,7 @@ int get_posv(geometry_t *window, int c, double nu, double nv, double nw,
   double *dzz = wincon->w8;
   double *h1 = wincon->d3;
   double *h2 = wincon->d4;
-  int co, cm;
+  int co;
   double d, h;
   int ncx, ncy;
 
@@ -6834,7 +6834,7 @@ int get_posvS(geometry_t *window, int c, double nu, double nv,
   win_priv_t *wincon = window->wincon;
   double *h1 = wincon->d3;
   double *h2 = wincon->d4;
-  int co, cm;
+  int co;
   double d, h;
 
   /*-----------------------------------------------------------------*/
@@ -6910,7 +6910,7 @@ int get_posvS(geometry_t *window, int c, double nu, double nv,
 
 double geth(double *h, double f, int c, int *m1)
 {
-  int cm = m1[c];
+
   double h1 = h[c];
   double h2 = h[m1[c]];
   return(f * (h2 - h1) + h1);
@@ -7449,7 +7449,7 @@ void set_eovS(geometry_t *window, win_priv_t *wincon, double h1, double h2,
 	      int *c, double *cx, double *cy)
 {
   int co = *c;
-  double h;
+
 
   if (*cx > 0.5 * h1) {
     *cx -= h1;

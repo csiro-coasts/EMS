@@ -1097,7 +1097,6 @@ double csr_tide_eval(tidal_consts_t *tc,  /* Nodal corrections structure */
   double vpv, v0, nj, nv;
   double eta, time;
   double d2r = atan(1.0) * 4.0 / 180.0; /* Degrees to radians */
-  geometry_t *geom = master->geom;
 
   ci = (tc->map != NULL) ? tc->map[cc] : cc;
 

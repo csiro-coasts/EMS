@@ -504,7 +504,6 @@ void bdry_transfer_u1(master_t *master, geometry_t *window,
 	/* Transfer u2 velocity where u2 tangential to the boundary  */
 	if (open_w[n]->bcond_tan & (FILEIN | CUSTOM)) {
 	  int mwn = open_w[n]->mwn;
-	  int nz = (open_w[n]->relax_zone_tan) ? open_w[n]->relax_zone_tan : 1;
 	  for (cc = open_w[n]->no3_e2 + 1; cc <= open_w[n]->to3_e2; cc++) {
 	    c = open_w[n]->tmap_u2[cc];
 	    open_w[n]->transfer_u2[cc] = open_m[mwn]->transfer_u2[c];
@@ -775,7 +774,6 @@ void bdry_transfer_u2(master_t *master, geometry_t *window,
 	}
 	/* Transfer u1 velocity where u1 tangential to the boundary  */
 	if (open_w[n]->bcond_tan & (FILEIN | CUSTOM)) {
-	  int nz = (open_w[n]->relax_zone_tan) ? open_w[n]->relax_zone_tan : 1;
 	  int mwn = open_w[n]->mwn;
 	  for (cc = open_w[n]->no3_e1 + 1; cc <= open_w[n]->to3_e1; cc++) {
 	    c = open_w[n]->tmap_u1[cc];
@@ -1008,7 +1006,6 @@ void bdry_eval_tr_m(geometry_t *geom, /* Global geometry */
       /* Set the tracers */
       if (open[n]->bcond_tra[tn] & (FILEIN | CUSTOM)) {
         bdry_details_t *data = &open[n]->bdata_t[tn];
-	double val;
         /* Call the custom boundary function */
         if (data->explct) {
           if (data->custom_m != NULL) {
@@ -1094,7 +1091,6 @@ void bdry_eval_tr_w(geometry_t *geom,    /* Global geometry */
   double x, y, z;               /* Geographic coordinates */
   open_bdrys_t **open_m = geom->open;
   open_bdrys_t **open_w = window->open;
-  win_priv_t *wincon = window->wincon;
 
   /*-----------------------------------------*/
   /* Loop through the window open boundaries */
@@ -2058,7 +2054,7 @@ double adjust_OBC_maccready(geometry_t *window,
   int c, cc, cs, cb, ci, c2, vc, *obc;
   double *vel, *dz, *hat;
   double d1, sgn = 1.0, vd;
-  double sr, flow, area, depth, rho;
+  double sr, flow, depth, rho;
   double rho0 = 1024.0;         /* Standard reference density */
   double rhof = 1000.0;         /* Freshwater density */
   

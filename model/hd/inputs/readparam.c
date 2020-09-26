@@ -349,7 +349,7 @@ parameters_t *params_read(FILE *fp)
   char buf1[MAXSTRLEN];
   char keyword[MAXSTRLEN];
   int m, n;
-  int cc;                       /* Sparse counters */
+  
   double d1;
 
   /* Allocate memory for the parameter data structure */
@@ -1836,7 +1836,7 @@ parameters_t *auto_params(FILE * fp, int autof)
   int is, ie, js, je;           /* Limits of grid */
   int *ib, *jb, *rb, *rf;
   int **mask, *nib;
-  int ic = 0, jc = 0;
+  
   double *rhc;
   FILE* fptr = fp;
 
@@ -4214,7 +4214,7 @@ static double *read_bathy_from_db(FILE *fp, parameters_t *params) {
 static int read_bathy_from_file(FILE *fp, parameters_t *params) {
   FILE* fb = fp;
   char buf[MAXLINELEN];
-  int is, js, ie, je, jm, im;
+  int is, js, ie, je;
   int nce1 = params->nce1;
   int nce2 = params->nce2;
 
@@ -4388,7 +4388,7 @@ void eta_init(geometry_t *geom,      /* Global geometry              */
 {
   int c, cc;
   int i, j, n;
-  int number;
+  
   char buf[MAXSTRLEN];
   char key[MAXSTRLEN];
   double val;
@@ -4463,7 +4463,7 @@ void baro_vortex(master_t *master, geometry_t *geom, int io, int jo)
   double g = 9.81;
   double Po, P;
   double z, dx, dy, f;
-  double t1, t2, t3, d1, d2, d3;
+  double t1, t2, t3;
   double rho;
   double fo = 2.0 * M_PI / 86400.0;
  
@@ -4832,9 +4832,9 @@ double *value_init(master_t *master,      /* Master data             */
   geometry_t *geom = master->geom;
   int c, cc;
   int i, j, n;
-  int number, nvals;
+  int nvals;
   char buf[MAXSTRLEN];
-  double val, *d1, **d2;
+  double val, *d1;
   double *ret = NULL;
 
   if (strlen(keyword)) {
@@ -5786,7 +5786,7 @@ void read_grid(parameters_t *params)
   int nce2;                     /* e2 grid dimension */
   /* double nm=1852.0; *//* Meters in a nautical mile */
   /* double dm=60.0; *//* Minutes in 1 degree */
-  int i, j;
+
 
   fp =params->prmfd;
   nce1 = params->nce1;
@@ -6875,7 +6875,7 @@ void read_vel_relax(parameters_t *params, FILE *fp)
 void read_debug(parameters_t *params, FILE *fp)
 {
   char buf[MAXSTRLEN];
-  char keyword[MAXSTRLEN];
+
   int n, m = 3;
 
   if (prm_read_char(fp, "DEBUG_LOC", buf)) {
@@ -6916,7 +6916,7 @@ void read_profile(parameters_t *params, FILE *fp)
 {
   char buf[MAXSTRLEN];
   char keyword[MAXSTRLEN];
-  int n, m;
+  int n;
 
   sprintf(keyword, "PROFILE");
   if (prm_read_char(fp, keyword, buf)) {
@@ -7132,11 +7132,11 @@ void create_ghrsst_list(parameters_t *params)
   char fname2[MAXSTRLEN], daystr[MAXSTRLEN], infile2[MAXSTRLEN], buf[MAXSTRLEN];
   double start;            /* Model start time                       */
   double stop;             /* Model stop time                        */
-  int nfiles, nf = 0;      /* Number of SST files                    */
+  int nfiles;              /* Number of SST files                    */
   int fid;                 /* netcdf file handle                     */
   int ncerr;               /* netcdf error code                      */
-  int i, n, nc;            /* Counter                                */
-  int product;             /* Number of days in composite            */
+  int i, n;                /* Counter                                */
+
   int ys, mos, ds, hs, mis, ss;  /* Start year, month, day           */
   int ye, moe, de, he, mie, se;  /* End year, month, day             */
   int y, m, d, day, lp, py;      /* Year, month, day                 */
@@ -7513,7 +7513,7 @@ void read_exclude_points(parameters_t *params, FILE *fp)
 /*-------------------------------------------------------------------*/
 void read_means(parameters_t *params, FILE *fp, int mode)
 {
-  int n, cc, ntr = 0;
+  int n, ntr = 0;
   char keyword[MAXSTRLEN];
   char buf[MAXSTRLEN];
   char trname[MAXSTRLEN];
@@ -7710,7 +7710,7 @@ void read_sediments(parameters_t *params, FILE *fp, int *ntr)
 void read_ecology(parameters_t *params, FILE *fp, int *ntr)
 {
   char buf[MAXSTRLEN];
-  char keyword[MAXSTRLEN];
+
 
   prm_set_errfn(hd_silent_warn);
   params->do_eco = 0;
@@ -7769,7 +7769,7 @@ void check_TS_relax(parameters_t *params, FILE *fp)
 	  if (prm_read_char(fp, keyword, buf) > 0) {
 	    sprintf(keyword, "TRACER%1.1d.relaxation_time_constant", n);
 	    if (prm_read_char(fp, keyword, buf) > 0) {
-	      int nf = parseline(buf, fields, MAXNUMARGS);
+	      
 	      if (strcmp(name, "salt") == 0) {
 		/*
 		if (nf <= 2) {
@@ -8573,7 +8573,7 @@ int decode_tag(char *list, char *tag, char *value) {
 
 double get_run_length(FILE *fp)
 {
-  double start, stop, len;
+  double start, stop;
 
   prm_get_time_in_secs(fp, "START_TIME", &start);
   prm_get_time_in_secs(fp, "STOP_TIME", &stop);

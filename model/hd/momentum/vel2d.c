@@ -1042,7 +1042,7 @@ void bdry_u1_2d(geometry_t *window, /* Processing window */
   /* This is for output appearance only.                             */
   for (n = 0; n < window->nobc; n++) {
     if (open[n]->stagger & INFACE) {
-      int *mi = (open[n]->ocodex & L_EDGE) ? window->xm1 : window->xp1;
+
       for (cc = 1; cc <= open[n]->no2_e1; cc++) {
 	c = open[n]->obc_e1[cc];
 	c1 = open[n]->obc_t[cc];
@@ -1545,8 +1545,8 @@ void set_OBC(geometry_t *window,   /* Processing window              */
   /*-----------------------------------------------------------------*/
   /* Tidal constituent specification                                 */
   if (bcond & TIDEBC) {
-    double depth, spd;
-    int c1, c2;
+
+
     double ramp = (wincon->rampf & TIDEBC) ? windat->rampval : 1.0;
     for (cc = sb; cc <= eb; cc++) {
       c = obc[cc];
@@ -2611,7 +2611,7 @@ void bdry_u2_2d(geometry_t *window, /* Processing window */
   /* This is for output appearance only.                             */
   for (n = 0; n < window->nobc; n++) {
     if (open[n]->stagger & INFACE) {
-      int *mi = (open[n]->ocodey & B_EDGE) ? window->ym1 : window->yp1;
+
       for (cc = 1; cc <= open[n]->no2_e2; cc++) {
 	c = open[n]->obc_e2[cc];
 	c1 = open[n]->obc_t[cc];
@@ -2914,7 +2914,7 @@ void bdry_eta(geometry_t *window, /* Processing window */
               win_priv_t *wincon  /* Window geometry / constants */
   )
 {
-  int n, m;                      /* Counters */
+  int n;                      /* Counters */
   int c, cc;
 
   open_bdrys_t **open = window->open;
@@ -3080,7 +3080,7 @@ void reset_bdry_eta(geometry_t *window, /* Window geometry           */
 		    double *eta         /* eta variable              */
 		    )
 {
-  int n, m, c, cc;
+  int m, c, cc;
 
   if (open->stagger & OUTFACE) {
     for (cc = 1; cc <= open->no2_e1; cc++) {
@@ -3382,7 +3382,7 @@ void asselin(geometry_t *window,  /* Processing window */
 
 	    /* Dual relaxation: Relax hard to the tidal signal */
 	    if (open->adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
-	      double depth, etat, df, etadiff;
+	      double depth, etat, df;
 	      double rtst = (open->adjust_flux_s < 0.0) ? rts : windat->dtb2 / open->adjust_flux_s;
 	      f2 *= 0.5; fp2 *= 0.5; fp1 *= 0.5;
 	      df = fp1 + sgn * (fp2 - f2);
@@ -3609,7 +3609,7 @@ void extract_velocity_2d(geometry_t *window,  /* Processing window */
                                              */
   )
 {
-  int c, cc, n;                 /* Local sparse coordinate / counter */
+  int c, cc;                 /* Local sparse coordinate / counter */
 
   for (cc = 1; cc <= window->b2_e1; cc++) {
     c = window->w2_e1[cc];

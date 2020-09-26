@@ -57,7 +57,7 @@ void win_data_slave_update_fill_3d(master_t *master, geometry_t *window,
 {
   int c, cc, lc;                /* Local sparse coordinate / counter */
   int tn, tt;                   /* Tracer counter                    */
-  int s, ce1, ce2;
+  int s;
 
   /*-----------------------------------------------------------------*/
   /* Variables to transfer for one or multiple windows               */
@@ -347,8 +347,8 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
   )
 {
   int c, cc, lc;                /* Local sparse coordinate / counter */
-  int tn, tt;                   /* Tracer counter                    */
-  int s, ce1, ce2;
+  int tn;                       /* Tracer counter                    */
+  int ce1, ce2;
 
   /* Update from master */
   win_data_slave_update_fill_3d(master, window, windat, nwindows);
@@ -430,7 +430,7 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
 void win_data_slave_update_fill_2d(master_t *master, geometry_t *window,
 				   window_t *windat, int nwindows)
 {
-  int c, cc, lc, ce1, ce2;      /* Local sparse coordinate / counter */
+  int c, cc;      /* Local sparse coordinate / counter */
 
   windat->dtb2 = windat->dtf2;
   windat->dtf2 = master->dt2d;
@@ -2102,7 +2102,7 @@ void s2c_3d(geometry_t *geom,   /* Global geometry structure */
 	  ac[k][j][i] = NaN;
 	  c = dumpdata->vmap[k][j][i];
 	  if (c > 0) {
-	    int cs = geom->m2d[c];
+
 	    int zm1 = geom->zm1[c];
 	    double d1 = geom->cellz[c] * dumpdata->botz[j][i];
 	    double d2 = geom->cellz[zm1] * dumpdata->botz[j][i];
@@ -2867,7 +2867,7 @@ void window_reset(master_t *master,      /* Master data              */
 void copy_dens_profile(master_t *master, geometry_t *window, window_t *windat)
 {
   geometry_t *geom = master->geom;
-  int c, cb;
+  int c;
   if (windat->vd == NULL) return;
 
   for (c = 0; c < window->nz; c++)

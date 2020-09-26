@@ -160,9 +160,9 @@ timeseries_t *frc_read_cell_ts(master_t *master, char *fname, double i_dt,
   timeseries_t *ts;
   char buf[MAXLINELEN];
   geometry_t *geom = master->geom;
-  char files[MAXNUMTSFILES][MAXSTRLEN];
-  cstring *filenames;
-  int t;
+  
+  
+  
 
   if (strlen(fname) == 0)
     return NULL;
@@ -186,7 +186,7 @@ timeseries_t **frc_read_cell_ts_mult(master_t *master, char *fname, double i_dt,
 				     int *id, int *ntsfiles, double **p, int quitmode)
 {
   timeseries_t **ts;
-  char buf[MAXLINELEN];
+  
   geometry_t *geom = master->geom;
   char files[MAXNUMTSFILES][MAXSTRLEN];
   cstring *filenames;

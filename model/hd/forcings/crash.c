@@ -98,12 +98,12 @@ double crash_event(sched_event_t *event, double t)
   crash_data_t *crash = (crash_data_t *)schedGetPublicData(event);
   hd_data_t *hd_data = crash->hd_data;
   master_t *master = hd_data->master;
-  geometry_t *geom = master->geom;
+  
   dump_data_t *dumpdata = master->dumpdata;
   char restart_fname[MAXSTRLEN];
   int fid = 0;
   double newt;
-  int c, cc, c2, i;
+  int i;
 
   /* Crash has occurred : read the restart and reset master constants */
   if (master->crf == RS_RESTART) {

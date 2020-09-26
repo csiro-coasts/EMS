@@ -327,7 +327,7 @@ char *hd_ts_multifile_get_text_att(int ntsfiles, timeseries_t **tsfiles,
     timeseries_t *ts;
     datafile_t *df;
     df_variable_t *v;
-    df_attribute_t *a;
+
 
     for (i = 0; i < ntsfiles; ++i) {
       ts = tsfiles[i];
@@ -605,7 +605,7 @@ void hd_trans_multifile_eval(master_t *master,
 {
   geometry_t *geom = master->geom;
   transport_t *tp = master->geom->trans;
-  dump_data_t *dumpdata = master->dumpdata;
+
 
   if(master->lyear)
     t -= count_leap(master->timeunit, t) * 86400;
@@ -1613,8 +1613,8 @@ double median(geometry_t *geom,       /* Window geometry         */
 int count_leap(char *d, double t)
 {
   int sy, y, mo, day;
-  int h, mi, s;
-  double j;
+  int h, s;
+
   char *p;
 
   /* Strip "units since", if present */
@@ -1643,7 +1643,7 @@ int count_leap(char *d, double t)
 void hd_ts_grid_interp_multifile(master_t *master, timeseries_t **ts, int nts, int *varids,
 				 double *tr, double t, int *vec, int nvec, char *method)
 {
-  int i, vi;
+  int i;
   int index = -1;
 
   if (t < ts[0]->t[0])
