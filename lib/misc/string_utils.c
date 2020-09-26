@@ -124,7 +124,6 @@ int startswith(const char *haystack, const char *needle)
   */
 int startsnwith(const char *haystack, const char *needle, int needle_length)
 {
-  char *position;
   int i,l1= strlen(haystack);
   /*,l2 = strlen(needle); */
 	l1= strlen(haystack);
@@ -150,7 +149,6 @@ int startsnwith(const char *haystack, const char *needle, int needle_length)
   */
 int endswith(const char *haystack, const char *needle)
 {
-  char *position;
   int i,j,l1,l2 = strlen(needle);
 	l1= strlen(haystack);
 	if(l2 > l1)
@@ -229,7 +227,6 @@ void strip(char *str, const char *seps)
  */
 void stripend(char *str)
 {
-  char *token;
   char buf[MAXLINELEN];
   int n;
 

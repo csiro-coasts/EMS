@@ -158,7 +158,6 @@ double calc_solar_elevation(char *ounit, char *tunit, double time, double lat,
   double hrang;                 /* Hour angle */
   double d1;                    /* Dummy variable */
   double jday;                  /* Julian day */
-  int day;                      /* Day of the month */
   int yr;                       /* Year */
 
   if (lon == NULL)

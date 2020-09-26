@@ -143,7 +143,6 @@ public:
 	    pthread_mutex_t *imtx)
     : tStartIdx(time)
   {
-    size_t start[2];
     int unlimdim;
 
     /* Allocate buffers and initialise each */
@@ -230,7 +229,7 @@ template <class T>
 void ncBuffers<T>::doNcRead(void)
 {
   int tIdx = tStartIdx;
-  size_t start[2], stacksz;
+  size_t start[2];
   start[iDATA] = 0L;
   bool done = false;
   while(!done) {

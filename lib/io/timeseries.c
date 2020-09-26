@@ -810,7 +810,7 @@ int ts_multifile_get_index(int nfiles, timeseries_t *ts, char *varname)
 double ts_multifile_eval(int nfiles, timeseries_t *ts, int multi_varid, double t)
 {
 
-  int n,v,i, index = 0;
+  int v,i, index = 0;
 
   /* Loop over to recover the local index */
   for (i=0; i<nfiles; i++) {

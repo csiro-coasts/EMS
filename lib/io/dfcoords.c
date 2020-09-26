@@ -1314,7 +1314,6 @@ int cm_1d_ctoi(datafile_t *df, df_coord_mapping_t *cm,
 {
   df_variable_t *v = &df->variables[cm->coordids[0]];
   double *data = NULL;
-  int asc = 1;
   int imid;
   int ilow = 0;
   int ihigh = -1, itemp;
@@ -1492,7 +1491,6 @@ void set_2d_coords(datafile_t *df, df_variable_t *v,
        are they the same ?. */
     char *xa = get_text_attribute(df, cm->coordids[0], "analytic");
     char *ya = get_text_attribute(df, cm->coordids[1], "analytic");
-    df_attribute_t *ta = NULL;
 
     if (xa && ya && (strcasecmp(xa, ya) == 0)) {
       char atype[MAXLINELEN];

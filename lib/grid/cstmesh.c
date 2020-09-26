@@ -121,7 +121,7 @@ void cm_free(coamsh_t *cm)
 /*---------------------------------------------------------------------*/
 int coastmesh(coamsh_t *cm, int mode)
 {
-  FILE *fp, *op = NULL, *bp = NULL, *pp = NULL, *opp = NULL, *sp = NULL;
+  FILE *fp, *op = NULL, *pp = NULL, *opp = NULL, *sp = NULL;
   char buf[MAXSTRLEN];
   int n, m, i, j, nl, nlm, sm;
   int n1, n2, ii, i1, i2, i3, mi;
@@ -131,7 +131,6 @@ int coastmesh(coamsh_t *cm, int mode)
   int obci;          /* Start segment for minor segments               */
   int obcs;          /* End index for major edges                      */
   int obcm;          /* Maximum obc size                               */
-  double jd, sjd, njd;
   double **lat, **lon;
   double **rlat, **rlon;
   double *nlat, *nlon;
@@ -147,12 +146,10 @@ int coastmesh(coamsh_t *cm, int mode)
   int **flag;         /* Type of pont in the list (coast, link, obc)   */
   int *incf;
   double d1, d2, dist, dist1, dist2;
-  double deg2m = 60.0 * 1852.0;
   int isclosed = 1;
   int checki = 0;
   int filef = 0;
   int cutoff;
-  link_t *link = NULL;
   int dir;
   int sseg, ssid, ssize, sdir, sn, en, mn;
   msh_t *msh = NULL;
@@ -1124,7 +1121,6 @@ void cm_read(coamsh_t *cm, FILE *ip)
   char buf[MAXSTRLEN], key[MAXSTRLEN], key1[MAXSTRLEN];
   int n, m, i, j;
   int sid, eid, mid; /* Start, end and mid index for the major segment */
-  double bslon, bslat, belon, belat; /* Bounding box                   */
 
 
   /*-------------------------------------------------------------------*/
@@ -1528,8 +1524,6 @@ void write_jigsaw(jig_t *jig)
 /*---------------------------------------------------------------------*/
 static void msh_free(msh_t *msh)
 {
-  int m;
-
   d_free_2d(msh->coords);
   i_free_2d(msh->edges);
   i_free_1d(msh->flag);
@@ -1720,7 +1714,6 @@ void find_link_index(int ns,       /* Number of segments               */
       links->ilink[1] = m;
     }
     if (links->nseg) {
-      double *x1, *y1;
       double s1 = links->llon[0] - links->segx[0];
       double s2 = links->llat[0] - links->segy[0];
       double e1 = links->llon[0] - links->segx[links->nseg - 1];
@@ -1788,7 +1781,6 @@ int find_link(int en,          /* End segment number                   */
 {
   int i, ii, m, ns;            /* Counters                             */
   int found = 0;               /* Flag to exit when next link found    */
-  double *rlat, *rlon;         /* Updated coordinates of major segment */
   int psize = *size;           /* Size of major segment before update  */
   int psi = *si;               /* Start index before update            */
   int pn = *n;                 /* Segment before the update            */
@@ -2045,7 +2037,6 @@ void auto_link(coamsh_t *cm,    /* Coastmesh structure                 */
 {
   FILE *op;
   int n, i, i1, i2,j;
-  int n1 = 0;
   double d1, d2, dist, dist1, dist2;
   double deg2m =  60.0 * 1852.0;
 
@@ -2057,15 +2048,11 @@ void auto_link(coamsh_t *cm,    /* Coastmesh structure                 */
   for (n = ns; n >= cutoff; n--) {
     double sf = 0.5;
     double ld = cm->auto_l;
-    int ithr = cm->auto_t;
     double frac = cm->auto_f;
     double *ulon = (n == ns) ? nlon : lon[nso[n]];
     double *ulat = (n == ns) ? nlat : lat[nso[n]];
     int nseg = (n == ns) ? msl : nsl[n];
     double clon = 0.0, clat = 0.0;
-    double sgn = (n == ns) ? 1.0 : -1.0;
-    double plon = 148.1753;
-    double plat = -40.8282;
       
     if (n != ns && !mask[n]) continue;
     for (i = 0; i < nseg; i++) {
@@ -2084,7 +2071,6 @@ void auto_link(coamsh_t *cm,    /* Coastmesh structure                 */
       int jmin, jmax;
       int found = 0;
       int inn = 0;
-      int id = 0;
 	
       /*
 	d1 = ilon - plon;

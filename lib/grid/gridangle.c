@@ -183,7 +183,7 @@ void grid_get_geog_angle(double **x, double **y, int nce1, int nce2,
 void grid_get_geog_angle_us(int *npe, double **x, double **y, long int ns2,
 			    double **a1, double **a2)
 {
-  long i, j, i0, n;
+  long i, j, i0;
   double xm;
   double ym;
   int atype = 0;
