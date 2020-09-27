@@ -328,7 +328,7 @@ char *hd_ts_multifile_get_text_att(int ntsfiles, timeseries_t **tsfiles,
     timeseries_t *ts;
     datafile_t *df;
     df_variable_t *v;
-    df_attribute_t *a;
+
 
     for (i = 0; i < ntsfiles; ++i) {
       ts = tsfiles[i];
@@ -530,7 +530,7 @@ void hd_ts_multifile_eval(master_t *master,
 			  int *vec, int nvec, int mode)
 {
   geometry_t *geom = master->geom;
-  dump_data_t *dumpdata = master->dumpdata;
+
 
   if(master->lyear)
     t -= count_leap(master->timeunit, t) * 86400;
@@ -1175,7 +1175,7 @@ int check_sparse_dumpfile(geometry_t *geom, int ntsfiles,
   FILE *fp;
   char buf[MAXSTRLEN];
   double ver;
-  int isnc;
+
 
   szcS = geom->b2_t; szc = geom->b3_t;
   szeS = geom->n2_e1; sze = geom->n3_e1;
@@ -1258,9 +1258,9 @@ int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, in
 {
   size_t ms2 = -1, ms3 = -1;
   size_t mce1 = -1, mce2 = -1, mz = -1;
-  int mc1, mc2;
+
   int ncid; 
-  int cc, c, i, j, k, n;
+  int cc, c, n;
   size_t start[4];
   size_t count[4];
   int *s2i, *s2j, *s2k, i1f, i2f, i3f;
@@ -1350,12 +1350,12 @@ void process_ghrsst(master_t *master  /* Master data                 */
 		    )
 {
   geometry_t *geom = master->geom;
-  double sfact = 1.0;                /* Scaing for std_dev threshold */
+
   double tol = 1.0;                  /* Error tolerance              */
-  int c, c1, cc, n, sn;
+  int c, cc, n;
   double *sst = master->ghrsst;
   double *sste = master->ghrsste;
-  double mean_sst, std_dev, ms;
+  double mean_sst, std_dev;
   GRID_SPECS *gs = NULL;
   double *x, *y, *z;
   char *i_rule = "nn_sibson";
@@ -1432,11 +1432,11 @@ int read_ghrsst(master_t *master,       /* Master data               */
 		)
 {
   geometry_t *geom = master->geom;
-  char buf[MAXSTRLEN];
+
   GRID_SPECS *gs = NULL;
   int nvar;
   double *x, *y, *v, **cellx, **celly, **sst, **sste;
-  double vmean, mv;
+  double vmean;
   int fid;
   int ncerr;
   size_t start[4];
@@ -1617,8 +1617,8 @@ double median(geometry_t *geom,       /* Window geometry         */
 int count_leap(char *d, double t)
 {
   int sy, y, mo, day;
-  int h, mi, s;
-  double j;
+  int h, s;
+
   char *p;
 
   /* Strip "units since", if present */
@@ -1647,7 +1647,7 @@ int count_leap(char *d, double t)
 void hd_ts_grid_interp_multifile(master_t *master, timeseries_t **ts, int nts, int *varids,
 				 double *tr, double t, int *vec, int nvec, char *method)
 {
-  int i, vi;
+  int i;
   int index = -1;
 
   if (t < ts[0]->t[0])

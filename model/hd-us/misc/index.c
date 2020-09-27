@@ -465,7 +465,7 @@ int hd_grid_interp_3d(geometry_t *geom, double *ret)
 int hd_grid_interp_2d(GRID_SPECS *gs, double *ret)
 {
   int c, cc;
-  double x, y, z;
+  double x, y;
   if (geom->gs == NULL) return(0);
 
   for (cc = 1; cc <= geom->b2_t; cc++) {
@@ -575,7 +575,7 @@ int hd_grid_xyztoc(geometry_t *window, double x, double y, double z, int ci)
 
 int hd_grid_xyztoc_w(geometry_t *window, double x, double y, double z)
 {
-  window_t *windat = window->windat;
+
   int cc, c, cg, cs;
 
   /* Find the horizontal position in the mesh                        */
@@ -631,7 +631,7 @@ int hd_grid_xyztoc_w(geometry_t *window, double x, double y, double z)
 int hd_grid_xyztoc_m(master_t *master, double x, double y, double z)
 {
   geometry_t *geom = master->geom;
-  double *cellz = geom->cellz;        /* cellz depth                 */
+
   int c, cs;
 
   /* Find the horizontal position in the mesh                        */

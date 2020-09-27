@@ -567,8 +567,8 @@ void get_tendv(geometry_t *window, /* Window geometry                */
 	       double *tend2       /* North tendency of process      */
   )
 {
-  int c, cs, cc, e, es, ee;       /* Counters                        */
-  double t, area;
+  int c, cs, cc;                   /* Counters                        */
+  double t;
   win_priv_t *wincon = window->wincon;
   window_t *windat = window->windat;
 
@@ -1138,7 +1138,7 @@ void alerts_w(geometry_t *window,  /* Window geometry                */
 {
   window_t *windat = window->windat;    /* Window data               */
   win_priv_t *wincon = window->wincon;  /* Window constants          */
-  int nb, cc, c, ee, e, j;     /* Counters                           */
+  int nb, cc, c, ee, e;        /* Counters                           */
   double *eta;                 /* Pointer to elevation               */
   double ta = 0.0;             /* Total area                         */
   double me = 0.0;             /* Mechanical energy                  */
@@ -1371,7 +1371,7 @@ void alerts_w(geometry_t *window,  /* Window geometry                */
 	}
 	if (wincon->shear_f) windat->mshear = 0.0;
 	if (wincon->vel2d_f && wincon->shear_f) {
-	  int ym1, cl = (windat->mu1a > wincon->velmax2d) ? ee : 1;
+	  int cl = (windat->mu1a > wincon->velmax2d) ? ee : 1;
 	  double shear;
 
 	  vel_grad(window, windat, wincon, windat->u1av, windat->u2av,
@@ -1790,7 +1790,7 @@ void shapiro(geometry_t *window,     /* Window geometry              */
   int c, cc;
   int cp, cm, n;
   int *p1, *m1;
-  double ret, sgn;
+  double sgn;
 
   order -= 1;
   if (mode)
@@ -2087,9 +2087,9 @@ int *stencil(geometry_t *window,    /* Window geometry               */
 /* Creates a map of cells surrounding a cell centre                  */
 /*-------------------------------------------------------------------*/
 void get_filter(geometry_t *geom) {
-  int c, cc, c1, c2;
-  int *st = NULL, sz, szc, szm, n;
-  double d1, d2;
+  int c, cc;
+  int *st = NULL, sz, n;
+  double d1;
   df_filter_t *f;
 
   geom->filter = (df_filter_t **)malloc(sizeof(df_filter_t *) * geom->szc);
@@ -2186,7 +2186,7 @@ double get_max_div_3d(geometry_t *window,  /* Window geometry        */
 )
 {
   double *u1flux = wincon->w4;
-  double *u2flux = wincon->w5;
+
   double colflux, mdiv = 0.0;
   int ee, e, es, cc, c, cs, n;
 
@@ -2319,7 +2319,7 @@ void calc_cfl(geometry_t *window,   /* Window geometry               */
 {
   double cfl2d, cfl3d;          /* CFL conditions                    */
   int lc, c, cc, zp1, j;        /* Sparse locations                  */
-  double dh, u, v, w;           /* Grid spacing                      */
+  double dh, u, w;              /* Grid spacing                      */
   double spd, spd2d, iws, cspd; /* Current / wave speeds             */
   double minval = 1e-10;        /* Minimum value for velocity        */
   double eps = 1e5;             /* Maximum CFL timestep              */
@@ -2445,7 +2445,7 @@ double calc_min_cfl_3d(geometry_t *window, /* Window geometry        */
   )
 {
   int c, cc, cs, cb;            /* Centre coordinates                */
-  int e, ee, es;                /* Edge coordinates                  */
+  int e;                        /* Edge coordinates                  */
   int j, zp1, zm1;              /* Sparse maps                       */
   double minval = 1e-10;        /* Minimum value for velocity        */
   double spd, iws, cspd;        /* Current / wave speeds             */
@@ -2578,7 +2578,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
 		  )
 {
   int c, cc, cs, cn;
-  int e, e1, ee, es;
+  int e, ee, es;
   int zm1;
   double depth;  /* Water depth                                      */
   double dzface; /* Cell thickness between cell centers              */
@@ -2596,16 +2596,16 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
   double me;     /* Mechanical energy (Jm-3)                         */
   double ke;     /* Kinetic energy (Jm-3)                         */
   double pi = 3.14159;          /* Value of pi */
-  double co = 1493.0;           /* Constants for speed of sound */
-  double ao =  3.0;
-  double bo = -0.006;
-  double go = -0.04;
-  double d0 = 1.2;
-  double eo = -0.01;
-  double ho = 0.0164;
-  double To = 10.0;
-  double T1 = 18.0;
-  double So = 35.0;
+
+
+
+
+
+
+
+
+
+
   double *P = wincon->w8;
   double d1, d2;
 
@@ -2737,7 +2737,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     }
   }
   if (windat->wetcell) {
-    double bot, dd = DRY_FRAC * wincon->hmin;
+    double dd = DRY_FRAC * wincon->hmin;
     for (cc = 1; cc <= window->b2_t; cc++) {
       c = window->w2_t[cc];
       windat->wetcell[c] = 100.0;
@@ -2962,7 +2962,7 @@ void sound_channel(geometry_t *window,  /* Window geometry           */
 {
   int c, cc, cs;
   int zm1, zp1, zm2, zp2;
-  double cz, db, df, face, grad, curv;
+
   double *tr;
   double *Fz = wincon->w4;
   double *depth = wincon->w8;
@@ -3590,10 +3590,10 @@ void vorticity(geometry_t *window,  /* Window geometry               */
                win_priv_t *wincon   /* Window constants              */
   )
 {
-  int c, cc, c2;                /* Cell coordinate/counter           */
-  int e, ee, e1, e2, e3, e4;    /* Edge coordinates                  */
-  int n, j, eoe;                /* Counters                          */
-  double *rv;                   /* Relative vorticity                */
+  int c, cc;                    /* Cell coordinate/counter           */
+  int ee, e;                    /* Edge coordinates                  */
+
+
   double *prv;                  /* d(rv)/dt                          */
   double *ew1, *ns1;            /* EW and NS gradients               */
   double *ew2, *ns2;            /* EW and NS gradients               */
@@ -3621,7 +3621,7 @@ void vorticity(geometry_t *window,  /* Window geometry               */
     double *depth = wincon->d1;
     double *chi = wincon->d2;
     double f;                   /* Coriolis parameter                */
-    double dHde1, dHde2;        /* Bottom gradients                  */
+
     double rho0 = 1024;         /* Standard reference density        */
 
     memset(chi, 0, window->szcS * sizeof(double));
@@ -3859,8 +3859,8 @@ void mass_diag(geometry_t *window,     /* Window geometry            */
   )
 {
   int c, cc, cs, k, n, trn;
-  int sn = windat->sno;
-  int tn = windat->tno;
+
+
   int npor;
 
   /* Sum the water column mass                                       */
@@ -4266,18 +4266,18 @@ void calc_perc(FILE *fp)
   char files[MAXNUMTSFILES][MAXSTRLEN];
   char *arg[MAXSTRLEN * MAXNUMARGS];
   char outfile[MAXSTRLEN];
-  char infile[MAXSTRLEN];
+
   char vlist[MAXSTRLEN];
   char buf[MAXSTRLEN];
-  char timeunit[MAXSTRLEN];
-  char iunits[MAXSTRLEN];
+
+
   cstring *filenames;
   timeseries_t **tsfiles;
   datafile_t *df;
   size_t ndumps = 0;
   size_t start[4];
   size_t count[4];
-  char **vars = NULL;
+
   int ntsfiles;
   int nvars = 0;
   int outfid;
@@ -4286,18 +4286,18 @@ void calc_perc(FILE *fp)
   int ndims;
   int *sdump;
   int *edump;
-  int nargs;
+
   int spf;
   int first = 1;
   int mnc = 0;
   int *mncid;
-  int r0, r1;
+  int r1;
   int dsize = 0, asize;
-  int varids[MAXNUMTSFILES];
+
   int vid;
   int ad;
   int inc;
-  int *s2i, *s2j, *s2k, ***map;
+
   double *data, results[Ns];
   double stime, etime;
   double rfrac;
@@ -4445,7 +4445,7 @@ void calc_perc(FILE *fp)
   params->ns2 = params->ns3 = params->nce1 = params->nce2 = 0;
   for (n = 0; n < ntsfiles; n++) {
     int nfiles;
-    df_variable_t *var;
+
     df_multi_t *fd;
     spf = 0;
     df = tsfiles[n]->df;
@@ -4748,12 +4748,12 @@ void calc_perc(FILE *fp)
 
 dump_file_t *create_output(master_t *master, int *fid, char *filename)
 {
-  geometry_t *geom = master->geom;
+
   parameters_t *params = master->params;
-  char buf[MAXSTRLEN];
-  int dims[4];
-  size_t start[4];
-  size_t count[4];
+
+
+
+
   dump_file_t *df = NULL;
   df_ugrid_data_t *data;
 
@@ -4869,7 +4869,7 @@ void bathy_compare(master_t *master)
   size_t count[4];
   double **bathy;
   double *lat, *lon;
-  double **gridx, **gridy;
+  
   char bathyvar[MAXSTRLEN];
   char bathyname[MAXSTRLEN];
   double val, d1;
@@ -4877,7 +4877,7 @@ void bathy_compare(master_t *master)
   int n, i, j, c, cc, cn, e;
   int mi, mj, ni, nj;
   int is, js, ie, je;
-  int nz = geom->nz - 1;
+
   double latmx, latmn, lonmx, lonmn;
   int iinc = 1;
   int jinc = 1;

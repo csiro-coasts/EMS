@@ -339,10 +339,10 @@ void dumpdata_init(dump_data_t *dumpdata, /* Dump data structure */
   )
 {
   int c, cc, i, j;
-  int nce1 = dumpdata->nce1;
-  int nce2 = dumpdata->nce2;
-  int nfe1 = dumpdata->nfe1;
-  int nfe2 = dumpdata->nfe2;
+
+
+
+
   dumpdata->t = master->t;
 
   if (!(geom->us_type & US_IJ)) return;
@@ -373,7 +373,7 @@ void dumpdata_init(dump_data_t *dumpdata, /* Dump data structure */
 /*-------------------------------------------------------------------*/
 void dumpdata_init_geom(parameters_t *params, geometry_t *geom, dump_data_t *dumpdata)
 {
-  int c, cc, e, ee, v, vv;
+  int c, cc, e;
   int i, j;
 
   if (!(geom->us_type & US_IJ)) return;
@@ -641,7 +641,7 @@ void sigma_vmap(master_t *master,       /* Global geometry structure */
   geometry_t *geom = master->geom;
   int i, j, k, kk, c, cs;
   int nz = geom->nz - 1;
-  double d;
+
 
   dumpdata->vmap = i_alloc_3d(geom->nfe1, geom->nfe2, geom->nz);
 

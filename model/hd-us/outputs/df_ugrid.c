@@ -580,7 +580,7 @@ void write_dump_attributes_ugrid3(dump_data_t *dumpdata, int cdfid,
   int has_proj = (strlen(projection) > 0);
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
   double fill;
-  int ifill;
+
   int nface2 = dumpdata->nface2;
   int nedge2 = dumpdata->nedge2;
   int nvertex2 = dumpdata->nvertex2;
@@ -1393,7 +1393,7 @@ void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   df_ugrid_data_t *data = (df_ugrid_data_t *)df->private_data;
   int fid = data->fid;
   geometry_t *geom = dumpdata->master->geom;
-  int c,cc;
+
   int oset = (dumpdata->start_index) ? 0 : 1;
 
   start[0] = data->nextrec;
@@ -1442,7 +1442,7 @@ void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t)
       */
     }  else if (vn.ndims == 2) {
       size_t sz;
-      int cc,c,k, kb;
+      int cc, k;
       double **w = dumpdata->wc;
 
       if (!vn.sediment) {
@@ -1485,7 +1485,7 @@ void df_ugrid3_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   df_ugrid_data_t *data = (df_ugrid_data_t *)df->private_data;
   int fid = data->fid;
   geometry_t *geom = dumpdata->master->geom;
-  int c,cc;
+
   int oset = (dumpdata->start_index) ? 0 : 1;
 
   start[0] = data->nextrec;
@@ -1546,7 +1546,7 @@ static void df_ugrid_writegeom(dump_data_t *dumpdata, dump_file_t *df)
   int oset = (dumpdata->start_index) ? 0 : 1;
   void (*i2) (int size, int np, int **var, int **pack, int oset) = NULL;
   void (*i2a) (int size, int np, int **var, int **pack, int oset) = NULL;
-  int n;
+
 
   if (dumpdata->face_dim)
     i2 = pack_ugrid_i2;
@@ -1676,7 +1676,7 @@ static void df_ugrid3_writegeom(dump_data_t *dumpdata, dump_file_t *df)
   int oset = (dumpdata->start_index) ? 0 : 1;
   void (*i2) (int size, int np, int **var, int **pack, int oset) = NULL;
   void (*i2a) (int size, int np, int **var, int **pack, int oset) = NULL;
-  int n;
+
 
   if (dumpdata->face_dim)
     i2 = pack_ugrid_i2;
@@ -2037,7 +2037,7 @@ int df_ugrid_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
 
 static void df_ugrid_init_data(dump_data_t *dumpdata, dump_file_t *df, int fid)
 {
-  int i, n;
+  int i;
   df_ugrid_data_t *data = NULL;
 
   df_parse_vars(dumpdata,df,NULL,UGRID_ALL_VARS);
@@ -2230,7 +2230,7 @@ static void df_ugrid3_get_dimsizes(dump_file_t *df,
 /*-------------------------------------------------------------------*/
 void pack_ugrid1(int *map, int mapsize, double *var, double *pack, int oset)
 {
-  int cc, c;
+  int cc;
 
   for (cc = 1; cc <= mapsize; cc++) {
     /*c = map[cc];*/
@@ -2311,7 +2311,7 @@ void pack_ugridi(int size, int *var, int *pack, int oset)
 void pack_ugrid_i2(int size, int np, int **var, int **pack, int oset)
 {
   int c, i;
-  int os = (oset) ? 0 : 1;
+
 
   for (c = 1; c <= size; c++) {
     for (i = 1; i <= np; i++) {
@@ -2323,7 +2323,7 @@ void pack_ugrid_i2(int size, int np, int **var, int **pack, int oset)
 void pack_ugrid_ri2(int size, int np, int **var, int **pack, int oset)
 {
   int c, i;
-  int os = (oset) ? 0 : 1;
+
 
   for (c = 1; c <= size; c++) {
     for (i = 1; i <= np; i++) {
@@ -3314,9 +3314,9 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
   size_t count[4] = {0, 0, 0, 0};
   size_t d;
   char key[MAXSTRLEN];
-  int dims[10];
-  int vid, oid, tid;
-  long t;
+
+  int oid, tid;
+
   double *layers;
   int nz, sednz;
   int nwin;
@@ -3742,7 +3742,7 @@ void read_windows_us(geometry_t *geom, geometry_t **window, char *name)
 void check_window_map_us(geometry_t **window, char *name)
 {
   geometry_t **win;
-  int e, ee, n, nn, j, c, c2, cc, v;
+  int e, ee, n, nn, c, cc, v;
 
   win = (geometry_t **)p_alloc_1d(window[1]->nwindows);
   read_windows_us(geom, win, name);

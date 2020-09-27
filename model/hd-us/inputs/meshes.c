@@ -1123,8 +1123,8 @@ delaunay *create_tri_mesh(int np, point *pin, int ns, int *sin, int nh, double *
     area = 0;
     for (n = 0; n < d->ntriangles; n++) {
       triangle* t = &d->triangles[n];
-      triangle_neighbours* nb = &d->neighbours[n];
-      circle* c = &d->circles[n];
+
+
       area += triarea(d->points[t->vids[0]].x, d->points[t->vids[0]].y,
 		      d->points[t->vids[1]].x, d->points[t->vids[1]].y,
 		      d->points[t->vids[2]].x, d->points[t->vids[2]].y);
@@ -1178,7 +1178,7 @@ delaunay *create_tri_mesh(int np, point *pin, int ns, int *sin, int nh, double *
 void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
 {
   FILE *fp, *cf, *ef, *vf, *bf;
-  char oname[MAXSTRLEN], key[MAXSTRLEN], buf[MAXSTRLEN];
+  char key[MAXSTRLEN], buf[MAXSTRLEN];
   int **mask;
   int *vmask, **vedge, *nvedge, *bmask;
   point *pin;
@@ -1189,16 +1189,16 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
   int verbose = 0;
   int filef = 1;
   int nnh = 0;
-  double dist, dmin;
-  double xn, yn, xs, ys;
-  double mlon, mlat;
+
+
+
   int nskip = 0;
   int sortdir = 1; /* Sort verices; 1=clockwise, -1=anticlockwise    */
   int debug = -1;  /* Debugging information for points index         */
   int isdedge = 0; /* Debugging location is an edge (not a point)    */
   int edqu = 0;    /* 1 = exit if closed cells can't be made         */
   int regadj = 0;  /* Adjustment for regular hex meshes              */
-  int nn;
+
   int vd;
 
   /*-----------------------------------------------------------------*/
@@ -1313,7 +1313,7 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
   for (n = 0; n < d->npoints; n++) {
     int nn, ce, cs, c1, c2;
     int is_closed = 0;
-    int cep, csp, cap[npe], cap2[npe], ip, ip2;
+    int cep, csp, ip, ip2;
     char p1[MAXSTRLEN], p2[MAXSTRLEN];
 
     if (!nvedge[n]) continue;
@@ -1515,9 +1515,9 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
   if (mode) {
   for (n = 0; n < d->npoints; n++) {
     int nn, dir;
-    double xsw = 1e10;
+
     double ysw = 1e10;
-    double xn;
+
     double eps, epsm;
     double xr, yr;
     double x0, y0, x1, y1;
@@ -1965,8 +1965,8 @@ int SortCornersClockwise(double x0, double y0, double x1, double y1, double rx, 
 void convert_tri_mesh(parameters_t *params, delaunay *d)
 {
   FILE *fp, *cf, *ef;
-  char oname[MAXSTRLEN], key[MAXSTRLEN], buf[MAXSTRLEN];
-  point *pin;
+  char key[MAXSTRLEN], buf[MAXSTRLEN];
+
   int npe = 3;            /* Delaunay tesselation */
   int i, j, n, m;
   int verbose = 0;
@@ -2002,7 +2002,7 @@ void convert_tri_mesh(parameters_t *params, delaunay *d)
 
   for (n = 0, i = 1; n < d->ntriangles; n++) {
     triangle* t = &d->triangles[n];
-    double x[3], y[3], c1, c2, area, ec;
+    double x[3], y[3], c1, c2, area;
     x[0] = d->points[t->vids[0]].x;
     y[0] = d->points[t->vids[0]].y;
     x[1] = d->points[t->vids[1]].x;
@@ -2100,10 +2100,10 @@ void convert_mesh_input(parameters_t *params,
   int ns2;               /* Number of cells                          */
   int npe;               /* Maximum number of vertices               */
   int *maskv;            /* Vertex mask                              */
-  int cc, c, cci, j, jj, i, n, cco;
+  int cc, cci, j, jj, i, n, cco;
   double x0, y0, x1, y1, x2, y2;
-  double *xv, *yv;
-  int iv;
+
+
   int oldcode = 0;
 
   if (DEBUG("init_m"))
@@ -2271,7 +2271,7 @@ void convert_mesh_input(parameters_t *params,
 /*-------------------------------------------------------------------*/
 void set_params_mesh(parameters_t *params, mesh_t *mesh, double **x, double **y)
 {
-  int cc;
+
 
   /* Set the grid code                                               */
   if (mesh->mnpe == 3) 
@@ -2325,10 +2325,10 @@ void set_params_mesh(parameters_t *params, mesh_t *mesh, double **x, double **y)
 /*-------------------------------------------------------------------*/
 void meshstruct_s(parameters_t *params, geometry_t *geom) 
 {
-  int cc, c, i, j, cco, n;
+  int cc, c, i, j, n;
   mesh_t *m;
   double **x, **y;
-  int mo2;              /* Max. # of cells in each open boundary */
+
   int filef = 1;
 
   /* Allocate                                                        */
@@ -2469,8 +2469,8 @@ void meshstruct_us(parameters_t *params)
   char key[MAXSTRLEN], buf[MAXSTRLEN];
   int cc, c, i, j, jj, cco, n;
   mesh_t *m;
-  int mo2;              /* Max. # of cells in each open boundary */
-  double bw, bo;
+
+
   double **x, **y;
   int *cmap;
   int verbose = 0;      /* Verbose output                            */
@@ -2747,7 +2747,7 @@ mesh_t *mesh_init(parameters_t *params, /* Input parameters          */
 		  int npe               /* Constant nodes per cell   */
 		  )
 {
-  int cc, n;
+  int cc;
 
   mesh_t *mesh = (mesh_t *)malloc(sizeof(mesh_t));
   memset(mesh, 0, sizeof(mesh_t));
@@ -3232,7 +3232,7 @@ int get_mesh_obc(parameters_t *params,
   /*-----------------------------------------------------------------*/
   /* Save the OBC locations to the mesh structure                    */
   for (m = 0; m < mesh->nobc; m++) {
-    open_bdrys_t *open = params->open[m];
+
     /*
     if (open->slat == NOTVALID || open->slon == NOTVALID ||
 	open->elat == NOTVALID || open->elon == NOTVALID)
@@ -3318,10 +3318,10 @@ int perimeter_mask(parameters_t *params,
 {
   FILE *fp;
   mesh_t *mesh = params->mesh;
-  char buf[MAXSTRLEN], keyword[MAXSTRLEN];
-  int n, m, cc, c, cn, cs, i, j, jj, jn, js, np;
+
+  int n, cc, c, cn, cs, j, jj, jn, js;
   int *mask;
-  int verbose = 0;
+
   int isclosed = 0;
   int found = 0;
 
@@ -3445,7 +3445,7 @@ void write_mesh_us(parameters_t *params,
 		                /* 8 = grid output from mesh         */
 		   )
 {
-  int n, cc, i, j, m;
+  int n, cc, j;
   mesh_t *mesh = params->mesh;
   int ns2 = mesh->ns2;
 
@@ -3590,7 +3590,7 @@ void write_mesh_us(parameters_t *params,
 int read_mesh_us(parameters_t *params)
 {
   mesh_t *mesh;
-  char buf[MAXSTRLEN], oname[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *fields[MAXSTRLEN * MAXNUMARGS];
   FILE *op;
   int i, n, c, cc, np, m, ns, j;
@@ -3796,11 +3796,11 @@ void create_hex_radius(double crad,   /* Radius in metres     */
   /* Constants */
   int cst_res  = 250;    /* resolution for coastline in m       */
   int nHfun    = 100;    /* (Nhfun x Nhfun) resolution matrix   */
-  double deg2m = 60.0 * 1852.0;
+
   double x00r, y00r;
   
   /* local variables */
-  double cang = crad / deg2m; /* Radius in degress */
+
   int npts, n, i, j;
   int jret = 0;
   
@@ -3808,7 +3808,7 @@ void create_hex_radius(double crad,   /* Radius in metres     */
   jigsaw_jig_t J_jig;
   jigsaw_msh_t J_geom;
   jigsaw_msh_t J_hfun;
-  jigsaw_msh_t J_hfun_new;
+
 
   /* Convenient pointers */
   jigsaw_VERT2_array_t *jpoints = &J_geom._vert2;
@@ -3925,14 +3925,14 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   char vname[MAXSTRLEN];
   GRID_SPECS *gs = NULL;
   int nbath;
-  int **nei;
+
   double *x, *y, *b, *r;
-  double *hfun, xloc, yloc;
+  double xloc, yloc;
   int n, m, i, j, nhfun, intype, bmf = 1;
   int imeth = 0;
   int verbose = 0;
   int filef = 1;
-  int gridf = 0;
+
   int orf = 0;
   int sn, smooth = 0;
   int nce1, nce2;
@@ -3945,7 +3945,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   double deg2m = 60.0 * 1852.0;
   double expf = 0.0;
   double cres = 0.0;
-  delaunay *d;
+
   jigsaw_REALS_array_t *hfvals = &J_hfun->_value;
   jigsaw_REALS_array_t *hfx    = &J_hfun->_xgrid;
   jigsaw_REALS_array_t *hfy    = &J_hfun->_ygrid;
@@ -4178,8 +4178,8 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   /* Make a gridded bathymetry                                       */
   if(imeth & I_NC) {
     /* Interpolation from structured input using ts_read().          */
-    size_t start[4];
-    size_t count[4];
+
+
     timeseries_t *ts = NULL;
     int idb;
 
@@ -4791,12 +4791,12 @@ double bathyset(double b,
 /*-------------------------------------------------------------------*/
 void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, int mode)
 {
-  FILE *fp = params->prmfd, *ef, *bf, *hf;
+  FILE *fp = params->prmfd, *ef, *hf;
   char buf[MAXSTRLEN], key[MAXSTRLEN];
-  int nbath;
-  double *x, *y, *b, *r;
-  double *hfun, xloc, yloc;
-  int n, m, i, j, nhfun, intype, bmf = 0;
+
+  double *b, *r;
+  double xloc, yloc;
+  int n, m, i, j, nhfun, bmf = 0;
   int imeth = 0;
   int verbose = 0;
   int filef = 1;
@@ -5242,7 +5242,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
 double coast_dist(msh_t *msh, double xloc, double yloc)
 {
   int n;
-  double d, x, y, dx, dy;
+  double d, x, y;
   double dist = HUGE;
 
   for (n = 0; n < msh->npoint; n++) {
@@ -5266,7 +5266,7 @@ double coast_dist(msh_t *msh, double xloc, double yloc)
 double point_dist(int npoints, point *p, double xloc, double yloc)
 {
   int n;
-  double d, x, y, dx, dy;
+  double d, x, y;
   double dist = HUGE;
 
   for (n = 0; n < npoints; n++) {
@@ -5327,7 +5327,7 @@ void create_bounded_mesh(int npts,     /* Number of perimeter points */
   int np = npts - 1;
 
   /* local variables                                                 */
-  int n, i, j;
+  int n;
   int jret = 0;
   
   /* Jigsaw variables                                                */
@@ -5474,10 +5474,10 @@ void create_jigsaw_mesh(coamsh_t *cm,
   /* Constants                                                       */
   double deg2m = 60.0 * 1852.0;
   msh_t *msh = cm->msh;
-  jig_t *jig = cm->jig;
+
 
   /* local variables                                                 */
-  int n, i, j;
+  int n;
   int jret = 0;
   
   /* Jigsaw variables                                                */
@@ -5610,17 +5610,17 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
   FILE *fp, *ef, *vf, *tf, *cf, *jf, *cef;
   int meshid;
   int ndims;
-  int npoints;
+
   int n, nn, i, j, m, mm, id;
   int e1, e2, t1, t2;
-  char buf[MAXSTRLEN], code[MAXSTRLEN], key[MAXSTRLEN];
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
   char mshtype[MAXSTRLEN];
   double x1, y1, x2, y2, d1, d2;
-  double nvoints, nvedges;
-  double radius;
-  point *voints;
+
+
+
   delaunay* d;
-  triangle* t, tn;
+  triangle* t;
   int ns, *sin, *edges, *mask, **nei, **e2t;
   int intype;
   int has_proj = (strlen(params->projection) > 0);
@@ -7770,7 +7770,7 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
   int cc, c, ci, cn, j, n, ns, ns2i;
   double dist, dmin;
   int found, ni, *film, *filla;
-  double mlat, mlon, x, y;
+  double x, y;
   int verbose = 0;
   int **neic;
   int *n2o, *o2n;
@@ -7897,8 +7897,8 @@ int mesh_expand_w(geometry_t *window,  /* Window geometry            */
 		  int *vec)            /* Return vector              */
 {
   int cc, c, c2, ci, cn, j;
-  int found, ni, *film, *filla;
-  int verbose = 0;
+  int found, ni, *filla;
+
 
   /* Set the mask fanning out from the interior coordinate           */
   ci = 1;
@@ -7948,12 +7948,12 @@ int mesh_expand_3d(geometry_t *window,  /* Window geometry           */
 		   )            
 {
   win_priv_t *wincon = window->wincon;
-  window_t *windat = window->windat;
-  int cc, c, c2, ci, cn, j, cm, n;
+
+  int cc, c, c2, n;
   int e, ee;
-  int found, ni, *film, *filla;
+  int ni, *filla;
   int dir;
-  double d1;
+
   int *vec = wincon->s6;
   int *c2cc = wincon->s7;
 
@@ -8062,7 +8062,7 @@ void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
 {
   mesh_t *mesh = params->mesh;
   int cc, c, cn, cs, j, n, ns, ns2i;
-  int ni, *mask;
+  int *mask;
   int verbose = 0;
   int **neic;
   int *n2o, *o2n;
@@ -8162,7 +8162,7 @@ void xy_to_d(delaunay *d, int np, double *x, double *y)
 
   pin = malloc(np * sizeof(point));
   for(i = 0; i < np; i++) {
-    point* p = &params->d->points[i];
+
     pin[i].x = x[i];
     pin[i].y = y[i];
   }
@@ -8216,7 +8216,7 @@ void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
 {
   FILE *op;
   char buf[MAXSTRLEN], key[MAXSTRLEN], key1[MAXSTRLEN];
-  int n, i;
+  int i;
 
   mesh_ofile_name(params, key);
 
@@ -8306,7 +8306,7 @@ void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
   }
 
   if (mode & M_MESHSTRUCT) {
-    mesh_t *mesh = params->mesh;
+
     fprintf(op, "---------------------------------------------\n");
     fprintf(op, "Files produced converting to COMPAS mesh specification.\n");
     sprintf(buf,"%s_e.txt", key);
@@ -8337,7 +8337,7 @@ void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
 delaunay*  make_dual(geometry_t *geom, int kin)
 {
   delaunay* d = delaunay_create();
-  int c, c2, ci, cn, cc, ee, e;
+  int c, c2, ci, cn, cc, ee;
   int i, j, jj, k, n;
   int **nei;
   int *mask;

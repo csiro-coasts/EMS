@@ -88,11 +88,11 @@ void load_tracer_step_2d(parameters_t *params, master_t *master, FILE * fp)
 void load_wc_tracer_step_3d(parameters_t *params, master_t *master,
                             FILE * fp)
 {
-  int c, cs, cc;
-  int i, j, k;
+
+
   int t;
   char buf[MAXSTRLEN];
-  char buf2[MAXSTRLEN];
+
   char tag[MAXSTRLEN];
   geometry_t *geom = master->sgrid;
 
@@ -156,7 +156,7 @@ void load_wc_tracer_step_3d(parameters_t *params, master_t *master,
 /*------------------------------------------------------------------*/
 void scale_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n)
 {
-  int c, cc, id;
+  int c, cc;
   int *vec, nvec;
   int flag = trinfo[n].flag;
   double scale = trinfo[n].scale;
@@ -204,7 +204,7 @@ void scale_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n)
 /*------------------------------------------------------------------*/
 void filter_tracer(tracer_info_t *trinfo, geometry_t *geom, double **tr, int n)
 {
-  int c, cc, cp, cm, id, i, m;
+  int c, cc, cp, cm, i, m;
   int *vec, nvec;
   int flag = trinfo[n].flag;
   double scale = 0.25;
@@ -375,10 +375,10 @@ void temp_salt_init(parameters_t *params, master_t *master)
 void load_wc_tracer_step_2d(parameters_t *params, master_t *master,
                             FILE * fp)
 {
-  int c, cs, cc;
-  int i, j, k;
+ 
+
   int t;
-  char buf[MAXSTRLEN];
+
   char buf2[MAXSTRLEN];
   char tag[MAXSTRLEN];
   geometry_t *geom = master->sgrid;
@@ -1966,7 +1966,7 @@ void init_tracer_sed(parameters_t *params, /* Input parameters data  */
   )
 {
   int tn;
-  geometry_t *geom = master->sgrid;
+
   char buf[MAXSTRLEN];
   tn = 0;
 
@@ -4103,12 +4103,12 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
 /*------------------------------------------------------------------*/
 void load_sed_tracer_step_3d(master_t *master, FILE * fp)
 {
-  int k, c, cc;
+
   int t;
   char buf[MAXSTRLEN];
   char buf2[MAXSTRLEN];
   char tag[MAXSTRLEN];
-  geometry_t *geom = master->sgrid;
+
 
   /* Load up the default tracer values */
   load_sed_tracer_defaults(master);
@@ -6616,9 +6616,9 @@ void value_init_3d(master_t *master,     /* Master data              */
   int nz = geom->nz;
   int c, cc, cs;
   int i, j, k, n;
-  int number, nvals;
+  int nvals;
   char buf[MAXSTRLEN], key[MAXSTRLEN], sgn[MAXSTRLEN], line[MAXSTRLEN];
-  double val, v1, v2, *d1 = NULL, ***d2;
+  double val, v1, v2, *d1 = NULL;
   int *vec, nvec;
   int size;
 
@@ -6892,7 +6892,7 @@ int value_init_sparse2d(master_t *master,   /* Master data           */
 {
   geometry_t *geom = master->geom;
   char i_rule[MAXSTRLEN];
-  char buf[MAXSTRLEN];
+
   GRID_SPECS *gs = NULL;
   int nvar;
   double *x, *y, *v, **botz, **cellx, **celly, **var;
@@ -7416,7 +7416,7 @@ void tracer_fill(master_t *master,   /* Master structure             */
       tmp[c] = tmp[cm];
     }
     for (cc = 1; cc <= vc; cc++) {
-      int j, cn, cs;
+      int j, cs;
       double val = ret[c];
       c = vec[cc];
       cs = geom->m2d[c];
@@ -7500,7 +7500,7 @@ void tracer_fill(master_t *master,   /* Master structure             */
 void dens_profile(master_t *master, geometry_t *geom, double *ret, double v1, double v2)
 {
   double *d1 = NULL, dt, db;
-  int cc, c, cs, cb, k;
+  int cc, c, cs, k;
 
   density_m(master);
   d1 = d_alloc_1d(geom->nz + 1);
@@ -7543,7 +7543,7 @@ void dens_profile(master_t *master, geometry_t *geom, double *ret, double v1, do
 /*-------------------------------------------------------------------*/
 void dens_grad(master_t *master, geometry_t *geom, double *ret, double v1, double v2) 
 {
-  double *d1 = NULL, dt, db;
+  double *d1 = NULL, dt;
   int cc, c, cs, cb;
   int zm1, zp1;
   double ddendz, dtdz, vb;
@@ -7707,8 +7707,8 @@ void dens_scale_file(master_t *master,
 		     double v2, 
 		     char *sgn) 
 {
-  double *d1 = NULL, dt, db, vs;
-  int cc, c, cs, cb;
+  double dt, db, vs;
+  int cc, c, cs;
   int zm1, zp1;
   double s = 1.0;
   timeseries_t *ts;
@@ -7792,7 +7792,7 @@ void dens_grad_file(master_t *master,
 		    char *vname, 
 		    char *infile) 
 {
-  double *d1 = NULL, dt, db, vs;
+
   int cc, c, cs, cb;
   int zm1, zp1;
   timeseries_t *ts;
@@ -7869,7 +7869,7 @@ void dens_scale_mid(master_t *master,
 		    double v2, 
 		    char *sgn) 
 {
-  double *d1 = NULL, dt, db, vs;
+  double dt, db, vs;
   int cc, c, cs, cb, cm;
   int zm1, zp1;
   timeseries_t *ts;
@@ -7970,7 +7970,7 @@ void value_init_2d(master_t *master,     /* Master data              */
   int nce2 = geom->nce2;
   int c, cc;
   int i, j, n;
-  int number, nvals;
+  int nvals;
   char buf[MAXSTRLEN];
   double val, **d2;
   double *d1 = NULL;
@@ -8154,9 +8154,9 @@ void value_init_sed(master_t *master,      /* Master data            */
   int nz = geom->sednz;
   int c, cc;
   int i, j, k, n;
-  int number, nvals;
+  int nvals;
   char buf[MAXSTRLEN];
-  double val, ***d2;
+  double val;
   double *d1 = NULL;
   int *vec, nvec;
   int size;

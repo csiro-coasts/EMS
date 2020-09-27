@@ -149,7 +149,7 @@ void tracer_step(master_t *master,    /* Master data                 */
                  int nwindows         /* Number windows to process   */
   )
 {
-  int n, nn, tn;                /* Counter                           */
+  int n, nn;                /* Counter                           */
 
   /*-----------------------------------------------------------------*/
   /* Solve the tracer equation in each window                        */
@@ -329,7 +329,7 @@ void tracer_step_2d(geometry_t *window, /* Window geometry           */
   )
 {
   int e, ee, e2;                /* Edge coordinate, counter          */
-  int c, cc, c2;                /* Sparse coordinate / counter       */
+  int c, cc;                    /* Sparse coordinate / counter       */
 
   /*-----------------------------------------------------------------*/
   /* Set the maps to be self-mapping across tracer OBC's             */
@@ -404,7 +404,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   int vc1;                      /* As for vc excluding OBC cells     */
   int vcs1;                     /* As for vcs excluding OBC cells    */
   int ee, e, e1, e2;            /* Edge coordinate, counter          */
-  int j, j1;
+  int j;
   int zp1;                      /* k index at k+1                    */
   int zm1;                      /* k index at k-1                    */
   double top;                   /* Flux through the surface cell     */
@@ -415,7 +415,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   double *osubeta;              /* Old surface elevation at sub-timestep */
   double *subeta;               /* Surface elevation at sub-timestep */
   double *msubeta;              /* Mid surface elevation for FCT     */
-  double d1, d2, d3, d4;        /* Dummy variables                   */
+  double d1, d3, d4;            /* Dummy variables                   */
   int ksf;                      /* Surface layer for sigma / Cartesian */
   double sf = 0.8;              /* Fraction of sub-timestep to use   */
   double minval = 1e-10;        /* Minimum value for velocity        */
@@ -426,7 +426,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   double vm = 0.0, vs = 0.0;    /* Sub-step Courant number & grid spacing */
   char vt[4];                   /* Name of sub-step velocity component */
   double *u1, *u, *v, *w;
-  double kzlim;
+
   int cdb = 0;
 
   /*-----------------------------------------------------------------*/
@@ -1126,7 +1126,7 @@ int advect_diffuse_2d(geometry_t *window,  /* Window geometry        */
   double trem;                  /* Time remaining                    */
   double *osubeta;              /* Old surface elevation at sub-timestep */
   double *subeta;               /* Surface elevation at sub-timestep */
-  double d1, d2, d4;            /* Dummy variables                   */
+  double d1, d4;                /* Dummy variables                   */
   double sf = 0.8;              /* Fraction of sub-timestep to use   */
   double minval = 1e-10;        /* Minimum value for velocity        */
   int slf = 1;                  /* Set to zero on the first sub-step */
@@ -2036,7 +2036,7 @@ void quickest_uniform(geometry_t *window,     /* Window geometry     */
   double face;                  /* Concentration value at the faces  */
   double grad;                  /* Concentration difference across a face */
   double curv;                  /* Concentration curvature across a face */
-  double cx, cy, cz;            /* Courant number in the x,y,z directions */
+  double cx, cz;                /* Courant number in the x,y,z directions */
 
   /*-----------------------------------------------------------------*/
   /* Initialise the flux array.                                      */
@@ -2299,7 +2299,7 @@ void order2_upwind_do(double *F,   /* Flux array                     */
 		      int cm2      /* Cell behind cm1                */
 		      )
 {
-  double df;
+
 
   if (vel[e] > 0.0) {
     F[e] = 0.5 * (3.0 - cn[e]) * tr[cm1] -
@@ -2397,7 +2397,7 @@ void ff_sl_do_vert(double *vel,   /* Velocity at the cell face */
 		   double *crf     /* Fractional component of trajectory */
   )
 {
-  int c, cc, cp, cpb, c2;
+  int c, cc, cp, cpb;
   double ltraj, lrem, dz;
 
   for (cc = ss; cc <= se; cc++) {
@@ -2513,8 +2513,8 @@ double surf_conc(geometry_t *window, /* Window geometry              */
   double dtr, cnt;       /* Diagnostics for continuity               */
   int dc = 0;            /* Diagnostic continuity surface coordinate */
   int dw = 1;            /* Window for diagnostic continuity         */
-  double div = 0.0;
-  double diff;
+
+
   double dtu = wincon->b1;
   int e, j;
 
@@ -2783,7 +2783,7 @@ void tr_set_surf(geometry_t *window,        /* Window geometry       */
 		 win_priv_t *wincon         /* Window constants      */
 		 )
 {
-  int c, cs, cc, n, nn;
+  int c, cs, cc, n;
 
   /* Set all layers above the surface to surface layer               */
   if (!wincon->sigma) {
@@ -2898,7 +2898,7 @@ void check_fluxes(int n,                         /* Tracer number    */
   double d1, f1, f2, f3;
 
   if (strcmp(trname, wincon->trname[n]) == 0) {
-    double min = wincon->mintr[n];
+
     double max = wincon->maxtr[n];
     for (cc = 1; cc <= wincon->vc1; cc++) {
       c = wincon->s1[cc];
@@ -3275,9 +3275,9 @@ void get_advect_metrics(geometry_t *window,   /* Processing window   */
 			win_priv_t *wincon,   /* Window constants    */
 			int e)                /* Edge index          */
 {
-  int n, cc, c, cn, i, j, jj;
+  int n, c, cn, j, jj;
   int en, vn;
-  double theta, thb, thc, a, h, npe;
+  double theta, thb, thc, h, npe;
   /*int nop = 6;*/    /* Number of polynomial coefficients               */
   int nos = 3;    /* Coefficient number corresponding to x * x       */
   int ef = 1;     /* Include vertex values in least squares          */
@@ -3500,9 +3500,9 @@ void get_quadratic_metrics(geometry_t *window, /* Processing window  */
 			   win_priv_t *wincon, /* Window constants   */
 			   int e)              /* Edge index         */
 {
-  int n, m, cc, c, cs, cn, i, j, jj;
-  int eoe, en, vn;
-  double theta, thb, thc, a, h;
+  int n, c, cs, i, j, jj;
+
+  double theta, thb, thc;
   /*int nop = 6;*/    /* Number of polynomial coefficients               */
   int nuc = 3;    /* Number of polynomial coefficients to use        */
   int uc[3] = { 0, 1, 3 };  /* Polynomial coefficients to use        */
@@ -3510,7 +3510,7 @@ void get_quadratic_metrics(geometry_t *window, /* Processing window  */
   int dotest = 0; /* Perform testing on regression and weights       */
   double d, x, y, **p, **b;
   double *f, *s, *w, *std;
-  double **coeff;
+
   int npem = wincon->nBcell[e];
   int *cells = wincon->Bcell[e];
   int es = window->m2de[e];
@@ -3615,7 +3615,7 @@ double get_quadratic_value(geometry_t *window, /* Processing window  */
 			   int j               /* Edge direction     */
 			   )
 {
-  int i, jj, n, c, ci;
+  int jj, n, c, ci;
   int nuc = 3;    /* Number of polynomial coefficients to use        */
   int npem;
   double coeff[nuc];
@@ -3673,9 +3673,9 @@ void build_linear_weights(geometry_t *window, /* Processing window   */
 			  )
 {
   qweights *lw;
-  int cc, c, cs, c2, ci, zp1, zm1, ee;
-  int n, m, eoe, sb;
-  int *mask = wincon->s1;
+  int cc, c, c2, ci, zp1, zm1;
+  int n, m;
+
   int *st = NULL, sz, szc, szm;
   int i, cn, cns, cg, cgs;
   double dz, **xc, **yc, **zc;
@@ -4001,11 +4001,11 @@ void get_linear_metrics(geometry_t *window,    /* Processing window  */
 			)
 {
   qweights *lw = &wincon->lw[co];
-  int n, m, cc, c, cn, i, j, jj;
+  int n, c, j, jj;
   int nuc = 4;    /* Number of polynomial coefficients               */
   double x, y, z, **p, **b;
   double *f, *s, *w, *std;
-  double **coeff;
+
   int npem = lw->ncells;
   int *cells = lw->cells;
   int cs = window->m2d[co];
@@ -4331,7 +4331,7 @@ double vertex_weighted_tr(geometry_t *window,   /* Processing window */
 {
   int cc, c;
   int vs = window->m2dv[v];
-  double d1 = 1.0 / window->dualarea[vs];
+
   double ret = 0.0;
 
   for (cc = 1; cc <= window->nvc[vs]; cc++) {
@@ -4390,7 +4390,7 @@ void hor_diffuse(geometry_t *window,  /* Window geometry             */
 {
   int e, ee, es;                /* Sparse indices                    */
   int j, c1, c2, cp;            /* 2D cell corresponding to 3D cell  */
-  double csx, csy;              /* Cross sectional areas             */
+  double csx;                   /* Cross sectional areas             */
 
   /*-----------------------------------------------------------------*/
   /* Assignment of work arrays                                       */
@@ -4465,8 +4465,8 @@ void hor_diffuse_2d(geometry_t *window, /* Window geometry           */
   )
 {
   int e, ee, es;                /* Sparse indices                    */
-  int j, c1, c2, cp;            /* 2D cell corresponding to 3D cell  */
-  double csx, csy;              /* Cross sectional areas */
+  int c1, c2;                   /* 2D cell corresponding to 3D cell  */
+  double csx;                   /* Cross sectional areas */
 
   /*-----------------------------------------------------------------*/
   /* Get the face centered diffusivity                               *
@@ -4968,8 +4968,8 @@ void auxiliary_routines(geometry_t *window, /* Window geometry       */
 			)
 {
   int nn;
-  int cc, c, c2, cb;
-  double h1, h2, diff;
+
+
 
   /*-----------------------------------------------------------------*/
   /* Reset dz and the cells to process to correspond to the updated  */
@@ -5615,7 +5615,7 @@ void set_OBC_tr(int tn,             /* Tracer number                 */
   /* Fit a value to the surface and bottom and a profile by          */
   /* incrementing this value by a scaled vertical density difference.*/ 
   if (bcond & DESCAL && scale.type & TRSC_DEN) {
-    int zm1, zp1, cs, cb, cm;
+    int zm1, zp1, cs, cm;
     double dt, db, vs, ov;
     /* Fix the tracer to a mid-depth value from file and construct   */
     /* the profile upwards and downwards.                            */
@@ -5807,7 +5807,7 @@ void upstrm(geometry_t *window,             /* Window geometry       */
     /* Characteristic method for use with LAGRANGE                   */
     memset(open->dum, 0, (open->no3_t + 1) * sizeof(double));
     for (ee = 1; ee <= open->no3_e1; ee++) {
-      int j = open->outi[ee];
+
       e = open->obc_e1[ee];
       es = window->m2de[e];
       c = open->obc_e2[ee];
@@ -5826,7 +5826,7 @@ void upstrm(geometry_t *window,             /* Window geometry       */
   } else {    
     /* Tracer in boundary ghost cell is updated using face velocity  */
     if (mode & GHOST) {
-      double d1;
+
       if (open->rlen) {
 	for (ee = 1; ee <= open->no3_e1; ee++) {
 	  e = open->obc_e1[ee];
@@ -5985,7 +5985,7 @@ void reset_tr_OBCflux(geometry_t *window,  /* Processing window      */
 	       int tn               /* Tracer number                 */
 	       )
 {
-  int c, cc, e, ee, c2, n, m, nn, zm1, nc;
+  int c, cc, e, ee, n, nn;
 
   /* Return if no tracers in this window have OBCs TRFLUX            */
   if (!(wincon->obctr[tn] & (TRFLUX|TRCONF))) return;
@@ -6078,7 +6078,7 @@ void set_lateral_BC_tr(double **tr, /* Tracer array                  */
                        int *bin     /* Interior cells to bpt         */
   )
 {
-  int c1, c2, cc, n, nn;            /* Counters                      */
+  int c1, c2, cc, n;                /* Counters                      */
 
   /* Set the boundary conditions (no flux)                           */
   for (cc = 1; cc <= sgbpt; cc++) {
@@ -6099,7 +6099,7 @@ void set_lateral_BC_tr(double **tr, /* Tracer array                  */
 /*-------------------------------------------------------------------*/
 void set_lateral_bdry_tr(geometry_t *window, window_t *windat, win_priv_t *wincon)
 {
-  int e, ee, c, cc, n, nn, tn, co;
+  int ee, c, n, nn, tn, co;
 
   for (n = 0; n < window->nobc; n++) {
     open_bdrys_t *open = window->open[n];
@@ -6498,8 +6498,8 @@ void set_map_t(geometry_t *window /* Window geometry                 */
   )
 {
   int n;
-  int cc, cs, c;
-  int ee, es, e;
+  int c;
+  int ee;
   open_bdrys_t **open = window->open;
 
   for (n = 0; n < window->nobc; n++) {
@@ -7255,7 +7255,7 @@ void init_age(master_t *master,        /* Master data structure      */
 	      )
 {
   geometry_t *geom = master->geom;
-  int c, gc, cc, m, n, i, j;
+  int c, gc, cc, m, n;
   FILE *fp = master->prmfd;
   char *files[MAXSTRLEN * MAXNUMARGS], buf[MAXSTRLEN];
   double d1, d2, top, bot;
@@ -7373,12 +7373,12 @@ void init_trperc(master_t *master,     /* Master data structure      */
 		 )
 {
   geometry_t *geom = master->geom;
-  int c, gc, cc, m, n, i, j;
+  int c, gc, cc, m, n;
   FILE *fp = master->prmfd;
   char *files[MAXSTRLEN * MAXNUMARGS], buf[MAXSTRLEN];
   double d1, d2, top, bot;
   short *percmsk;
-  int nf, kl;
+  int nf;
   int surff = 0;
 
   n = 0;
@@ -7853,7 +7853,7 @@ void get_bdry_cellno(geometry_t *window, /* Processing window        */
 		     win_priv_t *wincon  /* Window constants         */
   )
 {
-  int n, nn, c, cc, c2, zm1;
+  int nn, c, cc, c2, zm1;
 
   for (nn = 0; nn < window->nobc; nn++) {
     open_bdrys_t *open = window->open[nn]; 
@@ -8091,11 +8091,11 @@ double swr_params_event(geometry_t *window,
 			int n
 			)
 {
-  int tn, k, c, cc, cs, cb, c2, cd, ks, kb, m;
+  int k, c, cc, cs, cb, c2, cd, ks, kb, m;
   int i1, i2, zm1, zp1;
   double *tr = windat->tr_wc[n];    /* Temperature tracer            */
-  double *ghrsst;                   /* GHRSST tracer                 */
-  double *topflux = windat->heatf;  /* Surface flux                  */
+
+
   double *Splus = wincon->w8;   /* swr source                        */
   int *ctp = wincon->i2;        /* Old surface sparse coordinate     */
   int *cbt = wincon->i5;        /* Bottom sparse coordinate          */
@@ -8103,7 +8103,7 @@ double swr_params_event(geometry_t *window,
   double *dzcell = wincon->w9;  /* Cell centered cell thickness      */
   double *Kz = wincon->w10;     /* Vertical diffusivity              */
   double *Cm1 = wincon->w1;     /* Constant for implicit calculation */
-  double *C = wincon->w2;       /* Constant for implicit calculation */
+
   double *Cp1 = wincon->w3;     /* Constant for implicit calculation */
   double *temp = wincon->v1;    /* Temperature vector                */
   double attn;                  /* swr attenuation                   */

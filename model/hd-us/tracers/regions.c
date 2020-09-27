@@ -61,8 +61,8 @@ void init_regions_g(master_t *master, parameters_t *params)
 {
   geometry_t *geom = master->geom;
   int nregions;
-  int n, m, ntr, rn, c, cc, cs, c1;
-  int ee, e;
+  int n, m, ntr, rn, c, cc, c1;
+  int ee;
   region_t *region;
   char *fields[MAXSTRLEN * MAXNUMARGS];
   int varf = 0, *nobc;
@@ -388,8 +388,8 @@ void init_regions_w(master_t *master, geometry_t **window)
 {
   geometry_t *geom = master->geom;
   region_t *region;
-  int n, m, nr, wn, wr;
-  int c, cc, c1, bb, ee, e;
+  int n, m, nr, wn;
+  int c, cc, c1, bb, ee;
   int nregions, *nobc, **rmap;
 
   if (geom->nregions == 0)
@@ -612,7 +612,7 @@ void init_regions_w(master_t *master, geometry_t **window)
 /*-------------------------------------------------------------------*/
 void get_regions(geometry_t *win, region_t *region, double *mask, int nregions)
 {
-  int c, cc, e, ee, c2, cn, cr, bb, m, rn, hr, j;
+  int c, cc, e, ee, c2, cn, cr, bb, m, rn, j;
   int n = region->id;
 
   /*-----------------------------------------------------------------*/
@@ -811,7 +811,7 @@ void get_regions(geometry_t *win, region_t *region, double *mask, int nregions)
 void region_transfer(master_t *master, geometry_t *window)
 {
   geometry_t *geom = master->geom;
-  int n, m, wn, c, cc, tt, bb, bg;
+  int n, m, tt, bb, bg;
   region_t *region, *region_w;
 
   if (geom->nwindows > 1) {
@@ -864,8 +864,8 @@ void region_mass(geometry_t *window,
 		 window_t *windat, 
 		 win_priv_t *wincon)
 {
-  int n, tn, tt, c, cc, cs, bb, bn;
-  double dtr, mass;
+  int n, tn, tt, c, cc, cs;
+  double mass;
   double dt = windat->dttr;
   int pf = -1;
   double scale = 1.0 / 86400.0;
@@ -1076,7 +1076,7 @@ void region_schedule(region_t *region, double dt, double trem, char *timeunit)
 void region_flux_coup(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		      double *Fx, double *Fz, double dt, int trn)
 {
-  int n, tt, tn, c, cc, ee, e, cs, bb, bn;
+  int n, tt, c, cc, ee, e, bb, bn;
 
   for (n = 0; n < window->nregions; n++) {
     region_t *region = window->region[n];
@@ -1172,7 +1172,7 @@ int read_region(master_t *master, parameters_t *params)
   timeseries_t *ts;
   int timeindex = 0;
   int fid, ncerr, id, nregions;
-  int n, c, cc, cs, c1, ee, e;
+  int n, c, cc, cs, c1, ee;
   double d1;
   size_t nr, nce1, nce2, nz, record;
   char buf[MAXSTRLEN];
@@ -1440,7 +1440,7 @@ int read_regioni(master_t *master, char *rname, double *regionid)
 /*-------------------------------------------------------------------*/
 int read_region_us(geometry_t *geom, char *name, double *regionid)
 {
-  int varid;
+
   char i_rule[MAXSTRLEN];
   GRID_SPECS *gs = NULL;
   double *x, *y, **b, **xv, **yv;
@@ -1608,7 +1608,7 @@ void dump_regions(master_t *master)
 /*-------------------------------------------------------------------*/
 void region_print(master_t *master, region_t *region)
 {
-  geometry_t *geom = master->geom;
+
   int tt, tn, bb;
   char key[MAXSTRLEN];
   double time;
@@ -1644,7 +1644,7 @@ void region_print(master_t *master, region_t *region)
 /*-------------------------------------------------------------------*/
 void region_write(master_t *master, region_t *region)
 {
-  geometry_t *geom = master->geom;
+
   int n, tt, tn, bb, bn;
   double d1, time;
 
@@ -1987,14 +1987,14 @@ void region_flux_trans(geometry_t *window,  /* Window geometry       */
 		       )
 {
   int c, cs, cc, j, c1, c2;
-  int tt, tn, dr, sr, m;
+  int tt, dr, sr, m;
   int *S = wincon->s2;
   double **A= wincon->wgt;
   double *obc = wincon->w5;
   double *tr = windat->tr_wc[trn];
   double cellvol;
   region_t **region=window->region;
-  int found;
+
 
   /* To implement unstructed, we need to extract the weights and     */
   /* and cells the weights are applied to from the interpolator      */
@@ -2092,7 +2092,7 @@ void region_mass_tr(geometry_t *window,  /* Window geometry     */
 		    int mode             /* Array to increment */
 		    )
 {
-  int m, tt, tn, c, cc, cs;
+  int m, tt, c, cc, cs;
   double *tr;
   region_t **region=window->region;
   double *vec;

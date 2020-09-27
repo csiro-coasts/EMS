@@ -61,7 +61,7 @@ double ptrack_event(sched_event_t *event, double t)
 {
   double tout = schedule->stop_time;
   master_t *master = (master_t *)schedGetPublicData(event);
-    int n;
+
   /* If no particle output file is open, then assume nothing needs */
   /* to be done.  */
   if (master->ptfid < 0)
@@ -654,7 +654,7 @@ void ptgrid_xytoij(master_t *master, long np, particle_t *p)
 /*-------------------------------------------------------------------*/
 void ptgrid_ijtoxy(master_t *master, long np, particle_t *p)
 {
-  int n;
+
   return;
 }
 
@@ -766,7 +766,7 @@ void pt_split(master_t *master, long np, particle_t *p,
 {
   int i = 0;
   int n = 0;
-  int raninit = 0;
+
 
   int count = 0;
 
@@ -774,8 +774,8 @@ void pt_split(master_t *master, long np, particle_t *p,
   while (count < 1) {
     /* Look for inactive or lost particles */
     if (!(p[n].flag & PT_ACTIVE) || (p[n].flag & PT_LOST)) {
-      double r1 = ran3(&raninit);
-      double r2 = ran3(&raninit);
+
+
 
       /* Having computed the frational hrizontal and vertical */
       /* distances, compute the XYZ location and convert the XY */
@@ -900,9 +900,9 @@ void pt_fit_to_grid(master_t *master, long np, particle_t *p)
 /*-------------------------------------------------------------------*/
 void pt_write_at_t(master_t *master, double t)
 {
-  particle_t *pcopy;
+
   double newt = t;
-  int n;
+
   if (DEBUG("particles"))
     dlog("particles", "Writing particles to file at t=%f\n", master->t);
 
@@ -943,7 +943,7 @@ void pt_update(master_t *master,
   if (master->t + master->dt / 2 >= master->ptnext_t) {
     int n;
     int cc, c, c2;
-    double x, y, z;
+
     double maxdh;
     pt_ts_t *u_i = master->uvel_i;
     pt_ts_t *v_i = master->vvel_i;
@@ -1234,7 +1234,7 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
   double SCALE = 0.95;          /* Use 95% of allowable sub-timestep */
   int raninit = 0;
   int nloop = 0;
-  int c, c2, co, wn, cl;
+  int c, c2, co;
   pt_ts_t *u_i = master->uvel_i;
   pt_ts_t *v_i = master->vvel_i;
   pt_ts_t *w_i = master->wvel_i;
@@ -1447,11 +1447,11 @@ int get_pos_m(master_t *master,   /* Window geometry                 */
   geometry_t *geom = master->geom;
   int cs = geom->m2d[c];
   int cis = geom->m2d[ci];
-  int cn, cns, zm1;
+  int cn, cns;
   double xin = *cx;
   double yin = *cy;
-  double zin = *cz;
-  double dist, dir, s1, s2;
+
+  double dist, dir;
   double slat, slon;
   double sinth, costh;
   double dx, dy;
@@ -1514,7 +1514,7 @@ int get_pos_m(master_t *master,   /* Window geometry                 */
   if (isghost) {
     if (master->pt_stickybdry) {
       if (geom->us_type & US_IJ) {
-	int es, vs;
+
 	for (j = 1; j <= geom->npe[cis]; j++) {
 	  if ((found = intersect(geom, cis, j, xin, yin, slon, slat, &nx, &ny)))
 	    break;
@@ -1585,7 +1585,7 @@ int hd_pt_create(master_t *master,
   int t_dim, n_dim, m_dim, l_dim;
   /* variable ids */
   int t_id, x_id, y_id, z_id, flag_id;
-  int age_id, size_id, source_id, vid;
+  int age_id, size_id, vid;
   /* variable shapes */
   int n, dims[2];
   int np = master->ptn;

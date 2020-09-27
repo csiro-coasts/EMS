@@ -627,9 +627,9 @@ romsgrid_t *convert_roms_grid(parameters_t *params, dump_data_t *dumpdata)
     for (j = 0; j < romsgrid->nce2; j++)
       for (i = 0; i < romsgrid->nce1; i++) {
 	int ip = (i < romsgrid->nce1 - 1) ? i+1 : i;
-	int jp = (j < romsgrid->nce2 - 1) ? j+1 : j;
+
 	int im = (i > 0) ? i-1 : i;
-	int jm = (j > 0) ? j-1 : j;
+
 	romsgrid->dndx[j][i] = 0.5 * (dumpdata->h2acell[j][ip] - dumpdata->h2acell[j][im]);
 	romsgrid->dmde[j][i] = 0.5 * (dumpdata->h1acell[j][ip] - dumpdata->h1acell[j][im]);
       }
@@ -840,8 +840,8 @@ romsgrid_t *convert_roms_grid(parameters_t *params, dump_data_t *dumpdata)
 void write_roms_grid(dump_data_t *dumpdata)
 {
   romsgrid_t *romsgrid = dumpdata->romsgrid;
-  FILE *op = NULL;
-  int i, j;                     /* Counters                         */
+
+
   int mode;                     /* Output mode                      */
   int cfid;
   size_t start[4];
@@ -1184,9 +1184,9 @@ int dump_create_roms(romsgrid_t *romsgrid, char *name)
 void write_roms_attributes(romsgrid_t *romsgrid, int cdfid)
 {
   /* dimension ids */
-  int n, vid;
-  char buf[MAXSTRLEN];
-  char attname[MAXSTRLEN];
+  int vid;
+
+
 
   /* time independent variables */
   vid = ncw_var_id(cdfid, "lon_rho");
@@ -1312,7 +1312,7 @@ void write_roms_metrics(romsgrid_t *romsgrid, int mode)
   size_t count[4];
   char var[MAXSTRLEN];
   int cfid = romsgrid->cfid;
-  float vertex[4] = {1, 2, 3, 4};
+
   int nx = 0, ny = 0;
   double **lat = NULL, **lon = NULL, **mask = NULL;
 
@@ -1378,9 +1378,9 @@ void write_roms_metrics(romsgrid_t *romsgrid, int mode)
 /*-------------------------------------------------------------------*/
 void close_roms_netcdf(romsgrid_t *romsgrid)
 {
-  size_t start[4];
-  size_t count[4];
-  int cfid = romsgrid->cfid;
+
+
+
 
   ncw_close(romsgrid->ofile, romsgrid->cfid);
 }

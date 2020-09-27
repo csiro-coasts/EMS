@@ -865,7 +865,7 @@ void window_cells_grouped(geometry_t *geom,   /* Global geometery    */
   if (checkf) {
     int wc[nwindows + 1];
     int mw[nwindows + 1];
-    int nb;
+
     for (n = 1; n <= nwindows; n++) wc[n] = 0;
     for (cc = 1; cc <= geom->b2_t; cc++) {
       c = geom->w2_t[cc];
@@ -1223,7 +1223,7 @@ void window_cells_linear_e2(geometry_t *geom, /* Global geometery    */
   )
 {
   int c, cc, n, m;
-  int c1, i, j;
+  int i, j;
   int *mask, *wetc;
 
   /*-----------------------------------------------------------------*/
@@ -1275,7 +1275,7 @@ void window_cells_linear_e2(geometry_t *geom, /* Global geometery    */
 	mask[c] = 1;
 	cc++;
         if (cc > wsizeS[n]) {
-	  int bf = 1, nn, cb, cbc;
+	  int bf = 1, nn; 
 	  /* Don't allow window transition to occur on OBCs          */
 	  for (nn = 0; nn < geom->nobc; nn++) {
 	    open_bdrys_t *open = geom->open[nn];
@@ -1733,7 +1733,7 @@ void get_local_maps(geometry_t *geom,   /* Global geometry           */
   int e, ee, ae, ge, ges;   /* Edges                                 */
   int v, vv,vs,  av, vv1;   /* Vertices                              */
   int c2D;                  /* Local cell coordinate                 */
-  int e2D;                  /* Local edge coordinate                 */
+
   int ac;                   /* Auxiliary centre                      */
   int cl, cu, cd, cs;       /* Local sparse coordinate               */
   int *wsar;                /* Reordered work sparse array           */
@@ -2168,7 +2168,7 @@ void get_local_maps(geometry_t *geom,   /* Global geometry           */
     npe = geom->npe[cs];
     for (j = 1; j <= npe; j++) {
       if (geom->eSc[j][cs] == -1) {  /* Edge is in the window        */
-	int cn = geom->c2c[j][c];    /* Neighbour of c, direction j  */
+
 	ge = geom->c2e[j][c];        /* Global edge                  */
 	for (i = 0; i <= 1; i++) {
 	  v = geom->e2v[ge][i];      /* Vertex of e                  */
@@ -2483,8 +2483,8 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
 			 int npe    /* Number of vertices            */
 			 )
 {
-  int n, j, jj, jop;        /* Counters / edge directions            */
-  int jv, v, vs;            /* Vertices                              */
+  int n, j, jop;            /* Counters / edge directions            */
+
   int cgm, cg, cgms;        /* Global locations of mapped coordinate */
   int cax, cl;              /* Local location of mapped coordinate   */
   int e;                    /* Global edge                           */
@@ -2578,7 +2578,7 @@ void local_map_build_c2c(geometry_t *geom, /* Global geometry        */
   /*-----------------------------------------------------------------*/
   /* Get the cell centres required for high order advection          */
   for (j = 1; j <= npe; j++) {  /* Edge number                       */
-    int es, eoe, m;
+    int es, eoe;
     int cax1, cax2, j1, j2;
     /* Get the global map of the global sparse coordinate            */
     e = geom->c2e[j][c];        /* Global edge                       */
@@ -2621,7 +2621,7 @@ void local_map_build_v2c(geometry_t *geom, /* Global geometry        */
 			 int nsaux /* # cells to include laterally  */
 			 )
 {
-  int n, nc, jc, jv;        /* Counters                              */
+  int jc, jv;               /* Counters                              */
   int j, jop;               /* Direction of centres                  */
   int v, vs;                /* Vertices                              */
   int cs;                   /* Surface global centre                 */
@@ -3263,8 +3263,8 @@ void get_local_wse(geometry_t *geom,
   int c, cs, cc, lc;            /* Centre counters                   */
   int ee, e;                    /* Edge counters                     */
   int n, wn;                    /* Window counters                   */
-  int ac, le, ge, wae;          /* Mapped centres, edges             */
-  int vv, v, vs, gv, lv;        /* Mapped vertices                   */
+  int le, ge, wae;              /* Mapped centres, edges             */
+  int vs, gv, lv;               /* Mapped vertices                   */
   int **mask;                   /* Set to 1 when cell is processed   */
   int *wm;                      /* Window / ghost cell mask          */
   int *msk;                     /* Edge status mask                  */
@@ -3272,10 +3272,10 @@ void get_local_wse(geometry_t *geom,
   int *gc, *gc2D;               /* Ghost edge                        */
   int *ec, *ec2D;               /* Auxiliary edge                    */
   int *bc, *bc2D;               /* OBC edge                          */
-  int i, ii, j, jj;             /* Counters                          */
+  int i, ii, j;                 /* Counters                          */
   int checkf = 0;
   int verbose = 0;
-  int dof = 0;
+
 
   /*-----------------------------------------------------------------*/
   /* Initialise the counters                                         */
@@ -3373,7 +3373,7 @@ void get_local_wse(geometry_t *geom,
 
   /* Next ghost and auxiliary edges to compute vorticity             */
   for (ee = 1; ee <= nvec; ee++) {
-    int gc;
+
     e = vec[ee];                /* Global edge to process            */
     wn = wm[e];                 /* Window associated with edge e     */
     sc = geom->g2we[wn][e];     /* Local edge in window wn           */
@@ -3823,7 +3823,7 @@ void get_local_wsv(geometry_t *geom,
   int **mask;                   /* Set to 1 when cell is processed   */
   int *wm;                      /* Window / ghost cell mask          */
   int *msk;                     /* Vertex status mask                */
-  int sc;                       /* Local eet cell in window          */
+
   int checkf = 0;
   /*int nwindows = geom->nwindows;*/
 
@@ -3866,7 +3866,7 @@ void get_local_wsv(geometry_t *geom,
       /* centre in the window are included.                          */
 
       for (j = 1; j <= geom->npe[cs]; j++) {
-	int ic;
+
 	v = geom->c2v[j][c];
 	vs = geom->m2dv[v];
 
@@ -3945,7 +3945,7 @@ void get_local_wsv(geometry_t *geom,
       /* centre in the window are included.                          */
 
       for (j = 1; j <= geom->npe[cs]; j++) {
-	int ic;
+
 	v = geom->c2v[j][c];
 	vs = geom->m2dv[v];
 
@@ -4062,7 +4062,7 @@ void get_local_obc_a(geometry_t *geom,    /* Global geometry         */
 		     int nwindows         /* Number of windows       */
 		     )
 {
-  int c, cc, cs, n, nn, wn, j;  /* Counters                          */
+  int c, cc, cs, n, nn, j;      /* Counters                          */
   int ac, cgm;                  /* Sparse coordinates                */
   int **mask;                   /* Set to 1 when cell is processed   */
   int *wm;                      /* Window / ghost cell mask          */
@@ -4177,7 +4177,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
   int *nobc;                   /* Number of OBC's for each window    */
   int **tti;                   /* Tranfer index counter              */
   short **ff;                  /* Flag for file forcing              */
-  int zfe1, zfe2;
+
 
   if (!geom->nobc)
     return;
@@ -4382,7 +4382,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
     }
 
     for (ee = 1; ee <= open[n]->no3_e1; ee++) {
-      int wn, ed, mode;
+      int ed, mode;
       e = open[n]->obc_e1[ee];
       nn = eiw(geom, e, &mode);
       c = eic(geom, e, nn, &ed);
@@ -4391,7 +4391,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
         window[nn]->open[geom->owc[n][nn]]->no2_e1++;
     }
     for (ee = open[n]->no3_e1 + 1; ee <= open[n]->to3_e1; ee++) {
-      int wn, ed, mode;
+      int ed, mode;
       e = open[n]->obc_e1[ee];
       nn = eiw(geom, e, &mode);
       c = eic(geom, e, nn, &ed);
@@ -4802,7 +4802,7 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
 /*-------------------------------------------------------------------*/
 void set_sponge_cells(geometry_t *window)
 {
-  int nn, n, cc, c;
+  int n, cc, c;
   int ee, e, eb, ep;
   int i1, i2, cn, cb, j;
   double d1, d2, dist, dmin;
@@ -5115,7 +5115,7 @@ void get_local_ghost(geometry_t *geom,   /* Global; geometry         */
   int dr;
   int *map;
   void *any_array;
-  int cin;
+
 
   if (DEBUG("init_w")) {
     dlog("init_w", "\n");
@@ -5397,7 +5397,7 @@ void surfbot_build(geometry_t *geom,    /* Global geometry           */
 {
   int c;                      /* Local sparse coordinate             */
   int gc, gcb;                /* Global sparse coordinate            */
-  int cc, c1, n;              /* Counters                            */
+  int cc, c1;                 /* Counters                            */
   int back;                   /* Cell in a backward direction from c */
   int *map;                   /* Local backward map                  */
   int *gmap;                  /* Global backward map                 */
@@ -5461,8 +5461,8 @@ void surfbot_builde(geometry_t *geom,   /* Global geometry */
   )
 {
   int c, e, es, ee, e1;         /* Local sparse coordinate */
-  int gc, ge, le;               /* Global sparse coordinate */
-  int cc, c1, c2, n, j, k;      /* Counters */
+  int ge;                       /* Global sparse coordinate */
+  int cc, c1, c2, n, j;         /* Counters */
   int *wgst;
   int *e2ee;
 
@@ -5678,7 +5678,7 @@ void reorder_gl_map(geometry_t *geom, /* Global geometry             */
 /*-------------------------------------------------------------------*/
 void set_mask(geometry_t *window)
 {
-  int cc, c, c2, ee, e, ci, n, j;
+  int cc, c, ee, e, n, j;
 
   window->cask = i_alloc_1d(window->szc);
   memset(window->cask, 0, window->szc * sizeof(int));
@@ -5786,7 +5786,7 @@ window_t **win_data_build(master_t *master,   /* Master data         */
 {
   window_t **windat;            /* Window data                       */
   int nwindows;                 /* Number of windows                 */
-  int n, j, tn, k = 0;          /* Counters                          */
+  int n, tn, k = 0;             /* Counters                          */
   int c, cs, cc;                /* Cell locations                    */
   int e, es, ee;                /* Edge locations                    */
 
@@ -7953,7 +7953,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
 {
   geometry_t *geom = master->geom;
   int nwindows = master->nwindows;
-  int cc, c, ee, e, lc, n, m, v, vv;
+  int cc, c, ee, e, n, m, v, vv;
 
   for (n = 1; n <= nwindows; n++) {
 
@@ -8546,7 +8546,7 @@ void window_init(geometry_t *geom,    /* Global geometry             */
 {
   int nwindows;                 /* Number of windows                 */
   int n, m, cc, ee, vv;         /* Counters                          */
-  int c, e, v, c1, cb, eb;      /* Sparse locations                  */
+  int c, e, v, cb;              /* Sparse locations                  */
   int i, j, k;                  /* Cartesian locations               */
   int **s2, **se, **sv;         /* Dummy buffer for ghost locations  */
 
@@ -9731,7 +9731,7 @@ void nan_check(geometry_t **window,   /* Window geometry             */
 /*-------------------------------------------------------------------*/
 double edge_mean(geometry_t *window, double *a, int c)
 {
-  int ee, e;
+  int ee;
   int cs = window->m2d[c];
   double ret = 0.0;
 
@@ -9784,7 +9784,7 @@ void edge_centre(geometry_t *window, double *a, double *b, int mode)
 /*-------------------------------------------------------------------*/
 double vertex_mean(geometry_t *window, double *a, int c)
 {
-  int vv, v;
+  int vv;
   int cs = window->m2d[c];
   double ret = 0.0;
 

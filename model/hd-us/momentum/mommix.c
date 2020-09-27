@@ -35,7 +35,7 @@ void hvisc_init(master_t *master,    /* Master data                  */
 		win_priv_t **wincon  /* Window private data          */
   )
 {
-  int i, n;
+  int n;
 
   /* Set the horizontal mixing method                                */
   for (n = 1; n <= master->nwindows; n++) {
@@ -111,17 +111,17 @@ void hvisc_setup_pre(geometry_t *window,  /* Window geometry         */
 		     win_priv_t *wincon   /* Window constants        */
   )
 {
-  int c, cv, cs, cvs, cc;     /* Cell coordinate / counter           */
+  int c, cs, cc;              /* Cell coordinate / counter           */
   int e, ee, es;              /* Edge coordinates                    */
   int vv, v, vs;              /* Vertex coordinate : c2v[1]          */
-  int n, j;                   /* Counter                             */
-  int zm1;                    /* 3D cell coordinate at k-1           */
+  int n;                      /* Counter                             */
+
   int e1, e2;                 /* Edges surrounding cell c            */
   double *t11;                /* Horizontal stress tensor, (x,x)     */
   double *t12;                /* Horizontal stress tensor, (x,y)     */
   double *t22;                /* Horizontal stress tensor, (y,y)     */
   double c1;                  /* Constant for e1 diffusion           */
-  double sf = 1.0;           /* Smagorinsky scaling factor          */
+
 
   if (wincon->smagorinsky == 0.0) return;
 
@@ -234,11 +234,11 @@ void hvisc_setup_pre2d(geometry_t *window,  /* Window geometry       */
 		       win_priv_t *wincon   /* Window constants      */
 		       )
 {
-  int c, cv, cs, cvs, cc;     /* Cell coordinate / counter           */
+  int c, cs, cc;              /* Cell coordinate / counter           */
   int e, ee, es;              /* Edge coordinates                    */
   int vv, v, vs;              /* Vertex coordinate : c2v[1]          */
-  int n, j;                   /* Counter                             */
-  int zm1;                    /* 3D cell coordinate at k-1           */
+  int n;                      /* Counter                             */
+
   int e1, e2;                 /* Edges surrounding cell c            */
   double *t11;                /* Horizontal stress tensor, (x,x)     */
   double *t12;                /* Horizontal stress tensor, (x,y)     */
@@ -875,7 +875,7 @@ void hvisc_u1_3d(geometry_t *window,  /* Window geometry             */
   int vc;                     /* Size of cells[]                     */
   int n, m;                   /* Counters                            */
   int j1, j2;                 /* Directions from edge                */
-  int zm1;                    /* 3D sparse coordinate at k-1         */
+
   double *AH;                 /* e1 horizontal diffusion coefficient */
   double d1;                  /* Constant for x diffusion            */
   double d2;                  /* Constant for y diffusion            */
@@ -963,10 +963,10 @@ void hvisc_u1_3d_simple(geometry_t *window, /* Window geometry       */
   int e, ep, em, eu, ed, ee;  /* Edge coordinate / counter           */
   int es;                     /* Surface edge coordinates            */
   int c1, c2;                 /* Cells adjacent to e                 */
-  int j1, j2;
+  int j1;
   double *AH;                 /* e1 horizontal diffusion coefficient */
-  double d1;                  /* Constant for x diffusion            */
-  double d2;                  /* Constant for y diffusion            */
+
+
   int *cells;                 /* Cells to process vector             */
   int vc;                     /* Size of cells[]                     */
 
@@ -1030,19 +1030,19 @@ void hvisc_setup_2d(geometry_t *window,  /* Window geometry          */
 		    double *tzp          /* Pointer to surface level */
   )
 {
-  int c, cs, cv, cc;            /* Cell coordinate / counter         */
-  int e, es;                    /* Edge coordinates                  */
-  int vv, v;                    /* Vertex coordinate : c2v[1]        */
-  int n;                        /* Counter                           */
-  int e1, e2, e3, e4;           /* Edges surrounding cell c          */
-  int *ctp;                     /* Cells to process vector           */
-  int vcs;                      /* Number of cells to process        */
-  double *t11;                  /* Horizontal stress tensor, (x,x)   */
-  double *t12;                  /* Horizontal stress tensor, (x,y)   */
-  double *t22;                  /* Horizontal stress tensor, (y,y)   */
-  double c1;                    /* Constant for x diffusion          */
-  double c2;                    /* Constant for y diffusion          */
-  double h1, h2, h3, h4;        /* Vertex mean of h2au1 and h1au1    */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   /*-----------------------------------------------------------------*/
   /* These tensors are no longer required if momentum is solved      */
@@ -1068,7 +1068,7 @@ void set_viscosity_2d(geometry_t *window) /* Window geometry         */
   int es;                     /* Surface / bottom sparse coordinates */
   int zm1;                    /* Sparse coordinate at k-1            */
   double depth;               /* Water depth                         */
-  double dz;                  /* Cell thickness                      */
+
   double *AH;                 /* e1 horizontal diffusion coefficient */
 
   /* Set the e1 viscosity                                            */
@@ -1308,7 +1308,7 @@ void hvisc_u1_2d(geometry_t *window,  /* Window geometry             */
   int es;                     /* Surface edge coordinates            */
   int c, c1, c2;              /* Cells adjacent to e                 */
   int v;                      /* Vertex coordinate                   */
-  int vc;                     /* Size of cells[]                     */
+
   int n, m;                   /* Counters                            */
   int j1, j2;                 /* Directions from edge                */
   int *ctp;                   /* Cells to process vector             */
@@ -1397,7 +1397,7 @@ void hvisc_u1_2d_simple(geometry_t *window, /* Window geometry       */
   int e, ep, em, eu, ed, ee;  /* Edge coordinate / counter           */
   int es;                     /* Surface edge coordinates            */
   int c1, c2;                 /* Cells adjacent to e                 */
-  int j1, j2;
+  int j1;
   double *AH;                 /* e1 horizontal diffusion coefficient */
   double d1;                  /* Constant for x diffusion            */
   double d2;                  /* Constant for y diffusion            */
@@ -1457,7 +1457,7 @@ void set_hdiff(geometry_t *window,      /* Window geometry           */
 	       double AH0               /* Constant mixing           */
 	       )
 {
-  window_t *windat = window->windat;    /* Window data               */
+
   win_priv_t *wincon = window->wincon;  /* Window constants          */
   double *h1, hm;                       /* Cell size                 */
   int cc, c, c2;                        /* Counters, cell locations  */
@@ -1492,7 +1492,7 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
 		 int mode                 /* 1 = edges, 3 = centres  */
 		 )
 {
-  window_t *windat = window->windat;    /* Window data               */
+
   win_priv_t *wincon = window->wincon;  /* Window constants          */
   double *h1, hm;                       /* Cell size                 */
   int cc, c, c2;                        /* Counters, cell locations  */
@@ -1677,8 +1677,8 @@ void reset_hdiff(geometry_t *window,    /* Window geometry           */
 void reset_hor_diff(master_t *master, double u1vh, int flag)
 {
   geometry_t *geom = master->geom;
-  double vh1, vh2;
-  int c, cc, c2;
+  double vh1;
+  int c; 
   int e, ee, es;
 
   master->u1vh0 = u1vh;
@@ -1687,7 +1687,7 @@ void reset_hor_diff(master_t *master, double u1vh, int flag)
     double step = 1;              /* Integral step of diffusion > 1  */
     double hmax = 1e10;
     double d1, d2;
-    int u1khf = 0, u1vhf = 0, i1, cs;
+    int u1vhf = 0, i1;
     if (u1vh <= 0.0) u1vhf = 1;      
     for (ee = 1; ee <= geom->n3_e1; ee++) {
       e = geom->w3_t[ee];

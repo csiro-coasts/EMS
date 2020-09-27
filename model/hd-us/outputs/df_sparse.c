@@ -899,7 +899,7 @@ static int df_sp_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
 
 static void df_sp_init_data(dump_data_t *dumpdata, dump_file_t *df, int fid)
 {
-  int i, n;
+  int i;
   df_sp_data_t *data = NULL;
 
   df_parse_vars(dumpdata,df,NULL,SP_ALL_VARS);
@@ -975,9 +975,9 @@ static void read_windows_flat(geometry_t *geom, geometry_t **window, char *name)
   size_t count[4] = {0, 0, 0, 0};
   size_t d;
   char key[MAXSTRLEN];
-  int dims[10];
-  int vid;
-  long t;
+
+
+
   double *layers;
 
   /* Open the dump file for reading */
@@ -1385,9 +1385,9 @@ static void read_windows_wb(geometry_t *geom, geometry_t **window, char *name)
   size_t count[4] = {0, 0, 0, 0};
   size_t d;
   char key[MAXSTRLEN];
-  int dims[10];
-  int vid, oid;
-  long t;
+
+  int oid;
+
   double *layers;
   int nz, sednz;
   int nwin;

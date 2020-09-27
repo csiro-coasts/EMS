@@ -331,7 +331,7 @@ void vel_u1av_update(geometry_t *window,  /* Window geometry         */
   double *tzp;                  /* Surface height array              */
   int dbc;                      /* Debugging coordinate              */
   int dbj;                      /* Debugging edge direction          */
-  double *depth = windat->depth_e1;
+
 
   dbc = (wincon->dbc) ? window->m2d[wincon->dbc] : 0;
   dbj = wincon->dbj;
@@ -569,7 +569,7 @@ void nonlinear_u1av(geometry_t *window,   /* Window geometry         */
 		    win_priv_t *wincon    /* Window constants        */
 		    )
 {
-  int n, e, ee, eoe;
+  int e, ee;
   int c1, c2;
   double *depth;                /* Depth of the water column         */
   double rst = 0.0;             /* Radiation stress term             */
@@ -631,9 +631,9 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
 			 win_priv_t *wincon   /* Window constants    */
 			 )
 {
-  int e, ee, ep, em, eoe;       /* Edge coordinate / counter         */
+  int e, ee, eoe;               /* Edge coordinate / counter         */
   int c1, c2;                   /* Cell coordinate / counter         */
-  int n, j, npe;                /* Counters                          */
+  int n;                        /* Counters                          */
   double pgt = 0.0;             /* Pressure gradient term            */
   double cot = 0.0;             /* Coriolis term                     */
   double bft;                   /* Bottom friction term              */
@@ -1031,7 +1031,7 @@ void precalc_u1_2d(geometry_t *window,  /* Window geometry           */
 		   )
 {
   int e, ee;
-  int n, eoe, c1, c2;
+  int n, c1, c2;
   int cw = 1;
   double top, bot;
 
@@ -1104,7 +1104,7 @@ void vel_tan_2d(geometry_t *window,    /* Window geometry            */
 		win_priv_t *wincon     /* Window constants           */
   )
 {
-  int e, ee, es, eoe, n;
+  int e, ee, eoe, n;
   double fs = 1.0;
 
   /*-----------------------------------------------------------------*/
@@ -1228,7 +1228,7 @@ void eta_step(geometry_t *window,   /* Window geometry               */
   int n, ee, e;                 /* Edge coordinates, counters        */
   double colflux;               /* Velocity transport divergence     */
   double *u1flux = wincon->d2;  /* Flux in e1 direction              */
-  double d1;
+
   /*
   FILE *fp = fopen("aa.ts","a");
   FILE *op = fopen("bb.ts","w");
@@ -1367,7 +1367,7 @@ void bdry_eta(geometry_t *window,   /* Window geometry               */
               win_priv_t *wincon    /* Window constants              */
 	      )
 {
-  int n, m;                         /* Counters                      */
+  int n;                         /* Counters                      */
   int c, cc;
 
   open_bdrys_t **open = window->open;
@@ -1495,7 +1495,7 @@ void reset_bdry_eta(geometry_t *window, /* Window geometry           */
 		    double *eta         /* eta variable              */
 		    )
 {
-  int n, m, j, c, c1, cc, e, ee;
+  int m, j, c, c1, cc, e, ee;
 
   if (open->stagger & OUTFACE) {
     for (ee = 1; ee <= open->no2_e1; ee++) {
@@ -1602,15 +1602,15 @@ void asselin(geometry_t *window,  /* Window geometry                 */
   int c, cc, ci;                /* Cell coordinate                   */
   int n, j;                     /* Counters                          */
   double aconst = 0.1;          /* Time filter constant              */
-  double mdx, mdy;              /* Total depth at time t             */
-  double mdxb, mdyb;            /* Total depth at time t-1           */
+  double mdx;              /* Total depth at time t             */
+  double mdxb;            /* Total depth at time t-1           */
   double *u1av = wincon->d1;
   int *mask = wincon->i7;
   double yr = 86400.0 * 365.0;
   int checkf = 0;
   /*int checkf = 95784;*/
   /*int checkf = 49149;*/
-  double mf=0.0, mfe[window->npem+1], af[window->npem+1];
+  double mf=0.0, mfe[window->npem+1];
 
   for (j = 1; j <= window->npem; j++) mfe[j] = 0.0;
 
@@ -1656,7 +1656,7 @@ void asselin(geometry_t *window,  /* Window geometry                 */
       }
     }
     if (open->bcond_nor2d & (VERTIN|FILEIN|CUSTOM|TIDALC)) {
-      double f1, f2, df; 
+      double f1, f2; 
       double nvel[window->npem+1], v1[window->npem+1], v2[window->npem+1];
       double rts, eta, tide, sgn[window->npem+1];
       double rtsh = 1.2;
@@ -1790,7 +1790,7 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 
 	  /* Dual relaxation: Relax hard to the tidal signal         */
 	  if (open->adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
-	    double depth, etat, df, etadiff;
+	    double depth, etat, df;
 	    double rtst = (open->adjust_flux_s < 0.0) ? rts : windat->dtb2 / open->adjust_flux_s;
 	    f2 *= 0.5;
 	    df = f2;
@@ -1901,7 +1901,7 @@ void extract_velocity_2d(geometry_t *window,  /* Window geometry     */
 			 win_priv_t *wincon   /* Window constants    */
   )
 {
-  int e, ee, n;                 /* Local sparse coordinate / counter */
+  int e, ee;                 /* Local sparse coordinate / counter */
 
   for (ee = 1; ee <= window->b2_e1; ee++) {
     e = window->w2_e1[ee];
@@ -2368,8 +2368,8 @@ double est_bot_stress(geometry_t *window, /* Window geometry         */
 		      )
 {
   int e2 = window->m2de[e];
-  int c1 = window->e2c[e2][0];
-  int c2 = window->e2c[e2][1];
+
+
   double ux, uy, ut, nut;
   double *depth = windat->depth_e1;
   double midx = wincon->mdx[e2];
@@ -2378,7 +2378,7 @@ double est_bot_stress(geometry_t *window, /* Window geometry         */
   double bde = 0.0001;   /* Bottom drag increment                    */
   double Cd, rmse, rm;
   double gmt = windat->t + windat->dt2d - wincon->tz;
-  int nb = 50;
+
   int i;
   /* Get the TPXO edge tidal velocity at the next time-step          */
   /*

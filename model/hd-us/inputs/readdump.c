@@ -62,8 +62,8 @@ void master_setghosts(geometry_t *geom, /* Sparse global geometry    */
   int n;
   double mx = 0;
   double *eta;
-  GRID_SPECS *gs;
-  int *mask;
+
+
 
   /* Set a no-gradient condition over lateral boundaries             */
   for (ee = 1; ee <= geom->nbpte1S; ee++) {
@@ -124,7 +124,7 @@ void master_setghosts(geometry_t *geom, /* Sparse global geometry    */
     open->meandep = open->maxdep = 0.0;
     open->mindep = -1e10;
     for (cc = 1; cc <= open->no2_t; cc++) {
-      int cs;
+
       c = open->obc_t[cc];
       open->maxdep = min(open->maxdep, geom->botz[c]);
       open->mindep = max(open->mindep, geom->botz[c]);
@@ -134,7 +134,7 @@ void master_setghosts(geometry_t *geom, /* Sparse global geometry    */
 
     /* Cell location and bottom depth                                */
     for (ee = 1; ee <= open->no2_e1; ee++) {
-      int i, j, bi, bj, m, m1, m2;
+      int m, m1, m2;
       c = ci = open->obc_e2[ee];
       e = ei = open->obc_e1[ee];
       for (m = 0; m < open->bgz; m++) {
@@ -411,14 +411,14 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
 		     dump_data_t *dumpdata,  /* Dump data structure */
 		     int cdfid, int ti)
 {
-  int c, cc, cs, e, ee, i, j, k, n, vv, v;
+  int c, cc, cs, e, ee, i, k, n;
   size_t ndumps;
   size_t start[4];
   size_t count[4];
   size_t nMesh2_node;
   size_t nMesh2_edge;
   size_t nMesh2_face;
-  int **k2e, **k2c, **k2v;
+  int **k2e, **k2c;
   int oset = params->oset;
 
   /*-----------------------------------------------------------------*/
@@ -569,7 +569,7 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
   /*-----------------------------------------------------------------*/
   /* Check for NaNs and set ghost cells                              */
   for (i = 1; i <= geom->b2_t; i++) {
-    int ci, cj;
+
     c = geom->w2_t[i];
     if (isnan(master->eta[c])) {
       /*
@@ -690,14 +690,14 @@ int dump_re_read(master_t *master, /* Master data structure */
 {
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
-  int c, cc, cs, e, ee, i, j, k, n;
+  int c, cc, cs, e, ee, i, k, n;
   size_t ndumps;
   size_t start[4];
   size_t count[4];
   size_t nMesh2_node;
   size_t nMesh2_edge;
   size_t nMesh2_face;
-  int **k2e, **k2c, **k2v;
+  int **k2e, **k2c;
   int oset;
   int time_vid;
   char ftimeunits[MAXSTRLEN];
@@ -787,7 +787,7 @@ int dump_re_read(master_t *master, /* Master data structure */
 
   /* Check for NaNs                                                  */
   for (cc = 1; cc <= geom->b2_t; cc++) {
-    int ci, cj;
+
     c = geom->w2_t[cc];
     if (isnan(master->eta[c])) {
       hd_warn("dump_read: Found NaN at (%d %d).\n", geom->s2i[c], geom->s2j[c]);
@@ -954,7 +954,7 @@ double *bathy_read_us(parameters_t *params, /* Input parameter data structure */
 {
   double *bathy, *inbath;          /* Bathymetry array */
   int c, cc;
-  size_t ns2;
+
   size_t ndumps;
   size_t start[4];
   size_t count[4];
@@ -1564,7 +1564,7 @@ void set_bathy_us(parameters_t *params)
     if (prm_read_char(params->prmfd, "SMOOTH_POLY", key)) {
       FILE *fp;
       int np;
-      double *xp, *yp;
+
       double *nbthy = d_alloc_1d(ns2+1);
       char *fields[MAXSTRLEN * MAXNUMARGS];
 
@@ -1598,7 +1598,7 @@ void set_bathy_us(parameters_t *params)
     /* Smooth bathy at a list of cell indices                        */
     if (prm_read_int(params->prmfd, "SMOOTH_MASK", &m)) {
       double *nbthy = d_alloc_1d(ns2+1);
-      double kk;
+
       gsf = 0;
       m = atoi(key);
       n = params->smooth; 
@@ -1631,7 +1631,7 @@ void set_bathy_us(parameters_t *params)
     /* Smoothing over a the whole domain                             */
     if (gsf) {
       double *nbthy = d_alloc_1d(ns2+1);
-      double kk;
+
       n = params->smooth;
       while(n) {
 	for (cc = 1; cc <= ns2; cc++) {
@@ -1743,7 +1743,7 @@ void set_bathy_us(parameters_t *params)
   for (n = 0; n < params->nobc; n++) {
     open_bdrys_t *open = params->open[n];
     if (open->bathycon) {
-      int cn, jj[mesh->mnpe+1];
+      int jj[mesh->mnpe+1];
       double bathyb;
       /* Loop into the last non-ghost cell bathycon cells into the   */
       /* interior and get the bathymetry at this cell.               */
@@ -1788,8 +1788,8 @@ void set_bathy_us(parameters_t *params)
     if (open->smooth_z && open->smooth_n) {
       double *nbthy = d_alloc_1d(ns2+1);
       int np;
-      int cn, jj[mesh->mnpe+1];
-      double bathyb;
+      int jj[mesh->mnpe+1];
+
       for (np = 0; np < open->smooth_n; np++) {
 	for (n = 0; n < mesh->nobc; n++) {
 	  for (i = 1; i <= mesh->npts[n]; i++) {
@@ -3083,9 +3083,9 @@ void read_sed_layers(geometry_t *geom,      /* Global geometry       */
 		     dump_data_t *dumpdata  /* Dump data             */
 		     )
 {
-  FILE *fp = params->prmfd;
-  int cc, i, j, k, m;
-  double d1;
+
+  int cc, k;
+
   /*-----------------------------------------------------------------*/
   /* Read the sediment layer structure from file                     */
   /*
@@ -3321,11 +3321,11 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 /*-------------------------------------------------------------------*/
 void testest(parameters_t *params, double bmin)
 {
-  mesh_t *mesh = params->mesh;
+
   int nce1 = params->nce1;
   int nce2 = params->nce2;
   int i, ii, j, j1, j2;
-  int cc, c;
+  int cc;
   int imid = (int)(0.6 * (nce1 - 2));
   int dmid = (int)(0.4 * (nce1 - 2));
   int jmid = (int)(0.5 * (nce2 - 2))+1;

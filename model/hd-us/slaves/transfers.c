@@ -511,7 +511,7 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
                         int mode            /* Data flag             */
   )
 {
-  int c, cc, lc, ce1;           /* Local sparse coordinate / counter */
+  int c, cc, lc;           /* Local sparse coordinate / counter */
   int e, ee, le;
 
   /* Set the crash recovery flags if required                        */
@@ -1219,7 +1219,7 @@ void build_transfer_maps(geometry_t *geom,    /* Global geometry     */
                          int nwindows         /* Number of windows   */
   )
 {
-  int c, cc, cl, ce1;           /* Sparse counters                   */
+  int c, cc, cl;                /* Sparse counters                   */
   int ee, e, ge;                /* Edge counters                     */
   int n;                        /* Window counter                    */
   int use_ghosts = 1;           /* Flag to include lateral ghosts    */
@@ -2551,7 +2551,7 @@ void window_reset(master_t *master,      /* Master data              */
 		  int mode
 		  )
 {
-  int c, cc, cs, n, k, tn;
+  int c, cc, k, tn;
   int ee, e, es;
 
   if (mode & RS_VH) {
@@ -2688,7 +2688,7 @@ void window_reset(master_t *master,      /* Master data              */
 void copy_dens_profile(master_t *master, geometry_t *window, window_t *windat)
 {
   geometry_t *geom = master->geom;
-  int c, cb;
+  int c;
   if (windat->vd == NULL) return;
 
   for (c = 0; c < window->nz; c++)

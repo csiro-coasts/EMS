@@ -799,7 +799,7 @@ void comp_heat_mom(geometry_t *window,
   double fact = -4.0e3 * 1025.0;         /* Conversion Wm-2 to ms-1K */
   double hlv;                            /* Latent heat of evaporation (J/kg) */
   double ang = 7.29e-5;                  /* Earth's angular velocity (s-1) */
-  double sc = 1.0;                       /* Sign convention scale */
+
   double lhf;                            /* Latent heat factor */
   double lat;                            /* Latitude (deg) */
   int c, cc;                             /* Counters                 */
@@ -860,7 +860,7 @@ void comp_heat_inv(geometry_t *window,
   int c, cc;                    /* Counters */
   double at;                    /* Dry bulb temperature (deg C) */
   double dtw;                   /* Wet bulb temperature (deg C) */
-  double tcld;                  /* Fractional cloud cover */
+
   double wt;                    /* Water temperature (deg C) */
   double sal;                   /* Salinity (psu) */
   double wspd;                  /* Windspeed (ms-1) */
@@ -868,18 +868,18 @@ void comp_heat_inv(geometry_t *window,
   double pres;                  /* Air pressure (HPa) */
   double es;                    /* Vapour pressure at the air temp (HPa) */
   double esat;                  /* Saturation vapour pressure (HPa) */
-  double ew;                    /* Vapour pressure at water temp. (Hpa) */
+
   double rh;                    /* Relative humidity (%) */
   double lg, lwr;               /* Long wave radiation flux (Wm-2) */
   double sg;                    /* Short wave radiation flux (Wm-2) */
-  double lat;                   /* Latitude (deg) */
-  int yr;                       /* Year */
-  double day;                   /* Julian day */
+
+
+
   double dt;                    /* Time step (s) */
   double lhf;                   /* Latent heat factor */
   double sc = 1.0;              /* Sign convention scale */
-  double Cv = 4e3;              /* Specific heat at constant volume */
-  double ang = 7.29e-5;         /* Earth's angular velocity (s-1) */
+
+
   double fact = -4.0e3*1025.0;  /* Conversion Wm-2 to ms-1K */
 
   /* Get the year and Julian day */
@@ -1381,7 +1381,7 @@ double swrad(int yr,            /* Year */
   int iw;                       /* Counters */
   int tcld;                     /* Cloud cover (oktas) */
   double alp;                   /* Albedo of the sea surface */
-  int day;                      /* Day of the month */
+
 
   nday = (int)jday;
   /*hrs = (int)(24 * (jday - (double)nday));*/
@@ -1468,11 +1468,11 @@ double get_albedo(int yr,            /* Year */
   double h;                     /* The solar elevation */
   double hrang;                 /* Hour angle */
   double pi = 3.14159;          /* Value of pi */
-  double d1, d2;                /* Dummies */
+  double d1;                    /* Dummies */
   int iw;                       /* Counters */
   int tcld;                     /* Cloud cover (oktas) */
   double alp;                   /* Albedo of the sea surface */
-  int day;                      /* Day of the month */
+
 
   nday = (int)jday;
   /*hrs = (int)(24 * (jday - (double)nday));*/
@@ -2589,14 +2589,14 @@ double get_cloud(master_t *master,  /* Master data structure */
 		 )
 {
 
-  double wt = master->temp[c];
+
   double sal = master->sal[c];
   double at = (master->airtemp) ? master->airtemp[c] : 20.0;
   double pres = master->patm[c] / 100.0; /* Convert pressure to HPa */
-  double wspd = edge_mean(geom, master->windspeed, c);
-  double wdir = edge_mean(geom, master->winddir, c);
-  double ang = 7.29e-5;         /* Earth's angular velocity (s-1) */
-  double lat = asin(master->coriolis[c] / (2.0 * ang));
+
+
+
+
   double dtw;
   double esat, es;
 

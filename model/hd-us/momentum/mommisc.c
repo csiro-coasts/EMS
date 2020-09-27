@@ -28,7 +28,7 @@ void set_sponge_c(geometry_t *window, /* Window geometry             */
 		  )
 {
   open_bdrys_t *open;           /* Open boudary data structure       */
-  int c, cc, cs, cb, cp;        /* Centre counters                   */
+  int c, cc, cs;                /* Centre counters                   */
   double vb, vp, vm;            /* Diffusivities                     */
   double sfact = 0.9;           /* Safety factor                     */
   int  n;                       /* Boundary counter                  */
@@ -76,7 +76,7 @@ void set_sponge_e(geometry_t *window, /* Window geometry             */
   double bif, a;
 
   for (n = 0; n < window->nobc; ++n) {
-    int cb, cp;
+
     open = window->open[n];
     if (open->sponge_zone_h) {
       for (ee = 1; ee <= open->nspe1; ee++) {
@@ -121,11 +121,11 @@ void set_sponge(geometry_t *window,   /* Window geometry             */
 		)
 {
   open_bdrys_t *open;           /* Open boudary data structure       */
-  int c, cc, cs;                /* Centre counters                   */
+  int c, cs;                    /* Centre counters                   */
   int e, es, eb, ee;            /* Edge counters                     */
   double sfact = 0.9;           /* Safety factor                     */
-  double tfact = 0.3;           /* tanh() multiplier : small = long  */
-  int bn, sc, n;                /* Boundary counter                  */
+
+  int bn, n;                    /* Boundary counter                  */
   int j, jo, ji;                /* Edge counter                      */
   double rm, vh;                /* Dummies                           */
   int spgn;                     /* Sponge zone                       */
@@ -218,7 +218,7 @@ void set_sponge(geometry_t *window,   /* Window geometry             */
 
 	/* Second pass; all directions except j from current cell    */
 	if (mode == 4) {
-	  int cs1, bn1, j1;
+	  int bn1;
 	  for (ee = 1; ee <= open->no3_e1; ee++) {
 	    e = eb = open->obc_e1[ee];
 	    es = window->m2de[e];

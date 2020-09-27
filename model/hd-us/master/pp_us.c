@@ -191,7 +191,7 @@ void build_sparse_grid_us(parameters_t *params,
   int cb, eb;        /* Boundary/bottom cell centre/edge             */
   int gc;            /* Locations of ghost points in sparse array    */
   int cn, cns;       /* Sparse neighbour location                    */
-  int lc;            /* Loc of boundary points in the boundary array */
+
   int i, j, k;       /* x,y,z counters                               */
   int ii, jj;        /* x,y counters                                 */
   int n, tn;         /* General counters                             */
@@ -204,21 +204,21 @@ void build_sparse_grid_us(parameters_t *params,
   int *end_wet;      /* End loaction of the wet points in each layer */
   int *num_gst;      /* Number of ghost points in each layer         */
   int *num_bdy;      /* Number of OBC points in each layer           */
-  int num_mc = 0;    /* Number of multiple ghost cells               */
+
   int num_wc = 0;    /* Number of 3D wet grid cells                  */
   int num_gc = 0;    /* Number of ghost grid cells                   */
   int num_sc = 0;    /* Number of sediment grid cells                */
-  int num_scg = 0;   /* Number of sediment ghost grid cells          */
+
   int num_gc2D = 0;  /* Number of 2D ghost grid cells                */
   int num_obc = 0;   /* Number of OBC ghost cells                    */
   int num_obc2D = 0; /* Number of 2D OBC ghost cells                 */
-  int num_vert;      /* Number of vertices                           */
+
   short *kbot;       /* k index of the bottom                        */
-  long scen;         /* Flag for ghost cell type                     */
-  int gchck = 0;     /* Checks locations of ghost points             */
+
+
   int npe;           /* Number of nodes                              */
   int npem;          /* Maximum number of nodes                      */
-  int nve;           /* Number of vertices                           */
+
   int *mask;         /* Centre mask                                  */
   int *maske;        /* Edge mask                                    */
   int *maskv;        /* Vertex mask                                  */
@@ -234,8 +234,8 @@ void build_sparse_grid_us(parameters_t *params,
   unsigned long ***flag;/* Flag for Cartesian grid                   */
   double **topo;     /* Cartesian bathymetry                         */
   double bmax;       /* Maximum depth                                */
-  int ewet;          /* Number of 3D wet cells                       */
-  int ewetS;         /* Number of 2D wet cells                       */
+
+
   int sigma = 0;     /* Set to 1 for sigma model                     */
   int laus = 2;      /* Ghost cells adjacent to OBCs                 */
   int rtype = 2;     /* Type of Thuburn (2009) weights               */
@@ -250,10 +250,10 @@ void build_sparse_grid_us(parameters_t *params,
   double **locx, **locy;
   double *olayers;
   int **v2e, **v2c;
-  int dof = 0;
+  
   double *xloc, *yloc;
   int ***eloc;
-  int nvert;
+
   int pc = 0;        /* Print cell centre information                */
   int pe = 0;        /* Print cell edge information                  */
   int printcell = 0; /* Print cell number coordinates                */
@@ -1003,9 +1003,9 @@ void build_sparse_grid_us(parameters_t *params,
 	    sgrid->b3_e1++;
 	    end_wet[k]++;
 	  } else {
-	    double x = m->xloc[m->eloc[0][cc][j]];
-	    double y = m->yloc[m->eloc[0][cc][j]];
-	    int found = 0;
+
+
+
 	    /* Land edges (ghost cells)                              */
 	    if (k == nz - 1)
 	      sgrid->n2_e1++;
@@ -1318,7 +1318,7 @@ void build_sparse_grid_us(parameters_t *params,
   sgrid->m2de = i_alloc_1d(sgrid->sze);
   e2ee = i_alloc_1d(sgrid->sze);
   for (ee = 1; ee <= sgrid->n2_e1; ee++) {
-    int ed = 0;
+
     e = es = sgrid->w2_e1[ee];
     e2ee[e] = ee;
     while (e != sgrid->zm1e[e]) {
@@ -2359,7 +2359,7 @@ void build_sparse_grid_us(parameters_t *params,
   /* rtype = 3 : Includes contributions of all cells common to a     */
   /*             vertex.                                             */
   for (cc = 1; cc <= sgrid->b2_t; cc++) {
-    double d1 = 0.0, d2 = 0.0;
+    double d1 = 0.0;
     c = sgrid->w2_t[cc];
     npe = sgrid->npe[c];
     for (j = 1; j <= npe; j++) {
@@ -2393,7 +2393,7 @@ void build_sparse_grid_us(parameters_t *params,
   /* Loop over all cell centres and consider edges surrounding that  */
   /* centre individually.                                            */
   for (cc = 1; cc <= sgrid->b3_t; cc++) {
-    double u, vt, d1;
+    double vt;
     int de = 0;             /* Debugging edge index                  */
     double rsum;            /* Sum of rw around the cell             */
 
@@ -3234,7 +3234,7 @@ void build_sparse_grid_us(parameters_t *params,
 
     /* Get the bottom coordinate vector                              */
     for (cc = 1; cc <= sgrid->open[n]->no2_t; cc++) {
-      int cl;
+
       c = c2 = sgrid->open[n]->obc_t[cc];
       while(c != sgrid->zm1[c])
 	c = sgrid->zm1[c];
@@ -3680,7 +3680,7 @@ int check_vert3d(geometry_t *sgrid,
 		 int *c2,
 		 int *c3)
 {
-  int ret = 0, zp1;
+  int zp1;
   int k = sgrid->nz-1;
   int pf = 0;
 
@@ -3770,12 +3770,12 @@ void find_vertices(geometry_t *sgrid,
 		   int **emap
 		   )
 {
-  int ee, e, e1, e2;
+  int ee, e, e1;
   int i1, i2, nn, n;
   int next, nedge;
   int b1, b2, b3;
   double **edge;
-  int checkf = 0;
+
 
   /* Map the locations into a continuous vector                      */
   /* Get the vector size                                             */
@@ -4011,7 +4011,7 @@ int is_obce(int cc,            /* Cell centre                        */
   int b1 = m->eloc[0][cc][j];
   int b2 = m->eloc[1][cc][j];
   int o1, o2;
-  double eps = 1e-5;
+
 
   for (n = 0; n < m->nobc; n++) {
     for (nc = 1; nc <= m->npts[n]; nc++) {
@@ -4209,9 +4209,9 @@ void make_flags_us(parameters_t *params, /* Input parameters data structure */
 		   int nz          /* Size of the grid in the z direction */
   )
 {
-  int i, j, k, c;               /* Counters */
-  int is, ie, js, je;           /* Limits of grid */
-  int xsize, ysize;             /* Size of original grid */
+  int k, c;               /* Counters */
+
+
   int bathylimit = 0;           /* Flag to set min and max bathymetry */
   int percent = 0;              /* Flag to set maximum elevation */
   double min_cell_thickness = 0.0;  /* Minimum cell thickness */
@@ -4972,7 +4972,7 @@ void create_delaunay_cell(geometry_t *geom, parameters_t *params)
   point *pin;
   int filef = 1;
   int ee, e, c1, c2;
-  int ntriangles;
+
   int inc_gst = 0;    /* Include ghost cell coordinates              */
 
   np = geom->b2_t + geom->n2_e2;
@@ -5117,7 +5117,7 @@ void build_delaunay_cell(geometry_t *geom, parameters_t *params, point *tegl)
   char key[MAXSTRLEN], buf[MAXSTRLEN];
   int n, cc, c, cg, vv, v;
   int **nei;
-  point *pin;
+
   int filef = 1;
   int j, jp;
   int ee, e, c1, c2;
@@ -5259,7 +5259,7 @@ void build_delaunay_cell(geometry_t *geom, parameters_t *params, point *tegl)
   neighbour_finder_b(d, &nei);
   d->neighbours = malloc(d->ntriangles * sizeof(triangle_neighbours));
   for (cc = 0; cc < d->ntriangles; ++cc) {
-    triangle* t = &d->triangles[cc];
+
     triangle_neighbours* ne = &d->neighbours[cc];
     ne->tids[0] = nei[0][cc];
     ne->tids[1] = nei[1][cc];
@@ -5389,7 +5389,7 @@ void create_delaunay_cell_w(geometry_t *window)
 void create_delaunay_cent(geometry_t *geom, parameters_t *params)
 {
   delaunay *d;
-  int n, cc, c, vv, v;
+  int n, cc, c;
   int np;
   point *pin;
 
@@ -5486,7 +5486,7 @@ int get_limit_obc(parameters_t *params,
 		  )
 {
   FILE *fp;
-  int n, cc, j, jj, ee, e, m = 0;
+  int n, cc, j, ee, e, m = 0;
   int npe;
   double x1, x2, y1, y2;
   int filef = 1;

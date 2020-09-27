@@ -2170,8 +2170,8 @@ void trans_write(hd_data_t *hd_data)
   parameters_t *params = hd_data->params;
   dump_data_t *dumpdata = hd_data->dumpdata;
   FILE *op, *fopen();
-  int n, tn, i, j;
-  double d1;
+  int n, tn;
+
   char tag[MAXSTRLEN];
   char key[MAXSTRLEN];
   char bname[MAXSTRLEN];

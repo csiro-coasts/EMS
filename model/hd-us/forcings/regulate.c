@@ -252,7 +252,7 @@ double regulate_event(sched_event_t *event, double t)
 void regulate_cleanup(sched_event_t *event, double t)
 {
   regulate_t *regulate = (regulate_t *)schedGetPrivateData(event);
-  master_t *master = regulate->master;
+
 
   if (regulate != NULL) {
     free(regulate);

@@ -131,7 +131,7 @@ void print_vers(void)
 
 void process_args(int argc, char *argv[])
 {
-  char buf[MAXSTRLEN];
+
   
   if (argc <= 1)
     usage();
@@ -417,7 +417,7 @@ int main(int argc, char *argv[])
 {
   time_t now;
   FILE *prmfd;
-  int mpi_prov;
+
   
   killed = 0;
   model_running = 0;

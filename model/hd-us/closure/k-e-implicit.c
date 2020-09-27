@@ -134,7 +134,7 @@ void closure_k_e_implicit(geometry_t *window,  /* Window geometry    */
   )
 {
   int c, c2, cc, k;             /* Cell coodinate / counter          */
-  int ee, e, eb;                /* Face coordinte                    */
+
   int cs, ks;                   /* 2D sparse coordinate */
   int cb, kb;                   /* Bottom sparse coordinate */
   int zm1;                      /* Cell below cell c */
@@ -146,7 +146,7 @@ void closure_k_e_implicit(geometry_t *window,  /* Window geometry    */
   double stke;
   double sdiss;
   double sqrttke;
-  double v1, v2, wflux, wave_induced, diss0, b1;
+  double v1, wflux, wave_induced, diss0, b1;
 
   /*-----------------------------------------------------------------*/
   /* Note: the 3D work arrays wincon->w# could be used for the */
@@ -275,7 +275,7 @@ void closure_k_e_implicit(geometry_t *window,  /* Window geometry    */
       double c3e;
       double plus;
       double minus;
-      double ustar;
+
 
       zm1 = c;
       c = window->zp1[c];
@@ -552,7 +552,7 @@ void k_e_1layer(geometry_t *window, /* Processing window */
                 int cs          /* 2D sparse coordinate */
   )
 {
-  double v1, v2;
+
   double ustr_bot, ustr_surf, ustr;
   double z0;
   double tke;

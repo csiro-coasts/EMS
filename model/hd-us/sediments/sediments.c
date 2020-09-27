@@ -392,10 +392,10 @@ void sed_step(geometry_t *window)
 {
   win_priv_t *wincon = window->wincon;
   window_t   *windat = window->windat;
-  double *nu = windat->u;
+
   double *nv = windat->v;
   double *nw = wincon->w10;
-  int cc, c, nomp = 1;
+  int cc, c;
   int sed_nstep;
 
 #if defined(HAVE_OMP)
@@ -943,8 +943,8 @@ FILE* si_getparamfile_sed(FILE *fp)
 
 double sinterface_get_psize(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -956,8 +956,8 @@ double sinterface_get_psize(void* model, char *name)
 
 double sinterface_get_b_dens(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -969,8 +969,8 @@ double sinterface_get_b_dens(void* model, char *name)
 
 double sinterface_get_i_conc(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -982,8 +982,8 @@ double sinterface_get_i_conc(void* model, char *name)
 
 double sinterface_get_css_erosion(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
 
@@ -995,8 +995,8 @@ double sinterface_get_css_erosion(void* model, char *name)
 
 double sinterface_get_css_deposition(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
 
@@ -1008,8 +1008,8 @@ double sinterface_get_css_deposition(void* model, char *name)
 
 double sinterface_get_svel(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1021,8 +1021,8 @@ double sinterface_get_svel(void* model, char *name)
 
 void sinterface_get_svel_name(void* model, char *name, char *sname)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1032,8 +1032,8 @@ void sinterface_get_svel_name(void* model, char *name, char *sname)
 
 int sinterface_get_cohesive(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1046,8 +1046,8 @@ int sinterface_get_cohesive(void* model, char *name)
 
 int sinterface_get_resuspend(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1059,8 +1059,8 @@ int sinterface_get_resuspend(void* model, char *name)
 
 int sinterface_get_deposit(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1072,8 +1072,8 @@ int sinterface_get_deposit(void* model, char *name)
 
 int sinterface_get_floc(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1085,8 +1085,8 @@ int sinterface_get_floc(void* model, char *name)
 
 int sinterface_get_calcvol(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     int v=0;
@@ -1098,8 +1098,8 @@ int sinterface_get_calcvol(void* model, char *name)
 
 int sinterface_get_adsorb(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1111,8 +1111,8 @@ int sinterface_get_adsorb(void* model, char *name)
 
 void sinterface_get_carriername(void* model, char *name,char *carriername )
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
 
@@ -1123,8 +1123,8 @@ void sinterface_get_carriername(void* model, char *name,char *carriername )
 
 void sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
 
@@ -1134,8 +1134,8 @@ void sinterface_get_dissolvedname(void* model, char *name, char *dissolvedname)
 
 double sinterface_get_adsorb_kd(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1147,8 +1147,8 @@ double sinterface_get_adsorb_kd(void* model, char *name)
 
 double sinterface_get_adsorb_rate(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
     
@@ -1779,7 +1779,7 @@ static void sed_defaults_bsc(tracer_info_t *tracer, char *trname)
 static void init_tracer_atts_sed(tracer_info_t *tracer, char *trname, 
 				 sed_def_t *sed_def, char *sed_def_name)
 {
-  int n, i, found;
+  int n, found;
   
   /* Find the tracer number in the list */
   found = 0;
@@ -2045,7 +2045,7 @@ void sed_set_tr_att(tracer_info_t *tr, char *key, void *value)
 /*-------------------------------------------------------------------*/
 void sed_read_tr_atts(tracer_info_t *tr, FILE *fp, char *keyname)
 {
-  trinfo_priv_sed_t *data = get_private_data_sed(tr);
+
   char buf[MAXSTRLEN], key[MAXSTRLEN];
   double d_val;
   int i_val;
@@ -2160,7 +2160,7 @@ void sed_tracer_custom(master_t *master)
 {
   tracer_info_t *tr2d =  master->trinfo_2d;
   tracer_info_t *tr3d =  master->trinfo_3d;
-  tracer_info_t *trsed =  master->trinfo_sed;
+
   char buf[MAXSTRLEN];
   int n, m;
 
@@ -2333,7 +2333,7 @@ static int sed_set_autotracer(FILE *fp,
 int sediment_autotracer_3d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs,
 			    tracer_info_t *trinfo, int ntr, int tn)
 {
-  int i;
+
   /* SED CLASSES */
   if (do_sed && strlen(sed_vars)) {
     tn = sed_set_autotracer(fp, sed_vars, sed_defs, trinfo,  ntr, tn,
@@ -2456,8 +2456,8 @@ int sed_get_obc(tracer_info_t *tr)
 int sediment_autotracer_write(master_t *master, FILE *op, int tn)
 {
   parameters_t *params = master->params;
-  char key[MAXSTRLEN];
-  int i, n, m, trn, sn;
+
+  int i, n, m, trn;
 
   if (!params->do_sed || strlen(params->sed_vars) == 0) return(tn);
 
@@ -2521,7 +2521,7 @@ void trans_write_sed(parameters_t *params, sediment_t *sediment, FILE *fp)
   sed_params_t *msparam = sediment->msparam;
   int i;
   double d1;
-  char tag[MAXSTRLEN];
+
 
   fprintf(fp, "############################################################################\n");
   fprintf(fp, "# Sediments\n");

@@ -115,22 +115,22 @@ void custom_tide_init(master_t *master,
   int have_tide_files = 0;
   timeseries_t *tsa, *tsp;
   int tsp_id, tsa_id;
-  int fid, ncerr;
+
   int y1;
   double stime = master->t;
   double tzi = 0.0, tz = tm_tz_offset(master->timeunit);
   double d1, d2 = 0.0;
   int bcond = 0;
-  char units[MAXSTRLEN], ampunits[MAXSTRLEN], type[MAXSTRLEN];
+  char units[MAXSTRLEN], type[MAXSTRLEN];
   int vs;
   int bs, be, *bec;
   int botzf, fw;
   double *xloc, *yloc;
   char files[MAXNUMTSFILES][MAXSTRLEN];
 
-  datafile_t *df;
-  df_variable_t *v;
-  df_attribute_t *a;
+
+
+
 
   char *tname[MAXCONSTIT + 1] = {
     /* long period */
@@ -468,8 +468,8 @@ void custom_tide_init(master_t *master,
 	    /* Velocoty amplitudes from file are transports; divide  */
 	    /* by model depth to get velocity.                       */
 	    if (botzf) {
-	      int c1 = window[n]->e2c[c][0];
-	      int c2 = window[n]->e2c[c][1];
+
+
 	      /*double depth = 0.5 * fabs(window[n]->botz[c1] + window[n]->botz[c2])*/
 	      double depth = fabs(window[n]->botzu1[c]);
 	      tc->amp[vs][i] /= depth;
@@ -573,11 +573,11 @@ void custom_tide_grid_init(master_t *master,
 			   )
 {
   geometry_t *geom = master->geom;
-  open_bdrys_t *open;
+
   cstring *con_name;
   tidal_consts_t *tc = NULL;
   FILE *fp2;
-  int i, k, t, c, cc, m, n, nn;
+  int i, k, t, c, cc, m, n;
   int nc, ncmax;
   int size;
   int *mask;
@@ -876,7 +876,7 @@ void custom_tide_grid_init_uv(master_t *master,
   cstring *con_name;
   tidal_consts_t *tc = NULL;
   FILE *fp2;
-  int i, k, t, c, cc, m, n, nn;
+  int i, k, t, c, cc, m, n;
   int nc, ncmax;
   int size;
   int *mask;
@@ -1148,8 +1148,8 @@ void custom_tide_grid_init_uv(master_t *master,
 	  /* Velocoty amplitudes from file are transports; divide    */
 	  /* by model depth to get velocity.                         */
 	  if (botzf) {
-	    int c1 = window[n]->e2c[c][0];
-	    int c2 = window[n]->e2c[c][1];
+
+
 	    /*double depth = 0.5 * fabs(window[n]->botz[c1] + window[n]->botz[c2]);*/
 	    double depth = fabs(window[n]->botzu1[c]);
 	    tc->amp[c][i] /= depth;
@@ -3134,18 +3134,18 @@ double equ_tide_evalo(geometry_t *window, window_t *windat, int c)
   double hrang[2];       /* Lunar and solar hour angle (rad)         */
   double jt;             /* Julian date                              */
   double eta;            /* Equilibrium tide height (m)              */
-  double w0 = 1.0;        /* Mean solar day, cycles/mean solar day   */
-  double w1 = 0.9661369;  /* Mean lunar day                          */
-  double w2 = 0.0366009;  /* Sidereal month                          */
-  double w3 = 0.0027379;  /* Tropical year                           */
-  double w4 = 0.0030937;  /* Lunar perigee                           */
-  double w5 = 0.0001471;  /* Regression of lunar node                */
-  double w0d = 15.0;      /* Mean solar day, deg/mean solar hour     */
-  double w1d = 14.4921;   /* Mean lunar day                          */
-  double w2d = 0.5490;    /* Sidereal month                          */
-  double w3d = 0.0411;    /* Tropical year                           */
-  double w4d = 0.0046;    /* Lunar perigee                           */
-  double w5d = 0.0022;    /* Regression of lunar node                */
+
+
+
+
+
+
+
+
+
+
+
+
   double d2r = PI/180.0;  /* Degrees to radians                      */
   double C0, C1, C2;
   double d1, sins, coss;
@@ -3280,11 +3280,11 @@ void lunar_angles(double mjd, double *A, double *dec)
 void moon_pos(double mjd, double *L, double *B)
 {
   double pi2 = 2*PI;              /* 2pi                             */
-  double Rad = PI/180.0;          /* Radians per degree              */
+
   double Arcs = 3600.0*180.0/PI;  /* Arcseconds per radian           */
   double MJD_J2000 = 51544.5;     /* Modified Julian Date of J2000   */
   /* Constants                                                       */
-  double ep = 23.43929111*Rad;    /* Obliquity of J2000 ecliptic     */
+
   double T = (mjd-MJD_J2000)/36525.0; /* Julian cent. since J2000    */
   /* Mean elements of lunar orbit                                    */
   double L_0 = frac(0.606433 + 1336.851344*T);    /* Mean longitude [rev] w.r.t. J2000 equinox */

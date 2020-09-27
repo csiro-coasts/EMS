@@ -587,7 +587,7 @@ static double trans_reset_event(sched_event_t *event, double t)
   master_t *master = reset->master;
   geometry_t *geom = master->geom;
   double tsout = schedule->stop_time;
-  int mode = master->tmode, n, tn;
+  int mode = master->tmode, tn;
   int *vc3 = geom->w3_t;
   int *vc2 = geom->w2_t;
   int nc2 = geom->b2_t;
@@ -596,7 +596,7 @@ static double trans_reset_event(sched_event_t *event, double t)
   int *ve2 = geom->w2_e1;
   int ne2 = geom->n2_e1;
   int ne3 = geom->n3_e1;
-  int c,cs,cc;
+
   double tsin = t;
   double tsync = 0.0;
 
@@ -760,7 +760,7 @@ int get_datum(int ntsfiles, timeseries_t **tsfiles,
     timeseries_t *ts;
     datafile_t *df;
     df_variable_t *v;
-    df_attribute_t *a;
+
 
     for (i = 0; i < ntsfiles; ++i) {
       ts = tsfiles[i];

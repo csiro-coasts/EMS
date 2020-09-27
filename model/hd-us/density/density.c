@@ -389,7 +389,7 @@ void density_c(geometry_t *window,  /* Processing window */
 	       int cs
   )
 {
-  int cc;                       /* Counter */
+
   int c;                        /* Sparse coordinate */
   int zm1;                       /* Sparse coordinate of the bottom */
   double top, bot;              /* Height of the surface */
@@ -438,7 +438,7 @@ void density_gc(geometry_t *window,  /* Processing window */
 		int *map
   )
 {
-  int cc;                       /* Counter */
+
   int c;                        /* Sparse coordinate */
   int zm1;                       /* Sparse coordinate of the bottom */
   double top, bot;              /* Height of the surface */

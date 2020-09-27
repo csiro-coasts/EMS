@@ -366,7 +366,7 @@ double cvol1(master_t *master,  /* Model data structure */
 	     int edge           /* Edge to smooth */
   )
 {
-  double *kk;
+
   double fi, nf;
   geometry_t *geom = master->geom;
   int cc;

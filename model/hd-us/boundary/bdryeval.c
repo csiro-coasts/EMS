@@ -346,7 +346,7 @@ void bdry_transfer_u1(master_t *master, geometry_t *window,
       /* Transfer tangential velocity to the boundary                */
       if (open_w[n]->bcond_tan & (FILEIN | CUSTOM)) {
 	int mwn = open_w[n]->mwn;
-	int nz = (open_w[n]->relax_zone_tan) ? open_w[n]->relax_zone_tan : 1;
+
 	for (ee = open_w[n]->no3_e1 + 1; ee <= open_w[n]->to3_e1; ee++) {
 	  e = open_w[n]->tmap_u2[ee];
 	  open_w[n]->transfer_u2[ee] = open_m[mwn]->transfer_u2[e];
@@ -487,7 +487,7 @@ void bdry_eval_tr_m(geometry_t *geom, /* Global geometry             */
   )
 {
   int n, m, tn, tm;             /* Counters                          */
-  int c, cc, c2, cp;            /* Centre coordinates / counters     */
+  int c, cc, c2;                /* Centre coordinates / counters     */
   int e, ee;                    /* Edge coordinate / counter         */
   double x, y, z;               /* Geographic coordinates            */
   open_bdrys_t **open = geom->open;
@@ -510,7 +510,7 @@ void bdry_eval_tr_m(geometry_t *geom, /* Global geometry             */
       /* Set the tracers                                             */
       if (open[n]->bcond_tra[tn] & (FILEIN | CUSTOM)) {
         bdry_details_t *data = &open[n]->bdata_t[tn];
-	double val;
+
         /* Call the custom boundary function                         */
         if (data->explct) {
           if (data->custom_m != NULL) {
@@ -954,7 +954,7 @@ void bdry_transfer_u1av(master_t *master, geometry_t *window,
 void OBC_bgz_nograd(geometry_t *window)
 {
   window_t *windat = window->windat;
-  int cc, ee, c, cb, tn, n, m;
+  int ee, c, cb, tn, n, m;
 
   for (n = 0; n < window->nobc; n++) {
     open_bdrys_t *open = window->open[n];
@@ -1008,7 +1008,7 @@ void read_bdry_zone(master_t *master, open_bdrys_t *open, int ee, int mode)
   double ramp = (master->rampf & FILEIN) ? master->rampval : 1.0;
   int *obc;
   int tinc;
-  int e, e2, c, c2, i, dir;
+  int e2, c, c2, i, dir;
   int zone;
 
   if (mode & U1BDRY && mode & U1GEN) {
@@ -1129,10 +1129,10 @@ double adjust_OBC_maccready(geometry_t *window,
 			    int tn               /* Tracer number    */
 			    )
 {
-  int c, cc, e, ee, cs, cb, ci, c2, vc, *obc;
+  int cc, e, ee, cs, cb, ci, c2, vc, *obc;
   double *vel, *dz, *hat;
   double d1, sgn = 1.0, vd;
-  double sr, flow, area, depth, rho;
+  double sr, flow, depth, rho;
   double rho0 = 1024.0;         /* Standard reference density */
   double rhof = 1000.0;         /* Freshwater density */
   

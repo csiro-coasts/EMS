@@ -296,7 +296,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   /* also.                                                           */
   /*for (i = open->atr; i < open->ntr; i++) {*/
   for (i = 0; i < open->ntr; i++) {
-    int tm = tracers[i].m;
+
     sprintf(buf, "NULL");
     sprintf(keyword, "BOUNDARY%1d.BCOND_%s", n, tracers[i].name);
     prm_read_char(fp, keyword, buf);
@@ -1495,7 +1495,7 @@ void bdry_custom_m(parameters_t *params,  /* Input parameter data    */
   int n, t;
   open_bdrys_t *open, *io;
   tracer_info_t *tracer;
-  char files[MAXNUMTSFILES][MAXSTRLEN];
+
 
   for (n = 0; n < geom->nobc; n++) {
     open = geom->open[n];
@@ -1916,8 +1916,8 @@ void bdry_custom_free(geometry_t *geom,    /* Global geometry        */
 {
   int n, bn, t;
 
-  tracer_info_t *tracer;
-  char files[MAXNUMTSFILES][MAXSTRLEN];
+
+
 
   /* Free ts files */
   if (open->ntsfiles) {
@@ -1970,7 +1970,7 @@ void bdry_custom_free(geometry_t *geom,    /* Global geometry        */
 
 void custom_free_m(master_t *master, bdry_details_t *data)
 {
-  int i;
+
 
   sprintf(data->name, "%c", '\0');
   if (data->free_m)
@@ -1987,7 +1987,7 @@ void custom_free_m(master_t *master, bdry_details_t *data)
 
 void custom_free_w(geometry_t *window, bdry_details_t *data)
 {
-  int i;
+
 
   sprintf(data->name, "%c", '\0');
   if (data->free_w)
@@ -2594,7 +2594,7 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
 {
   FILE *op, *sp;
   mesh_t *mesh = params->mesh;
-  int m, c, cc, cco;
+  int c, cc, cco;
   double xb1, yb1, xb2, yb2;
   double eps = 1e-6;    /* Precision for OBC comparisons             */
   int verbose = 0;
@@ -2661,7 +2661,7 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
 	}
       }
       if (open->intype & O_UPC) {
-	double x1, y1, x2, y2;
+
 	int j, jj;
 	for (j = 1; j <= mesh->npe[c]; j++) {
 	  double x1, y1, x2, y2;
@@ -2904,7 +2904,7 @@ void std_bdry(open_bdrys_t *open,
 {
   int i, tid, sid;
   char buf[MAXSTRLEN];
-  char keyword[MAXSTRLEN];
+
   char cusu1[MAXSTRLEN];
   char cusu2[MAXSTRLEN];
 

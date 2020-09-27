@@ -162,7 +162,7 @@ void closure_MY2_5_HAR(geometry_t *window,  /* Processing window */
 		       win_priv_t *wincon /* Window geometry / constants */
   )
 {
-  int c, cc, c2, k, f;          /* Sparse coodinate / counter */
+  int c, cc, c2, k;             /* Sparse coodinate / counter */
   int cs, ks;                   /* Surface sparse coordinate */
   int cb, kb;                   /* Bottom sparse coordinate */
   int zm1, zm2;                 /* Cell below cell c */
@@ -283,7 +283,7 @@ void closure_MY2_5_HAR(geometry_t *window,  /* Processing window */
     /* Map the sparse arrays to local coordinates.                   */
     c = cs;
     for (k = ks; k >= kb; k--) {
-      double filtfact;
+
       zm1 = window->zm1[c];
       dzface[k] = (k == kb) ? 0.5 * dz[k] : 0.5 * (dz[k - 1] + dz[k]);
       Kq[k] = windat->Kq[c];

@@ -343,7 +343,7 @@ void reset_means(geometry_t *window,  /* Window geometry             */
   )
 {
   int c, cc;                    /* Counters                          */
-  double ns;                    /* Time increment                    */ 
+
   double ttime = 24;            /* Predominant tidal period (hours)  */
   double time;                  /* Cumulative time counter           */
   double *detadt = wincon->d4;  /* Mean forward eta difference       */

@@ -1169,7 +1169,7 @@ void read_bdry_zone_std(master_t *master, open_bdrys_t *open, int cc, int mode)
   bdry_details_t *data;
   tsfiles_t *tsf;
   double *tvec, thetau1, u, v;
-  double ramp = (master->rampf & FILEIN) ? master->rampval : 1.0;
+
   int *obc;
   int tinc;
   int c, cs, i;

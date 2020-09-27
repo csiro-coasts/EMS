@@ -230,7 +230,7 @@ int ginterface_tracername_exists(void* model, char*name)
 /* Returns 1 if itr is a valid sediment tracer                       */
 int i_is_valid_sed_tracer(int itr)
 {
-  int i;
+
   if(itr >= 0)
     return (1);
   
@@ -346,8 +346,8 @@ int *i_get_tmap_3d(void* model, int ntr, char *trname[])
 /* Returns the fill value for 3D tracer 'name'                       */
 double ginterface_get_fillvalue_wc(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     
     double v = 0;
@@ -372,8 +372,8 @@ int ginterface_get_diagn(void* model, char *name)
 /* Returns the dissolved flag of a 3D tracer                         */
 int ginterface_get_dissol(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     
     int v = 1;
@@ -398,8 +398,8 @@ int ginterface_get_partic(void* model, char *name)
 /* Returns the diffuse flag of 3D tracers                            */
 int ginterface_get_diffuse(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     
     int v = 1;
@@ -410,8 +410,8 @@ int ginterface_get_diffuse(void* model, char *name)
 /* Returns the decay flag of 3D tracers                              */
 double ginterface_get_decay(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     
     double v = 0;
@@ -422,8 +422,8 @@ double ginterface_get_decay(void* model, char *name)
 /* Returns the units flag of 3D tracers                              */
 void ginterface_get_tracerunits(void* model, char *name, char *units)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     strcpy(units, tr->units);
 }
@@ -736,7 +736,7 @@ int *i_get_tmap_2d(void* model, int ntr, char *trname[])
   win_priv_t *wincon = window->wincon;
   int tn;
   int *tmap_2d = i_alloc_1d(ntr);
-  int n;
+
   for(tn=0; tn<ntr; tn++) {
     if(strcmp(trname[tn], "eta") == 0) {
       tmap_2d[tn] = ETA;
@@ -975,8 +975,8 @@ int *i_get_tmap_sed(void* model, int ntr, char *trname[])
 /* Returns the fill value for sediment tracer 'name'                 */
 double ginterface_get_fillvalue_sed(void* model, char *name)
 {
-    geometry_t* window = (geometry_t*) model;
-    win_priv_t *wincon=window->wincon;
+
+
     tracer_info_t *tr = i_get_tracer(model, name);
     
     double v=0;
@@ -1393,7 +1393,7 @@ double ginterface_getcellarea(void* hmodel, int c)
 /* Returns the cell area of the host grid at index b                 */
 double ginterface_cellarea(void* hmodel, int b)
 {
-    geometry_t* window = (geometry_t*) hmodel;
+
     int c = i_get_c(hmodel, b);
     return i_get_cellarea_w(hmodel, c);
 }
@@ -1761,7 +1761,7 @@ void i_get_fluxe1_wc(void* hmodel, int c, double *u1flux3d)
   int bot_k = window->s2k[window->bot_t[cc]];
   int top_k = window->s2k[window->nsur_t[cc]];
   int c3 = window->nsur_t[cc];
-  int dir = 1;
+
   int e = window->c2e[1][c3];
   int k;
   for(k = top_k; k >= bot_k; k--) {
@@ -1782,7 +1782,7 @@ void i_get_fluxe2_wc(void* hmodel, int c, double *u2flux3d)
     int bot_k = window->s2k[window->bot_t[cc]];
     int top_k = window->s2k[window->nsur_t[cc]];
     int c3 = window->nsur_t[cc];
-    int dir = 4;
+
     int e = window->c2e[1][c3];
     int k;
     for(k = top_k; k >= bot_k; k--) {
@@ -2416,9 +2416,9 @@ int i_check_wave_amp(void *hmodel)
 /* Returns the wave amplitude at coordinate c                        */
 double i_get_wave_amp(void *hmodel, int c) 
 {
-  geometry_t* window = (geometry_t*) hmodel;
-  window_t *windat = window->windat;
-  int c2 = window->m2d[c];
+
+
+
   return NOTVALID;
 }
 
@@ -2626,8 +2626,8 @@ void i_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
 
 void w_get_brsm(void *hmodel, int *brsm) 
 {
-  geometry_t* window = (geometry_t*) hmodel;
-  int cc, c, lc;
+
+
   return;
   /*
   for (cc = window->nbe1S + 1; cc <= window->nbpte1S; cc++) {

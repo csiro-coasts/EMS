@@ -79,7 +79,7 @@ hd_data_t *hd_init(FILE * prmfd)
   int icdfid = 0;               /* input cdf file id                */
   int timeindex = 0;            /* record index in dump file        */
   geometry_t *sgrid;
-  int n;
+
 
   /*----------------------------------------------------------------*/
   /* Read the input parameters for this run                         */
@@ -304,7 +304,7 @@ hd_data_t *hd_init(FILE * prmfd)
   trans_write(hd_data);
   if (params->runmode & (AUTO|DUMP)) {
     char tag[MAXSTRLEN], sag[MAXSTRLEN];
-    int ocdfid;
+
     if (params->runmode & AUTO)
       sprintf(tag, "%s.nc", params->oname);
     else
@@ -546,7 +546,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   int tn;                       /* Tracer counter                    */
   int ns;                       /* Number of smoothing passes        */
   double *bfc;                  /* Bottom friction coefficient       */
-  double *w1;                   /* Dummy                             */
+
 
   /* Set the master parameters from the parameter data structure     */
   /* Time stepping constants and variables                           */
@@ -1389,7 +1389,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     if (params->diff_scale & CUBIC) {
       int cs, j, eoe;
       double *u1vh = d_alloc_1d(geom->sze);
-      double a1, a2;
+
 
       for (cc = 1; cc <= geom->b3_t; cc++) {
 	c = geom->w3_t[cc];
@@ -1477,7 +1477,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     double hf = 0.05;             /* Factor for horizontal diffusion */
     double step = 1;              /* Integral step of diffusion > 1  */
     double hmax = 1e10;
-    double d1, d2;
+    double d1;
     int u1khf = 0, u1vhf = 0, u2khf = 0, i1, cs;
     if (params->u1kh >= 0.0)
       u1khf = u2khf = 1;
@@ -1655,7 +1655,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       double ue, ve, vt, sum = 0.0;
       double u1 = 1.0;     /* Target normal velocity                 */
       double u2 = 0.0;     /* Target tangential velocity             */
-      double ux, uy;       /* Rotated east and north vectors         */
+
       c = geom->w2_t[cc];
       for (n = 1; n <= geom->npe[c]; n++) {
 	e = geom->c2e[n][c];
@@ -2256,7 +2256,7 @@ void init_wvel_bounds(geometry_t *geom, /* Global geometry           */
   int cb;                       /* Bottom sparse coordinate          */
   double eta_l;                 /* Surface elevation at e2c[0]       */
   double eta_r;                 /* Surface elevation at e2c[1]       */
-  double dH;
+
   int e, ee, es, eb;
   double *u1bot;                /* Bottom e1 velocity                */
 
@@ -2715,33 +2715,7 @@ void trans_sourcegrid_init(parameters_t *params,
   window_t *tpd;
   win_priv_t *tpc;
   transport_t *tp;
-  char keyword[MAXSTRLEN];
-  char buf[MAXSTRLEN];
-  int c, i, j, k, m, n, cb, ci, cc;
-  int zp1, zm1;
-  size_t start[4];
-  size_t count[4];
-  int fid;
-  int ncerr;
-  size_t nz, kz;
-  size_t nce1, nce2;
-  size_t nfe1, nfe2;
-  double **bathy;
-  double *layers;
-  double *cellz;
-  double **d1, **d2;
-  double **u1x, **u1y;
-  double **u2x, **u2y;
-  double **cellx, **celly;
-  double **gridx, **gridy;
-  double **sx, **sy;
-  int nobc;       /* No. boundaries in source grid */
-  int *npts;      /* No. cells in each boundary */
-  int **iloc;     /* Boundary x location list   */
-  int **jloc;     /* Boundary y location list   */
-  int *type;      /* Boundary orientation       */
-  double w1, w2;
-  short **mask;
+  int m, n;
 
   if (!(master->tmode & SP_ORIGIN) && geom->nwindows > 1)
     hd_quit("Transport mode using different source and target grids must have WINDOWS = 1.\n");

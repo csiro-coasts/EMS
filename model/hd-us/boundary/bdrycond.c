@@ -46,7 +46,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
 {
   int e, ee, j;                    /* Edge coorindate / counter      */
   int e1, e2, e3, e4;              /* Edge coordinates               */
-  int cc, c, c1, c2;               /* Cell centered coordines        */
+  int c, c1, c2;               /* Cell centered coordines        */
   double *newval;                  /* New velocity values            */
   double *fval;                    /* Forced velocity values         */
   int *imap = NULL;                /* Interior cell map              */
@@ -388,8 +388,8 @@ void set_OBC(geometry_t *window,   /* Processing window              */
   /*-----------------------------------------------------------------*/
   /* Geostropic 3D current                                           */
   if (bcond & CUSTOM && open->options & (OP_GEOSTR|OP_YANKOVSKY)) {
-    double *dz, *md, *cf, *hat, *depth;
-    double d1, d2, d3, d4, fa, fm, fb, d, sgn;
+    double *dz, *md, *cf, *depth;
+    double d1, d2, d3, d4, fa, fm, fb, d;
     double *sum = wincon->d1;
 
     dz = windat->dzu1;
@@ -572,7 +572,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
     double feta;
     double *hat = NULL;
     double *uval;
-    int cc, ci, ce, j;
+    int cc, ci, j;
 
     hat = window->h1acell;
     if (bcond & (FILEIN|CUSTOM|LOCALN))
@@ -1116,7 +1116,7 @@ void u1av_local(geometry_t *window,   /* Window geometry             */
   double cot = 0.0;             /* Coriolis term */
   double bft;                   /* Bottom friction term */
   double sft;                   /* Surface friction term */
-  double *tzp;                  /* Surface height array */
+
   double *depth;                /* Depth of the water column */
   double midx;                  /* Water depth at the cell face */
   double val;                   /* Dummy */
@@ -1208,7 +1208,7 @@ void eta_local(geometry_t *window,   /* Window geometry              */
 	       int eb                /* End coordinate of vec        */
 	       )
 {
-  int n, c, e, es, cc, cs;      /* Sparse coodinate / counter        */
+  int n, c, e, cc, cs;          /* Sparse coodinate / counter        */
   double flux, colflux;         /* Velocity transport divergence     */
 
   for (cc = sb; cc <= eb; cc++) {

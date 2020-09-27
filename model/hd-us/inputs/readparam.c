@@ -397,7 +397,7 @@ parameters_t *params_read(FILE *fp)
   char buf1[MAXSTRLEN];
   char keyword[MAXSTRLEN];
   int m, n;
-  int cc;
+
   double d1;
 
   /* Allocate memory for the parameter data structure                */
@@ -1917,8 +1917,8 @@ parameters_t *params_read(FILE *fp)
 parameters_t *auto_params(FILE * fp, int autof)
 {
   double **bathy = NULL;        /* Bathymetry array                  */
-  int i, j, m, n, c, nz;        /* Counters                          */
-  int ii, jj, tn;               /* Counters                          */
+  int i, j, m, n, c;            /* Counters                          */
+  int tn;                       /* Counters                          */
   int nr = 0, rs = 0;           /* River counters                    */
   int bdry = 0;                 /* Tracks open boundaries            */
   open_bdrys_t *open;           /* Pointer to boundary structure     */
@@ -1932,7 +1932,7 @@ parameters_t *auto_params(FILE * fp, int autof)
   int *ib = NULL, *jb = NULL, *rb = NULL, *rf = NULL;
   int **jci = NULL, *masku = NULL;
   int *nib = NULL, **mask = NULL; 
-  int ic = 0, jc = 0;
+
   double *rhc;
   FILE* fptr = fp;
 
@@ -3465,8 +3465,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 /*-------------------------------------------------------------------*/
 void autoset(parameters_t *params, master_t *master, geometry_t *geom)
 {
-  int n, cc, c, lc, np, m;      /* Sparse counters                   */
-  int vv, v, ee, e;             /* Sparse counters                   */
+  int n, cc, c, lc;             /* Sparse counters                   */
+  int vv, v, e;                 /* Sparse counters                   */
   int i, j, k;                  /* Cartesian counters                */
   double spd = 2.0;             /* Maximum advective velocity expected */
   double cif = 2.0;             /* Scaling factor for internal wave speed */
@@ -3952,8 +3952,8 @@ static double *read_bathy_from_db_us(FILE *fp, parameters_t *params) {
   double *dst_bathy = NULL;
   int has_proj = (strlen(params->projection) > 0);
   int is_geog = has_proj && (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
-  int i, j, n;
-  int is, js, ie, je, jm, im;
+  int i;
+
   int ns2 = params->ns2;
   int hint = 1;        /* Interpolation type : 0 = AUTO              */
                        /*                      1 = NEAREST           */
@@ -4022,7 +4022,7 @@ static double *read_bathy_from_db_us(FILE *fp, parameters_t *params) {
 static int read_bathy_from_file(FILE *fp, parameters_t *params) {
   FILE* fb = fp;
   char buf[MAXLINELEN];
-  int cc, cn, is, js, ie, je, jm, im;
+  int cc, cn, is, js, ie, je;
   int nce1 = params->nce1;
   int nce2 = params->nce2;
 
@@ -4139,30 +4139,30 @@ static int read_bathy_from_nc(parameters_t *params, char *fname)
 /*-------------------------------------------------------------------*/
 void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
 {
-  char buf[MAXSTRLEN];
+  
   char i_rule[MAXSTRLEN];
   char *fields[MAXSTRLEN * MAXNUMARGS];
   char *rules[MAXSTRLEN * MAXNUMARGS];
-  GRID_SPECS *gs = NULL;
-  int nbath;
-  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
-  double bmean;
-  int fid;
-  int ncerr;
-  size_t start[4];
-  size_t count[4];
-  size_t nce1;
-  size_t nce2;
-  int n, m, i, j, cc, c;
-  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
-  int bverbose = 0;
-  int intype = -1;
-  int dof = 0;
+
+
+
+
+
+
+
+
+
+
+  int n, m, i, j, cc;
+
+
+
+
   int spf = 0;           /* Sparse data interpolation                */
   int nf = 0;            /* Number of bathymetry files               */
   int nr = 0;            /* Number of i_rules                        */
-  int idb;
-  poly_t *pl;
+
+
 
   sprintf(i_rule, "%c", '\0');
   if (prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)) {
@@ -4249,7 +4249,7 @@ void read_bathy_from_sparse_nc_o(parameters_t *params, char *fname)
   int limf = 1;     /* Limit bathymetry to bmin and bmax             */
   int bverbose = 0;
   int intype = -1;
-  int dof = 0;
+
   int spf = 0;           /* Sparse data interpolation                */
   int nf = 0;            /* Number of bathymetry files               */
   int idb;
@@ -4548,7 +4548,7 @@ void read_bathy_from_sparse_bty(parameters_t *params, char *fname)
   int nbath;
   double *x, *y, *b;
   double bmean;
-  int n, i, j, cc, c;
+  int n, i, c;
   int limf = 1;     /* Limit bathymetry to bmin and bmax             */
   int bverbose = 0;
 
@@ -4618,7 +4618,7 @@ void read_bathy_from_sparse_bty(parameters_t *params, char *fname)
 /*-------------------------------------------------------------------*/
 void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode)
 {
-  int n, m, i, j, cc, c;
+  int n, i, j, c;
   int intype = -1;
   int fid;
   int ncerr;
@@ -4815,24 +4815,24 @@ void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode)
 void bathy_interp_s(parameters_t *params, char *fname, int mode)
 {
   char buf[MAXSTRLEN];
-  int n, m, i, j, cc, c;
+  int i, j, cc, c;
   int intype = -1;
   int fid;
   int ncerr;
-  int lond, latd;
-  int varid;
-  int nbath;
+
+
+
   int idb;
-  size_t start[4];
-  size_t count[4];
+
+
   size_t nce1;
   size_t nce2;
-  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
-  double bmean;
+
+
   int limf = 1;     /* Limit bathymetry to bmin and bmax             */
   timeseries_t *ts = NULL;
   poly_t *pl;
-  int bverbose = 0;
+
 
   hd_warn("Structured interpolation of bathy file %s\n", fname);
 
@@ -5046,7 +5046,7 @@ void eta_init(geometry_t *geom,      /* Global geometry              */
 {
   int c, cc;
   int i, j, n;
-  int number;
+
   char buf[MAXSTRLEN];
   char key[MAXSTRLEN];
   char i_rule[MAXSTRLEN];
@@ -5130,7 +5130,7 @@ void baro_vortex(master_t *master, geometry_t *geom, int io, int jo)
   double g = 9.81;
   double Po, P;
   double z, dx, dy, f;
-  double t1, t2, t3, d1, d2, d3;
+  double t1, t2, t3;
   double rho;
   double fo = 2.0 * M_PI / 86400.0;
  
@@ -5183,7 +5183,7 @@ void vel_init(geometry_t *geom,      /* Global geometry              */
   int tu1, tu2;
   char buf[MAXSTRLEN];
   double u, v;
-  double thetau1, thetau2;
+  double thetau1;
 
   if (strlen(params->vel_init)) {
     timeseries_t *ts;
@@ -5532,9 +5532,9 @@ double *value_init(master_t *master,      /* Master data             */
   geometry_t *geom = master->geom;
   int c, cc;
   int i, j, n;
-  int number, nvals;
+  int nvals;
   char buf[MAXSTRLEN];
-  double val, *d1, **d2;
+  double val, *d1;
   double *ret = NULL;
 
   if (strlen(keyword)) {
@@ -5634,7 +5634,7 @@ poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bna
   size_t count[4];
   double **lon, **lat;
   poly_t *pl;
-  int n;
+
   df_variable_t *vlon, *vlat;
   pl = poly_create();
   datafile_t *df = ts->df;
@@ -7017,7 +7017,7 @@ int count_auto_OBC(parameters_t *params,
   char keyword[MAXSTRLEN], buf[MAXSTRLEN];
   int i, j, ii, jj;
   int m;
-  int is, ie, js, je;           /* Limits of grid */
+
   int bdry = 0;
   int nr, rs;
   double d1;
@@ -7448,13 +7448,13 @@ void set_auto_OBC(parameters_t *params,
 		  )
 {
   open_bdrys_t *open;           /* Pointer to boundary structure     */
-  FILE *fp = params->prmfd;
-  char keyword[MAXSTRLEN], buf[MAXSTRLEN];
+
+
   int i, j, ii, jj;
   int n, m;
-  int is, ie, js, je;           /* Limits of grid                    */
-  int nr, rs;
-  double d1;
+
+  int nr;
+
 
   /* Allocate OBC location vectors                                   */
   for (n = 0; n < params->nobc; n++) {
@@ -7685,8 +7685,8 @@ int set_auto_OBC_us(parameters_t *params,
 		    )
 {
   open_bdrys_t *open;               /* Pointer to boundary structure */
-  int cc, cs, cn, i, j, jj, n;
-  int verbose = 0;
+  int cc, j, jj, n;
+
 
   /* Allocate OBC location vectors                                   */
   for (n = 0; n < params->nobc; n++) {
@@ -8536,7 +8536,7 @@ void read_vel_relax(parameters_t *params, FILE *fp)
 void read_debug(parameters_t *params, FILE *fp)
 {
   char buf[MAXSTRLEN];
-  char keyword[MAXSTRLEN];
+
   int n, m;
 
   if (prm_read_char(fp, "DEBUG_LOC", buf)) {
@@ -8586,7 +8586,7 @@ void read_profile(parameters_t *params, FILE *fp)
 {
   char buf[MAXSTRLEN];
   char keyword[MAXSTRLEN];
-  int n, m;
+  int n;
 
   sprintf(keyword, "PROFILE");
   if (prm_read_char(fp, keyword, buf)) {
@@ -8831,11 +8831,11 @@ void create_ghrsst_list(parameters_t *params)
   char fname2[MAXSTRLEN], daystr[MAXSTRLEN], infile2[MAXSTRLEN], buf[MAXSTRLEN];
   double start;            /* Model start time                       */
   double stop;             /* Model stop time                        */
-  int nfiles, nf = 0;      /* Number of SST files                    */
+  int nfiles;              /* Number of SST files                    */
   int fid;                 /* netcdf file handle                     */
   int ncerr;               /* netcdf error code                      */
-  int i, n, nc;            /* Counter                                */
-  int product;             /* Number of days in composite            */
+  int i, n;                /* Counter                                */
+
   int ys, mos, ds, hs, mis, ss;  /* Start year, month, day           */
   int ye, moe, de, he, mie, se;  /* End year, month, day             */
   int y, m, d, day, lp, py;      /* Year, month, day                 */
@@ -9220,7 +9220,7 @@ void read_exclude_points(parameters_t *params, FILE *fp)
 /*-------------------------------------------------------------------*/
 void read_means(parameters_t *params, FILE *fp, int mode)
 {
-  int n, cc, ntr = 0;
+  int n, ntr = 0;
   char keyword[MAXSTRLEN];
   char buf[MAXSTRLEN];
   char trname[MAXSTRLEN];
@@ -9419,7 +9419,7 @@ void read_sediments(parameters_t *params, FILE *fp, int *ntr)
 void read_ecology(parameters_t *params, FILE *fp, int *ntr)
 {
   char buf[MAXSTRLEN];
-  char keyword[MAXSTRLEN];
+
 
   prm_set_errfn(hd_silent_warn);
   params->do_eco = 0;
@@ -9478,7 +9478,7 @@ void check_TS_relax(parameters_t *params, FILE *fp)
 	  if (prm_read_char(fp, keyword, buf) > 0) {
 	    sprintf(keyword, "TRACER%1.1d.relaxation_time_constant", n);
 	    if (prm_read_char(fp, keyword, buf) > 0) {
-	      int nf = parseline(buf, fields, MAXNUMARGS);
+
 	      if (strcmp(name, "salt") == 0) {
 		/*
 		if (nf <= 2) {
@@ -9855,7 +9855,7 @@ void cookie_cut(master_t *master, parameters_t *params)
   int c, cc, cn, ee, e, v;
   int j, jp, n, nn, nb, m, mr, nr, fn, nv, rgn, ns2, ns;
   int nreg, *reg, *mask, *maskb, *mapc, *mapv, **flag, *rask, *eask;
-  int *nobc, *nobn, *nobt, *obc, *obe, tobc;
+  int *nobc, *nobn, *nobt, tobc;
   int found[geom->nobc];
   double *regionid;
   int barof = 0;          /* Barotropic coupling for 2 way           */
@@ -10764,7 +10764,7 @@ int decode_tag(char *list, char *tag, char *value) {
 
 double get_run_length(FILE *fp)
 {
-  double start, stop, len;
+  double start, stop;
 
   prm_get_time_in_secs(fp, "START_TIME", &start);
   prm_get_time_in_secs(fp, "STOP_TIME", &stop);
@@ -10842,7 +10842,7 @@ int has_neighbour(int c, int npe, int **neic)
 
 int is_edge(parameters_t *params, int cc, double *bathy, int **neic) {
   int cn, j;
-  int found = 0;
+
 
   for (j = 1; j <= params->npe2[cc]; j++) {
     cn = neic[j][cc];
@@ -10854,7 +10854,7 @@ int is_edge(parameters_t *params, int cc, double *bathy, int **neic) {
 
 int has_outside_neighbour(parameters_t *params, int cc, double *bathy, int **neic) {
   int cn, j;
-  int found = 0;
+
 
   for (j = 1; j <= params->npe2[cc]; j++) {
     cn = neic[j][cc];
@@ -10866,7 +10866,7 @@ int has_outside_neighbour(parameters_t *params, int cc, double *bathy, int **nei
 
 int has_wet_neighbour(parameters_t *params, int cc, double *bathy, int **neic) {
   int cn, j;
-  int found = 0;
+
 
   for (j = 1; j <= params->npe2[cc]; j++) {
     cn = neic[j][cc];
@@ -10975,7 +10975,7 @@ int check_bdry_options(parameters_t *params, FILE *fp)
 double* topo_get_z_for_grid_us(topo_files_t *tfs, double *gx, double *gy,
    int ns2, topo_hint_t hint) {
    int got_topo_ok = 1;
-   int i, j;
+   int i;
    double x_ce, y_ce;
    double *topo, *x, *y, *z;
 

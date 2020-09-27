@@ -674,13 +674,13 @@ void set_dz_at_u1(geometry_t *window,  /* Window geometry            */
 {
   int ee;                       /* Counter                           */
   int e, e3;                    /* Sparse coordinate                 */
-  int zm1;                      /* Sparse cell below cell c3         */
+
   int es, eb;                   /* Sparse coordinate of the bottom   */
   int c1, c2;                   /* Cell centres straddling e         */
   double top;                   /* Top edge of a cell                */
   double bot;                   /* Bottom edge of a cell             */
   double *maxeta;               /* Maximum elevation at the edge     */
-  double gridz;
+
   int n, nc = window->nz + 1;
 
   /*-----------------------------------------------------------------*/
@@ -805,13 +805,13 @@ void set_sur_u1(geometry_t *window,  /* Window geometry              */
   )
 {
   int ee;                       /* Counter                           */
-  int e, e3;                    /* Sparse coordinate                 */
-  int es, eb;                   /* Sparse coordinate of the bottom   */
+  int e;                        /* Sparse coordinate                 */
+  int es;                       /* Sparse coordinate of the bottom   */
   int c1, c2;                   /* Cell centres straddling e         */
   int zm1;                      /* Sparse cell below cell e3         */
   double top;                   /* Top edge of a cell                */
   double *maxeta;               /* Maximum elevation at edge      e  */
-  double g1,g2;
+
   /*-----------------------------------------------------------------*/
   /* Set the pointers                                                */
   maxeta = wincon->d5;
@@ -1175,8 +1175,8 @@ void reset_thin_wtop(geometry_t *window,  /* Window geometry         */
   int c, cs, c1, c2;            /* Sparse coordinates                */
   double eta_l;                 /* Surface elevation at i-1          */
   double eta_r;                 /* Surface elevation at i+1          */
-  double eta_b;                 /* Surface elevation at j-1          */
-  double eta_f;                 /* Surface elevation at j+1          */
+
+
 
   memcpy(wtop, windat->wtop, window->szcS * sizeof(double));
 
@@ -1219,7 +1219,7 @@ void cells2process_e1(geometry_t *window, /* Window geometry         */
   double bot;                   /* Bottom edge of a cell             */
   double *maxeta;               /* Maximum elevation at the edge     */
   int vc, vcs;                  /* Counter                           */
-  int c;
+
   int nc = 0;
 
   /*-----------------------------------------------------------------*/
@@ -1412,7 +1412,7 @@ int vdiff_u1(geometry_t *window,  /* Window geometry                 */
   double botdz;            /* Thickness of the bottom layer          */
   double val;              /* Bottom current speed                   */
   double *w;               /* Vertical velocity                      */
-  int n, yp1, xmyp1;
+  int n;
   double ramp = (wincon->rampf & WIND) ? windat->rampval : 1.0;
 
   /*-----------------------------------------------------------------*/
@@ -1613,7 +1613,7 @@ void stokes_u1(geometry_t *window,  /* Window geometry               */
   double *midx;                 /* Total depth at edge               */
   int v, vv, vs, v1, v2;
   double d2, iarea;
-  double sdc, vf;
+  double sdc;
   double *tend;
 
   if(!(wincon->waves & STOKES_DRIFT)) return;
@@ -1710,8 +1710,8 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
   int ch;                 /* Fully wet partial cell coordinate       */
   int c, c1, c2, c1s, c2s; /* Cell centre counters                   */
   int zm1;                /* Cell below cell c                       */
-  int zp1, xmzp1;         /* Cell above and left-above cell c        */
-  int xm1, xm1s;          /* Cell location to the west of c          */
+
+
   int *partial;           /* Coordinate of cell containing eta[c]    */
   int *at_ele;            /* Array of fully wet cell coordinates     */
   int *hi_ele;            /* Array of fully wet cell coordinates     */
@@ -2159,7 +2159,7 @@ void precalc_u1(geometry_t *window, /* Window geometry               */
                 win_priv_t *wincon  /* Window constants              */
   )
 {
-  int e, ee, es, eoe;
+  int e, ee, es;
   int n;
   double *depth;
 
@@ -2284,7 +2284,7 @@ void vel_cen(geometry_t *window,  /* Window geometry                 */
   int c, cs, cc;
   int *vec, nvec, sz;
   double a, nu, nv, *ut;
-  geometry_t *geom=master->geom;
+
 
   /* Set pointers                                                    */
   if (mode) {
@@ -2679,7 +2679,7 @@ void extract_u1_3d(geometry_t *window, /* Window geometry            */
                    win_priv_t *wincon  /* Window constants           */
   )
 {
-  int e, ee, es, n;             /* Local sparse coordinate / counter */
+  int e, ee, es;             /* Local sparse coordinate / counter */
 
   /* Extract the u1 velocity from velocity transport.                */
   /* Note : the water depths at the forward time steps have been     */
@@ -2783,8 +2783,8 @@ void set_wvel(geometry_t *window,           /* Window geometry       */
 	      int mode                      /* Redundant             */
 	      )
 {
-  int e, ee, es, eb, zm1, zp1;
-  int c1, c2, c1s, c2s;
+  int e, ee, es, eb, zm1;
+  int c1, c2, c1s;
   double top;
 
   /*-----------------------------------------------------------------*/
@@ -2981,7 +2981,7 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
   int c, cc, cs;                /* Sparse coodinate / counter        */
   int e, ee, es;                /* Sparse coodinate / counter        */
   double *u;
-  int n;
+
 
   /*-----------------------------------------------------------------*/
   /* Set pointers and initialise                                     */
@@ -3099,7 +3099,7 @@ void velocity_adjust(geometry_t *window,    /* Window geometry       */
   int e, ee, es, eb;            /* Sparse coodinate / counter        */
   double *sum;                  /* Vertically integrated 3D velocity */
   double *midx;                 /* SIGMA : depth at the edge         */
-  double *midy;                 /* SIGMA : depth at the edge         */
+
   double *depth;                /* Water depth at the edge           */
   double *adjust;               /* Velocity adjustment               */
   int bn;                       /* OBC counter                       */
@@ -3303,7 +3303,7 @@ void vel_w_update(geometry_t *window, /* Window geometry             */
   )
 {
   int c, cc, cs;      /* Sparse coodinate / counter                  */
-  int e, ee, es, j;   /* Edge coodinate / counter                    */
+  int e, j;           /* Edge coodinate / counter                    */
   int *bottom;        /* Bottom sparse coordinate                    */
   int *sur;           /* Minimum of surface coordinate               */
   int *nsur;          /* Surface sparse coordinate after the 2D mode */
@@ -3609,7 +3609,7 @@ void ff_sl_w_update(geometry_t *window, /* Window geometry           */
   double fcbot;       /* Flux at the bottom edge of the cell         */
   int j, e;           /* Edge direction and index                    */
   int zp1, zm1;       /* Sparse coordinate below cell c              */
-  int dw = 0;         /* Window for diagnostic continuity            */
+
   double detadt;      /* Rate of change of elevation                 */
   double *deta;       /* Elevation rate of change for SIGMA          */
   double *oldw;       /* w at start of step                          */
@@ -3693,7 +3693,7 @@ void ff_sl_w_update(geometry_t *window, /* Window geometry           */
     /* in this case).                                                */
     if (wincon->conserve & CONS_WS) {
       for (cc = 1; cc <= wincon->vc; cc++) {
-	double iratio = 200;
+
 	double sf = 0.8;
 	double minval = 1e-10;
 	double ws, dto, dtn;
@@ -3814,19 +3814,19 @@ void vel_w_trans(geometry_t *window, /* Window geometry              */
   )
 {
   int c, cc, cs;      /* Sparse coodinate / counter                  */
-  int e, ee, es, j;   /* Edge coodinate / counter                    */
+  int e, j;           /* Edge coodinate / counter                    */
   int *bottom;        /* Bottom sparse coordinate                    */
   int *sur;           /* Minimum of surface coordinate               */
   int *nsur;          /* Surface sparse coordinate after the 2D mode */
   double fctop;       /* Flux at the top edge of the cell            */
   double fcbot;       /* Flux at the bottom edge of the cell         */
-  int zp1, zm1;       /* Sparse coordinate below cell c              */
-  double hf, vf, cnt; /* Diagnostics for continuity                  */
-  int dc = 0;         /* Diagnostic continuity surface coordinate    */
-  int dw = 1;         /* Window for diagnostic continuity            */
-  double detadt;      /* Rate of change of elevation                 */
+  int zp1;            /* Sparse coordinate below cell c              */
+
+
+
+
   double *deta;       /* Elevation rate of change for SIGMA          */
-  double d1;          /* Dummy                                       */
+
 
   /*-----------------------------------------------------------------*/
   /* Set pointers and initialise                                     */
@@ -3970,10 +3970,10 @@ void vel_w_bounds(geometry_t *window, /* Window geometry             */
                   win_priv_t *wincon  /* Window constants            */
   )
 {
-  int j, jo;                    /* Edge counter                      */
+  int j;                        /* Edge counter                      */
   int c, cc;                    /* Sparse coodinate / counter        */
   int cs;                       /* 2D sparse coordinate              */
-  int cb;                       /* Bottom sparse coordinate          */
+
   int ee, e, es, eb;            /* Edge coordinates                  */
   int c1, c2;                   /* Centre coordinates                */
   int *bottom;                  /* Bottom sparse coordinate          */
@@ -4067,10 +4067,10 @@ void vel_w_bounds_tran(geometry_t *window, /* Window geometry        */
 		       win_priv_t *wincon  /* Window constants       */
   )
 {
-  int j, jo;                    /* Edge counter                      */
+  int j;                        /* Edge counter                      */
   int c, cc;                    /* Sparse coodinate / counter        */
   int cs;                       /* 2D sparse coordinate              */
-  int cb;                       /* Bottom sparse coordinate          */
+
   int ee, e, es, eb;            /* Edge coordinates                  */
   int c1, c2;                   /* Centre coordinates                */
   int *bottom;                  /* Bottom sparse coordinate          */
@@ -4499,7 +4499,7 @@ void get_sdc_e1(geometry_t *window, /* Window geometry               */
   int c1, c2;
   double w;                                      /* Angular freq     */
   double k;                                      /* Wave number      */
-  double uso, u1, u2, depth, period;
+  double uso, depth, period;
   double ramp = (wincon->rampf & STOKES) ? windat->rampval : 1.0;
 
   for (ee = 1; ee <= window->b2_e1; ee++) {

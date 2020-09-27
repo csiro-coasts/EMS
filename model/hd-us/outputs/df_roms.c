@@ -117,8 +117,8 @@ static void write_dump_attributes_roms(dump_data_t *dumpdata, int cdfid,
 				       char *fname, int write_coord)
 {
   /* dimension ids */
-  int vid, n;
-  char buf[MAXSTRLEN];
+  int vid;
+
 
   /* time independent variables */
   vid = ncw_var_id(cdfid, "Vtransform");
@@ -368,7 +368,7 @@ void *df_roms_create(dump_data_t *dumpdata, dump_file_t *df)
   int inface = 1;
 
   df_roms_data_t *data = NULL;
-  nc_type fptype = nc_get_default_type(df->bpv);
+
 
   /* If can output can be appended to, then re-open the file, and resync
    * the to next record. */
@@ -505,7 +505,7 @@ void df_roms_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   df_roms_data_t *data = (df_roms_data_t *)df->private_data;
   int fid = data->fid;
   romsgrid_t *romsgrid = dumpdata->romsgrid;
-  double **d2, ***d3;
+
 
   /* Always cascade search */
   cs_fill_land(dumpdata);
@@ -574,7 +574,7 @@ void df_roms_write_bdry(dump_data_t *dumpdata, dump_file_t *df, double t)
   df_roms_data_t *data = (df_roms_data_t *)df->private_data;
   int fid = data->fid;
   romsgrid_t *romsgrid = dumpdata->romsgrid;
-  double **d2, ***d3;
+
 
   /* Always cascade search */
   cs_fill_land(dumpdata);
@@ -633,8 +633,8 @@ void df_roms_write_ic(dump_data_t *dumpdata, char *name)
   int s_rhoid;                  /* K dimension id at grid centre */
   int s_wid;                  /* K dimension id at grid centre */
   int nfe1, nfe2;
-  FILE *fp;
-  char *buf[MAXNUMVARS];
+
+
   
   /* Dummy struct */
   dump_file_t *df = calloc(1, sizeof(dump_file_t));
@@ -646,7 +646,7 @@ void df_roms_write_ic(dump_data_t *dumpdata, char *name)
   int inface = 1;
 
   df_roms_data_t *data = NULL;
-  nc_type fptype = nc_get_default_type(4);
+
 
   /* Set the ROMS subsection defaults */
   if (df->nce1 == dumpdata->nce1) df->nce1 = romsgrid->xi_rho;
@@ -803,15 +803,15 @@ void *df_roms_create_bdry(dump_data_t *dumpdata, dump_file_t *df)
   int s_rhoid;                  /* K dimension id at grid centre */
   int s_wid;                    /* K dimension id at grid corner */
   int nfe1, nfe2;
-  FILE *fp;
-  char *buf[MAXNUMVARS];
+
+
   
   int si;
   /* This flag needs to be consistent with roms_grid */
   int inface = 1;
 
   df_roms_data_t *data = NULL;
-  nc_type fptype = nc_get_default_type(4);
+
 
   /* Set the ROMS subsection defaults */
   if (df->nce1 == dumpdata->nce1) df->nce1 = romsgrid->xi_rho;
@@ -1077,7 +1077,7 @@ static int df_roms_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
   int found = 1;
   int n = 0;
   double fact = 4.0e3*1025.0;  /* Conversion Wm-2 to ms-1K */
-  double hlv = 2.500e6;        /* ROMS latent heat of evaporation (J/kg) */
+
 
   var->v = NULL;
   var->ndims = 2;

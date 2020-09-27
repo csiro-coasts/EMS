@@ -123,7 +123,7 @@ void closure_init(parameters_t *params, /* Parameter data structure */
   };
 
   void (*init) (geometry_t *geom, master_t *master) = NULL;
-  int i, n;
+  int i;
 
   /*-----------------------------------------------------------------*/
   /* Read the parameter file to determine the mixing scheme used */
@@ -309,7 +309,7 @@ void s_null(double aN, double aM, double *cmu, double *cmu_d)
 
 void s_canutoA(double aN, double aM, double *cmu, double *cmu_d)
 {
-  double d, GH, GMmin;
+  double d, GH;
 
   /* Get max and min in terms of GH; GH = -0.5aN */
   GH = -0.5 * aN;
@@ -378,7 +378,7 @@ void s_canutoA(double aN, double aM, double *cmu, double *cmu_d)
 
 void s_canutoB(double aN, double aM, double *cmu, double *cmu_d)
 {
-  double d, GH, GMmin;
+  double d, GH;
 
   /* Get max and min in terms of GH; GH = -0.5aN */
   GH = -0.5 * aN;

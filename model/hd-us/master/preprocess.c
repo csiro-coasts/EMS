@@ -1799,8 +1799,8 @@ void build_sparse_map(parameters_t *params  /* Input parameters data
       for (i = 0; i < nfe1; i++) {
         int fi = i + 1;
         int fj = j + 1;
-        int bi = (i == 0) ? i : i - 1;
-        int bj = (j == 0) ? j : j - 1;
+
+
 
         /* Count the cells that are wet or boundary cells, including */
 	/* OBC cells at R_EDGE or F_EDGEs.                           */

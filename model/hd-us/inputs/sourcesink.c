@@ -411,7 +411,7 @@ void ss_momentum(geometry_t *window,  /* Window geometry             */
 		 int mode             /* 2D or 3D mode               */
 		 )
 {
-  int s, cc, c, cs, cb, c2, zp1, nc;
+  int c, cs, cb, c2, nc;
   double u1, u2;
   double u1av, u2av;
   double *depth_e1 = wincon->d5;           /* Set in precalc_u1()    */
@@ -459,7 +459,7 @@ void ss_momentum(geometry_t *window,  /* Window geometry             */
 	/*         (water density)(cell volume)                      */
 	/*       = rate of momentum input per unit mass              */
 	if (p->watertsid >= 0) {
-	  double dfrac, frac, pdz, d1;
+	  double dfrac, pdz, d1;
 	  double wflux = windat->wflux[s];
 	  double a1 = window->h1au1[c2] * window->h2au1[c2];
 	  double a2 = window->h1au2[c2] * window->h2au2[c2];
@@ -1306,7 +1306,7 @@ int hd_pss_vec_m(void *data, pss_t *pss)
 int pss_vec_m(master_t *master, pss_t *pss)
 {
   geometry_t *geom = master->geom;
-  int c, cs, cc, n, i, ci;
+  int c, cs, cc, n, ci;
 
   if (pss->vc) {
     n = pss->vc;
@@ -1353,7 +1353,7 @@ int hd_pss_vec_w(void *data, pss_t *pss)
 
 int pss_vec_w(geometry_t *window, pss_t *pss)
 {
-  int c, cs, cc, i, ci;
+  int c, cs, cc, ci;
   int nn, n = pss->vc;
   int *mask;
 

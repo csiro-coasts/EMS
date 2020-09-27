@@ -503,11 +503,11 @@ static double get_relax_rate(master_t *master, tr_relax_data_t *relax, double dt
     return(rr);
   } else if (relax->tc != NULL) {
     /* Relaxation rate read from file. Temporally variable only. */
-    geometry_t *geom = master->geom;
+
     char buf[MAXSTRLEN];
     double tt = master->t;
-    int c = (int)dtr;
-    int cs = geom->m2d[c];
+
+
     if (master->da && !relax->da_started && ts_is_modulo(relax->tc)) {
       relax->da_started = 1;
       tt += 10.; // forces wrap around of modulo file

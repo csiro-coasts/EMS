@@ -38,7 +38,7 @@ void zflux_e1(geometry_t *geom, /* Sparse global geometery */
   )
 {
   int c, lc, cc;                /* Sparse coordinate / counter */
-  int c1, c2;
+
 
   /* Transfer the flux in the master to the slave.                  */
   /* zoomed window then sum the fluxes.                             */
@@ -193,7 +193,7 @@ double cvolt(geometry_t *window,  /* Model data structure */
 	     int edge           /* Edge to smooth */
   )
 {
-  double *kk;
+
   double fi, nf;
   int cc;
   int *st, sz = 3;

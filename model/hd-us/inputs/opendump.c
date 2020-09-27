@@ -217,7 +217,7 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
 void create_mesh(parameters_t *params, int fid)
 {
   int c, cc, v, n, nn;
-  int sfid;
+
   size_t start[4];
   size_t count[4];
   size_t nMesh2_face;

@@ -371,7 +371,7 @@ void dump_f_snapshot(sched_event_t *event, int f, double t)
 void dump_m_snapshot(master_t *master)
 {
   int f;
-  geometry_t *geom = master->geom;
+
   dump_data_t *dumpdata = master->dumpdata;
 
   /* Output dump and test point values if required */
@@ -405,7 +405,7 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
 		       win_priv_t **wincon
 		       )
 {
-  int n, m, bn, cc, c, gc, i, f;
+  int n, bn, cc, c, gc, f;
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
   dump_file_t *df;
@@ -494,7 +494,7 @@ void init_2way(master_t *master,
 	       win_priv_t **wincon)
 {
   int f, n;
-  geometry_t *geom = master->geom;
+
   dump_data_t *dumpdata = master->dumpdata;
   dump_file_t *df;
 
@@ -536,7 +536,7 @@ void dumpfile_setup(master_t *master)
 int dump_init(sched_event_t *event)
 {
   master_t *master = (master_t *)schedGetPublicData(event);
-  dump_data_t *dumpdata = master->dumpdata;
+
   char buf[MAXSTRLEN];
 
 #ifdef HAVE_PTHREADS
@@ -570,7 +570,7 @@ void trans_check_dump(master_t *master, dump_data_t *dumpdata, char *trdata)
   FILE *fp = master->prmfd;
   int i, ndf;
   double tinc;
-  char key[MAXSTRLEN], buf[MAXSTRLEN], fname[MAXSTRLEN];
+  char key[MAXSTRLEN], buf[MAXSTRLEN];
 
   dumpdata->ndf = 0;
   if (prm_read_int(fp, "OutputFiles", &ndf)) {
@@ -673,11 +673,11 @@ void dump_cleanup(sched_event_t *event, double t)
 /*------------------------------------------------------------------*/
 void master_fill_dump(master_t *master, double t) 
 {
-  int i, j, k, c, n, f;
-  int is, ie, js, je, ks, ke;
-  dump_file_t *df;
+  int f;
+
+
   dump_data_t *dumpdata = master->dumpdata;
-  geometry_t *geom = master->geom;
+
 
   /* Loop through dump file dumplist, writing any file which needs it */
   for (f = 0; f < dumpdata->ndf; f++) {
@@ -1280,7 +1280,7 @@ void read_filter(dump_file_t *df, FILE *fp, char *key)
   char buf[MAXSTRLEN];
   df_filter_t *f;
   df->filter = NULL;
-  int *st = NULL, sz;
+  int sz;
 
   if (prm_read_char(fp, key, buf)) {
     if (strcmp(buf, "none") == 0 || strcmp(buf, "copy") == 0) return;
@@ -1377,8 +1377,8 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
 {
   char key[50];
   char buf[MAXSTRLEN];
-  char buf2[MAXLINELEN];
-  char path[MAXLINELEN];
+
+
   dump_file_t *list = NULL;
   int f;
  /* int i = 0; */
@@ -1555,7 +1555,7 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
 /*------------------------------------------------------------------*/
 void dumpfile_resetup(master_t *master)
 {
-  geometry_t *geom = master->geom;
+
   dump_data_t *dumpdata = master->dumpdata;
   int n, f, ndf, fr = forced_restart;
   char **dname;
@@ -2099,7 +2099,7 @@ double df_filter_ij(dump_file_t *df,
   int n, s;
   int ii, jj, ip, jp;
   double b;
-  double aa, ks;
+  double ks;
   df_filter_t *f = df->filter;
 
   s = sqrt(f->size) / 2;
@@ -2136,7 +2136,7 @@ double df_filter(geometry_t *geom,
   double b, s, k;
   df_filter_t *f = df->filter;
   df_filter_t *fc = geom->filter[c];
-  int *st = NULL, sz;
+  int sz;
 
   if(f->type & M3PT) {
     sz = fc->map3;
@@ -2165,10 +2165,10 @@ double df_filtero(dump_file_t *df,
 		 double *a,
 		 int c)
 {
-  int n, s, cn;
-  int ii, jj, ip, jp;
+  int n, cn;
+
   double b;
-  double aa, ks;
+  double ks;
   df_filter_t *f = df->filter;
   int *st = NULL, sz;
 
@@ -2211,10 +2211,10 @@ void df_filter_2d(dump_file_t *df,
 		  int is, int ie, int js, int je)
 {
   int i, j;
-  int ii, jj, ip, jp;
-  double **b = dumpdata->w2;
-  double aa, ks;
-  df_filter_t *f = df->filter;
+
+
+
+
 
   for (j = js; j < je; j++)
     for (i = is; i < ie; i++)
@@ -4321,7 +4321,7 @@ void nc_i_writesub_2d(int fid, int varid, size_t * start,
   int **nvals = NULL;
   size_t nstart[4];
   unsigned int i, j;
-  int status;
+
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 2);
@@ -4357,7 +4357,7 @@ void nc_d_writesub_2d(int fid, int varid, size_t * start,
   double **nvals = NULL;
   size_t nstart[4];
   unsigned int i, j;
-  int status;
+
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 2);
@@ -4394,7 +4394,7 @@ void nc_d_writesub_3d(int fid, int varid, size_t * start,
   double ***nvals = NULL;
   size_t nstart[4];
   unsigned int i, j, k;
-  int status;
+
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 3);
@@ -4594,9 +4594,9 @@ typedef struct {
 
 } df_parray_data_t;
 
-/* Cell corners */
-static double xcorner[4] = { 0, 1, 1, 0 };
-static double ycorner[4] = { 0, 0, 1, 1 };
+
+
+
 
 /*UR declare here to use in write_geom */
 static double get_var_value_2d(dump_file_t *df, df_parray_var_t *var, int id, int k);
@@ -5036,8 +5036,8 @@ static void df_parray_writegeom(dump_data_t *dumpdata, dump_file_t *df)
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
 
   double *v = d_alloc_1d(df->npoints);
-  double fi = 0.0;
-  double fj = 0.0;
+ 
+
 
   start[0] = df->klower;
   start[1] = 0;
@@ -5131,7 +5131,7 @@ int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
   int found = 1;
   int n = 0;
   master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
+
 
   var->v = NULL;
   var->ndims = 2;
@@ -5505,7 +5505,7 @@ static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, k, c, id;
-  int fi, fj;
+
   double *v = d_alloc_1d(df->npoints);
   size_t start[2];
   size_t count[2];
@@ -5579,11 +5579,11 @@ static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
   delaunay **d = data->d;
-  GRID_SPECS **gs = data->gs;
+
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, k, c, id;
-  int fi, fj;
+
   double **v = d_alloc_2d(df->npoints, nz);
   size_t start[3];
   size_t count[3];
@@ -5659,11 +5659,11 @@ static void df_parray_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
   delaunay **d = data->de;
-  GRID_SPECS **gs = data->ge;
+
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, k, e, id;
-  int fi, fj;
+
   double **v = d_alloc_2d(df->npoints, nz);
   size_t start[3];
   size_t count[3];
@@ -5724,7 +5724,7 @@ static void df_parray_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, k, e, id;
-  int fi, fj;
+
   double *v = d_alloc_1d(df->npoints);
   size_t start[2];
   size_t count[2];
@@ -5780,7 +5780,7 @@ static void df_parray_writevec_cen_2d(dump_data_t *dumpdata, dump_file_t *df,
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, k, c, id;
   int ee, e, es;
-  int fi, fj;
+
   double nu, nv, a;
   double *v = d_alloc_1d(df->npoints);
   size_t start[2];
@@ -5849,9 +5849,9 @@ static void df_parray_writevec_cen_3d(dump_data_t *dumpdata, dump_file_t *df,
   delaunay **d = data->d;
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
-  int i, j, k, c, c2, id;
+  int i, k, c, c2, id;
   int ee, e, es;
-  int fi, fj;
+
   double nu, nv, a;
   double **v = d_alloc_2d(df->npoints, nz);
   size_t start[3];
@@ -6009,15 +6009,15 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
   geometry_t *geom = master->geom;
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   char *uvrule = df->irule;
-  int cc, c, c2, cn, ci, k, kk;
+  int c, c2, cn, k;
   int i, j, id, fi, fj;
   int *nk, nz = geom->nz;
   int np;
-  int *cells;
+
   point **p;
-  double v;
-  delaunay **d, *dp;
-  int n, ee, e;
+
+
+  int n, e;
   int *mask, *n2i;
   GRID_SPECS **gs;
   int isalloc;
@@ -6263,15 +6263,15 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
   geometry_t *geom = master->geom;
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   char *uvrule = "nearest";
-  int c, c2, ee, e, e2, en, ei, k, kk;
+  int c, c2, e, e2, en, k;
   int i, j, id, fi, fj, n;
   int *nk, nz = geom->nz;
   int np;
-  int *eells, *eloc;
+  int *eloc;
   point **p;
   int vv, v, vs;
-  double val;
-  delaunay **d;
+
+
   int *mask, *n2i;
   GRID_SPECS **ge;
   int isalloc;
@@ -6787,7 +6787,7 @@ static void df_memory_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
   delaunay **d = mem->d;
   GRID_SPECS **gs = mem->gs;
   int i, k, c, id;
-  int fi, fj;
+
 
   /* Fill the Delaunay structure with values */
   for (i = 0; i < mem->ncells; i++) {
@@ -6846,9 +6846,9 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
   delaunay **d = mem->d;
-  GRID_SPECS **gs = mem->gs;
+
   int i, k, c, id;
-  int fi, fj;
+
 
   /* Fill the Delaunay structure with values */
   for (i = 0; i < mem->ncells; i++) {
@@ -7083,9 +7083,9 @@ static void df_memory_print(dump_file_t *df)
 static void df_memory_dump(dump_file_t *df)
 {
   char buf[MAXSTRLEN];
-  int i, k, m, n;
+  int i, m, n;
   FILE *fp;
-  char *vars[256], *units[256];
+
 
   if (endswith(df->name, ".nc")) {
     n = strlen(df->name);
@@ -7186,7 +7186,7 @@ void set_longitude(dump_data_t *dumpdata, dump_file_t *df, int mode)
 /*------------------------------------------------------------------*/
 double next_year(double time, char *unit)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -7204,7 +7204,7 @@ double next_year(double time, char *unit)
 double next_season(double time, char *unit, int *smon)
 {
   int season;
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -7236,7 +7236,7 @@ double next_season(double time, char *unit, int *smon)
 /*------------------------------------------------------------------*/
 double prev_season(double time, char *unit, int *season, int *smon)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double prev;
   int yr, mon, day;
@@ -7271,7 +7271,7 @@ double prev_season(double time, char *unit, int *season, int *smon)
 /*------------------------------------------------------------------*/
 double next_month(double time, char *unit, int *smon)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -7296,7 +7296,7 @@ double next_month(double time, char *unit, int *smon)
 /*------------------------------------------------------------------*/
 double prev_month(double time, char *unit, int *smon)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double prev;
   int yr, mon, day;
@@ -7324,7 +7324,7 @@ double prev_month(double time, char *unit, int *smon)
 /*------------------------------------------------------------------*/
 double next_day(double time, char *unit, int *sday)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double next;
   int yr, mon, day;
@@ -7349,7 +7349,7 @@ double next_day(double time, char *unit, int *sday)
 /*------------------------------------------------------------------*/
 double prev_day(double time, char *unit, int *sday)
 {
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
   double prev;
   int yr, mon, day;
@@ -7380,9 +7380,9 @@ double prev_day(double time, char *unit, int *sday)
 /*------------------------------------------------------------------*/
 int get_transfiles(dump_data_t *dumpdata, FILE * fp) {
   double time;
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
-  double next;
+
   int n, yr, mon, pmon, day;
   int st, et, nf;
 
@@ -7408,13 +7408,13 @@ int set_transfiles(int fn, char *key, dump_data_t *dumpdata, dump_file_t *list,
 		   double t, FILE *fp) {
   FILE *tp;
   double time;
-  char datestr[MAXSTRLEN], buf[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   char *date;
-  double next;
+
   int n, m, yr, mon, pmon, nmon, day, tr;
   int st, et, nf;
-  char *mons[13] = {"dum","jan","feb","mar","apr","may","jun","jul","aug",
-		    "sep","oct","nov","dec"};
+
+
 
   /* Get the month of the start time */
   date = tm_time_to_datestr(dumpdata->start_time - 86400.0, dumpdata->timeunit);

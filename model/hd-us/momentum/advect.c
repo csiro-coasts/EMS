@@ -81,7 +81,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
       double vlc;
       double sf = 0.8;          /* Fraction of sub-timestep used     */
       double minval = 1e-10;    /* Minimum value for velocity        */
-      double *u2au1 = wincon->w7;
+
       e = cells[ee];            /* Wet cell to process               */
       es = window->m2de[e];     /* 2D cell corresponding to 3D cell  */
       c1 = window->e2c[e][0];
@@ -1290,11 +1290,11 @@ void advect_u1_2d(geometry_t *window, /* Processing window           */
                   win_priv_t *wincon  /* Window geometry / constants */
   )
 {
-  int e, ee, es, ep, em;    /* Edge coordinate / counter             */
-  int e1, e2, e1s, e2s;     /* Edge coordinate / counter             */
-  int c, cc;                /* Cell coordinate / counter             */
-  int c1, c2, c1s, c2s;     /* Cell coordinate / counter             */
-  int cs, cb, ems;          /* Surface / bottom sparse coordinate    */
+  int e, ee, ep, em;        /* Edge coordinate / counter             */
+  int e1, e2;               /* Edge coordinate / counter             */
+  int c;                    /* Cell coordinate / counter             */
+  int c1, c2;               /* Cell coordinate / counter             */
+  int cs;          	    /* Surface / bottom sparse coordinate    */
   int j, npe;
   int *ctp;                 /* Cells to process vector               */
   int vcs;                  /* Number of cells to process            */
@@ -1316,7 +1316,7 @@ void advect_u1_2d(geometry_t *window, /* Processing window           */
   double *dvel;             /* Velocity to interpolate               */
   double *vface;            /* Velocity centered on the grid face    */
   double *cn;               /* Courant number                        */
-  double midx;              /* Depth at the e1 face                  */
+
   double *u2au1;            /* u2 value at the e1 face               */
   double lr;                /* Ratio of dtf : dt2d                   */
 

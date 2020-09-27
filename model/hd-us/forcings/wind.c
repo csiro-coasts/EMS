@@ -155,7 +155,7 @@ double wind_event(sched_event_t *event, double t)
   geometry_t *geom = master->sgrid;
 
   if (t >= (event->next_event - SEPS)) {
-    int ii, i, c, ee, e;
+    int i, c, ee;
     double windx, windy;
     double cd;
 
@@ -402,13 +402,13 @@ double windstress_kondo(master_t *master, wind_data_t *data,
   double ta = (master->airtemp) ? master->airtemp[c] : master->temp[c];
   double pres = (master->patm) ? master->patm[c] : master->ambpress;
   double wspd = sqrt((*wx) * (*wx) + (*wy) * (*wy));
-  double dtw;            /* Wet bulb temperature                     */
+
   double qs = NOTVALID;  /* Specific humidity at surface (kg/kg)     */
   double q = NOTVALID;   /* Specific humidity at 10m (kg/kg)         */
   double es;       /* Vapour pressure at the air temp (HPa)          */
-  double esat;     /* Saturation vapour pressure (HPa)               */
+
   double ew;       /* Vapour pressure at water temp. (Hpa)           */
-  double rh;       /* Relative humidity (%)                          */
+
 
   /* Convert pressure to HPa                                         */
   pres /= 100.0;

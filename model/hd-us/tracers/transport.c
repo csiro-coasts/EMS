@@ -110,7 +110,7 @@ void transport_step(master_t *master, geometry_t **window,
   geometry_t *tpg;
   window_t *tpd;
   win_priv_t *tpc;
-  int nn, n, s, nb;
+  int nn, n, nb;
   int cc, c;
   double clock = dp_clock();
 
@@ -474,7 +474,7 @@ void transport_post(master_t *master, geometry_t **window,
 void transport_init(master_t *master, geometry_t *window,
 		    window_t *windat, win_priv_t *wincon)
 {
-  geometry_t *geom = master->geom;
+
   geometry_t *tpg;
   window_t *tpd;
   win_priv_t *tpc;
@@ -559,7 +559,7 @@ void advect_diffuse_lag(geometry_t *window, /* Window geometry       */
   int vcs;                /* Surface tracer cells to process counter */
   int vc1;                /* As for vc excluding OBC cells           */
   int vcs1;               /* As for vcs excluding OBC cells          */
-  int zp1;                /* k index at k+1                          */
+
   double *Fx;             /* x tracer flux                           */
   double *Fy;             /* y tracer flux                           */
   double *Fz;             /* z tracer flux                           */
@@ -678,7 +678,7 @@ void advect_diffuse_lag(geometry_t *window, /* Window geometry       */
 	  c = wincon->s1[cc];
 	  if (dtracer[c]) {
 	    double Vtm1, Vpss, Vtot;
-	    double *Vi = wincon->w8;
+
 	    c2 = window->m2d[c];
 	    /* SIGMA : Adjust tracer values for the depth            */
 	    if (slf)
@@ -836,18 +836,18 @@ void semi_lagrange_c(geometry_t *window,  /* Window geometry         */
   double *dzz = wincon->dzz;    /* Cell thickness                    */
   double *mask = wincon->w9;    /* Mask for sub-step scaling         */
   int *cl = wincon->s2;         /* Cell index of source location     */
-  int *c2cc = wincon->s4;       /* Index to counter mapping          */
+
   double u, v, w;               /* Interpolated velocity             */
   double p, q, r;               /* Sub-steps                         */
-  int cc, c, ci, c2, kb, zm1;
+  int cc, c, ci, c2, zm1;
   int n;
-  double slon, slat, dist, dir, bot;
-  int i, j, k;
-  double sinth, costh;
+
+  int j;
+
   double m2deg = 1.0 / (60.0 * 1852.0);
   int has_proj = (strlen(projection) > 0);
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
-  int sodanos = 0;  /* Compute distances on the spheroid             */
+
   int onestep = 0;  /* Find streamline in one step                   */
   if (!is_geog) m2deg = 1.0;
 
@@ -1043,14 +1043,14 @@ int get_pos(geometry_t *window, /* Window geometry                   */
 {
   window_t *windat = window->windat;
   win_priv_t *wincon = window->wincon;
-  delaunay *d = window->d;
+
   int cs = window->m2d[c];
   int cis = window->m2d[ci];
-  int cn, cns, zm1;
+  int cn, cns;
   double xin = *cx;
   double yin = *cy;
   double zin = *cz;
-  double dist, dir, s1, s2;
+  double dist, dir;
   double slat, slon;
   double sinth, costh;
   double dx, dy;
@@ -1061,7 +1061,7 @@ int get_pos(geometry_t *window, /* Window geometry                   */
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
   int sodanos = 0;  /* Compute distances on the spheroid             */
   int j, k = window->s2k[ci];
-  point p;
+
 
   /* Get the new horizontal location                                 */
   if (!is_geog) m2deg = 1.0;
@@ -1113,7 +1113,7 @@ int get_pos(geometry_t *window, /* Window geometry                   */
   /* If the new location is a ghost cell, send it inside the mesh.   */
   if (window->gcm[k][cns] & L_GHOST) {
     if (window->us_type & US_IJ) {
-      int es, vs, found = 0;
+
       for (j = 1; j <= window->npe[cis]; j++) {
 	if (intersect(window, cis, j, xin, yin, slon, slat, &nx, &ny))
 	  break;
@@ -1191,17 +1191,17 @@ int get_posc(geometry_t *window, /* Window geometry                  */
 	     double *odist       /* Distance of this segment         */
 	    )
 {
-  window_t *windat = window->windat;
-  win_priv_t *wincon = window->wincon;
+
+
   int cis = window->m2d[ci];
-  int cn, cns, zm1;
+  int cn, cns;
   double xin = *cx;
   double yin = *cy;
-  double dist, dir, s1, s2;
+  double dist, dir;
   double slat, slon;
   double sinth, costh;
-  double dx, dy;
-  double nx, ny;
+
+
   double m2deg = 1.0 / (60.0 * 1852.0);
   int has_proj = (strlen(projection) > 0);
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
@@ -1288,14 +1288,14 @@ void semi_lagrange(geometry_t *window,  /* Processing window */
 		   double *tr   /* Tracer array */
 		   )
 {
-  int cc, c, cs, c1;
+  int cc, c, cs;
   double *ntr = wincon->w5;
   int *cl = wincon->s2;
-  int *c2cc = wincon->s4;
+
   double *cx = wincon->w6;
   double *cy = wincon->w7;
   double *cz = wincon->w8;
-  double *botz = wincon->d6;
+
 
   /* Update the tracer values at cell centres in the interpolation   */
   /* structure.                                                      */
@@ -1412,7 +1412,7 @@ int intersect(geometry_t *window,    /* Window geometry              */
 {
   int cs = window->m2d[c];
   int es = window->c2e[j][cs];   /* Edge of surface source cell      */
-  double x1, y1, x2, y2, s1, s2;
+  double s1, s2;
   int found = 0;
   if (es) {
     int v1 = window->e2v[es][0];       /* Vertex 1 of edge           */
@@ -1422,9 +1422,9 @@ int intersect(geometry_t *window,    /* Window geometry              */
       double v1y = window->gridy[v1];
       double v2x = window->gridx[v2];
       double v2y = window->gridy[v2];
-      double x1, x2, y1, y2;
+
       double dx = fabs(v1x - v2x);
-      double dy = fabs(v1y - v2y);
+
 
       /* Get the location where edge and streamline intersect       */
       if (dx) {
@@ -1496,7 +1496,7 @@ int find_cellq(geometry_t *window, /* Window geometry                */
   double dy = window->celly[cs] - y;
   double dist = sqrt(dx * dx + dy * dy);
   double r;
-  int j, cc, cn, sz;
+  int j, cn;
 
   cr = c;
   r = dist;
@@ -1542,7 +1542,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
   double *u1;                 /* Horizontal edge velocity            */
   double *w;                  /* Vertical velocity                   */
   double *u1v;                /* Horizontal volume flux              */
-  double *nu, *nv;            /* Cell centered horizontal velocity   */
+
   double *nw = wincon->nw;    /* Cell centered vertical velocity     */
   double *cx = wincon->tr_mod_x;  /* x position of streamline        */
   double *cy = wincon->tr_mod_y;  /* y position of streamline        */
@@ -1566,10 +1566,10 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
   double trs, tre;            /* Tracer at start and end of segments */
   double dz;                  /* Cell thickness                      */
   double dist, d1;            /* Lengths of segment                  */
-  double sinth, costh;        /* sin and cos of edge angle           */
+
   double m2deg = 1.0 / (60.0 * 1852.0);  /* Meter to degree          */
   double px, py, pz;
-  int cc, c, cs, ci, kb, zm1, zp1;
+  int cc, c, ci, zp1;
   int ee, e, e2, es, ei, pei;
   int c1, c2;
   int n;
@@ -1577,7 +1577,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
   int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
   double tf = 0.55; /* Factor for implicitness of cross terms (0.5:1)*/
   int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
-  int sodanos = 0;            /* Compute distances on spheriod       */
+
   int tranf;                  /* Transverse term flag                */
   int doint = 1;              /* Integrate tracers along streamline  */
   int momo2 = 0;              /* Second order momentum estimation    */
@@ -1630,7 +1630,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
     /* OBC ghost cells                                               */
     for (n = 0; n < window->nobc; n++) {
       open_bdrys_t *open = window->open[n];
-      int trn = (int)tr[0];
+
       for (ee = 1; ee <= open->no3_e1; ee++) {
 	c = c2 = open->obc_e2[ee];
 	zp1 =  (nw[c] < 0.0) ? clzc[c] : window->zm1[clzc[c]];
@@ -1990,9 +1990,9 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
   double *dzz = wincon->dzz;
   double *nw = wincon->nw;
   double *mask = wincon->tr_mod;
-  double *u1, *u2;
+  double *u1;
   int cc, c, ci, c2;
-  int ee, e, es;
+  int e, es;
   int n, j, zm1;
   int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
 
@@ -2195,12 +2195,12 @@ void universal_limith(geometry_t *window,       /* Window geometry    */
   double *hflux;                /* Horizontal volume flux pointer    */
   double *smin = wincon->crfxc; /* Minimum streamline value          */
   double *smax = wincon->crfyc; /* Maximum streamline value          */
-  double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
-  double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
+
+
   double *osubeta = wincon->d1;  /* Surface elevation at t-1         */
   double *subeta = wincon->d2;   /* Surface elevation at t           */
   double *tr_mod = wincon->tr_mod; /* z transverse tracer            */
-  double *tr_moc = wincon->Fzh;    /* Horizontal transverse tracer   */
+
   double *w;                     /* Vertical velocity                */
   double d1;                     /* Dummy                            */
   int checkf = 0;
@@ -2718,7 +2718,7 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 
   /* Check                                                           */
   if (c == cd) {
-    double d2, d3;
+
     dtracer = 0.0;
     /* Get the continuity (volume) balance. This is independent of   */
     /* tracer value and checks volume fluxes and sea levels are      */
@@ -2904,7 +2904,7 @@ void check_monotone(geometry_t *window,        /* Window geometry    */
   double mx = lw->tmx;
   double mn = lw->tmn;
 
-  int tn = wincon->monon;
+
 
   if (tr > mx) {
     /*if (windat->mono) windat->mono[c] = max(windat->mono[c], fabs(tr - mx));*/
@@ -2936,13 +2936,13 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
 	       double *tr                 /* Tracer array            */
 	       )
 {
-  int cc, c, cs, c2, k, id, m, j, cn, ee, e;
+  int cc, c, cs, c2, m, ee, e;
   int itmax = 20;
   int *cl = wincon->s2;
-  double tn1 = HUGE, tx1 = -HUGE;
-  double tn2 = HUGE, tx2 = -HUGE;
-  double ptr;
-  double nfilled = 0;
+
+
+
+
   double *mask = wincon->tr_mod;
   double *mn = wincon->w5;
   double *mx = wincon->w3;
@@ -2951,8 +2951,8 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
   double eps = 1e-5;
   double msfmax = 2.0;
   double v2, v3, vol;
-  double *mxc = wincon->w4;    /* Local tracer maximum at source     */
-  double *mnc = wincon->w5;    /* Local tracer minimum at source     */
+
+
   double m1, m2;
   double *smin = wincon->crfxc; /* Minimum streamline value          */
   double *smax = wincon->crfyc; /* Maximum streamline value          */
@@ -3102,8 +3102,8 @@ void tran_grid_init(geometry_t *window, window_t *windat, win_priv_t *wincon)
   int cc, c, c2, ci, k;
   int *nk, nz = window->nz;
   point **p;
-  double v;
-  delaunay *d;
+
+
   int n, m, ee, e;
   int ef = 0;
   int sf = 3;  /* 3 = one row, 5 = two rows                          */
@@ -3736,7 +3736,7 @@ void set_trans_sed(geometry_t *window, int vid, double *v)
 {
   window_t *windat = window->windat;
   win_priv_t *wincon = window->wincon;
-  int ee, cc, c, c2, n, id;
+  int cc, c, c2, id;
   double s = -1.0;
   double *var = wincon->d6;
   int osl;
@@ -3850,7 +3850,7 @@ double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, 
   double dzz = wincon->dzz[c];        /* cellz thickness             */
   double *cellz = wincon->cellz;      /* cellz depth                 */
   int is_sed = (c == window->zm1[c]) ? 1 : 0;
-  double bfact = (osl & L_FG) ? 0.0 : -1.0;
+
 
   /*
   if (window->wgst[c]) {
@@ -3965,13 +3965,13 @@ double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, 
 /*-------------------------------------------------------------------*/
 double hd_trans_interpo(geometry_t *window, GRID_SPECS **gs, double x, double y, double z, int c, int co, int vid)
 {
-  window_t *windat = window->windat;
+
   win_priv_t *wincon = window->wincon;
   int k1, k2;
   double v, v1, v2, d;
   int zp1 = window->zp1[c];
   int zm1 = window->zm1[c];
-  double dzz = wincon->dzz[c];        /* cellz thickness             */
+
   double *cellz = wincon->cellz;      /* cellz depth                 */
   int is_sed = (c == window->zm1[c]) ? 1 : 0;
   int osl = 1;
@@ -4068,11 +4068,11 @@ void set_interp_points(geometry_t *window,
 		       int size
 		       )
 {
-  int cc, c, c2, k, i, j, n, m, id;
+  int cc, c, c2, k, i, j, n, id;
   int cn, cns, cg, cgs;
-  int *st = NULL, sz, np;
+  int *st = NULL, sz;
   int nz = window->nz;
-  int *cells, *mask;
+  int *cells; 
 
   /*-----------------------------------------------------------------*/
   /* Free the point_triangles array if necessary                     */
@@ -4163,9 +4163,9 @@ void set_interp_points_n(geometry_t *window,
 {
   int cc, c, c2, k, i, j, n, m, id;
   int cn, cns, cg, cgs;
-  int *st = NULL, sz, np;
+  int *st = NULL, sz;
   int nz = window->nz;
-  int *cells, *mask;
+  int *cells;
 
   /*-----------------------------------------------------------------*/
   /* Set the new points                                              */
@@ -4305,8 +4305,8 @@ void set_interp_square(geometry_t *window,
 		       )
 {
   int cc, c, c2, k, i, j, jj, n, id, idn;
-  int cn, cns, cg, cgs;
-  int *st = NULL, sz, np;
+  int cn, cns, cgs;
+
   int nz = window->nz;
 
   /*-----------------------------------------------------------------*/
@@ -4413,8 +4413,8 @@ void set_interp_square_n(geometry_t *window,
 			 )
 {
   int cc, c, c2, k, i, j, jj, n, id, idn;
-  int cn, cns, cg, cgs;
-  int *st = NULL, sz, np;
+  int cn, cns, cgs;
+
   int nz = window->nz;
 
   /*-----------------------------------------------------------------*/
@@ -4524,7 +4524,7 @@ void set_interp_ring(geometry_t *window,
 		     delaunay **d
 		     )
 {
-  int cc, c, c2, k, i, j, n, id;
+  int cc, c, c2, k, i, j, id;
   int cn, cns;
   int nz = window->nz;
 
@@ -4595,7 +4595,7 @@ void set_interp_ring_n(geometry_t *window,
 		       npt_t **npt
 		       )
 {
-  int cc, c, c2, k, i, j, n, id;
+  int cc, c, c2, k, j, n, id;
   int cn, cns;
   int nz = window->nz;
 
@@ -4616,7 +4616,7 @@ void set_interp_ring_n(geometry_t *window,
   }
   /* Open boundary ghosts                                            */
   for (n = 0; n < window->nobc; n++) {
-    int ee, e, ci;
+    int ee, ci;
     open_bdrys_t *open = window->open[n];
     for (ee = 1; ee <= open->no3_e1; ee++) {
       c = open->ogc_t[ee];
@@ -4695,7 +4695,7 @@ void print_source_k(geometry_t *window,
 		    )
 {
   
-  int cc, c, cs;
+  int cc, c;
   FILE *fp;
   char buf[MAXSTRLEN];
 
@@ -4746,7 +4746,7 @@ void vel_center_w(geometry_t *window, /* Window geometry             */
 /*-------------------------------------------------------------------*/
 void set_dzz(geometry_t *window, double *dzz)
 {
-  window_t *windat = window->windat;
+
   win_priv_t *wincon = window->wincon;
   int c, cc, c2, cb, zm1, nn;
   double *cellz = wincon->cellz;
@@ -4806,7 +4806,7 @@ void set_dzz(geometry_t *window, double *dzz)
 void set_dzz_o(geometry_t *window, double *dzz)
 {
   win_priv_t *wincon = window->wincon;
-  int c, cc, c2, zm1;
+  int c, cc, zm1;
   double top, bot;
 
   /* Initialize in case a streamline lands in a dry cell, a valid    */
@@ -5353,7 +5353,7 @@ void global_fill(geometry_t *window,  /* Window geometry             */
       /*-------------------------------------------------------------*/
       /* The MONOTONIC option is a multiplicative fill.              */
       double vol;
-      double nfilled = 0;
+
       m = 0;
       v1 = 1.0;
       memset(mask, 0, window->sgsiz * sizeof(double));
@@ -5496,9 +5496,9 @@ void monotonic_fill(geometry_t *window,  /* Window geometry          */
 		    int mode
 		    )
 {
-  int c, cs, c2, cc, m;
+  int c, cs, c2, cc;
   double eps;
-  double vol, v1, v2, v3, tme, tm, tmass;
+  double vol, v1, v2, v3, tme, tm;
   int *S = wincon->s2;
   double *mxc = wincon->w4;
   double *mnc = wincon->w5;
@@ -5507,8 +5507,8 @@ void monotonic_fill(geometry_t *window,  /* Window geometry          */
   double *dtracer = wincon->w1;
   double *omass; 
   double *ovol = wincon->p1;
-  int *mask = wincon->s3;
-  int *c2cc = wincon->s4;
+
+
   double msf = 1.0;      /* Mass scaling factor                      */
   double merr = 0.0;     /* Computed mass error                      */
   double mer = 0.0;      /* Diagnosed mass error                     */
@@ -5518,7 +5518,7 @@ void monotonic_fill(geometry_t *window,  /* Window geometry          */
   double m1 = 0.0;       /* Total mass at time t                     */
   double mpss = 0.0;     /* Pointsource mass                         */
   double msfmax = 0.5;
-  int itmax = 10;
+
   int pssex = 0;
 
   /*-----------------------------------------------------------------*/
@@ -5890,7 +5890,7 @@ double obc_msf(geometry_t *window, /* Window geometry                */
 {
   int c, cc, cs;
   int nv = windat->ntr + 1;  /* Total vol at start of the time-step  */
-  int nb = windat->ntr + 2;  /* Total bdry vol fluxes for time-step  */
+
   double tvol = 0.0;
 
   *msf = 1.0;
@@ -5958,7 +5958,7 @@ void global_tfill(geometry_t *window,  /* Window geometry            */
     open_bdrys_t *open = window->open[nn];
     double *vel, v;
     double *hat;
-    int sc, *cv;
+    int sc;
 
     vel = windat->u1;
     hat = window->h2au1;
@@ -6069,9 +6069,9 @@ void calc_tracer_eta(geometry_t *window, /* Window geometry          */
 {
   double *f1;                   /* Edge transports                   */
   double colflux;               /* Flux divergence                   */
-  int c, cc, cs, ee, e, es;     /* Sparse coodinate / counter        */
-  int bn;                       /* OBC counter                       */
-  open_bdrys_t **open = window->open; /* Window OBC structure        */
+  int c, cc, ee, e, es;         /* Sparse coodinate / counter        */
+
+
   double *owaterss2d = wincon->d7;
 
   /*-----------------------------------------------------------------*/
@@ -6092,7 +6092,7 @@ void calc_tracer_eta(geometry_t *window, /* Window geometry          */
   /*set_map_eta(window);*/
   for (cc = 1; cc <= window->b2_t; cc++) {
     int e, j;
-    double eta;
+
     c = window->w2_t[cc];
 
     /*---------------------------------------------------------------*/
@@ -6134,8 +6134,8 @@ void check_tracer_eta(geometry_t *window, /* Window geometry         */
 {
   double *f1;                   /* Edge transports                   */
   double colflux;               /* Flux divergence                   */
-  int c, cc, cs, ee, e, es;     /* Sparse coodinate / counter        */
-  double eta;                   /* Computed sea level                */
+  int c, cc, ee, e, es;         /* Sparse coodinate / counter        */
+
   double eps = 1e-5;            /* Tolerance                         */
 
   /*-----------------------------------------------------------------*/
@@ -6298,7 +6298,7 @@ void init_trans(master_t *master,    /* Master data structure */
 /*-------------------------------------------------------------------*/
 void check_transport(geometry_t *window, window_t *windat, win_priv_t *wincon)
 {
-  int c, cc, cs, c1, j;
+  int c, cc, cs;
   int *S = wincon->s2;
 
   for (cc = 1; cc <= wincon->vc; cc++) {
@@ -6365,13 +6365,13 @@ void trans_data_nan(geometry_t *window, window_t *windat, win_priv_t *wincon)
 void trans_data_check(master_t *master, geometry_t **window,
 		      window_t **windat, win_priv_t **wincon)
 {
-  geometry_t *geom = master->geom;
+
   int nwindows = master->nwindows;
   geometry_t *tpg;
   window_t *tpd;
   win_priv_t *tpc;
   int nn, n;
-  int cc, c, cp, ee, e;
+  int cc, c, ee, e;
 
   for (nn = 1; nn <= nwindows; nn++) {
     n = wincon[1]->twin[nn];
@@ -6430,7 +6430,7 @@ void weights_v(geometry_t *window,
 	       int osl
 		)
 {
-  win_priv_t *wincon = window->wincon;
+
   int n = osl;
   int k, m;
   int ck;
