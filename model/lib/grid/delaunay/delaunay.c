@@ -591,7 +591,7 @@ int delaunay_xytoi_lag(delaunay* d, point* p, int id)
        fabs(p->y - d->points[t->vids[0]].y) < 1e-5) return(id);
     do {
         for (i = 0; i < 3; ++i) {
-	  int i1 = (i + 1) % 3, i2;
+	  int i1 = (i + 1) % 3;
 	    int ran = 0;
 
 	    if (intri(d, id, p)) return(id);

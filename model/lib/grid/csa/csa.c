@@ -939,7 +939,7 @@ static void csa_refindprimarycoeffstriangle(csa* a, triangle* t)
     double b[10];
     double b1[6];
     int n, ii;
-    double bc[3];
+
 
     for (ii = 0; ii < npoints; ++ii)
         z[ii] = points[ii]->z;
@@ -1103,11 +1103,11 @@ static void csa_findprimarycoeffs(csa* a)
 
 void csa_refindprimarycoeffs(csa* a, point *p)
 {
-  int ii, i, j, n;
-  double dx = a->xmax - a->xmin;
-  double dy = a->ymax - a->ymin;
-  int npoints = a->npoints;
-  double h = sqrt(dx * dy * a->nppc / npoints);      /* square edge size */
+  int i;
+
+
+
+
 
 
   /*
@@ -1464,7 +1464,7 @@ void csa_destroy(csa* a)
 void csa_addpoints(csa* a, int n, point points[])
 {
     int na = a->npointsallocated;
-    int i, j;
+    int i;
 
     assert(a->squares == NULL);
 

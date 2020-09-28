@@ -144,7 +144,7 @@ void lpi_rebuild(lpi* l, point* p)
 
 void lpi_rebuild_tri(lpi* l, point* p, int tid, int k)
 {
-  int i;
+
   delaunay *d = l->d;
   triangle* t = &d->triangles[tid];
   lweights* lw = &l->weights[tid];

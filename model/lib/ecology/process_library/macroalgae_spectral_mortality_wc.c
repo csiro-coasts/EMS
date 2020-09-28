@@ -65,7 +65,7 @@ void macroalgae_spectral_mortality_wc_init(eprocess* p)
     workspace* ws = malloc(sizeof(workspace));
     stringtable* tracers = e->tracers;
 
-    int OFFSET_EPI = tracers->n * 2;
+
 
     p->workspace = ws;
 

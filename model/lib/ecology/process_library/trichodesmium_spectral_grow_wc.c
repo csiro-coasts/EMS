@@ -272,7 +272,7 @@ void trichodesmium_spectral_grow_wc_precalc(eprocess* p, void* pp)
 
 void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
@@ -376,7 +376,7 @@ void trichodesmium_spectral_grow_wc_calc(eprocess* p, void* pp)
        and is analogous to growth */
 
     double Iresp = umax * ws->Plank_resp * Tricho_I;
-    double resp = Iresp * (red_A_N * MW_Nitr) / red_A_I;
+
 
     /* Chlorophyll content shared between daughter cells during division. 
 

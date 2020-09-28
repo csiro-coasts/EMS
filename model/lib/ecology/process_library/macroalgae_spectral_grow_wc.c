@@ -83,8 +83,8 @@ void macroalgae_spectral_grow_wc_init(eprocess* p)
     ecology* e = p->ecology;
     workspace* ws = malloc(sizeof(workspace));
     stringtable* tracers = e->tracers;
-    stringtable* epis = e->epis;
-    int OFFSET_EPI = tracers->n * 2;
+
+
 
 
     p->workspace = ws;
@@ -159,9 +159,9 @@ void macroalgae_spectral_grow_wc_precalc(eprocess* p, void* pp)
     cell* c = (cell*) pp;
     double* cv = c->cv;
     double* y = c->y;
-  ecology* e = p->ecology;
 
-    void* model = e->model;
+
+
 
 
 
@@ -186,10 +186,10 @@ void macroalgae_spectral_grow_wc_calc(eprocess* p, void* pp)
     double* y1 = ia->y1;
     cell* c = (cell*) ia->media;
     double* cv = c->cv;
-    double dz_wc = c->dz_wc;
-  ecology* e = p->ecology;
 
-    void* model = e->model;
+
+
+
 
     double MA_N = y[ws->MA_N_i];
 

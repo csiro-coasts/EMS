@@ -214,7 +214,7 @@ void bl_rebuild2(bl* l1, bl* l2, point* p)
   double q, r;
   delaunay *d = l1->d;
   lweights *lw, *lws;
-  int ks, kd;
+
   int vid = d->vid;
 
   i = (int)p->v[vid];

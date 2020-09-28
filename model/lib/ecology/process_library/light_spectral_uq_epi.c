@@ -194,12 +194,12 @@ void light_spectral_uq_epi_init(eprocess* p)
   stringtable* tracers = e->tracers;
   stringtable* epis = e->epis;
   workspace* ws = malloc(sizeof(workspace));
-  int w, w2, count_Li;
+
   
   int OFFSET_SED = tracers->n;
   int OFFSET_EPI = tracers->n * 2;
 
-  bio_opt_prop *bio = e->bio_opt;
+
   
   p->workspace = ws;
 
@@ -373,12 +373,12 @@ void light_spectral_uq_epi_init(eprocess* p)
 
 void light_spectral_uq_epi_postinit(eprocess* p)
 {
-  double *absorbance;
+
   ecology* e = p->ecology;
   stringtable* tracers = e->tracers;
   stringtable* epis = e->epis;
   workspace* ws = (workspace *)p->workspace;
-  double NtoCHL = get_parameter_value(e, "NtoCHL");
+
   char buf[MAXSTRLEN];
   int OFFSET_EPI = tracers->n * 2;
 
@@ -582,13 +582,13 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
   double* y = c->y;
   double* lighttop_s = col->cv[ws->cv_lighttop_s_i];
   
-  int w,i;
+  int w;
 
   int num_waves     = ws->num_waves;
-  int num_rrs_waves = ws->num_rrs_waves;
+
 
   double *wave  = ws->wave;
-  double *rrs_wave  = ws->rrs_wave;
+
 
   double *aA_s_CS = NULL;
   double *aA_s_CS_cph = NULL;
@@ -911,12 +911,12 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
   workspace* ws = p->workspace;
   double* y = c->y;
   
-  int w,i;
 
-  int num_waves     = ws->num_waves;
+
+
   int num_rrs_waves = ws->num_rrs_waves;
 
-  double *wave  = ws->wave;
+
   double *rrs_wave  = ws->rrs_wave;
 
   double *aA_s_CS = NULL;

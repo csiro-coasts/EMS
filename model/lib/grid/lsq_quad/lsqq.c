@@ -52,7 +52,7 @@ lsqq* lsqq_build(delaunay* d)
     int npem;
     double **p, **b;
     double *f, *s, *w, *std;
-    double z0, **coeff;
+    double z0;
     lsqq* l = malloc(sizeof(lsqq));
     short *mask;
     int *npe;
@@ -306,13 +306,13 @@ void lsqq_destroy(lsqq* l)
  */
 void lsqq_interpolate_point(lsqq* l, point* p)
 {
-  int i;
-  delaunay* d = l->d;
+
+
   qweights* lw;
   double v;
   int id = (int)p->z;
   double xp, yp;
-  int jj;
+
   lw = &l->weights[id];
   xp = p->x - lw->xr;
   yp = p->y - lw->yr;

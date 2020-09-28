@@ -149,8 +149,8 @@ void carbon_chemistry_wc_postinit(eprocess* p)
 /*******************************************************************************/
 
 {
-  ecology* e = p->ecology;
-  workspace* ws = p->workspace;
+
+
    
 }
 /*******************************************************************************/
@@ -167,8 +167,8 @@ void carbon_chemistry_wc_precalc(eprocess* p, void* pp)
   workspace* ws = p->workspace;
   cell* c = (cell*) pp;
   double* y = c->y;
-  double* cv = c->cv;
-  double dz_wc = c->dz_wc;
+
+
 
   /*LOCAL DECLARATION*/
   
@@ -194,8 +194,8 @@ void carbon_chemistry_wc_precalc(eprocess* p, void* pp)
   double pco2surf;			/* diagnostic*/
   double dpCO2 ;				/*diagnostic*/
   double h_total;				/*diagnostic*/
-  double omega_ca;			/*diagnostic*/
-  double omega_ar;			/*diagnostic*/
+
+
   double omegaca;				/*diagnostic*/
   double omegaar;				/*diagnostic*/
   double calcium;				/*internal parameter*/
@@ -297,21 +297,21 @@ void carbon_chemistry_wc_calc(eprocess* p, void* pp)
 /*******************************************************************************/
 { 
 
-  workspace* ws = p->workspace;
-  intargs* ia = (intargs*) pp;
-  cell* c = ((cell*) ia->media);
-  double* cv = c->cv;
-  double* y = ia->y;
-  double* y1 = ia->y1;
-  double dz_wc = c->dz_wc;
+
+
+
+
+
+
+
   
 }
 
 void carbon_chemistry_wc_postcalc(eprocess* p, void* pp)
 {
-  cell* c = ((cell*) pp);
-  workspace* ws = p->workspace;
-  double* y = c->y;
+
+
+
   
 }
 
@@ -772,11 +772,11 @@ void   drtsafe(double *h_total3,double x1,double x2, double xacc,
   
   /*define local variables */
   int maxit=100;
-  int j,num;
+  int j;
   double fh,swap,xl,xh,dxold,dxx,f,tempp;
   double fl;
   double df;
-  double h_total4;
+
   double dum;
   double dum2;
   /*call the iteration function */

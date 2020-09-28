@@ -189,7 +189,7 @@ static void init_default_process(ecology *e, int type,
 				 int nprocs, const char *procs[])
 {
   int i;
-  eprocess *p;
+
   char buf[MAXSTRLEN];
   char *parens = "";
 
@@ -621,7 +621,7 @@ ecology* ecology_build(void* model, char* prmfname)
     ecology* e = ecology_create();
     FILE* prmfile = NULL;
     char buf[MAXLINELEN];
-    int i,j;
+    int i;
 
     e->model = model;
 
@@ -1106,7 +1106,7 @@ void ecology_step(ecology* e, double dt)
 #if (NCPU > 1)
     pthstuff* pth = e->pth;
 #endif
-    int i,j;
+    int i;
 
     /*
      * Now that we are using vca2, we cannot precompute the number or

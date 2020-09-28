@@ -122,7 +122,7 @@ void filter_feeder_wc_init(eprocess* p)
 	ecology* e = p->ecology;
 	stringtable* tracers = e->tracers;
 	workspace* ws = malloc(sizeof(workspace));
-        char* prm = p->prms->se[0]->s;
+
 
 	p->workspace = ws;
 
@@ -332,9 +332,9 @@ void filter_feeder_wc_precalc(eprocess* p, void* pp)
   };
 
   double Oxygen = y[ws->Oxygen_wc_i];
-  double NH4 = y[ws->NH4_wc_i];
-  double DIP = y[ws->DIP_wc_i];
-  double DIC = y[ws->DIC_wc_i];
+
+
+
 
     int wcbotk; 
     wcbotk = einterface_getwcbotk(c->col->model, c->b);
@@ -470,13 +470,13 @@ void filter_feeder_wc_precalc(eprocess* p, void* pp)
 void filter_feeder_wc_calc(eprocess* p, void* pp)
 /*******************************************************************************/
 { 
-workspace* ws = p->workspace;
-    intargs* ia = (intargs*) pp;
-    cell* c = ((cell*) ia->media);
-    double* cv = c->cv;
-    double* y = ia->y;
-    double* y1 = ia->y1;
-    double dz_wc = c->dz_wc;
+
+
+
+
+
+
+
 
 }
 

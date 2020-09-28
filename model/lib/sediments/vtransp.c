@@ -943,9 +943,9 @@ updates: srf_flux_in, srf_flux_out_coef
 static void srf_flux_inout(sediment_t *sediment, sed_column_t *sm,
 			   int nt, double *srf_flux_in, double *srf_flux_out_coef)
 {
-  sed_tracer_t *tr = &sediment->mstracers[nt];
+
   int tk_wc = sm->topk_wc;
-  int bk_wc = sm->botk_wc;
+
   double srf_flux = sm->tr_srf_flux[nt];
 
   // NMY 2013 surface flux

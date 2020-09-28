@@ -232,7 +232,7 @@ void microphytobenthos_spectral_grow_wc_precalc(eprocess* p, void* pp)
 
 void microphytobenthos_spectral_grow_wc_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);

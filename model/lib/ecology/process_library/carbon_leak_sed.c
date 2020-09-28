@@ -56,7 +56,7 @@ void carbon_leak_sed_init(eprocess* p)
 
 void carbon_leak_sed_destroy(eprocess* p)
 {
-    workspace* ws = (workspace*) p->workspace;
+
 
 }
 
@@ -64,17 +64,17 @@ void carbon_leak_sed_calc(eprocess* p, void* pp)
 {
 
 
-  ecology* e = p->ecology;
-  void* model = e->model;
+
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
   double* y1 = ia->y1;
   double* y = c->y;
   double porosity = c->porosity;
-  column *col = c->col;
-  double ba;
-  int topk_sed = einterface_getsedtopk(e->model, 0);
+
+
+
      if (c->k_sed>1)  // if not in the bottom layer  return
 //    if (c->k_sed<topk_sed)  // if not in top layer return
 	   return;
@@ -85,8 +85,8 @@ void carbon_leak_sed_calc(eprocess* p, void* pp)
 void carbon_leak_sed_postcalc(eprocess* p, void* pp)
 {
 
-  cell* c = ((cell*) pp);
-  workspace* ws = p->workspace;
-  double* y = c->y;
+
+
+
 
 }

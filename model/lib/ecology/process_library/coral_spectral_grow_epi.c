@@ -359,7 +359,7 @@ void coral_spectral_grow_epi_calc(eprocess* p, void* pp)
     double DIN_wc = NO3_wc + NH4_wc;
     double DIP_wc = y[ws->DIP_wc_i];
     double Sc[2];
-    double DIC_wc =  y[ws->DIC_wc_i];
+
 
     double CHumax = cv[ws->CHumax_i];  /* s-1 */
     double CSumax = cv[ws->CSumax_i];  /* s-1 */

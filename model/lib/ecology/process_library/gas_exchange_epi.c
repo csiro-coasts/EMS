@@ -73,11 +73,11 @@ void gas_exchange_epi_destroy(eprocess* p)
 
 void gas_exchange_epi_precalc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  void* model = e->model;
+
+
   workspace* ws = p->workspace;
   cell* c = (cell*) pp;
-  column* col = c->col;
+
   double* y = c->y;
 
   /* assume that the oxygen saturation is the same for plants and MPB */
@@ -87,12 +87,12 @@ void gas_exchange_epi_precalc(eprocess* p, void* pp)
 
 void gas_exchange_epi_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  void* model = e->model;
+
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
-  column* col = c->col;
+
  
   double* y = ia->y;
   double* y1 = ia->y1;
@@ -107,10 +107,10 @@ void gas_exchange_epi_calc(eprocess* p, void* pp)
 
 void gas_exchange_epi_postcalc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  void* model = e->model;  
-  cell* c = ((cell*) pp);
-  column* col = c->col;
-  workspace* ws = p->workspace;
-  double* y = c->y;
+
+
+
+
+
+
 }

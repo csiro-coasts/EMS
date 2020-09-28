@@ -440,7 +440,7 @@ int grid_interp(GRID_SPECS *gs)
 			      gs->npout,  gs->pout);
     } else {
       int n;
-      point p;
+
       // Loop over all points
       for (n=0; n<gs->npout; n++) {
 	gs->pout[n].z =  grid_interp_on_point(gs, gs->pout[n].x, gs->pout[n].y);

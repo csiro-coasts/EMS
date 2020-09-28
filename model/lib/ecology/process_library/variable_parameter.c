@@ -65,22 +65,22 @@ void variable_parameter_destroy(eprocess* p)
 
 void variable_parameter_precalc(eprocess* p, void* pp)
 {
-  workspace* ws = p->workspace;
-  cell* c = (cell*) pp;
-  double* cv = c->cv;
-  double* y = c->y;
+
+
+
+
 
 }
 
 void variable_parameter_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  workspace* ws = p->workspace;
-  intargs* ia = (intargs*) pp;
-  cell* c = ((cell*) ia->media);
-  double* cv = c->cv;
-  double* y = ia->y;
-  double* y1 = ia->y1;
+
+
+ 
+  
+
+
+
 
 }
 void variable_parameter_postcalc(eprocess* p, void* pp)
@@ -92,8 +92,8 @@ void variable_parameter_postcalc(eprocess* p, void* pp)
   workspace* ws = p->workspace;
   double* y = c->y;
 
- 
-  double z_centre,z_bot;
+  double z_bot; 
+
   int wcbotk;
   if ((ws->PhyL_sv_i > -1) )
 {

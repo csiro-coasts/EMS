@@ -204,7 +204,7 @@ void zooplankton_mortality_sed_postcalc(eprocess* p, void* pp)
   workspace* ws = p->workspace;
   cell* c = (cell*) pp;
   double* y = c->y;
-  double* cv = c->cv;
+
   
   double Zoo_N = y[ws->Zoo_N_i];
   

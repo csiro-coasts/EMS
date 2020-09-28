@@ -194,7 +194,7 @@ void microphytobenthos_spectral_grow_sed_precalc(eprocess* p, void* pp)
 
 void microphytobenthos_spectral_grow_sed_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
@@ -242,7 +242,7 @@ void microphytobenthos_spectral_grow_sed_calc(eprocess* p, void* pp)
     
     /* LIGHT ABSORPTION */
 
-    int w;
+
     double KI;            // mol photon cell-1 s-1
     double Chlsynfactor;  // d aA / d Chl 
 

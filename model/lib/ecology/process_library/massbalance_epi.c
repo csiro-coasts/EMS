@@ -226,7 +226,7 @@ void massbalance_epi_postcalc(eprocess* p, void* pp)
     double dz_sed = c->dz_sed;
     double Nfix_wc = (ws->Nfix_wc_i >= 0) ? y[ws->Nfix_wc_i] : 0.0;
     double CO2_flux = (ws->CO2_flux_i >= 0) ? y[ws->CO2_flux_i] : 0.0;
-    double O2_flux = (ws->O2_flux_i >= 0) ? y[ws->O2_flux_i] : 0.0;
+
     double Gnet = (ws->Gnet_i >= 0) ? y[ws->Gnet_i] : 0.0;
 
     int ij[2];

@@ -405,7 +405,7 @@ void seagrass_spectral_grow_uq_epi_calc(eprocess* p, void* pp)
   double dz_wc = c->dz_wc;
   double* porosity_multi_sed = c->porosity_multi_sed;
   column *col = c->col;
-  ecology *e = col->e;
+
   int k;
   
   double SG_N = y[ws->SG_N_i];
@@ -535,7 +535,7 @@ void seagrass_spectral_grow_uq_epi_postcalc(eprocess* p, void* pp)
     double* porosity_multi_sed = c->porosity_multi_sed;
     int k;
 
-    double* cv = c->cv;
+
 
     double NO3_sed = 0.0;
     double NH4_sed = 0.0;

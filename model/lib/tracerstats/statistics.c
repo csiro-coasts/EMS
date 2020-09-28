@@ -416,7 +416,7 @@ void tracer_exposureo(trs_t *trs, int* nn, void* data, int c) {
 /*-------------------------------------------------------------------*/
 void tracer_reeftemp(trs_t *trs, int* nn, void* data, int c) {
   int k,n;
-  double **tr, **tr1, **tr2;
+  double **tr, **tr1;
   double fact;
   double tm;
   int ys, mos, ds, hs, mis, ss;  /* Start year, month, day           */
@@ -1185,7 +1185,7 @@ void tracer_stdev_2d(trs_t *trs, int* nn, void* data) {
 /*-------------------------------------------------------------------*/
 void vertical_max(trs_t *trs, int* nn, void* data) {
   int k,n = *nn;
-  double **tr, max;
+  double **tr;
   int n3 = *((int*)data);
 
   /* Get the tracer value                                            */
@@ -1257,7 +1257,7 @@ void vertical_mean(trs_t *trs, int* nn, void* data) {
 /* tracer n.                                                         */
 /*-------------------------------------------------------------------*/
 void copy_layer(trs_t *trs, int* nn, void* data) {
-  int k,n3,n= *nn;
+  int n3,n= *nn;
   double **tr;
   int layer = (int)trs->w1S[n];
 
@@ -1863,7 +1863,7 @@ static void sum_section_tracer_w(trs_t *trs, sectioncoord_t *section,
 {
   int kv;
   int topk = section->data[2][index];
-  int botk = section->data[3][index];
+
   int ntr  = section->trsn[n];
 
   if(topk < 0) {

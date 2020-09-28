@@ -185,12 +185,12 @@ wave_t* wave_create() {
 /* from the host model.                                              */
 /*-------------------------------------------------------------------*/
 void wave_init(void* model, wave_t *wave, FILE *fp) {
-  int n, nn, m, i, j, k, ntr_tmp;
+  int n, nn, m, i, j, k;
   int ntr, atr;           /* Number of 3D tracers in host model      */
   int ntrS, atrS;         /* Number of 2D tracers in host model      */
   char **trname_3d;       /* 3D tracer names                         */
   char **trname_2d;       /* 2D tracer names                         */
-  char **trname_sed;      /* Sediment tracer names                   */
+
   int size;               /* Size of the grid                        */
   double dt;
   char buf[MAXSTRLEN];
@@ -494,15 +494,15 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
 /* Does the interface work.                                          */
 /*-------------------------------------------------------------------*/
 void wave_step(void* model, wave_t *wave, int c) {
-  int cc, n, i;
-  double wamp;
-  double dir;
+  int i;
+
+
   double wavenumb;
-  double ub;
-  double ustrcw;
-  double wx, wy;
-  double thetau1;     /* angle between e1 & x axis at u1 point       */ 
-  double thetau2;     /* angle between e2 & y axis at u2 point       */ 
+
+
+
+
+
 
   /* Return if nothing to do for this step                           */
   if(!wave->do_waves)
@@ -669,7 +669,7 @@ void radiation_stress(wave_t *wave,      /* Wave data                */
   double dir2;              /* Wave direction relative to e2 axis    */
   double ldir;              /* Wave direction in local coordinates   */
   double Sxy, Syx;          /* Radiation stresses at the coast       */
-  double S;                 /* Dummy                                 */
+
   double costhu1;
   double sinthu1;
   double costhu2;
@@ -953,7 +953,7 @@ double wamp_estim(double wx_str, double wy_str, double wavenumber,
 void wind_wave_toba(wave_t *wave, double *f)
 {
   double Hs;           /* Significant wave height (m)                */
-  double period;       /* Wave period (sec)                          */
+
   double ustar;        /* Wind friction velocity                     */
   double dir;          /* Wind direction (deg T)                     */
   double fetch;        /* Fetch (m)                                  */
@@ -983,10 +983,10 @@ void wind_wave_usac(wave_t *wave, double *f)
 {
   double Hs;           /* Significant wave height (m)                */
   double period;       /* Wave period (sec)                          */
-  double ustar;        /* Wind friction velocity                     */
+
   double dir;          /* Wind direction (deg T)                     */
   double fetch;        /* Fetch (m)                                  */
-  double H, T;         /* Dummies                                    */
+
   double w1, w2;       /* Wind speed (ms-1)                          */
 
   dir = wavedir_estim(wave->wy, wave->wx);

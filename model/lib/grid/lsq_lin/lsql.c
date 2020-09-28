@@ -51,7 +51,7 @@ lsql* lsql_build(delaunay* d)
     int npem;
     double **p, **b;
     double *f, *s, *w, *std;
-    double z0, **coeff;
+    double z0;
     lsql* l = malloc(sizeof(lsql));
     short *mask;
     int *npe;
@@ -303,13 +303,13 @@ void lsql_destroy(lsql* l)
  */
 void lsql_interpolate_point(lsql* l, point* p)
 {
-  int i;
-  delaunay* d = l->d;
+
+
   lweights* lw;
   double v;
   int id = (int)p->z;
   double xp, yp;
-  int jj;
+
   lw = &l->weights[id];
   xp = p->x - lw->xr;
   yp = p->y - lw->yr;

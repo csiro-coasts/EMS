@@ -167,7 +167,7 @@ void lyngbya_wc_precalc(eprocess* p, void* pp)
 	double* cv = c->cv;
         
 
-	double Tfactor = (ws->Tfactor_i >= 0) ? cv[ws->Tfactor_i] : 1.0;
+
 	cv[ws->Phy_pmax_i] = ws->Phy_pmax ;
 
 	double PhyS_N = y[ws->PhyS_N_i];
@@ -197,8 +197,8 @@ void lyngbya_wc_calc(eprocess* p, void* pp)
 {
 	workspace* ws = p->workspace;
 	intargs* ia = (intargs*) pp;
-	cell* c = ((cell*) ia->media);
-	double* cv = c->cv;
+
+
 	double* y = ia->y;
 	double* y1 = ia->y1;
 
@@ -208,7 +208,7 @@ void lyngbya_wc_calc(eprocess* p, void* pp)
     double DIP = y[ws->DIP_i];
     double Phy_N = y[ws->PhyS_N_i];
     double Light = y[ws->Light_i];
-    double Pmax = cv[ws->Phy_pmax_i] ;
+
     double temp = y[ws->temp_i]; 
     double salt = y[ws->salt_i]; 
 

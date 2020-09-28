@@ -500,7 +500,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double* cv = c->cv;
     double dz_wc = c->dz_wc;
 
-    double temp_wc = y[ws->temp_wc_i];
+
     double CS_Chl = y[ws->CS_Chl_i];
 
     double CS_NR = y[ws->CS_NR_i];
@@ -515,7 +515,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double CS_RO = y[ws->CS_RO_i];
 
     double CS_Qt = CS_Qi + CS_Qred + CS_Qox; /* total reaction centres.*/
-    double CS_Qa = CS_Qred + CS_Qox; /* active reaction centres.*/
+
 
     double PI_max = ws->CSm * red_A_I * 1000.0 ; /* mmol photon cell -1 */
     double PN_max = ws->CSm * red_A_N * 1000.0 * MW_Nitr; /* mg N cell-1 */
@@ -530,7 +530,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double DIN_wc = NO3_wc + NH4_wc;
     double DIP_wc = y[ws->DIP_wc_i];
     double Sc[2];
-    double DIC_wc =  y[ws->DIC_wc_i];
+
 
     double CHumax = cv[ws->CHumax_i];  /* s-1 */
     double CSumax = cv[ws->CSumax_i];  /* s-1 */
@@ -553,7 +553,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     /* Zoothanthellae - cells quantified per m2 of host tissue. */
 
     double cellnum = CS_N / (ws->CSm * red_A_N * 1000.0 * MW_Nitr); /* cell m-2 */
-    double cellChl = CS_Chl / (ws->CSvol * cellnum);                /* mg Chl m-3  */
+
 
     /* now get normalised reserves. */
 
@@ -680,7 +680,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     /* Component of mucus that has reserves attached to it */
 
-    double mucus_attNR = max(0.0,mucus - CHremin * polypmort * CH_N * unitch);
+    /* double mucus_attNR = max(0.0,mucus - CHremin * polypmort * CH_N * unitch); */
 
     /* translocate (+ve symbiont to host), including growth translocates, 
        mortality of symbionts and mortality of host (-ve). */

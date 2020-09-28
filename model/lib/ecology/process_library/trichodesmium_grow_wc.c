@@ -247,7 +247,7 @@ void trichodesmium_grow_wc_precalc(eprocess* p, void* pp)
 
 void trichodesmium_grow_wc_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
@@ -354,7 +354,7 @@ void trichodesmium_grow_wc_calc(eprocess* p, void* pp)
        and is analogous to growth */
 
     double Iresp = umax * ws->Plank_resp * Tricho_I;
-    double resp = Iresp * (red_A_N * MW_Nitr) / red_A_I;
+
 
     /* Chlorophyll content shared between daughter cells during division. 
 
@@ -411,7 +411,7 @@ void trichodesmium_grow_wc_postcalc(eprocess* p, void* pp)
 {
   cell* c = ((cell*) pp);
   workspace* ws = p->workspace;
-  ecology* e = p->ecology;
+
   double* y = c->y;
 
   double g = 9.81;              /* Acceleration due to gravity */
@@ -425,8 +425,8 @@ void trichodesmium_grow_wc_postcalc(eprocess* p, void* pp)
 
   // double density = 1020.0; //y[ws->dens_i];
   double density = y[ws->dens_i];
-  double kinematic_viscosity = y[ws->vis_i];
-  double dynamic_viscosity_w = kinematic_viscosity * density; /* Dynamic viscosity of seawater at 20C is 1.08e-3 Pa.s */
+
+
 
   //  double Iquota = y[ws->Tricho_I_i]/PI_max;
 

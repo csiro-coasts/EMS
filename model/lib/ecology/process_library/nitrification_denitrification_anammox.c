@@ -241,8 +241,8 @@ void nitrification_denitrification_anammox_calc(eprocess* p, void* pp)
 }
 void nitrification_denitrification_anammox_postcalc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  void* model = e->model;  
+
+
   cell* c = ((cell*) pp);
   workspace* ws = p->workspace;
   double* y = c->y;

@@ -71,8 +71,8 @@ void age_sed_init(eprocess* p)
 
 void age_sed_postinit(eprocess* p)
 {
-  ecology* e = p->ecology;
-  workspace* ws = (workspace *)p->workspace;
+
+
   
 }
 
@@ -83,21 +83,21 @@ void age_sed_destroy(eprocess* p)
 
 void age_sed_precalc(eprocess* p, void* pp)
 {
-    workspace* ws = p->workspace;
-    cell* c = (cell*) pp;
-    double* cv = c->cv;
-    double* y = c->y;
-    ecology* e = p->ecology;
+
+    
+
+
+
 
 }  
 void age_sed_calc(eprocess* p, void* pp)
 {
     workspace* ws = p->workspace;
     intargs* ia = (intargs*) pp;
-    cell* c = (cell*) ia->media;
-    double* y = ia->y;
+
+
     double* y1 = ia->y1;
-    double* cv = c->cv;
+
    
     /* Ageing in the target area */
 

@@ -210,7 +210,7 @@ void remineralization_precalc(eprocess* p, void* pp)
         double DetR_C = y[ws->DetR_C_i];
         double DetR_P = y[ws->DetR_P_i];
         double DOR_P = y[ws->DOR_P_i];
-	double BOD = y[ws->BOD_i];
+
 
         y[ws->TN_i] += (NH4 + NO3 + DOR_N) * porosity + DetPL_N + DetBL_N + DetR_N;
         y[ws->TC_i] += (DIC + DOR_C) * porosity + DetPL_N * red_W_C + DetBL_N * atk_W_C + DetR_C;

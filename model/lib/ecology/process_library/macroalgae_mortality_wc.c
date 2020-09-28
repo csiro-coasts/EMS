@@ -70,9 +70,9 @@ void macroalgae_mortality_wc_init(eprocess* p)
     ecology* e = p->ecology;
     workspace* ws = malloc(sizeof(workspace));
     stringtable* tracers = e->tracers;
-    stringtable* epis = e->epis;
 
-    int OFFSET_EPI = tracers->n * 2;
+
+
 
     p->workspace = ws;
 
@@ -130,11 +130,11 @@ void macroalgae_mortality_wc_calc(eprocess* p, void* pp)
     intargs* ia = (intargs*) pp;
     double* y = ia->y;
     double* y1 = ia->y1;
-    cell* c = (cell*) ia->media;
-    double* cv = c->cv;
+
+
     double SWF_N = y[ws->SWF_N_i];
     double SWS_N = y[ws->SWS_N_i];
-    double NH4 = y[ws->NH4_i];
+
     double Lamda = ws->Lamda;
     double K = ws->K;
     double time = (ws->time);
@@ -151,10 +151,10 @@ void macroalgae_mortality_wc_calc(eprocess* p, void* pp)
 
 void macroalgae_mortality_wc_postcalc(eprocess* p, void* pp)
 {
-  workspace* ws = p->workspace;
-  cell* c = (cell*) pp;
-  double* cv = c->cv;
-  intargs* ia = (intargs*) pp;
-  double* y = ia->y;
+
+
+
+
+
  
 }

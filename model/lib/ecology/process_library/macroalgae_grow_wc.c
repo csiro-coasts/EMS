@@ -98,7 +98,7 @@ void macroalgae_grow_wc_init(eprocess* p)
     ecology* e = p->ecology;
     stringtable* tracers = e->tracers;
     workspace* ws = malloc(sizeof(workspace));
-    char* prm = p->prms->se[0]->s;
+
     
 
     p->workspace = ws;
@@ -174,7 +174,7 @@ void macroalgae_grow_wc_precalc(eprocess* p, void* pp)
   
     workspace* ws = p->workspace;
     cell* c = (cell*) pp;
-    double* cv = c->cv;
+
     double* y = c->y;
     
   

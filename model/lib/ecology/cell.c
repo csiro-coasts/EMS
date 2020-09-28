@@ -716,7 +716,7 @@ int cell_calc(cell* c)
     /* Integration failed */
     int ij[2];
     int b = c->col->b;
-    void *hmodel = e->model;
+
     char str[MAXSTRLEN];
     
     einterface_get_ij(e->model, b, ij);

@@ -956,7 +956,7 @@ static void eco_processes_auto(int type, const char **procs[], int *nprocs)
  */
 int get_eco_processes(char *name, int type, const char **procs[], int *nprocs)
 {
-  int i,n;
+  int i;
 
   struct {
     char *name;

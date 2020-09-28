@@ -111,9 +111,9 @@ void phytoplankton_spectral_grow_wc_init(eprocess* p)
   ecology* e = p->ecology;
   stringtable* tracers = e->tracers;
   workspace* ws = malloc(sizeof(workspace));
-  int nprms = p->prms->n;
+
   char* prm0 = p->prms->se[0]->s;
-  char* prm1 = NULL;
+
 
   int large;
 
@@ -276,7 +276,7 @@ void phytoplankton_spectral_grow_wc_precalc(eprocess* p, void* pp)
 
 void phytoplankton_spectral_grow_wc_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
@@ -415,7 +415,7 @@ void phytoplankton_spectral_grow_wc_postcalc(eprocess* p, void* pp)
 
   double Phy_N = y[ws->Phy_N_i];
   double Phy_NR = y[ws->Phy_NR_i];
-  double Phy_Chl = y[ws->Phy_Chl_i];
+
   double Phy_PR = y[ws->Phy_PR_i];
   double Phy_I = y[ws->Phy_I_i];
 

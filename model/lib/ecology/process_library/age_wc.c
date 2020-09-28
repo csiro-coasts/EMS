@@ -111,9 +111,9 @@ void age_wc_precalc(eprocess* p, void* pp)
 {
     workspace* ws = p->workspace;
     cell* c = (cell*) pp;
-    double* cv = c->cv;
+
     double* y = c->y;
-    ecology* e = p->ecology;
+
 
     if (ws->recom){
 
@@ -136,10 +136,10 @@ void age_wc_calc(eprocess* p, void* pp)
 {
     workspace* ws = p->workspace;
     intargs* ia = (intargs*) pp;
-    cell* c = (cell*) ia->media;
+
     double* y = ia->y;
     double* y1 = ia->y1;
-     double* cv = c->cv;
+
 
      // int ij[2];
 

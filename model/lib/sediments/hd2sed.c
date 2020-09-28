@@ -66,8 +66,8 @@ void hd2sed(sediment_t *sediment, sed_column_t *sm, int c)
   void *hmodel = sediment->hmodel;
   sed_params_t *param = sediment->msparam;
   int col_index;
-  FILE *flog;
-  double a, rab1,rab2,ship_prob;
+
+  double a, rab1,ship_prob;
   char etext[MAXSTRLEN];
 
   /*UR-CHANGED , u_scale; */
@@ -451,11 +451,11 @@ static void hd2sed_internal(sediment_t *sediment, sed_column_t *sm, int c)
 
 void diagnostics(sediment_t *sediment, sed_column_t *sm, const char *comment)
 {
-  int kone, k, n;
+  int k, n;
   sed_params_t *param = sediment->msparam;
-  int col_index;
+
   FILE *flog;
-  double a;
+
  /* Print section */
 
 #ifdef HAVE_OMP

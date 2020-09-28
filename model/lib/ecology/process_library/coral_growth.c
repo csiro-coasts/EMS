@@ -126,7 +126,7 @@ void coral_growth_init(eprocess* p)
 	stringtable* tracers = e->tracers;
 	workspace* ws = malloc(sizeof(workspace));
 	 stringtable* epis = e->epis;
-        int OFFSET_SED = tracers->n;
+
         int OFFSET_EPI = tracers->n * 2;
 
 	p->workspace = ws;
@@ -207,8 +207,8 @@ void coral_growth_postinit(eprocess* p)
 /*******************************************************************************/
 
 {
-	ecology* e = p->ecology;
-	workspace* ws = p->workspace;
+
+
 	
 
 	
@@ -227,7 +227,7 @@ void coral_growth_precalc(eprocess* p, void* pp)
 	workspace* ws = p->workspace;
 	cell* c = (cell*) pp;
 	double* y = c->y;
-	double* cv = c->cv;
+
 	
 	 y[ws->Epilightatt_i] += 0;
 
@@ -241,28 +241,28 @@ void coral_growth_calc(eprocess* p, void* pp)
 workspace* ws = p->workspace;
     intargs* ia = (intargs*) pp;
     cell* c = ((cell*) ia->media);
-    double* cv = c->cv;
+
     double* y = ia->y;
     double* y1 = ia->y1;
     double dz_wc = c->dz_wc;
 
 /*LOCAL DECLARATION*/
     
-    double co32 ; 				/*diagnostic */
-    double hco3 ; 				/*diagnostic*/
-    double PH      =y[ws->PH_i];  	/*diagnostic but need to keep the previous time step value to be modified*/
-    double TEMP    = y[ws->TEMP_i];
-    double salt    = y[ws->SALT_i];
-    double dic_in  = y[ws->DIC_i];  
+
+
+
+
+
+
     double bommies =y[ws->bommies_i];
     double bma     =y[ws->bma_i];
     double alro    =y[ws->alro_i];
     double lcrcslop=y[ws->lcrcslop_i];
     double coral   =y[ws->coral_i];
-    double swr     =y[ws->swr_i];
+
     double Epilight = y[ws->Epilight_i];
     /* double swr = y[ws->Epilight_i];*/
-    double ta_in;	
+
     double omega_ar=y[ws->omega_ar_i];		
       if (omega_ar < 1)
 	omega_ar = 1;
@@ -380,9 +380,9 @@ void coral_growth_postcalc(eprocess* p, void* pp)
 {
 
 
-    cell* c = ((cell*) pp);
-    workspace* ws = p->workspace;
-    double* y = c->y;
+    
+
+
     
   
     

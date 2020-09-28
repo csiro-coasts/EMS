@@ -1938,8 +1938,8 @@ if(i > 0)
       } 
     else if (strcmp(operation_3d[n], "exposure") == 0) 
       {
-	int j;
-	double d1, dt, newt = trs->time;
+
+	double newt = trs->time;
 	char str[MAXSTRLEN];
 	sprintf(str, "seconds %s", tr_3d[n][7]);
 	tm_scale_to_secs(tr_3d[n][8], &trs->w_wc.w6[m]);
@@ -1991,9 +1991,9 @@ if(i > 0)
       } 
     else if (strcmp(operation_3d[n], "reeftemp") == 0) 
       {
-	int j;
-	double d1, dt, newt = trs->time;
-	char str[MAXSTRLEN];
+
+
+
 	tm_scale_to_secs(tr_3d[n][4], &trs->w_wc.w6[m]);
 	trs->w_wc.w2[m] = tm_time_to_julsecs(i_get_model_timeunit(model));
 	trs->stat_type[m] = REEFTEMP;

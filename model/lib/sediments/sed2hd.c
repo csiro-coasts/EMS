@@ -103,7 +103,7 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
   /* fill up empty layers with surface value */
   if(sm->topk_wc < param->nz-2){
     for(n=0; n < param->ntr; n++) {
-    sed_tracer_t *tracer = &sediment->mstracers[n];
+
     for(k=sm->topk_wc+1;k<param->nz-1;k++)
       sm->tr_wc[n][k] = sm->tr_wc[n][sm->topk_wc];
     }
@@ -215,9 +215,9 @@ void sed_limits(sediment_t *sediment, sed_column_t *sm, int c)
 {
   void *hmodel = sediment->hmodel;
   int k, n;
-  int tk,bk;
+
   sed_params_t *param = sediment->msparam;
-  int col_index = sm->col_number-1;
+
   char etext[MAXSTRLEN];
 
   if (param->verbose_sed == 1) {

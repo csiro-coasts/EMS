@@ -83,7 +83,7 @@ void light_spectral_sed_init(eprocess* p)
   stringtable* tracers = e->tracers;
   workspace* ws = malloc(sizeof(workspace));
   
-  char buf[MAXSTRLEN];
+
 
   char* prm = NULL;
 

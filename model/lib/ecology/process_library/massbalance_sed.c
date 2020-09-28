@@ -143,7 +143,7 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
     cell* c = (cell*) pp;
     double* cv = c->cv;
     double* y;
-    double TN, TP, TC, TO, TO_old, eps;
+    double TN, TP, TC, TO, eps;
 
     /*
      * if this is a child cell, return, the parent should take care of

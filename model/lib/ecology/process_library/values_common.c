@@ -77,7 +77,7 @@ void values_common_init(eprocess* p)
 {
   ecology* e = p->ecology;
   workspace* ws = malloc(sizeof(workspace));
-  stringtable* tracers = e->tracers;
+
   
   memset(ws, 0, sizeof(workspace));
   

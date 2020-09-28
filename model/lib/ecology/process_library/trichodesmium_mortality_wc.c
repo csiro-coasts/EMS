@@ -130,7 +130,7 @@ void trichodesmium_mortality_wc_precalc(eprocess* p, void* pp)
     workspace* ws = p->workspace;
     cell* c = (cell*) pp;
     double* cv = c->cv;
-    double* y = c->y;
+
 
     double Tfactor = (ws->Tfactor_i >= 0) ? cv[ws->Tfactor_i] : 1.0;
 

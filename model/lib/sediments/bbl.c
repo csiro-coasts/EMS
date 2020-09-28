@@ -69,7 +69,7 @@ void reef_scale_depth(sediment_t *sediment, sed_column_t *sm);
     double fwc;
     double zoa;
     double zr;
-    double v;
+
 
     /* Waves: Get ub, period and direction */
     ub = max (sm->wave_ub, 0);
@@ -148,7 +148,7 @@ static void reference_velocity(sed_column_t *sm, double *pzr, double *pui,
   int kt = sm->topk_wc;
   double bot = sm->botz_wc;
   double top = sm->topz_wc;
-  double zc,u2bcc;
+  double zc;
   int kzc;
   /* Reference height */
   if (kb < kt) 

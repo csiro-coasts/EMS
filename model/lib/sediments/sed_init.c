@@ -150,7 +150,7 @@ int get_sediments_patch_vers(void)
 sediment_t *sed_init(FILE * prmfd, void *hmodel)
 {
   FILE* fd;
-  char sedparams[MAXSTRLEN];
+
   /* Allocate memory for sediment Structure */
   sediment_t *sediment = (sediment_t *)malloc(sizeof(sediment_t));
   if (sediment == NULL) {
@@ -251,7 +251,7 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   int i,j,k;
   char shipfile[MAXSTRLEN],buf[MAXSTRLEN];
   void *hmodel = sediment->hmodel;
-  FILE *flog, *fp;
+  FILE *fp;
 
   /* Allocate memory for sed_params_t Structure */
   sed_params_t *param = (sed_params_t *)malloc(sizeof(sed_params_t));
@@ -383,7 +383,7 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
   int i,k,n,nn;
   FILE *flog;
   char carriername[MAXSTRLEN], dissolvedname[MAXSTRLEN];
-  char buf[MAXSTRLEN], buf1[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   sed_params_t *param = sediment->msparam;
   sed_tracer_t **mstracers = &sediment->mstracers;
   void *hmodel = sediment->hmodel;
@@ -423,7 +423,7 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
   param->calcvol_sed = 0;
   for (n = 0; n < ntr; ++n) {
     sed_tracer_t *tr = &sediment->mstracers[n];
-    int nf, col;
+    int col;
     tr->n = n;
     /* maps */
     tr->n_hd_wc = si_getmap2hdwctracer(hmodel, n, tr->name);
@@ -734,11 +734,11 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
  //read benthic variables (number and names)
 void sed_tracers_benthic_init(FILE * prmfd, sediment_t *sediment)
 {
-  int i,k,n,ntrB;
-  FILE *flog;
-  char buf[MAXSTRLEN], buf1[MAXSTRLEN];
+  int n,ntrB;
+
+
   sed_params_t *param = sediment->msparam;
-  sed_tracer_t **mstracers = &sediment->mstracers;
+
   void *hmodel = sediment->hmodel;
   //number of B tracers
   ntrB = sinterface_getnumberofBtracer(hmodel);
@@ -758,7 +758,7 @@ void sed_tracers_benthic_init(FILE * prmfd, sediment_t *sediment)
 void fluxsedimap(sediment_t *sediment)
 {
   int m,n;
-  char name[MAXSTRLEN];
+
   sed_params_t *param = sediment->msparam;
 
   if (param->ntrB < 1)
@@ -942,7 +942,7 @@ static void alloc_sed_spatial(sediment_t *sediment)
 {
   sed_params_t *msparam = sediment->msparam;
   void *hmodel = sediment->hmodel;
-  int c;
+
 
   sed_spatial_t *spatial = (sed_spatial_t *)malloc(sizeof(sed_spatial_t));
   if (spatial == NULL) {
@@ -1438,8 +1438,8 @@ void sed_params_bsc(sediment_t *sediment)
 /*-------------------------------------------------------------------*/
 void sed_params_auto(sediment_t *sediment)
 {
-  void *hmodel = sediment->hmodel;
-  sed_params_t *param = sediment->msparam;
+
+
 
   /* Set defaults */
   sed_params_std(sediment);

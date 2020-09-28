@@ -157,7 +157,7 @@ void phytoplankton_spectral_mortality_wc_calc(eprocess* p, void* pp)
 {
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
-  cell* c = (cell*) ia->media;
+
   double* cv = ((cell*) ia->media)->cv;
   double* y = ia->y;
   double* y1 = ia->y1;

@@ -95,8 +95,8 @@ void light_spectral_epi_init(eprocess* p)
   stringtable* tracers = e->tracers;
   stringtable* epis = e->epis;
   workspace* ws = malloc(sizeof(workspace));
-  char buf[MAXSTRLEN];
-  int w,count_Li;
+
+
   
   int OFFSET_EPI = tracers->n * 2;
   
@@ -187,12 +187,12 @@ void light_spectral_epi_postinit(eprocess* p)
 {
   double *absorbance;
   ecology* e = p->ecology;
-  stringtable* tracers = e->tracers;
-  stringtable* epis = e->epis;
+
+
   workspace* ws = (workspace *)p->workspace;
   double NtoCHL = get_parameter_value(e, "NtoCHL");
 
-  int OFFSET_EPI = tracers->n * 2;
+
 
   int w;
 
@@ -284,7 +284,7 @@ void light_spectral_epi_precalc(eprocess* p, void* pp)
   double* lighttop_s = col->cv[ws->cv_lighttop_s_i];
 
   int num_waves = ws->num_waves;
-  int w,i;
+  int w;
 
   double *wave  = ws->wave;
   bio_opt_prop *bio = e->bio_opt;

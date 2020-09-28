@@ -86,9 +86,9 @@ bal* bal_build(delaunay* d)
     /* Loop through all the points                                   */
     for (i = 0; i < d->npoints; ++i) {
       int ncells = d->n_point_triangles[i];
-      double po[2], p1[2], p2[2], p3[2];
+
       double x, y;
-      int i1, i2, i3;
+
       int ntri = ncells - 1;
 
       lweights *lw = &l->weights[i];
@@ -148,10 +148,10 @@ bal* bal_build(delaunay* d)
 /*-------------------------------------------------------------------*/
 void bal_rebuild(bal* l, point* p)
 {
-  int i, j, n;
+  int i, j;
   int id, idt, ntri;
   double xp, yp;
-  double d1, inc;
+  double d1;
   double x1, y1, x2, y2, x3, y3;
   delaunay *d = l->d;
   lweights *lw, *lws;
@@ -221,10 +221,10 @@ void bal_rebuild(bal* l, point* p)
 
 void bal_rebuild2(bal* l1, bal* l2, point* p)
 {
-  int i, j, n;
+  int i, j;
   int id, idt, ntri;
   double xp, yp;
-  double d1, inc;
+  double d1;
   double x1, y1, x2, y2, x3, y3;
   delaunay *d = l1->d;
   lweights *lw, *lws;

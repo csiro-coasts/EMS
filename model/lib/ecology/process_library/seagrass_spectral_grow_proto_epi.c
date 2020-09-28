@@ -637,7 +637,7 @@ void seagrass_spectral_grow_proto_epi_postcalc(eprocess* p, void* pp)
     double* porosity_multi_sed = c->porosity_multi_sed;
     int k;
 
-    double* cv = c->cv;
+
 
     double NO3_sed = 0.0;
     double NH4_sed = 0.0;

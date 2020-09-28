@@ -353,9 +353,9 @@ workspace* ws = p->workspace;
   };
 
   double Oxygen = y[ws->Oxygen_wc_i];
-  double NH4 = y[ws->NH4_wc_i];
-  double DIP = y[ws->DIP_wc_i];
-  double DIC = y[ws->DIC_wc_i];
+
+
+
 
  /* like coral grazing  */
 

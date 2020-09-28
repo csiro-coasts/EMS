@@ -148,7 +148,7 @@ void p_adsorption_sed_calc(eprocess* p, void* pp)
     double DIP = y[ws->DIP_i];
     double EFI = y[ws->EFI_i];
     double PIP = y[ws->PIP_i];
-    double npow = 1.0 / ws->Pads_exp;
+
     
     /*    double adsorption = Pads_r * EFI * ws->Pads_Ksed * DIP * (Oxygen / (ws->Pads_KO + e_max(Oxygen)));
 

@@ -197,7 +197,7 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
   if (U < 0.0)
     U = 0.0;
 
-  double Sc,salt,sat;
+  double Sc,salt;
     
   /* *********************************************************************
      Computes the Schmidt number of CO2 in seawater using the 
@@ -249,8 +249,8 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
 
 void gas_exchange_wc_calc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  void* model = e->model;
+
+
   workspace* ws = p->workspace;
   intargs* ia = (intargs*) pp;
   cell* c = ((cell*) ia->media);
@@ -277,8 +277,8 @@ void gas_exchange_wc_calc(eprocess* p, void* pp)
 
 void gas_exchange_wc_postcalc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
-  void* model = e->model;  
+
+
   cell* c = ((cell*) pp);
   column* col = c->col;
   workspace* ws = p->workspace;

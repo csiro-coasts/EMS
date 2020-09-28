@@ -234,11 +234,11 @@ void coral_spectral_carb_epi_destroy(eprocess* p)
 
 void coral_spectral_carb_epi_precalc(eprocess* p, void* pp)
 {
-  ecology* e = p->ecology;
+
   workspace* ws = p->workspace;
   cell* c = (cell*) pp;
   double* cv = c->cv;
-  double* y = c->y;
+
   
   double area,RR;
   
@@ -258,7 +258,7 @@ void coral_spectral_carb_epi_precalc(eprocess* p, void* pp)
   /* Coupling with physical processes (temperature, shear stress, light) is calculated only 
      at the beginning of the ecological time increment */
   
-  double Tfactor = (ws->Tfactor_i >= 0) ? cv[ws->Tfactor_i] : 1.0;
+
 }
 
 void coral_spectral_carb_epi_calc(eprocess* p, void* pp)
@@ -302,7 +302,7 @@ void coral_spectral_carb_epi_calc(eprocess* p, void* pp)
     return;
   }
   
-  double temp_wc = y[ws->temp_wc_i];
+
   double CS_I = y[ws->CS_I_i];
   double PI_max = ws->CSm * red_A_I * 1000.0 ; /* mmol photon cell -1 */
   double Iquota;
@@ -324,7 +324,7 @@ void coral_spectral_carb_epi_calc(eprocess* p, void* pp)
  
   /* Information from light_spectral_uq_epi.c */
   
-  double kI = c->cv[ws->KI_CS_i]; // mol photon cell-1 s-1 */
+  /* double kI = c->cv[ws->KI_CS_i]; // mol photon cell-1 s-1 */
   
   double SA = CHarea * exp(-MA_N * ws->MAleafden) * (1.0-exp(-CH_N * ws->CHpolypden / CHarea)); /* dimensionless */
   
@@ -368,8 +368,8 @@ void coral_spectral_carb_epi_calc(eprocess* p, void* pp)
 
 void coral_spectral_carb_epi_postcalc(eprocess* p, void* pp)
 {
-  cell* c = ((cell*) pp);
-  workspace* ws = p->workspace;
-  double* y = c->y;
+
+
+
   
 }

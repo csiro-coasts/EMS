@@ -124,7 +124,7 @@ int coastmesh(coamsh_t *cm, int mode)
   FILE *fp, *op = NULL, *pp = NULL, *opp = NULL, *sp = NULL;
   char buf[MAXSTRLEN];
   int n, m, i, j, nl, nlm, sm;
-  int n1, n2, ii, i1, i2, i3, mi;
+  int n1, n2, ii, i1, i2, mi;
   int msl;           /* Length of the major segment                    */
   int sid, eid, mid; /* Start, end and mid index for the major segment */
   int obcf;          /* =0; sid closest to OBC start, =1; eid closest  */

@@ -99,10 +99,10 @@ void recom_extras_init(eprocess* p)
 {
   ecology* e = p->ecology;
   stringtable* tracers = e->tracers;
-  stringtable* epis = e->epis;
+
   workspace* ws = malloc(sizeof(workspace));
   
-  int OFFSET_EPI = tracers->n * 2;
+
 
   /* Initialise all to non-existent */
   ws->PhyL_Chl_i = -1;

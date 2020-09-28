@@ -245,9 +245,9 @@ void light_spectral_wc_init(eprocess* p)
   ecology* e = p->ecology;
   stringtable* tracers = e->tracers;
   workspace* ws = malloc(sizeof(workspace));
-  int large;
-  char buf[MAXSTRLEN];
-  int i,count_Li, count_Kd;
+
+
+
 
   char* prm = NULL;
   
@@ -536,11 +536,11 @@ void light_spectral_wc_init(eprocess* p)
 void ecology_find_rsr_waves(ecology *e);
 void light_spectral_wc_postinit(eprocess* p)
 {
-  double *absorbance;
-  double *absorbance_xanth;
+
+
   ecology* e = p->ecology;
   workspace* ws = (workspace *)p->workspace;
-  int large,w;
+  int w;
 
   if (e->pre_build) return;
 
@@ -755,7 +755,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
    * then index into it
    */
   double *lighttop_s = col->cv[ws->cv_lighttop_s_i];
-  int w,w2;
+  int w;
   double energy = 0.0;
 
   if (isnan(lighttop_s[0])) {
@@ -805,7 +805,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
 
       // Still not given a good number. 
       
-      double moonlon_sun = 7.0/2.0/M_PI; // pi - (solar hour angle - monlon_obs) excluding librations.
+
       // need to be careful with going past pi.
       
       // **********************************************************************************************************
@@ -841,7 +841,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       
       // *********************************************************************************************************
       
-      double cloud = ginterface_get_cloud(col->model,col->b);
+
 
       /* Mike's albedo function of cloud cover and hour angle */
  
@@ -965,7 +965,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   double *bt_s;   /* spectrally-resolved total scattering [m-1] */
   double delenergy = 0.0;
   energy = 0.0; 
-  int i;
+
 
   /*
    * Allocate local spectral variables
@@ -1300,7 +1300,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       d_free_1d(absorbance);
   }
   
-  double acdom443 = e->bio_opt->acdom443star * DOC;
+
 
   /* store light at top of the layer in PAR */
 
