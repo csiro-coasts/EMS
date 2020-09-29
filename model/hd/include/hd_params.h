@@ -171,8 +171,6 @@
 #define LOCALT 0x20000000       /* Local tamgential velocity boundary condition */
 #define LOCALE 0x40000000       /* Local elevation boundary condition */
 #define FLATHE 0x80000000       /* Elevation Flather component */
-/*#define TIDALM 0x008000*/         /* Tidal memory boundary condition */
-#define TIDALM 0x100000000         /* Tidal memory boundary condition */
 
 /* Custom boundary flags */
 #define NOR             0x001
