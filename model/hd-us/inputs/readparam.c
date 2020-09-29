@@ -10401,10 +10401,6 @@ char *bdryname(int m)
     return ("UPSTRM");
   case 65536 | 1:
     return ("UPSTRM");
-    /*
-  case 131072:
-    return ("TIDALM");
-    */
   case 262144:
     return ("CYCLED");
   }

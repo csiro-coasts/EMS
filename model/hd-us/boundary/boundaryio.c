@@ -165,7 +165,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     if (open->bcond_nor <= 0 || open->bcond_nor > maxbc) {
       hd_warn("Boundary %d: Normal boundary condition type unspecified.\n", n);
       open->bcond_nor = FILEIN;
-    } else if (open->bcond_nor & (UPSTRM | TIDALM | TIDEBC | TRFLUX | TRCONC | TRCONF)) {
+    } else if (open->bcond_nor & (UPSTRM | TIDEBC | TRFLUX | TRCONC | TRCONF)) {
       hd_quit("Boundary %d: Unsupported normal boundary condition type %s.\n", n, bname);
     }
   }
@@ -270,7 +270,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
         open->bcond_tra[i] = TRCONF | FILEIN;
       if (!(open->bcond_tra[i] & (CLAMPD | CYCLIC | CYCLED | UPSTRM | FILEIN | TRCONF |
 				  CUSTOM | PROFIL | DEPROF | LINEXT | POLEXT | DESCAL |
-				  NOGRAD | TIDALM | STATIS | TRFLUX | TRCONC | NOTHIN)))
+				  NOGRAD | STATIS | TRFLUX | TRCONC | NOTHIN)))
 	hd_quit("Boundary %d: Unsupported tracer%d boundary condition type %s.\n", 
 		n, i, buf);
       open->relax_zone_tra[i] = 0;
@@ -313,7 +313,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
         open->bcond_tra[i] = TRCONF | FILEIN;
       if (!(open->bcond_tra[i] & (CLAMPD | CYCLIC | CYCLED | UPSTRM | FILEIN | TRCONF |
 				  CUSTOM | PROFIL | DEPROF | LINEXT | POLEXT | DESCAL |
-				  NOGRAD | TIDALM | STATIS | TRFLUX | TRCONC | NOTHIN)))
+				  NOGRAD | STATIS | TRFLUX | TRCONC | NOTHIN)))
 	hd_quit("Boundary %d: Unsupported tracer%d boundary condition type %s.\n", 
 		n, i, buf);
       open->relax_zone_tra[i] = 0;
@@ -342,11 +342,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       open->relax_zone_tra[i] = 0;
     }
 
-    /* Get the depth above which to impose tidal memory */
-    if (open->bcond_tra[i] & TIDALM) {
-      sprintf(keyword, "BOUNDARY%1d.TM_DEPTH", n);
-      prm_read_double(fp, keyword, &open->tidemem_depth);
-    }
     /* Get the fill value for clamped open boundary conditions */
     if (open->bcond_tra[i] & CLAMPD) {
       sprintf(keyword, "BOUNDARY%1d.CLAMP_VAL", n);
@@ -379,7 +374,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     if (open->bcond_ele <= 0 || open->bcond_ele > maxbc) {
       hd_warn("Boundary %d: Elevation boundary condition type unspecified.\n", n);
       open->bcond_ele = NOTHIN;
-    } else if (open->bcond_ele & (UPSTRM | TIDALM | VERTIN | TRFLUX | TRCONC | TRCONF)) {
+    } else if (open->bcond_ele & (UPSTRM | VERTIN | TRFLUX | TRCONC | TRCONF)) {
       hd_quit("Boundary %d: Unsupported elevation boundary condition type %s.\n", n, bname);
     }
   }
@@ -440,7 +435,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     if (open->bcond_tan <= 0 || open->bcond_tan > maxbc) {
       hd_warn("Boundary %d: Tangential boundary condition type unspecified.\n", n);
       open->bcond_tan2d = open->bcond_tan = CLAMPD;
-    } else if (open->bcond_tan & (UPSTRM | TIDALM | TIDEBC | TRFLUX | TRCONC | TRCONF))
+    } else if (open->bcond_tan & (UPSTRM | TIDEBC | TRFLUX | TRCONC | TRCONF))
       hd_quit("Boundary %d: Unsupported tangential boundary condition type %s.\n", n, bname);
   }
   open->bcond_tan2d = open->bcond_tan;
@@ -491,7 +486,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   if (open->bcond_w <= 0 || open->bcond_w > maxbc) {
     hd_warn("Boundary %d: Vertical velocity boundary condition type unspecified.\n", n);
     open->bcond_w = NOTHIN;
-  } else if (open->bcond_w & (UPSTRM | TIDALM | TIDEBC | TRFLUX | TRCONC | TRCONF | FILEIN | CUSTOM)) {
+  } else if (open->bcond_w & (UPSTRM | TIDEBC | TRFLUX | TRCONC | TRCONF | FILEIN | CUSTOM)) {
     hd_quit("Boundary %d: Unsupported vertical velocity boundary condition type %s.\n", n, bname);
   }
 
@@ -1206,8 +1201,6 @@ int bcond_no(char *list)
     code = DEPROF;
   if (strcmp(list, "DESCAL") == 0)
     code = DESCAL;
-  if (strcmp(list, "TIDALM") == 0)
-    code = TIDALM;
   if (strcmp(list, "TIDALH") == 0)
     code = TIDALH;
   if (strcmp(list, "TIDALC") == 0)
@@ -1282,10 +1275,6 @@ void bcname(int code, char *name)
     strcpy(name, "TIDALH");
   if (code & TIDALC)
     strcpy(name, "TIDALC");
-  /*
-  if (code & TIDALM)
-    strcpy(name, "TIDALM");
-  */
   if (code & UPSTRM)
     strcpy(name, "UPSTRM");
   if (code & TRFLUX)
@@ -1353,10 +1342,6 @@ void bcname(int code, char *name)
     sprintf(name, "%s|PROFIL", name);
   if (code & DEPROF && strcmp(name, "DEPROF") != 0)
     sprintf(name, "%s|DEPROF", name);
-  /*
-  if (code & TIDALM && strcmp(name, "TIDALM") != 0)
-    sprintf(name, "%s|TIDALM", name);
-  */
   if (code & TIDALH && strcmp(name, "TIDALH") != 0)
     sprintf(name, "%s|TIDALH", name);
   if (code & TIDALC && strcmp(name, "TIDALC") != 0)
