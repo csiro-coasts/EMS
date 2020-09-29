@@ -4958,7 +4958,7 @@ window_t **win_data_build(master_t *master, /* Model data structure */
     windat[n]->regionid = windat[n]->regres = windat[n]->Vi = NULL;
     windat[n]->reefe1 = windat[n]->reefe2 = windat[n]->agetr = NULL;
     windat[n]->tr_adv = windat[n]->tr_hdif = windat[n]->tr_vdif = windat[n]->tr_ncon = NULL;
-    windat[n]->wave_stke1 = windat[n]->wave_stke1 = NULL;
+    windat[n]->wave_stke1 = windat[n]->wave_stke2 = NULL;
 
     for (tn = 0; tn < windat[n]->ntr; tn++) {
       if (strcmp("salt", master->trname[tn]) == 0) {
@@ -6644,7 +6644,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     /* Set linear advection flags                                    */
     wincon[n]->dolin_u1 = wincon[n]->dolin_u2 = 0;
     wincon[n]->dobdry_u1 = wincon[n]->dobdry_u2 = 0;
-    wincon[n]->linmask_u1 = wincon[n]->linmask_u1 = NULL;
+    wincon[n]->linmask_u1 = wincon[n]->linmask_u2 = NULL;
     wincon[n]->obcmap = i_alloc_1d(window[n]->sgsiz);
     memset(wincon[n]->obcmap, 0, window[n]->sgsiz * sizeof(int));
     for (i = 0; i < window[n]->nobc; i++) {
