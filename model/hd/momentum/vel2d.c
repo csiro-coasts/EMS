@@ -243,25 +243,25 @@ void mode2d_step(geometry_t *geom,    /* Global geometry             */
 
   /*-----------------------------------------------------------------*/
   /* Initialise                                                      */
-#ifdef HAVE_MPI
   mrnk = master->mpi_rank + 1;
-  /* Only reset for the window associated with this process */
-  n = mrnk;
-#else
+
   /* Loop over all windows */
-  for (n = 1; n <= nwindows; n++) 
-#endif
-    {
-      memset(windat[n]->u1flux, 0, window[n]->sgsizS * sizeof(double));
-      memset(windat[n]->u2flux, 0, window[n]->sgsizS * sizeof(double));
-      memcpy(wincon[n]->oldeta, windat[n]->eta,
-	     window[n]->sgsizS * sizeof(double));
-      wincon[n]->neweta = wincon[n]->d4;
-      memset(wincon[n]->neweta, 0, window[n]->sgsizS * sizeof(double));
-      if (!(wincon[n]->etarlx & NONE))
-	memset(wincon[n]->eta_rlx3d, 0, window[n]->sgsizS * sizeof(double));
-      set_viscosity_2d(window[n]);
+  for( n = 1; n <= nwindows; n++){
+    if( (master->dp_mode & DP_MPI) && (n != mrnk ) ){
+	    /* If we are using MPI then only process the window
+	       associated with our rank. */
+	    continue;
     }
+    memset(windat[n]->u1flux, 0, window[n]->sgsizS * sizeof(double));
+    memset(windat[n]->u2flux, 0, window[n]->sgsizS * sizeof(double));
+    memcpy(wincon[n]->oldeta, windat[n]->eta,
+      window[n]->sgsizS * sizeof(double));
+    wincon[n]->neweta = wincon[n]->d4;
+    memset(wincon[n]->neweta, 0, window[n]->sgsizS * sizeof(double));
+    if (!(wincon[n]->etarlx & NONE))
+      memset(wincon[n]->eta_rlx3d, 0, window[n]->sgsizS * sizeof(double));
+    set_viscosity_2d(window[n]);
+  }
   /* Zero the 2D fluxes summed over the 3D step on the master if     */
   /* zoomed grids are used. These fluxes are used to adjust          */
   /* interpolated 3D velocities.                                     */
