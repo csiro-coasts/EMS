@@ -1607,6 +1607,8 @@ int read_ts_data(master_t *master, ts_point_t *tslist, double t, int c)
 	      /* eos2 expects pressure as N/m2 and converts to bars  */
 	      /* (divides by 1e5), so multiply p by 1e6 to retrieve  */
 	      /* bars in eos2().                                     */
+	      temp = average_glider_data(master, tslist, tzm1, zm1, tid, &cud, &cdd, &d1, &d2, &nvals);
+	      sal = average_glider_data(master, tslist, tzm1, zm1, sid, &cud, &cdd, &d1, &d2, &nvals);
 	      eos2(sal, temp, p, &dens, &master->glider[c]);
 	    }
 
