@@ -7709,6 +7709,7 @@ void semi_lagrange_u2av(geometry_t *window,  /* Processing window    */
   /* Set the ghost cells */
   for (cc = 1; cc <= window->nbptS; cc++) {
     c = window->bpt[cc];
+    ci = window->bine2S[cc];
     nv[c] = 0.0;
     nu[c] = nu[ci];
     windat->u2avb[c] = 0.0;
