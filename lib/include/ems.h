@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ems.h 5889 2018-08-03 06:08:48Z riz008 $
+ *  $Id: ems.h 6598 2020-09-03 05:42:12Z riz008 $
  */
 
 #ifndef	_EMS_H
@@ -41,18 +41,20 @@ int strncasecmp(const char *s1, const char *s2, int n);
 #include "ems_conf.h"
 #include "emsmath.h"
 #include "integrator.h"
+
 #include "emsalloc.h"
 #include "string_utils.h"
 /*UR work in progress #include "num_utils.h" */
 #include "prmfile.h"
 #include "errfn.h"
 #include "poly.h"
+#include "hash.h"
+#include "gridlib.h"
 #include "colourtable.h"
 #include "mapproj.h"
 #include "datafile.h"
 #include "timeseries.h"
 #include "grid.h"
-#include "hash.h"
 #include "hqueue.h"
 #include "ptrack.h"
 #include "ncw.h"
@@ -72,7 +74,7 @@ int strncasecmp(const char *s1, const char *s2, int n);
 */
 #include "underwater.h"
 
-//#include "svn_rev.h"
+#include "svn_rev.h"
 
 /* gcc-7.x does not define this */
 #ifndef HUGE
@@ -93,7 +95,7 @@ int strncasecmp(const char *s1, const char *s2, int n);
 
 /* Release verions and getters */
 #define EMSLIB_MAJOR_VERSION 1
-#define EMSLIB_MINOR_VERSION 0
+#define EMSLIB_MINOR_VERSION 2
 #define EMSLIB_PATCH_VERSION 0
 
 int get_emslib_major_vers(void);
@@ -109,6 +111,7 @@ void    spline_interp(double *xa, double *ya, double *ydd, long n, double x,
 void    contour(double **val, double **x, double **y, long nx, long ny,
              char *cval, double badval);
 void    cfft(double data[], int ndata, int dirn);
+long date_to_jul(int mm, int id, int iyyy);
 double  tm_to_juldays(int y, int mo, int d, int h, int mi, int s);
 void    tm_to_julsecs(double j, int *y, int *mo, int *d, int *h, int *mi,
                    int *s);
