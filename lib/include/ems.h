@@ -74,7 +74,7 @@ int strncasecmp(const char *s1, const char *s2, int n);
 */
 #include "underwater.h"
 
-#include "svn_rev.h"
+// #include "svn_rev.h"
 
 /* gcc-7.x does not define this */
 #ifndef HUGE
