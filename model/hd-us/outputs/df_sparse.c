@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_sparse.c 5875 2018-07-06 07:46:39Z riz008 $
+ *  $Id: df_sparse.c 6644 2020-09-08 01:42:50Z her127 $
  *
  */
 
@@ -400,9 +400,16 @@ void write_dump_attributes_sp(dump_data_t *dumpdata, int cdfid,
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries/SHOC");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
   nc_put_att_int(cdfid, NC_GLOBAL, "nce1", NC_INT, 1, &nce1);
   nc_put_att_int(cdfid, NC_GLOBAL, "nce2", NC_INT, 1, &nce2);
   nc_put_att_int(cdfid, NC_GLOBAL, "nfe1", NC_INT, 1, &nfe1);

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: preprocess.c 6074 2019-02-08 04:11:22Z her127 $
+ *  $Id: preprocess.c 6640 2020-09-08 01:41:30Z her127 $
  *
  */
 
@@ -306,6 +306,10 @@ void build_sparse_map(parameters_t *params  /* Input parameters data
       }
     }
   }
+  params->flag = (unsigned long **)l_alloc_2d(nce1 + 1, nce2 + 1);
+  for (j = 0; j < params->nfe2; j++)
+    for (i = 0; i < params->nfe1; i++)
+      params->flag[j][i] = flg[params->nz-1][j][i];
 
   /*-----------------------------------------------------------------*/
   /* Reset the flag on U1BDRY|R_EDGE and U2BDRY|F_EDGE to wet.       */ 
@@ -2510,11 +2514,6 @@ void build_sparse_map(parameters_t *params  /* Input parameters data
   geom->szeS = geom->n2_e1 + 1;
   geom->szvS = geom->n2_e2 + 1;
   geom->szm = max(max(geom->szc, geom->sze), geom->szv);
-
-  params->flag = (unsigned long **)l_alloc_2d(nce1 + 1, nce2 + 1);
-  for (j = 0; j < params->nfe2; j++)
-    for (i = 0; i < params->nfe1; i++)
-      params->flag[j][i] = flg[params->nz-1][j][i];
 
   /*-----------------------------------------------------------------*/
   /* Free memory */

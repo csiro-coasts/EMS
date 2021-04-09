@@ -13,7 +13,7 @@
  *  during the ecology step and the model becomes quite stiff.
  *  
  *  The process is quite basic in its formulation and applies
- *  uniform settings to all tracers. It is based on the Flick's
+ *  uniform settings to all tracers. It is based on the Fick's
  *  law:
  *  
  *  area flux = - D grad(conc).
@@ -40,7 +40,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: diffusion_epi.c 6007 2018-10-30 00:08:59Z bai155 $
+ *  $Id: diffusion_epi.c 6551 2020-05-10 23:15:52Z bai155 $
  *
  */
 
@@ -118,8 +118,21 @@ void diffusion_epi_init(eprocess* p)
     /*
      * parameters
      */
-    double EpiDiffCoeff = get_parameter_value(e, "EpiDiffCoeff");
-    double EpiDiffDz = get_parameter_value(e, "EpiDiffDz");
+
+    double EpiDiffCoeff = try_parameter_value(e,"EpiDiffCoeff");
+    if (isnan(EpiDiffCoeff)){
+      EpiDiffCoeff = 3.000000e-07;
+      eco_write_setup(e,"Code default of EpiDiffCoeff = %e \n",EpiDiffCoeff);
+    }
+
+    double EpiDiffDz = try_parameter_value(e,"EpiDiffDz");
+    if (isnan(EpiDiffDz)){
+      EpiDiffDz = 6.500000e-03;
+      eco_write_setup(e,"Code default of EpiDiffDz = %e \n",EpiDiffDz);
+    }
+    
+    // double EpiDiffCoeff = get_parameter_value(e, "EpiDiffCoeff");
+    // double EpiDiffDz = get_parameter_value(e, "EpiDiffDz");
 
     ws->coeff = EpiDiffCoeff / EpiDiffDz;
 
@@ -157,7 +170,7 @@ void diffusion_epi_init(eprocess* p)
       ws->fluxout_oxygen_i += OFFSET_EPI;
       ws->flux_oxygen_wc_i = e->find_index(tracers, "Oxygen", e);
       ws->flux_oxygen_sed_i = e->find_index(tracers, "Oxygen", e) + OFFSET_SED;
-      eco_write_setup(e,"\nOutputting sediment-water oxygen flux, tracer %d, %d, %d ",ws->fluxout_oxygen_i,ws->flux_oxygen_wc_i,ws->flux_oxygen_sed_i); 
+      eco_write_setup(e,"\nOutputting sediment-water oxygen flux"); 
     }
 
     ws->fluxout_nitrate_i = e->try_index(epis, "NO3_sedflux", e);
@@ -166,7 +179,7 @@ void diffusion_epi_init(eprocess* p)
       ws->fluxout_nitrate_i += OFFSET_EPI;
       ws->flux_nitrate_wc_i = e->find_index(tracers, "NO3", e);
       ws->flux_nitrate_sed_i = e->find_index(tracers, "NO3", e) + OFFSET_SED;
-      eco_write_setup(e,"\nOutputting sediment-water nitrate flux, tracer %d, %d, %d ",ws->fluxout_nitrate_i,ws->flux_nitrate_wc_i,ws->flux_nitrate_sed_i); 
+      eco_write_setup(e,"\nOutputting sediment-water nitrate flux"); 
     }
 
     ws->fluxout_dip_i = e->try_index(epis, "DIP_sedflux", e);
@@ -175,7 +188,7 @@ void diffusion_epi_init(eprocess* p)
       ws->fluxout_dip_i += OFFSET_EPI;
       ws->flux_dip_wc_i = e->find_index(tracers, "DIP", e);
       ws->flux_dip_sed_i = e->find_index(tracers, "DIP", e) + OFFSET_SED;
-      eco_write_setup(e,"\nOutputting sediment-water DIP flux, tracer %d, %d, %d ",ws->fluxout_dip_i,ws->flux_dip_wc_i,ws->flux_dip_sed_i); 
+      eco_write_setup(e,"\nOutputting sediment-water DIP flux"); 
     }
 
     ws->fluxout_amm_i = e->try_index(epis, "NH4_sedflux", e);
@@ -184,7 +197,7 @@ void diffusion_epi_init(eprocess* p)
       ws->fluxout_amm_i += OFFSET_EPI;
       ws->flux_amm_wc_i = e->find_index(tracers, "NH4", e);
       ws->flux_amm_sed_i = e->find_index(tracers, "NH4", e) + OFFSET_SED;
-      eco_write_setup(e,"\nOutputting sediment-water NH4 flux, tracer %d, %d, %d ",ws->fluxout_amm_i,ws->flux_amm_wc_i,ws->flux_amm_sed_i); 
+      eco_write_setup(e,"\nOutputting sediment-water NH4 flux"); 
     }
 
     ws->fluxout_dic_i = e->try_index(epis, "DIC_sedflux", e);
@@ -193,16 +206,16 @@ void diffusion_epi_init(eprocess* p)
       ws->fluxout_dic_i += OFFSET_EPI;
       ws->flux_dic_wc_i = e->find_index(tracers, "DIC", e);
       ws->flux_dic_sed_i = e->find_index(tracers, "DIC", e) + OFFSET_SED;
-      eco_write_setup(e,"\nOutputting sediment-water DIC flux, tracer %d, %d, %d ",ws->fluxout_dic_i,ws->flux_dic_wc_i,ws->flux_dic_sed_i);
+      eco_write_setup(e,"\nOutputting sediment-water DIC flux");
     }
 
-      ws->fluxout_alk_i = e->try_index(epis, "alk_sedflux", e);
+    ws->fluxout_alk_i = e->try_index(epis, "alk_sedflux", e);
 
     if (ws->fluxout_alk_i > -1){
       ws->fluxout_alk_i += OFFSET_EPI;
       ws->flux_alk_wc_i = e->find_index(tracers, "alk", e);
       ws->flux_alk_sed_i = e->find_index(tracers, "alk", e) + OFFSET_SED;
-      eco_write_setup(e,"\nOutputting sediment-water alk flux, tracer %d, %d, %d ",ws->fluxout_alk_i,ws->flux_alk_wc_i,ws->flux_alk_sed_i);
+      eco_write_setup(e,"\nOutputting sediment-water alk flux");
     }
 
     eco_write_setup(e,"\n");

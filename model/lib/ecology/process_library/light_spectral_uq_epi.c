@@ -34,7 +34,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_uq_epi.c 6375 2019-11-06 02:15:11Z bai155 $
+ *  $Id: light_spectral_uq_epi.c 6580 2020-07-29 03:58:50Z bai155 $
  *
  */
 
@@ -74,6 +74,8 @@ typedef struct {
   /* tracers */
 
   int MA_N_i;
+  int MAG_N_i;
+  int MAR_N_i;
   int SG_N_i;
   int SGH_N_i;
   int SGD_N_i;
@@ -107,6 +109,8 @@ typedef struct {
   int KI_SGH_i;
   int KI_SGD_i;
   int KI_MA_i;
+  int KI_MAG_i;
+  int KI_MAR_i;
   int KI_CS_i;
   int yCfac_CS_i;
 
@@ -156,6 +160,8 @@ typedef struct {
   /* Local variables */
 
   double MAleafden;
+  double MAGleafden;
+  double MARleafden;
   double SGleafden;
   double SGHleafden;
   double SGDleafden;
@@ -212,6 +218,14 @@ void light_spectral_uq_epi_init(eprocess* p)
   ws->MA_N_i = e->try_index(epis, "MA_N", e); 
   if (ws->MA_N_i >=0)
     ws->MA_N_i += OFFSET_EPI;
+
+  ws->MAG_N_i = e->try_index(epis, "MAG_N", e); 
+  if (ws->MAG_N_i >=0)
+    ws->MAG_N_i += OFFSET_EPI;
+
+  ws->MAR_N_i = e->try_index(epis, "MAR_N", e); 
+  if (ws->MAR_N_i >=0)
+    ws->MAR_N_i += OFFSET_EPI;
   
   ws->SGH_N_i = e->try_index(epis, "SGH_N", e);
   if (ws->SGH_N_i >=0)
@@ -469,6 +483,35 @@ void light_spectral_uq_epi_postinit(eprocess* p)
 
   }
 
+  ws->MAGleafden = 0.0;
+  if (ws->MAG_N_i > -1){
+    
+    /* Put in green macroalgae initialisations if there is a green macroalgae tracer */
+    
+    ws->MAGleafden = try_parameter_value(e, "MAGleafden");
+      if (isnan(ws->MAGleafden)){
+	ws->MAGleafden = 1.0;
+	eco_write_setup(e,"Code default: MAGleafden  = %e \n",ws->MAGleafden);
+      }
+  
+    ws->KI_MAG_i = find_index_or_add(e->cv_cell, "KI_MAG", e);
+
+  }
+
+  ws->MARleafden = 0.0;
+  if (ws->MAR_N_i > -1){
+    
+    /* Put in red macroalgae initialisations if there is a red macroalgae tracer */
+
+    ws->MARleafden = try_parameter_value(e, "MARleafden");
+      if (isnan(ws->MARleafden)){
+	ws->MARleafden = 1.0;
+	eco_write_setup(e,"Code default: MARleafden  = %e \n",ws->MARleafden);
+      }
+    ws->KI_MAR_i = find_index_or_add(e->cv_cell, "KI_MAR", e);
+
+  }
+
   ws->SGleafden = 0.0;
   ws->SGorient  = 0.0;
   if (ws->SG_N_i > -1){
@@ -609,6 +652,12 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
     if (ws->MA_N_i > -1){
       c->cv[ws->KI_MA_i] = 0.0;
     }
+    if (ws->MAG_N_i > -1){
+      c->cv[ws->KI_MAG_i] = 0.0;
+    }
+    if (ws->MAR_N_i > -1){
+      c->cv[ws->KI_MAR_i] = 0.0;
+    }
     if (ws->EpiPAR_sg_i > -1){
       y[ws->EpiPAR_sg_i] = 0.0;
     }
@@ -627,8 +676,7 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
     }
 
     double *cv_lighttop = col->cv[ws->lighttop_i];
-    cv_lighttop[0] = 0.0;
-   
+    cv_lighttop[0] = 0.0;   
     return;
   }
 
@@ -667,7 +715,7 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
     
     double MA_N = y[ws->MA_N_i];
     
-    if (MA_N > 0.0){  /* macroalgae */
+    if (MA_N > 0.0){  /* brown macroalgae */
       
       photons = 0.0;
       
@@ -677,7 +725,44 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
 	lighttop_s[w] = lighttop_s[w] * exp(-MA_N * ws->MAleafden * bio->MA_aAwave[w]);
       }
       c->cv[ws->KI_MA_i] = photons;
+    }
+  }
 
+  if (ws->MAG_N_i > -1){
+    if (ws->KI_MAG_i > -1)
+      c->cv[ws->KI_MAG_i] = 0.0;
+    
+    double MAG_N = y[ws->MAG_N_i];
+    
+    if (MAG_N > 0.0){  /* green macroalgae */
+      
+      photons = 0.0;
+      
+      for (w=0; w<num_waves; w++){
+	photons += lighttop_s[w] * (1.0 - exp(-MAG_N * ws->MAGleafden * bio->MAG_aAwave[w])) 
+	  * 8.359335857479461e-09 * wave[w];
+	lighttop_s[w] = lighttop_s[w] * exp(-MAG_N * ws->MAGleafden * bio->MAG_aAwave[w]);
+      }
+      c->cv[ws->KI_MAG_i] = photons;
+    }
+  }
+
+  if (ws->MAR_N_i > -1){
+    if (ws->KI_MAR_i > -1)
+      c->cv[ws->KI_MAR_i] = 0.0;
+    
+    double MAR_N = y[ws->MAR_N_i];
+    
+    if (MAR_N > 0.0){  /* red macroalgae */
+      
+      photons = 0.0;
+      
+      for (w=0; w<num_waves; w++){
+	photons += lighttop_s[w] * (1.0 - exp(-MAR_N * ws->MARleafden * bio->MAR_aAwave[w])) 
+	  * 8.359335857479461e-09 * wave[w];
+	lighttop_s[w] = lighttop_s[w] * exp(-MAR_N * ws->MARleafden * bio->MAR_aAwave[w]);
+      }
+      c->cv[ws->KI_MAR_i] = photons;
     }
   }
   
@@ -712,7 +797,7 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
       c->cv[ws->KI_SG_i] = photons;
     }
   }
-  
+
   /* Then Halophila if present */
 
   if (ws->SGH_N_i > -1){
@@ -1004,6 +1089,8 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
     double Mud, Sand, Finesed, Dust, CarbSand;
 
     double f_MA = 0.0;
+    double f_MAG = 0.0;
+    double f_MAR = 0.0;
     double f_SG = 0.0;
     double f_SGH = 0.0;
     double f_SGD = 0.0;
@@ -1026,17 +1113,35 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
      */
 
     /* 
-     * Macroalgae 
+     * Brown macroalgae 
      */
     if (ws->MA_N_i > -1) {
       double MA_N = y[ws->MA_N_i];
-      
-      /* f_MA = (1 - exp(omega_MA * MA)) */
       f_MA = (1.0 - exp(-MA_N * ws->MAleafden));
       for (w2 = 0; w2 < ws->num_rrs_waves; w2++)
 	u_bot[w2] += f_MA * rhomacroalgae[w2];
     }
+    /* 
+     * Green macroalgae 
+     */
+    if (ws->MAG_N_i > -1) {
+      double MAG_N = y[ws->MAG_N_i];
+      f_MAG = (1.0 - f_MA) * (1.0 - exp(-MAG_N * ws->MAGleafden));
+      for (w2 = 0; w2 < ws->num_rrs_waves; w2++)
+	u_bot[w2] += f_MAG * rhomacroalgae[w2];
+    }
 
+    /* 
+     * Red macroalgae 
+     */
+    if (ws->MAR_N_i > -1) {
+      double MAR_N = y[ws->MAR_N_i];
+      f_MAR = (1.0 - f_MA - f_MAG) * (1.0 - exp(-MAR_N * ws->MARleafden));
+      for (w2 = 0; w2 < ws->num_rrs_waves; w2++)
+	u_bot[w2] += f_MAR * rhomacroalgae[w2];
+    }
+
+    f_MA = f_MA + f_MAG + f_MAR;
     /*
      * Seagrass 
      */
@@ -1073,7 +1178,7 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
     }
 
     /*
-     * Corals : Polyps, zoos then skelton
+     * Corals : Polyps, zoos then skeleton
      */       
     if (ws->CS_N_i > -1){
 

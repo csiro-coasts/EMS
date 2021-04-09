@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: allprocesses.c 6302 2019-09-09 03:49:46Z bai155 $
+ *  $Id: allprocesses.c 6708 2021-03-26 03:06:30Z bai155 $
  *
  */
 
@@ -166,7 +166,7 @@ eprocess_entry eprocesslist[] = {
     {"light_wc", PT_WC, 0, 0, light_wc_init, light_wc_postinit, light_wc_destroy, light_wc_precalc, NULL, NULL},
     {"light_spectral_wc", PT_WC, -1, 0, light_spectral_wc_init, light_spectral_wc_postinit, light_spectral_wc_destroy, light_spectral_wc_precalc, NULL, light_spectral_wc_postcalc},
     {"macroalgae_grow_epi", PT_EPI, 0, 0, macroalgae_grow_epi_init, macroalgae_grow_epi_postinit, macroalgae_grow_epi_destroy, macroalgae_grow_epi_precalc, macroalgae_grow_epi_calc, macroalgae_grow_epi_postcalc},
-    {"macroalgae_mortality_epi", PT_EPI, 0, 0, macroalgae_mortality_epi_init, macroalgae_mortality_epi_postinit, macroalgae_mortality_epi_destroy, macroalgae_mortality_epi_precalc, macroalgae_mortality_epi_calc, macroalgae_mortality_epi_postcalc},
+    {"macroalgae_mortality_epi", PT_EPI, -1, 0, macroalgae_mortality_epi_init, macroalgae_mortality_epi_postinit, macroalgae_mortality_epi_destroy, macroalgae_mortality_epi_precalc, macroalgae_mortality_epi_calc, macroalgae_mortality_epi_postcalc},
     {"massbalance_epi", PT_EPI, 0, 1, massbalance_epi_init, massbalance_epi_postinit, massbalance_epi_destroy, massbalance_epi_precalc, NULL, massbalance_epi_postcalc},
     {"massbalance_sed", PT_SED, 0, 0, massbalance_sed_init, NULL, massbalance_sed_destroy, massbalance_sed_precalc, NULL, massbalance_sed_postcalc},
     {"massbalance_wc", PT_WC, 0, 0, massbalance_wc_init, NULL, massbalance_wc_destroy, massbalance_wc_precalc, NULL, massbalance_wc_postcalc},
@@ -224,7 +224,7 @@ eprocess_entry eprocesslist[] = {
     {"seagrass_spectral_grow_epi", PT_EPI, 1, 0, seagrass_spectral_grow_epi_init, seagrass_spectral_grow_epi_postinit, seagrass_spectral_grow_epi_destroy, seagrass_spectral_grow_epi_precalc, seagrass_spectral_grow_epi_calc, seagrass_spectral_grow_epi_postcalc},
     {"seagrass_spectral_grow_uq_epi", PT_EPI, 1, 0, seagrass_spectral_grow_uq_epi_init, seagrass_spectral_grow_uq_epi_postinit, seagrass_spectral_grow_uq_epi_destroy, seagrass_spectral_grow_uq_epi_precalc, seagrass_spectral_grow_uq_epi_calc, seagrass_spectral_grow_uq_epi_postcalc},
     {"seagrass_spectral_grow_proto_epi", PT_EPI, 1, 0, seagrass_spectral_grow_proto_epi_init, seagrass_spectral_grow_proto_epi_postinit, seagrass_spectral_grow_proto_epi_destroy, seagrass_spectral_grow_proto_epi_precalc, seagrass_spectral_grow_proto_epi_calc, seagrass_spectral_grow_proto_epi_postcalc},
-    {"macroalgae_spectral_grow_epi", PT_EPI, 0, 0, macroalgae_spectral_grow_epi_init, macroalgae_spectral_grow_epi_postinit, macroalgae_spectral_grow_epi_destroy, macroalgae_spectral_grow_epi_precalc, macroalgae_spectral_grow_epi_calc, macroalgae_spectral_grow_epi_postcalc},
+    {"macroalgae_spectral_grow_epi", PT_EPI, -1, 0, macroalgae_spectral_grow_epi_init, macroalgae_spectral_grow_epi_postinit, macroalgae_spectral_grow_epi_destroy, macroalgae_spectral_grow_epi_precalc, macroalgae_spectral_grow_epi_calc, macroalgae_spectral_grow_epi_postcalc},
     {"light_spectral_epi", PT_EPI, 0, 0, light_spectral_epi_init, light_spectral_epi_postinit, light_spectral_epi_destroy, light_spectral_epi_precalc, NULL, NULL},
     {"light_spectral_uq_epi", PT_EPI, 0, 0, light_spectral_uq_epi_init, light_spectral_uq_epi_postinit, light_spectral_uq_epi_destroy, light_spectral_uq_epi_precalc, NULL, light_spectral_uq_epi_postcalc},
     {"light_spectral_proto_epi", PT_EPI, 0, 0, light_spectral_proto_epi_init, light_spectral_proto_epi_postinit, light_spectral_proto_epi_destroy, light_spectral_proto_epi_precalc, NULL, NULL},
@@ -280,6 +280,10 @@ int NEPROCESSES = sizeof(eprocesslist) / sizeof(eprocess_entry);
  *     char* name;
  *     int diagn;
  * } diagnflag_entry;
+ *
+ * 0: prognostic variable.
+ * 1: for diagnostic fluxes so divided by time step.
+ * 2: for diagnostic states.                         
  *
  * There is no reason to mantain this list other than to ensure consistency
  * between values of diagnostic flag in the host model and the ecology model.
@@ -382,6 +386,7 @@ diagnflag_entry diagnflags[] = {
     {"SG_N_pr", 1},
     {"SG_N_gr", 1},
     {"EpiOxy_pr", 1},
+    {"EpiNH4_pr", 1},
     {"ustrcw_skin", 0},
     {"SGROOT_N", 0},
     {"Gnet", 0},
@@ -389,10 +394,76 @@ diagnflag_entry diagnflags[] = {
     {"SGH_N", 0},
     {"CS_N", 0},
     {"CS_Chl", 0},
-
+    {"Mud-mineral",0},    /* Tracer list updated - 25 March 2021 MEB */
+    {"Mud-carbonate",0},
+    {"Sand-mineral",0},
+    {"Sand-carbonate",0},
+    {"Gravel-mineral",0},
+    {"Gravel-carbonate",0},
+    {"Dust",0},
+    {"BOD",2},
+    {"COD",0},
+    {"O2_flux",1},
+    {"PAR",2},
+    {"PAR_z",2},
+    {"EpiPAR",2},
+    {"EpiPAR_sg",2},
+    {"Secchi",2},
+    {"Zenith2D",2},
+    {"Moonlight",2},
+    {"Lunar_zenith",2},
+    {"Lunar_phase",2},
+    {"Moon_fulldisk",2},
+    {"at_440",2},
+    {"bt_550",2},
+    {"Kd_490",2},
+    {"K_heat",2},
+    {"SWR_bot_abs",2},
+    {"OC3M",2},
+    {"OC3V",2},
+    {"OC4Me",2},
+    {"nFLH",2},
+    {"Hue",2},
+    {"TSSM",2},
+    {"KD490M",2},
+    {"Turbidity",2},
+    {"Fluorescence",2},
+    {"Age",0},
+    {"Porewater_Age",0},
+    {"Source",2},
+    {"SGD_N",0},
+    {"SGDROOT_N",0},
+    {"SGD_N_pr", 1},
+    {"SGD_N_gr", 1},
+    {"CH_N",0},
+    {"Gnet",1},
+    {"Coral_IN_up",1},
+    {"Coral_ON_up",1},
+    {"mucus",1},
+    {"SG_shear_mort",1},
+    {"SGH_shear_mort",1},
+    {"SGD_shear_mort",1},
+    {"Oxygen_sedflux",2},
+    {"NO3_sedflux",2},
+    {"DIP_sedflux",2},
+    {"NH4_sedflux",2},
+    {"DIC_sedflux",2},
+    {"Amm_fl",1},
+    {"PIP_Dust",0},
+    {"xco2_in_air",2},
+    {"cdom_pale",0},
+    {"cdom_amber",0},
+    {"cdom_dark",0},
+    {"Chl_a_sum",2},
+    {"EpiBOD",2},
+    {"FF_N",0},
+    {"FF_N_pr",1},
+    {"FF_N_rm",1},
+    {"nFF",2},    
+ 
     /*  ADD new tracer entries here above this line */
     {"Mud", 0},
-    {"FineSed", 2},
+    {"FineSed", 0},
     {"EFI", 2},
     {"P_Prod", 2},
     {"G_grazing", 2},

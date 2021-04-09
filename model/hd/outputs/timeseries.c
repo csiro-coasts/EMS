@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timeseries.c 6111 2019-02-21 23:48:13Z riz008 $
+ *  $Id: timeseries.c 6566 2020-06-18 03:33:21Z her127 $
  *
  */
 
@@ -1339,7 +1339,9 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
       if (strcmp(buf, "MEAN") == 0)
 	ts->metric = TS_MEAN;      
       if (strcmp(buf, "RMSE") == 0)
-	ts->metric = TS_RMSE;      
+	ts->metric = TS_RMSE;
+      if (strcmp(buf, "MINMAX") == 0)
+	ts->metric = (TS_MINMAX|TS_CLOS);
       if (strcmp(buf, "CATEGORICAL") == 0)
 	ts->metric = TS_CAT;
       if (strcmp(buf, "TRUE_SKILL") == 0)
@@ -1452,6 +1454,10 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
       ts->minv = d_alloc_1d(ts->dnvars);
       ts->maxv = d_alloc_1d(ts->dnvars);
       ts->nvals = d_alloc_1d(ts->dnvars);
+    }
+    if (ts->metric & TS_MINMAX) {
+      ts->minv = d_alloc_1d(ts->dnvars);
+      ts->maxv = d_alloc_1d(ts->dnvars);
     }
     ts->data = (double **)p_alloc_1d(ts->dnvars);
     ts->ddim = i_alloc_1d(ts->dnvars);
@@ -1687,11 +1693,20 @@ int read_ts_data(master_t *master, ts_point_t *tslist, double t, int c)
     /* Compare to the model within the kernal                        */
     if (tslist->metric & (TS_CLOS)) {
       d1 = HUGE;
+      if (tslist->metric & TS_MINMAX) {
+	tslist->minv[tn] = HUGE;
+	tslist->maxv[tn] = 0.0;
+      }
       for (cc = 0; cc < ssize; cc++) {
 	cs = st[cc];
 	if (fabs(val - tslist->data[tn][cs]) < d1) {
 	  d1 = fabs(val - tslist->data[tn][cs]);
 	  tslist->val[tn] = (tslist->metric & TS_DIFF) ? val - tslist->data[tn][cs] : tslist->data[tn][cs];
+	}
+	if (tslist->metric & TS_MINMAX) {
+	  d2 = tslist->data[tn][cs];
+	  tslist->minv[tn] = min(tslist->minv[tn], d2);
+	  tslist->maxv[tn] = max(tslist->maxv[tn], d2);
 	}
       }
     } else if (tslist->metric & TS_DIFF && tslist->thresh != NULL) {

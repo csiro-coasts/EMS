@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_large_spectral_grow_wc.c 5968 2018-09-24 02:03:43Z bai155 $
+ *  $Id: zooplankton_large_spectral_grow_wc.c 6704 2021-03-24 01:17:22Z wil00y $
  *
  */
 
@@ -475,11 +475,6 @@ void zooplankton_large_spectral_grow_wc_calc(eprocess* p, void* pp)
   if (ws->Oxy_pr_i  > -1)
   y1[ws->Oxy_pr_i] += Oxy_pr * SEC_PER_DAY;
 
-
-  /*UR 29/3/2005 changed to provide absolute growth rate
-   * as advised by JP
-   y1[ws->ZooL_N_gr_i] += growth / umax;
-  */
 }
 
 void zooplankton_large_spectral_grow_wc_postcalc(eprocess* p, void* pp)

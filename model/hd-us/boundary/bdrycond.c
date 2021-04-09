@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdrycond.c 6259 2019-08-08 04:21:53Z her127 $
+ *  $Id: bdrycond.c 6621 2020-09-08 01:32:46Z her127 $
  *
  */
 
@@ -622,7 +622,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
   if (bcond == FILEIN || bcond == TIDEBC || 
       bcond == TIDALH || bcond == TIDALC ||
       bcond == CUSTOM || bcond == (FILEIN|TIDALH) || 
-      bcond == (FILEIN|TIDALC) || bcond & FLATHR) {
+      bcond == (FILEIN|TIDALC) || bcond == (CUSTOM|TIDALC) || bcond & FLATHR) {
     /* Active conditions - set directly to supplied data.            */
     for (ee = sb; ee <= eb; ee++) {
       e = obc[ee];
@@ -669,6 +669,11 @@ void set_OBC(geometry_t *window,   /* Processing window              */
 	rts = (cs[ee] > 0.0) ? open->relax_time : open->relax_timei;
         vel[e] = newval[e] + dt * (fval[e] - vel_t[e]) /
 	                          (rts * (1.0 + cs[ee]));
+      }
+    } else if (bcond & VERTIN) {
+      for (cc = sb; cc <= eb; cc++) {
+        c = obc[cc];
+        vel[c] = newval[c] + fval[c];
       }
     }
   } else {

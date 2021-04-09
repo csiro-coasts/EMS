@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 6399 2019-11-21 22:59:19Z her127 $
+ *  $Id: advect.c 6737 2021-03-30 00:40:18Z her127 $
  *
  */
 
@@ -56,6 +56,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
   double mvel;              /* Maximum velocity                      */
   int ii, jj, kk;
   int vc, *cells;
+  double PI2 = PI / 2.0;
 
   /*-----------------------------------------------------------------*/
   /* Initialize                                                      */
@@ -180,37 +181,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
       }
 
       /*-------------------------------------------------------------*/
-      /* Compute the normalized relative and planetary vorticity at  */
-      /* edges. This is the quantity used in Eq. A.39, Ringler et    */
-      /* al, (2013).                                                 */
-      memset(windat->nrvore, 0, window->sze * sizeof(double));
-      memset(windat->npvore, 0, window->sze * sizeof(double));
-      for (ee = 1; ee <= window->n3_e1; ee++) {
-	e = window->w3_e1[ee];
-	v1 = window->e2v[e][0];
-	v2 = window->e2v[e][1];
-	windat->nrvore[e] = 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
-	windat->npvore[e] = 0.5 * (windat->npvor[v1] + windat->npvor[v2]);
-
-
-      }
-      /* Get the upstream bias (Ringler et al, (2010) Eq. 81          */
-      if (wincon->momsc & PV_APVM) {
-	for (ee = 1; ee <= window->n3_e1; ee++) {
-	  e = window->w3_e1[ee];
-	  es = window->m2de[e];
-	  v1 = window->e2v[e][0];
-	  v2 = window->e2v[e][1];
-	  d1 = fabs(windat->nrvor[v1] - windat->nrvor[v2]) / window->h1au1[es];
-	  windat->nrvore[e] -= -0.5 * windat->u2[e] * d1 * dtu;
-	  d1 = (windat->npvor[v1] - windat->npvor[v2]) / window->h1au1[es];
-	  windat->npvore[e] -= -0.5 * windat->u2[e] * d1 * dtu;
-	}
-      }
-
-      /*-------------------------------------------------------------*/
-      /* Compute the normalized relative and planetary vorticity at  */
-      /* cell centres.                                               */
+      /* Compute the normalized relative vorticity at  cell centres  */
       memset(windat->nrvorc, 0, window->sgsiz * sizeof(double));
       for(cc = 1; cc <= window->b3_t; cc++) {
 	c = window->w3_t[cc];
@@ -223,6 +194,168 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 	  windat->nrvorc[c] += window->dualareap[vs][j] * windat->nrvor[v] * iarea;
 	}
       }
+
+      /*-------------------------------------------------------------*/
+      /* Compute the normalized relative and planetary vorticity at  */
+      /* edges. This is the quantity used in Eq. A.39, Ringler et    */
+      /* al, (2013).                                                 */
+      memset(windat->nrvore, 0, window->sze * sizeof(double));
+      memset(windat->npvore, 0, window->sze * sizeof(double));
+      if (!(wincon->momsc & (PV_LUST|PV_CLUST))) {
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  windat->nrvore[e] = 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
+	  windat->npvore[e] = 0.5 * (windat->npvor[v1] + windat->npvor[v2]);
+	}
+      }
+      /* Get the upstream bias (Ringler et al, (2010) Eq. 81          */
+      /* Note: the gradient of PV normal to the edge may be ignored   */
+      /* (i.e. only use the tangential component) or included using   */
+      /* cell centred quantities for the gradient (Weller (2012)      */
+      /* p3224).                                                      */
+      if (wincon->momsc & PV_APVM) {
+	/* Tangential component                                       */
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  d1 = fabs(windat->nrvor[v1] - windat->nrvor[v2]) / window->h1au1[es];
+	  windat->nrvore[e] -= 0.5 * windat->u2[e] * d1 * dtu;
+	  d1 = (windat->npvor[v1] - windat->npvor[v2]) / window->h1au1[es];
+	  windat->npvore[e] -= 0.5 * windat->u2[e] * d1 * dtu;
+	}
+	/* Normal component is included using cell centered PV        */
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  c1 = window->e2c[e][0];
+	  c2 = window->e2c[e][1];
+	  c1 = (window->wgst[c1]) ? c2 : c1;
+	  c2 = (window->wgst[c2]) ? c1 : c2;
+	  d1 = (windat->nrvorc[c1] - windat->nrvorc[c2]) / window->h2au1[es];
+	  windat->nrvore[e] -= 0.5 * windat->u1[e] * d1 * dtu;
+	  d1 = (wincon->coriolis[window->m2d[c1]] - wincon->coriolis[window->m2d[c2]]) / 
+	    window->h2au1[es];
+	  windat->npvore[e] -= 0.5 * windat->u1[e] * d1 * dtu;
+	}
+
+
+	/* Method of Weller (2012), DOI: 10.1175/MWR-D-11-00221.1     */
+	/* This requires the gradient of PV normal to the edge, which */
+	/* Weller computed using Thuburn (2009) weights for the       */
+	/* triangular dual (which we currently don't have).           */
+	/* The following adds the normal component of PV.             */
+	/*
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  wincon->w1[e] = fabs(windat->nrvor[v1] - windat->nrvor[v2]) / window->h1au1[es];
+	  wincon->w2[e] = (windat->npvor[v1] - windat->npvor[v2]) / window->h1au1[es];
+	}
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  d1 = d2 = 0.0; 
+	  for (n = 1; n <= 5; n++) {
+	    eoe = window->eDe[n][e];
+	    if (!eoe) continue;
+	    d1 += window->wDe[n][e] * wincon->w1[eoe];
+	    d2 += window->wDe[n][e] * wincon->w2[eoe];
+	  }
+	  windat->nrvore[e] -= -0.5 * windat->u1[e] * d1 * dtu;
+	  windat->npvore[e] -= -0.5 * windat->u1[e] * d2 * dtu;
+	}
+	*/
+      }
+      /* Linear-Upwind Stabilized Transport (LUST).                   */
+      /* Weller (2012), Mon. Wea. Rev., 140, 3220-3234.               */
+      /* DOI: 10.1175/MWR-D-11-00221.1                                */
+      if (wincon->momsc & (PV_LUST|PV_CLUST)) {
+	int vu, vd;
+	double x1, y1, x2, y2, ae, av;
+	double b = 0.25;
+	/* Centered linear interpolation                              */
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  vd = (windat->u2[e] >= 0.0) ? v1 : v2;
+	  vu = (windat->u2[e] >= 0.0) ? v2 : v1;
+
+	  /* Weller (2012) Eq. 5.                                    */
+	  x1 = window->gridx[window->m2dv[vd]] - window->u1x[es];
+	  y1 = window->gridy[window->m2dv[vd]] - window->u1y[es];
+	  x2 = window->gridx[window->m2dv[vd]] - window->gridx[window->m2dv[vu]];
+	  y2 = window->gridy[window->m2dv[vd]] - window->gridy[window->m2dv[vu]];
+	  d1 = sqrt(x1 * x1 + y1 * y1) / sqrt(x2 * x2 + y2 * y2);
+
+	  windat->nrvore[e] = (d1 * windat->nrvor[vu] + (1.0 - d1) * windat->nrvor[vd]);
+	  windat->npvore[e] = (d1 * windat->npvor[vu] + (1.0 - d1) * windat->npvor[vd]);
+	}
+	if (wincon->momsc & PV_CLUST) {
+	  memcpy(wincon->w1, windat->nrvore, window->sze * sizeof(double));
+	  memcpy(wincon->w2, windat->npvore, window->sze * sizeof(double));
+	}
+	/* Linear upwind interpolation                               */
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  vd = (windat->u2[e] >= 0.0) ? v1 : v2;
+	  vu = (windat->u2[e] >= 0.0) ? v2 : v1;
+
+	  /* Angle of vector pointing from upstream vertex           */
+	  ae = (windat->u2[e] >= 0.0) ? window->thetau1[es] - PI2 : window->thetau1[es] + PI2;
+
+	  /* Weller (2012) Eq. 6.                                    */
+	  x1 = window->u1x[es] - window->gridx[window->m2dv[vu]];
+	  y1 = window->u1y[es] - window->gridy[window->m2dv[vu]];
+	  d3 = sqrt(x1 * x1 + y1 * y1);
+
+	  d1 = windat->nrvor[vu];
+	  d2 = windat->npvor[vu];
+	  iarea = 1.0 / window->dualarea[window->m2dv[vu]];
+	  /* Loop over edges connected to the upstream vertex,       */
+	  /* Weller (2012) Eq. 7.                                    */
+	  /* Note: Eq.7 seems incorrect - should be dividing by de?  */
+	  for (n = 1; n <= window->nve[window->m2dv[vu]]; n++) {
+	    int e1, es1;
+	    e1 = window->v2e[vu][n];
+	    if (e1) {
+	      es1 = window->m2de[e1];
+
+	      /* Angle of outward pointing vector normal to edge     */
+	      av = (vu == window->e2v[e][0]) ? window->thetau1[es1] - PI2 : window->thetau1[es1] + PI2;
+	      /* Dot product is magnitude of vectots * cos of angle  */
+	      /* between them.                                       */
+	      av -= ae;
+	      d1 += d3 * windat->nrvore[e] * cos(av) * window->h2au1[es1] * iarea;
+	      d2 += d3 * windat->npvore[e] * cos(av) * window->h2au1[es1] * iarea;
+	    }
+	  }
+	  windat->nrvore[e] = b * d1 + (1.0 - b) * windat->nrvore[e];
+	  windat->npvore[e] = b * d2 + (1.0 - b) * windat->npvore[e];
+	}
+      }
+      /* Continuous LUST                                             */
+      if (wincon->momsc & PV_CLUST) {
+	double um;
+	for (ee = 1; ee <= window->n3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  um = sqrt(windat->u1[e] * windat->u1[e] + windat->u2[e] * windat->u2[e]);
+	  d1 = (um) ? fabs(windat->u1[e]) / um : 1.0;
+	  windat->nrvore[e] = d1 * windat->nrvore[e] + (1.0 - d1) * wincon->w1[e];
+	  windat->npvore[e] = d1 * windat->npvore[e] + (1.0 - d1) * wincon->w2[e];
+	}
+      }
+
 
       /*-------------------------------------------------------------*/
       /* Compute the kinetic energy at cell centres. Used in the     */
@@ -1053,6 +1186,7 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
   double trem;              /* Time remaining in leapfrog step       */
   double tremf;             /* Time remaining in forward step        */
   double *prv = windat->rv_drvdt;
+  double PI2 = PI / 2.0;
 
   /*-----------------------------------------------------------------*/
   /* Get the sub-timestep                                            */
@@ -1124,28 +1258,130 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
       }
 
       /*-------------------------------------------------------------*/
+      /* Compute the normalized relative vorticity at  cell centres  */
+      memset(windat->nrvorc, 0, window->sgsiz * sizeof(double));
+      for(cc = 1; cc <= window->a2_t; cc++) {
+	c = window->w2_t[cc];
+	iarea = 1.0 / window->cellarea[c];
+	for (n = 1; n <= window->npe[c]; n++) {
+	  j = window->vIc[n][c];
+	  v = window->c2v[n][c];
+	  windat->nrvorc[c] += window->dualareap[v][j] * windat->nrvor[v] * iarea;
+	}
+      }
+
+      /*-------------------------------------------------------------*/
       /* Compute the normalized relative and planetary vorticity at  */
       /* edges. This is the quantity used in Eq. A.39, Ringler et al */
       /* (2013).                                                     */
       memset(windat->nrvore, 0, window->szeS * sizeof(double));
       memset(windat->npvore, 0, window->szeS * sizeof(double));
-      for (ee = 1; ee <= window->n2_e1; ee++) {
-	e = window->w2_e1[ee];
-	v1 = window->e2v[e][0];
-	v2 = window->e2v[e][1];
-	windat->nrvore[e] = 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
-	windat->npvore[e] = 0.5 * (windat->npvor[v1] + windat->npvor[v2]);
+      if (!(wincon->momsc & (PV_LUST|PV_CLUST))) {
+	for (ee = 1; ee <= window->n2_e1; ee++) {
+	  e = window->w2_e1[ee];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  windat->nrvore[e] = 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
+	  windat->npvore[e] = 0.5 * (windat->npvor[v1] + windat->npvor[v2]);
+	}
       }
       /* Get the upstream bias (Ringler et al, (2010) Eq. 81          */
       if (wincon->momsc & PV_APVM) {
-	for (ee = 1; ee <= window->n3_e1; ee++) {
-	  e = window->w3_e1[ee];
+	/* Tangential component                                       */
+	for (ee = 1; ee <= window->n2_e1; ee++) {
+	  e = window->w2_e1[ee];
 	  v1 = window->e2v[e][0];
 	  v2 = window->e2v[e][1];
 	  d1 = fabs(windat->nrvor[v1] - windat->nrvor[v2]) / window->h1au1[e];
-	  windat->nrvore[e] -= -0.5 * windat->u2av[e] * d1 * dtu;
+	  windat->nrvore[e] -= 0.5 * windat->u2av[e] * d1 * dtu;
 	  d1 = (windat->npvor[v1] - windat->npvor[v2]) / window->h1au1[e];
-	  windat->npvore[e] -= -0.5 * windat->u2av[e] * d1 * dtu;
+	  windat->npvore[e] -= 0.5 * windat->u2av[e] * d1 * dtu;
+	}
+	/* Normal component is included using cell centered PV        */
+	for (ee = 1; ee <= window->n2_e1; ee++) {
+	  e = window->w2_e1[ee];
+	  c1 = window->e2c[e][0];
+	  c2 = window->e2c[e][1];
+	  c1 = (window->wgst[c1]) ? c2 : c1;
+	  c2 = (window->wgst[c2]) ? c1 : c2;
+	  d1 = (windat->nrvorc[c1] - windat->nrvorc[c2]) / window->h2au1[e];
+	  windat->nrvore[e] -= 0.5 * windat->u1av[e] * d1 * dtu;
+	  d1 = (wincon->coriolis[c1] - wincon->coriolis[c2])  / window->h2au1[e];
+	  windat->npvore[e] -= 0.5 * windat->u1av[e] * d1 * dtu;
+	}
+      }
+      /* Linear-Upwind Stabilized Transport (LUST).                   */
+      /* Weller (2012), Mon. Wea. Rev., 140, 3220-3234.               */
+      /* DOI: 10.1175/MWR-D-11-00221.1                                */
+      if (wincon->momsc & (PV_LUST|PV_CLUST)) {
+	int vu, vd;
+	double x1, y1, x2, y2, ae, av;
+	double b = 0.25;
+	/* Centered linear interpolation                              */
+	for (ee = 1; ee <= window->n2_e1; ee++) {
+	  e = window->w2_e1[ee];
+
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  vd = (windat->u2av[e] >= 0.0) ? v1 : v2;
+	  vu = (windat->u2av[e] >= 0.0) ? v2 : v1;
+
+	  /* Weller (2012) Eq. 5.                                    */
+	  x1 = window->gridx[vd] - window->u1x[e];
+	  y1 = window->gridy[vd] - window->u1y[e];
+	  x2 = window->gridx[vd] - window->gridx[vu];
+	  y2 = window->gridy[vd] - window->gridy[vu];
+	  d1 = sqrt(x1 * x1 + y1 * y1) / sqrt(x2 * x2 + y2 * y2);
+
+	  windat->nrvore[e] = (d1 * windat->nrvor[vu] + (1.0 - d1) * windat->nrvor[vd]);
+	  windat->npvore[e] = (d1 * windat->npvor[vu] + (1.0 - d1) * windat->npvor[vd]);
+	}
+	if (wincon->momsc & PV_CLUST) {
+	  memcpy(wincon->d1, windat->nrvore, window->szeS * sizeof(double));
+	  memcpy(wincon->d2, windat->npvore, window->szeS * sizeof(double));
+	}
+	/* Linear upwind interpolation                               */
+	for (ee = 1; ee <= window->n2_e1; ee++) {
+	  e = window->w2_e1[ee];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  vd = (windat->u2av[e] >= 0.0) ? v1 : v2;
+	  vu = (windat->u2av[e] >= 0.0) ? v2 : v1;
+	  ae = (windat->u2av[e] >= 0.0) ? window->thetau1[e] - PI2 : window->thetau1[e] + PI2;
+
+	  /* Weller (2012) Eq. 6.                                    */
+	  x1 = window->u1x[e] - window->gridx[vu];
+	  y1 = window->u1y[e] - window->gridy[vu];
+	  d3 = sqrt(x1 * x1 + y1 * y1);
+
+	  d1 = windat->nrvor[vu];
+	  d2 = windat->npvor[vu];
+	  iarea = 1.0 / window->dualarea[vu];
+	  /* Loop over edges connected to the upstream vertex,       */
+	  /* Weller (2012) Eq. 7.                                    */
+	  for (n = 1; n <= window->nve[vu]; n++) {
+	    int e1;
+	    e1 = window->v2e[vu][n];
+	    if (e1) {
+	      av = (vu == window->e2v[e][0]) ? window->thetau1[e1] - PI2 : window->thetau1[e1] + PI2;
+	      av -= ae;
+	      d1 += d3 * windat->nrvore[e] * cos(av) * window->h2au1[e1] * iarea;
+	      d2 += d3 * windat->npvore[e] * cos(av) * window->h2au1[e1] * iarea;
+	    }
+	  }
+ 	  windat->nrvore[e] = b * d1 + (1.0 - b) * windat->nrvore[e];
+	  windat->npvore[e] = b * d2 + (1.0 - b) * windat->npvore[e];
+	}
+      }
+      /* Continuous LUST                                             */
+      if (wincon->momsc & PV_CLUST) {
+	double um;
+	for (ee = 1; ee <= window->n2_e1; ee++) {
+	  e = window->w2_e1[ee];
+	  um = sqrt(windat->u1av[e] * windat->u1av[e] + windat->u2av[e] * windat->u2av[e]);
+	  d1 = (um) ? fabs(windat->u1av[e]) / um : 1.0;
+	  windat->nrvore[e] = d1 * windat->nrvore[e] + (1.0 - d1) * wincon->d1[e];
+	  windat->npvore[e] = d1 * windat->npvore[e] + (1.0 - d1) * wincon->d2[e];
 	}
       }
 
@@ -1269,6 +1505,7 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
       vel = windat->nu1av;
   }  /* End while (trem > 0) */
 
+  debug_c(window, D_UA, D_ADVECT);
   return(0);
 }
 

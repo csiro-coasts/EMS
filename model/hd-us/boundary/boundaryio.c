@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 6452 2020-02-18 23:39:37Z her127 $
+ *  $Id: boundaryio.c 6723 2021-03-30 00:32:17Z her127 $
  *
  */
 
@@ -119,7 +119,9 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   if (prm_read_char(fp, keyword, buf) > 0)
     tm_scale_to_secs(buf, &open->adjust_flux_s);
   sprintf(keyword, "BOUNDARY%1d.ADJUST_RATIO", n);
-  prm_read_double(fp, keyword, &open->afr);
+  if (prm_read_double(fp, keyword, &open->afr)) {
+    open->adjust_flux = open->afr * params->grid_dt / (double)params->iratio;
+  }
   if(strlen(params->patm)) {
     sprintf(keyword, "BOUNDARY%1d.INVERSE_BAROMETER", n);
     if (prm_read_char(fp, keyword, buf))
@@ -664,6 +666,12 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 	open->options |= OP_MACREADY;
       if (contains_token(buf, "OVERWRITE") != NULL)
 	open->options |= OP_OWRITE;
+      if (contains_token(buf, "SCALE_FA") != NULL)
+	open->options |= OP_FAS;
+      if (contains_token(buf, "SCALE_FAT") != NULL)
+	open->options |= OP_FAT;
+      if (contains_token(buf, "TILED") != NULL)
+	open->options |= OP_TILED;
     }
   }
 
@@ -873,6 +881,8 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->bgz = io->bgz;
   open->rlen = io->rlen;
   open->options = io->options;
+  open->file_dt = io->file_dt;
+  open->file_next = io->file_next;
   strcpy(open->tsfn, io->tsfn);
   strcpy(open->nzone, io->nzone);
   open->sbcond = io->sbcond;
@@ -1206,8 +1216,10 @@ int bcond_no(char *list)
     code = DEPROF;
   if (strcmp(list, "DESCAL") == 0)
     code = DESCAL;
-  if (strcmp(list, "TIDALM") == 0)
+  /*
+    if (strcmp(list, "TIDALM") == 0)
     code = TIDALM;
+  */
   if (strcmp(list, "TIDALH") == 0)
     code = TIDALH;
   if (strcmp(list, "TIDALC") == 0)
@@ -1529,6 +1541,7 @@ void bdry_custom_m(parameters_t *params,  /* Input parameter data    */
   /*-----------------------------------------------------------------*/
   /* Initialise the custom boundary routine                          */
   bdry_init_m(master);
+
 }
 
 /* END bdry_custom_m()                                               */
@@ -2934,6 +2947,10 @@ void std_bdry(open_bdrys_t *open,
       sprintf(buf, "%s%s", bdrypath, open->tsfn);
       strcpy(open->tsfn, buf);
     }
+    /* TRCONC|NOTHIN is essentially an improved NOGRAD condition.    */
+    /* For non FILEIN|CUSTOM OBCs a NOGRAD is set in ghost zones.    */
+    /* The TRCONC will update tracer concentration using cell        */
+    /* divergence, with the NOGRAD values used in the OBC edge flux. */
     for (i = 0; i < open->ntr; i++) {
       if (open->bcond_tra[i] == NOGRAD)
 	open->bcond_tra[i] = TRCONC|NOTHIN;

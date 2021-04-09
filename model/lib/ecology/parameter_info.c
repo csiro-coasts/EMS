@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_info.c 6303 2019-09-11 00:52:58Z riz008 $
+ *  $Id: parameter_info.c 6678 2021-01-08 00:41:56Z bai155 $
  *
  */
 
@@ -26,7 +26,7 @@
 #include "constants.h"
 
 /* Maximum number of values allowed per parameter */
-#define MAXNUMVALUES (25)
+#define MAXNUMVALUES (250)
 
 static int get_eco_params(char name[], parameter_info *parameters[], int *nprm);
 static void eco_params_auto(parameter_info *parametes[], int *nprm);
@@ -315,8 +315,10 @@ static int get_eco_params(char name[], parameter_info *parameters[], int *nprm)
     {"standard","Standard ecology parameters",  eco_params_std},
     {"estuary", "Estuarine ecology parameters", eco_params_est},
     {"gbr4", "GBR4 ecology parameters", eco_params_gbr4},
-    {"BGC2p0", "Parameters used in BGC 2.0.", eco_params_bgc2p0},
-    {"BGC3p1", "Parameters used in BGC 3.1.", eco_params_bgc3p1},
+    {"BGC2p0", "Parameters used in BGC 2.0", eco_params_bgc2p0},
+    {"BGC3p1", "Parameters used in BGC 3.1", eco_params_bgc3p1},
+    {"porewater", "Parameters used for porewater age", eco_params_porewater},
+    {"TASSE1p0", "Parameters used for TASSE 1p0", eco_params_tasse1p0},
     {NULL, NULL, NULL}
   };
   void (*init) (parameter_info *params[], int *nprm)= NULL;

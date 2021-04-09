@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 6431 2019-11-22 00:25:57Z her127 $
+ *  $Id: hd_init.c 6712 2021-03-29 00:55:24Z her127 $
  *
  */
 
@@ -114,6 +114,8 @@ hd_data_t *hd_init(FILE * prmfd)
     /* Set and check the bathymetry array */
     params->topo = set_bathy(params, icdfid);
   }
+  /* Create the id code                                             */
+  create_code(params);
 
   /* Make the sparse map */
   build_sparse_map(params);
@@ -216,7 +218,7 @@ hd_data_t *hd_init(FILE * prmfd)
   tracer_reset_init(master);
   tracer_reset2d_init(master);
   /* Initialise the DHW diagnostic.  */
-  tracer_dhw_init(master);
+  /*tracer_dhw_init(master);*/
 
   /* Initialise the geometric arrays in the windows with master */
   /* geometry data.  */
@@ -338,12 +340,20 @@ hd_data_t *hd_init(FILE * prmfd)
 		     dump_event, dump_cleanup, master,
 		     dump_dispatch, dump_progress);
   }
+
+  /* Initialise the DHW diagnostic. This must occur after the dumps */
+  /* have been scheduled so that the scheduler performs it prior to */
+  /* dumping. This is important for daily NRT operation.            */
+  tracer_dhw_init(master);
+
   /* Print the runtime diagnostics */
   write_run_setup(hd_data);
   if (strlen(master->opath)) {
     /* Write also to the output path */
     char buf[MAXSTRLEN];
     sprintf(buf, "%s%s", master->opath, setup_logfile);
+    if (params->runno != 0.0)
+      sprintf(buf, "%ssetup%2.1f.txt", master->opath, params->runno);
     strcpy(setup_logfile, buf);
     write_run_setup(hd_data);
   }
@@ -548,7 +558,7 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   master->smag_smooth = params->smag_smooth;
   master->diff_scale = params->diff_scale;
   master->visc_method = params->visc_method;
-  if (params->roammode & (A_ROAM_R1|A_ROAM_R2|A_ROAM_R3) && params->nwindows > 1)
+  if (params->roammode & (A_ROAM_R1|A_ROAM_R2|A_ROAM_R3|A_ROAM_R4) && params->nwindows > 1)
     master->visc_method |= ROAM_WIN;
   master->stab = params->stab;
   master->thin_merge = params->thin_merge;
@@ -635,8 +645,16 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   strcpy(master->reef_frac, params->reef_frac);
   master->gint_errfcn = params->gint_errfcn;
   master->swr_type = params->swr_type;
-  master->dhwf = params->dhwf;
-  master->dhwh = params->dhwh;
+  master->ndhw = params->ndhw;
+  if (master->ndhw) {
+    int m;
+    master->dhwf = i_alloc_1d(master->ndhw);
+    master->dhwh = d_alloc_1d(master->ndhw);
+    for (m = 0; m < params->ndhw; m++) {
+      master->dhwf[m] = params->dhwf[m];
+      master->dhwh[m] = params->dhwh[m];
+    }
+  }
   master->togn = TOPRIGHT;
   master->crf = NONE;
   master->regf = NONE;
@@ -1010,9 +1028,14 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   if (master->swr_attn) {
     double d1;
     int cc, c;
+    master->attn_tr = -1;
+    if ((tn = tracer_find_index(params->swr_attn, master->ntrS, master->trinfo_2d)) >= 0) {
+      memcpy(master->swr_attn, master->tr_wcS[tn], geom->sgsizS * sizeof(double));
+      master->attn_tr = tn;
+    }
     if (sscanf(params->swr_attn, "%lf", &d1) == 1) {
       if (params->swr_type & SWR_2D) {
-        for (cc = 1; cc <= geom->b2_t; cc++) {
+	for (cc = 1; cc <= geom->b2_t; cc++) {
 	  c = geom->w2_t[cc];
 	  master->swr_attn[c] = d1;
 	}
@@ -1029,6 +1052,11 @@ void compute_constants(parameters_t *params,  /* Input parameter data
 	c = geom->w2_t[cc];
 	master->swr_attn1[c] = d1;
       }
+    }
+    master->tran_tr = -1;
+    if (master->swr_tran && (tn = tracer_find_index(params->swr_tran, master->ntrS, master->trinfo_2d)) >= 0) {
+      memcpy(master->swr_tran, master->tr_wcS[tn], geom->sgsizS * sizeof(double));
+      master->tran_tr = tn;
     }
     if (master->swr_tran && sscanf(params->swr_tran, "%lf", &d1) == 1) {
       for (cc = 1; cc <= geom->b2_t; cc++) {

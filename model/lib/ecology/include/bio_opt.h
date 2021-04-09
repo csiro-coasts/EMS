@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bio_opt.h 6373 2019-10-10 06:24:21Z bai155 $
+ *  $Id: bio_opt.h 6580 2020-07-29 03:58:50Z bai155 $
  *
  */
 
@@ -50,10 +50,10 @@ typedef struct {
   double* bbp_CarbSand_B;
   double* bbp_CarbSand_B2;
   double* scatfrac;
-  double* MA_aAwave;
+  double* MA_aAwave;double* MAR_aAwave;double* MAG_aAwave;
   double* SG_aAwave;
   double* SGH_aAwave;
-  double* MA_aAwave2;
+  double* MA_aAwave2;double* MAR_aAwave2;double* MAG_aAwave2;
   double* SG_aAwave2;
   double* SGH_aAwave2;
   double gone;

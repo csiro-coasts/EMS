@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: recom_extras.c 6376 2019-11-06 04:09:47Z bai155 $
+ *  $Id: recom_extras.c 6722 2021-03-29 05:00:58Z bai155 $
  *
  */
 
@@ -42,6 +42,7 @@ typedef struct {
   int PhyS_Chl_i;
   int MPB_Chl_i;
   int Tricho_Chl_i;
+  int PhyD_Chl_i;
   int COD_i;
 
   /* Output */
@@ -109,6 +110,7 @@ void recom_extras_init(eprocess* p)
   ws->PhyS_Chl_i = -1;
   ws->MPB_Chl_i = -1;
   ws->Tricho_Chl_i = -1;
+  ws->PhyD_Chl_i = -1;
   ws->COD_i = -1;
   
   /* Output */
@@ -171,8 +173,15 @@ void recom_extras_postinit(eprocess* p)
     ws->PhyL_Chl_i   = e->find_index(tracers, "PhyL_Chl", e);
     ws->PhyS_Chl_i   = e->find_index(tracers, "PhyS_Chl", e);
     ws->MPB_Chl_i    = e->find_index(tracers, "MPB_Chl", e);
-    ws->Tricho_Chl_i = e->find_index(tracers, "Tricho_Chl", e);
     ws->Chl_a_sum_i  = e->find_index(tracers, "Chl_a_sum", e);
+  }
+
+  if (process_present(e,PT_WC,"trichodesmium_spectral_grow_wc")){
+    ws->Tricho_Chl_i = e->find_index(tracers, "Tricho_Chl", e);
+  }
+
+  if (process_present(e,PT_WC,"dinoflagellate_spectral_grow_wc")){
+    ws->PhyD_Chl_i = e->find_index(tracers, "PhyD_Chl", e);
   }
 
   if (process_present(e,PT_WC,"light_spectral_wc")){
@@ -247,9 +256,10 @@ void recom_extras_postinit(eprocess* p)
     // dummy_i = e->find_index(epis, "R_561", e) + OFFSET_EPI;
     // dummy_i = e->find_index(epis, "R_655", e) + OFFSET_EPI;
 
-    /* Sentinel-3 - 412, 443, 490 in MODIS  */
+    /* Sentinel-3 - 412, 443 in MODIS  */
 
     dummy_i = e->find_index(epis, "R_400", e) + OFFSET_EPI;
+    dummy_i = e->find_index(epis, "R_490", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_510", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_560", e) + OFFSET_EPI;
     dummy_i = e->find_index(epis, "R_620", e) + OFFSET_EPI;
@@ -317,6 +327,11 @@ void recom_extras_postinit(eprocess* p)
     ws->PH_i = e->find_index(tracers, "PH", e);
     dummy_i = e->find_index(tracers, "xco2_in_air", e);
   }
+  if (process_present(e,PT_EPI,"filter_feeder_epi")){
+    dummy_i = e->find_index(epis,"FF_N_rm", e);
+    dummy_i = e->find_index(epis,"FF_N_pr", e);
+    dummy_i = e->find_index(epis,"nFF", e);
+  }
 }
 
 void recom_extras_destroy(eprocess* p)
@@ -332,8 +347,11 @@ void recom_extras_postcalc(eprocess* p, void* pp)
     /* Sum up total chloropyhll */
 
     if (ws->Chl_a_sum_i > -1){
-      y[ws->Chl_a_sum_i] = y[ws->PhyL_Chl_i] + y[ws->PhyS_Chl_i] +
-	y[ws->MPB_Chl_i] + y[ws->Tricho_Chl_i];
+      y[ws->Chl_a_sum_i] = y[ws->PhyL_Chl_i] + y[ws->PhyS_Chl_i] + y[ws->MPB_Chl_i];
+      if (ws->Tricho_Chl_i > -1)
+	y[ws->Chl_a_sum_i] += y[ws->Tricho_Chl_i];
+      if (ws->PhyD_Chl_i > -1)
+	y[ws->Chl_a_sum_i] += y[ws->PhyD_Chl_i];
     }
 }
 

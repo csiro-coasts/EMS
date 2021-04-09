@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_defaults.c 6353 2019-09-20 14:22:57Z bai155 $
+ *  $Id: parameter_defaults.c 6722 2021-03-29 05:00:58Z bai155 $
  *
  */
 
@@ -29,6 +29,778 @@ static void init_parameter_values(parameter_info *params);
  * @param nprm Number of parameters
  * @param parameters parameter_info array
  */
+
+void eco_params_tasse1p0(parameter_info **params, int *nprm)
+{
+  int n;
+  parameter_info *parameters = *params;
+
+  init_parameter_values(parameters);
+
+  n = 0;
+
+
+  /* Temperature / Environment parameters */
+  parameters[n].name  = "Tref";
+  parameters[n].desc  = "Reference temperature";
+  parameters[n].sym   = "T_{ref}";
+  parameters[n].units = "Deg C";
+  parameters[n].value[0] = 15.0;
+  parameters[n].ref = " ";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Q10";
+  parameters[n].desc  = "Temperature coefficient for rate parameters";
+  parameters[n].sym   = "Q10";
+  parameters[n].units = "none";
+  parameters[n].value[0] = 2.0;
+  parameters[n].ref = " ";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "TKEeps";
+  parameters[n].desc  = "Nominal rate of TKE dissipation in water column";
+  parameters[n].sym   = "\\epsilon";
+  parameters[n].units = "m2 s-3";
+  parameters[n].value[0] = 1.0e-6;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "N2";
+  parameters[n].desc  = "Concentration of dissolved N2";
+  parameters[n].units = "mg N m-3";
+  parameters[n].sym   = "[\\mathrm{N}_2]_{gas}";
+  parameters[n].value[0] = 2000.0;
+  parameters[n].ref = "Robson et al. (2013)";
+  parameters[n].index = n++;
+
+  /* Light parameters */
+
+  parameters[n].name = "Light_lambda";
+  parameters[n].desc = "Wavelengths of light";
+  parameters[n].units= "nm";
+  /* Free array allocated above */
+  d_free_1d(parameters[n].value);
+  parameters[n].num_values = 24;
+  parameters[n].value = d_alloc_1d(24);
+  parameters[n].value[0] = 290.0;    
+  parameters[n].value[1] = 310.0;
+  parameters[n].value[2] = 330.0;
+  parameters[n].value[3] = 350.0;
+  parameters[n].value[4] = 370.0;
+  parameters[n].value[5] = 390.0;
+  parameters[n].value[6] = 410.0;
+  parameters[n].value[7] = 430.0;
+  parameters[n].value[8] = 440.0;
+  parameters[n].value[9] = 450.0;
+  parameters[n].value[10] = 470.0;
+  parameters[n].value[11] = 490.0;
+  parameters[n].value[12] = 510.0;
+  parameters[n].value[13] = 530.0;
+  parameters[n].value[14] = 550.0;
+  parameters[n].value[15] = 570.0;
+  parameters[n].value[16] = 590.0;
+  parameters[n].value[17] = 610.0;
+  parameters[n].value[18] = 630.0;
+  parameters[n].value[19] = 650.0;
+  parameters[n].value[20] = 670.0;
+  parameters[n].value[21] = 690.0;
+  parameters[n].value[22] = 710.0;
+  parameters[n].value[23] = 800.0;
+  parameters[n].ref = "Approx. 20 nm resolution with 10 nm about 440 nm. PAR (400-700) is integral of bands 6-22.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "a440cdom_pale";
+  parameters[n].desc  = "River-specific absorption of pale CDOM 440 nm";
+  parameters[n].units = "m-1 (river)-1";
+  parameters[n].sym   = "k_{CDOM,440,pale}";
+  parameters[n].value[0] = 0.1;
+  parameters[n].ref = "";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "a440cdom_amber";
+  parameters[n].desc  = "River-specific absorption of amber CDOM 440 nm";
+  parameters[n].units = "m-1 (river)-1";
+  parameters[n].sym   = "k_{CDOM,440,amber}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].ref = "";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "a440cdom_dark";
+  parameters[n].desc  = "River-specific absorption of dark CDOM 440 nm";
+  parameters[n].units = "m-1 (river)-1";
+  parameters[n].sym   = "k_{CDOM,440,dark}";
+  parameters[n].value[0] = 10.0;
+  parameters[n].ref = "";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Scdom_pale";
+  parameters[n].desc  = "Spectral slope of pale CDOM absorption";
+  parameters[n].units = "nm-1";
+  parameters[n].sym   = "S_{CDOM,pale}";
+  parameters[n].value[0] = 0.01;
+  parameters[n].ref = "";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Scdom_amber";
+  parameters[n].desc  = "Spectral slope of amber CDOM absorption";
+  parameters[n].units = "nm-1";
+  parameters[n].sym   = "S_{CDOM,amber}";
+  parameters[n].value[0] = 0.0125;
+  parameters[n].ref = "";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Scdom_dark";
+  parameters[n].desc  = "Spectral slope of dark CDOM absorption";
+  parameters[n].units = "nm-1";
+  parameters[n].sym   = "S_{CDOM,dark}";
+  parameters[n].value[0] = 0.015;
+  parameters[n].ref = "";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "bphy";
+  parameters[n].desc  = "Chl-specific scattering coef. for microalgae";
+  parameters[n].units = "m-1 (mg Chl a m-3)-1"; 
+  parameters[n].sym   = "b_{phy}";
+  parameters[n].value[0] = 0.2;
+  parameters[n].ref = "Typical microalgae value, Kirk (1994) Light and Photosynthesis in Aquatic ecosystems, Table 4.3";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "NtoCHL";
+  parameters[n].desc  = "Nominal N:Chl a ratio in phytoplankton by weight";
+  parameters[n].units = "g N (g Chl a)-1";
+  parameters[n].sym   = "R_{N:Chl}";
+  parameters[n].value[0] = 7.0;
+  parameters[n].ref = "Represents a C:Chl ratio of 39.25, Baird et al. (2013) Limnol. Oceanogr. 58: 1215-1226.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "MBxan2chl";
+  parameters[n].desc  = "Ratio of xanthophyll to chl a of MPB";
+  parameters[n].units = "mg mg-1";
+  parameters[n].sym   = "\\Theta_{xan2chl,MPB}";
+  parameters[n].value[0] = 0.81;
+  parameters[n].ref = "CSIRO parameter library: GBR region WC values";
+  parameters[n].index = n++;
+
+  /* Phytoplankton */
+
+  parameters[n].name  = "PLumax";
+  parameters[n].desc  = "Maximum growth rate of PL at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{PL}^{max}";
+  parameters[n].value[0] = 1.5;
+  parameters[n].ref = " ";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PLrad";
+  parameters[n].desc  = "Radius of the large phytoplankton cells";
+  parameters[n].units = "m";
+  parameters[n].sym   = "r_{PL}";
+  parameters[n].value[0] = 10.0e-06;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PhyL_mL";
+  parameters[n].desc  = "Natural (linear) mortality rate, large phytoplankton";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "m_{L,PL}";
+  parameters[n].value[0] = 0.14;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PhyL_mL_sed";
+  parameters[n].desc  = "Natural (linear) mortality rate in sed., large phyto.";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "m_{L,PL,sed}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PSumax";
+  parameters[n].desc  = "Maximum growth rate of PS at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{PL}^{max}";
+  parameters[n].value[0] = 1.25;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PSrad";
+  parameters[n].desc  = "Radius of the small phytoplankton cells";
+  parameters[n].units = "m";
+  parameters[n].sym   = "r_{PS}";
+  parameters[n].value[0] = 2.5e-06;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PhyS_mL";
+  parameters[n].desc  = "Natural (linear) mortality rate, small phyto.";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "m_{L,PS}";
+  parameters[n].value[0] = 0.14;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PhyS_mL_sed";
+  parameters[n].desc  = "Natural (linear) mortality rate in sed., small phyto.";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "m_{L,PS,sed}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "MBumax";
+  parameters[n].desc  = "Maximum growth rate of MB at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{MPB}^{max}";
+  parameters[n].value[0] = 1.05;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "MBrad";
+  parameters[n].desc  = "Radius of the MPB cells";
+  parameters[n].units = "m";
+  parameters[n].sym   = "r_{MPB}";
+  parameters[n].value[0] = 1.0e-05;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "MPB_mQ";
+  parameters[n].desc  = "Natural (quadratic) mortality rate, MPB (in sed)";
+  parameters[n].units = "d-1 (mg N m-3)-1";
+  parameters[n].sym   = "m_{Q,MPB}";
+  parameters[n].value[0] = 0.0001;
+  parameters[n].ref = "At steady-state, at mu = 0.1 d-1, indep. of temp, MPB_N ~ 0.1 / MPB_mQ = 250 mg N m-3";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "DFumax";
+  parameters[n].desc  = "Maximum growth rate of DF at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{DF}^{max}";
+  parameters[n].value[0] = 0.5;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "DFrad";
+  parameters[n].desc  = "Radius of the DF cells";
+  parameters[n].units = "m";
+  parameters[n].sym   = "r_{DF}";
+  parameters[n].value[0] = 10.0e-6;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "PD_mL";
+  parameters[n].desc  = "Natural (linear) mortality rate dinoflagellates";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "m_{L,DF}";
+  parameters[n].value[0] = 0.14;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "C2Chlmin";
+  parameters[n].desc  = "Minimum carbon to chlorophyll a ratio";
+  parameters[n].units = "wt/wt";
+  parameters[n].sym   = "\\theta_{min}";
+  parameters[n].value[0] = 40.0;
+  parameters[n].ref = "From HPLC in Sathyendranath et al., 2009 MEPS 383,73-84";
+  parameters[n].index = n++;
+
+  /* Zooplankton */
+  parameters[n].name  = "ZSumax";
+  parameters[n].desc  = "Maximum growth rate of ZS at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{max}^{ZS}";
+  parameters[n].value[0] = 4.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZSrad";
+  parameters[n].desc  = "Radius of the small zooplankton cells";
+  parameters[n].units = "m";
+  parameters[n].sym   = "r_{ZS}";
+  parameters[n].value[0] = 5e-06;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZSswim";
+  parameters[n].desc  = "Swimming velocity for small zooplankton";
+  parameters[n].units = "m s-1";
+  parameters[n].sym   = "U_{ZS}";
+  parameters[n].value[0] = 2.0e-4;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZSmeth";
+  parameters[n].desc  = "Grazing technique of small zooplankton";
+  parameters[n].units = "none";
+  parameters[n].stringvalue = "rect";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZLumax";
+  parameters[n].desc  = "Maximum growth rate of ZL at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{max}^{ZL}";
+  parameters[n].value[0] = 1.33;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZLrad";
+  parameters[n].desc  = "Radius of the large zooplankton cells";
+  parameters[n].units = "m";
+  parameters[n].sym   = "r_{ZL}";
+  parameters[n].value[0] = 5.0e-04;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZLswim";
+  parameters[n].desc  = "Swimming velocity for large zooplankton";
+  parameters[n].units = "m s-1";
+  parameters[n].sym   = "U_{ZL}";
+  parameters[n].value[0] = 1.5e-3;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZLmeth";
+  parameters[n].desc  = "Grazing technique of large zooplankton";
+  parameters[n].units = "none";
+  parameters[n].stringvalue = "rect";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZL_E";
+  parameters[n].desc  = "Growth efficiency, large zooplankton";
+  parameters[n].units = "none";
+  parameters[n].sym   = "E_{ZL}";
+  parameters[n].value[0] = 0.426;
+  parameters[n].stderr = 0.0179;
+  parameters[n].ref = "Baird and Suthers, 2007 from Hansen et al (1997) LO 42: 687-704";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZS_E";
+  parameters[n].desc  = "Growth efficiency, small zooplankton";
+  parameters[n].units = "none";
+  parameters[n].sym   = "E_{ZS}";
+  parameters[n].value[0] = 0.462;
+  parameters[n].stderr = 0.0266;
+  parameters[n].ref = "Baird and Suthers, 2007 from Hansen et al (1997) LO 42: 687-704";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZL_mQ";
+  parameters[n].desc  = "Natural (quadratic) mortality rate, large zooplankton";
+  parameters[n].sym   = "m_{Q,ZL}";
+  parameters[n].units = "d-1 (mg N m-3)-1";
+  parameters[n].value[0] = 0.02;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZS_mQ";
+  parameters[n].desc  = "Natural (quadratic) mortality rate, small zooplankton";
+  parameters[n].units = "d-1 (mg N m-3)-1";
+  parameters[n].sym   = "m_{Q,ZS}";
+  parameters[n].value[0] = 0.003;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZL_FDG";
+  parameters[n].desc  = "Fraction of growth inefficiency lost to detritus, large zoo.";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\gamma_{ZL}";
+  parameters[n].value[0] = 0.5;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZL_FDM";
+  parameters[n].desc  = "Fraction of mortality lost to detritus, large zoo.";
+  parameters[n].units = "none";
+  parameters[n].sym   = "N/A";
+  parameters[n].value[0] = 0.5;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZS_FDG";
+  parameters[n].desc  = "Fraction of growth inefficiency lost to detritus, small zoo.";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\gamma_{ZS}";
+  parameters[n].value[0] = 0.5;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "ZS_FDM";
+  parameters[n].desc  = "Fraction of mortality lost to detritus, small zooplankton";
+  parameters[n].units = "none";
+  parameters[n].sym   = "N/A";
+  parameters[n].value[0] = 0.5;
+  parameters[n].index = n++;
+
+  /* Remineralisation */
+  parameters[n].name  = "F_LD_RD";
+  parameters[n].desc  = "Fraction of labile detritus converted to refractory detritus";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\zeta_{Red}";
+  parameters[n].value[0] = 0.19;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "F_LD_DOM";
+  parameters[n].desc  = "Fraction of labile detritus converted to DOM";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\vartheta_{Red}";
+  parameters[n].value[0] = 0.1;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "F_RD_DOM";
+  parameters[n].desc  = "fraction of refractory detritus that breaks down to DOM";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\vartheta_{Ref}";
+  parameters[n].value[0] = 0.05;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_DetPL";
+  parameters[n].desc  = "Breakdown rate of labile detritus at 106:16:1";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "r_{Red}";
+  parameters[n].value[0] = 0.2;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_DetBL";
+  parameters[n].desc  = "Breakdown rate of labile detritus at 550:30:1";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "r_{Atk}";
+  parameters[n].value[0] = 0.1;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_RD";
+  parameters[n].desc  = "Breakdown rate of refractory detritus";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "r_{R}";
+  parameters[n].value[0] = 0.005;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_DOM";
+  parameters[n].desc  = "Breakdown rate of dissolved organic matter";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "r_{O}";
+  parameters[n].value[0] = 0.005;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_RD_NtoP";
+  parameters[n].desc  = "Scaling of DetP to DOP, relative to N";
+  parameters[n].units = "-";
+  parameters[n].sym   = "r_{RD_NtoP}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_DOM_NtoP";
+  parameters[n].desc  = "Scaling of DOM to DIP, relative to N";
+  parameters[n].units = "-";
+  parameters[n].sym   = "r_{DOM_NtoP}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Plank_resp";
+  parameters[n].desc  = "Respiration as a fraction of umax";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\phi";
+  parameters[n].value[0] = 0.025;
+  parameters[n].index = n++;
+
+  /* Sediment parameters */
+
+  parameters[n].name  = "KO_aer";
+  parameters[n].desc  = "Oxygen half-saturation for aerobic respiration";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{OA}";
+  parameters[n].value[0] = 256.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_nit_wc";
+  parameters[n].desc  = "Maximum nitrification rate in water column";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{nit,wc}";
+  parameters[n].value[0] = 0.1;
+  parameters[n].index = n++; 
+
+  parameters[n].name  = "r_nit_sed";
+  parameters[n].desc  = "Maximum nitrification rate in water sediment";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{nit,sed}";
+  parameters[n].value[0] = 20.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "KO_nit_wc";
+  parameters[n].desc  = "Oxygen half-saturation for nitrification in wc";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,nit}";
+  parameters[n].value[0] = 500.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "KO_nit_sed";
+  parameters[n].desc  = "Oxygen half-saturation for nitrification in wc";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,nit}";
+  parameters[n].value[0] = 500.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_den_wc";
+  parameters[n].desc  = "Maximum denitrification rate in wc";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{denit}";
+  parameters[n].value[0] = 0.0;  
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_den_sed";
+  parameters[n].desc  = "Maximum denitrification rate in sed";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{denit}";
+  parameters[n].value[0] = 5.0;  
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_ana_wc";
+  parameters[n].desc  = "Maximum rate of anammox in wc";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{denit}";
+  parameters[n].value[0] = 0.0;  
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_ana_sed";
+  parameters[n].desc  = "Maximum rate of anammox in sed";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{denit,sed}";
+  parameters[n].value[0] = 0.1;  
+  parameters[n].index = n++;
+
+  parameters[n].name  = "KO_ana_wc";
+  parameters[n].desc  = "Oxygen half-saturation for anammox in wc";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,amm,wc}";
+  parameters[n].value[0] = 1000.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "KO_ana_sed";
+  parameters[n].desc  = "Oxygen half-saturation for anammox in sed";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,amm,sed}";
+  parameters[n].value[0] = 1000.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "KO_den_wc";
+  parameters[n].desc  = "Oxygen half-saturation constant for denitrification in wc";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,denit,wc}";
+  parameters[n].value[0] = 10000.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "KO_den_sed";
+  parameters[n].desc  = "Oxygen half-saturation constant for denitrification in sed";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,denit,sed}";
+  parameters[n].value[0] = 5000.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Pads_r";
+  parameters[n].desc  = "Rate at which P reaches adsorbed/desorbed equilibrium";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{Pabs}";
+  parameters[n].value[0] = 0.04;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Pads_Kwc";
+  parameters[n].desc  = "Freundlich Isothermic Const P adsorption to TSS in wc";
+  parameters[n].units = "mg P kg TSS-1";
+  parameters[n].sym   = "k_{Pads,wc}";
+  parameters[n].value[0] = 30.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Pads_Ksed";
+  parameters[n].desc  = "Freundlich Isothermic Const P adsorption to TSS in sed";
+  parameters[n].units = "mg P kg TSS-1";
+  parameters[n].sym   = "k_{Pads,sed}";
+  parameters[n].value[0] = 74.0;
+  parameters[n].index = n++; 
+
+  parameters[n].name  = "Pads_KO";
+  parameters[n].desc  = "Oxygen half-saturation for P adsorption";
+  parameters[n].units = "mg O m-3";
+  parameters[n].sym   = "K_{\\mathrm{O}_2,abs}";
+  parameters[n].value[0] = 2000.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Pads_exp";
+  parameters[n].desc  = "Exponent for Freundlich Isotherm";
+  parameters[n].units = "none";
+  parameters[n].sym   = "N/A";
+  parameters[n].value[0] = 1.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "r_immob_PIP";
+  parameters[n].desc  = "Rate of conversion of PIP to immobilised PIP";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{Pimm}";
+  parameters[n].value[0] = 0.0012;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "EpiDiffCoeff";
+  parameters[n].desc  = "Sediment-water diffusion coefficient";
+  parameters[n].units = "m2 s-1";
+  parameters[n].sym   = "D";
+  parameters[n].value[0] = 3e-7;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "EpiDiffDz";
+  parameters[n].desc  = "Thickness of diffusive layer";
+  parameters[n].units = "m";
+  parameters[n].sym   = "h";
+  parameters[n].value[0] = 0.0065;
+  parameters[n].index = n++;
+  
+  /* Marcroalgae */
+  parameters[n].name  = "MAumax";
+  parameters[n].desc  = "Maximum growth rate of MA at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{MA}^{max}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "MA_mL";
+  parameters[n].desc  = "Natural (linear) mortality rate, macroalgae";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\zeta_{MA}";
+  parameters[n].value[0] = 0.01;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "MAleafden";
+  parameters[n].desc  = "Nitrogen-specific leaf area of macroalgae";
+  parameters[n].units = "m2 g N-1";
+  parameters[n].sym   = "\\Omega_{MA}";
+  parameters[n].value[0] = 1.0;
+  parameters[n].index = n++;
+
+  parameters[n].name  = "Benth_resp"; \
+  parameters[n].desc  = "Respiration as a fraction of umax";
+  parameters[n].units = "none";
+  parameters[n].sym   = "\\phi";
+  parameters[n].value[0] = 0.025;
+  parameters[n].index = n++;
+
+  /* Seagrass parameters - Zostera */
+  parameters[n].name  = "SGumax";
+  parameters[n].desc  = "Maximum growth rate of SG at Tref";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\mu_{SG}^{max}";
+  parameters[n].value[0] = 0.2;
+  parameters[n].ref = "x2 nighttime, x2 for roots.";
+  parameters[n].index = n++;
+  
+  parameters[n].name  = "SG_KN";
+  parameters[n].desc  = "Half-saturation of SG N uptake in SED";
+  parameters[n].units = "mg N m-3";
+  parameters[n].sym   = "K_{SG,N}";
+  parameters[n].value[0] = 420.0;
+  parameters[n].ref = "Lee and Dunton (1999) 1204-1215. Table 3 Zostera";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SG_KP";
+  parameters[n].desc  = "Half-saturation of SG P uptake in SED";
+  parameters[n].units = "mg P m-3";
+  parameters[n].sym   = "K_{SG,P}";
+  parameters[n].value[0] = 96.0;
+  parameters[n].ref = "Gras et al. (2003) Aquatic Botany 76:299-315. Thalassia testudinum.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SG_mL";
+  parameters[n].desc  = "Natural (linear) mortality rate aboveground seagrass";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\zeta_{SG_A}";
+  parameters[n].value[0] = 0.03;
+  parameters[n].stderr = 0.001;
+  parameters[n].ref = "Fourquean et al.( 2003) Chem. Ecol. 19: 373-390.Thalassia leaves with one component decay";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGROOT_mL"; 
+  parameters[n].desc  = "Natural (linear) mortality rate belowground seagrass";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\zeta_{SG_B}";
+  parameters[n].value[0] = 0.004;
+  parameters[n].stderr = 0.0002;
+  parameters[n].ref = "Fourquean et al. (2003) Chem. Ecol. 19: 373-390. Thalassia roots with one component decay";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGfrac";
+  parameters[n].desc  = "Fraction (target) of SG biomass below-ground";
+  parameters[n].units = "-";
+  parameters[n].sym   = "f_{below,SG}";
+  parameters[n].value[0] = 0.75;
+  parameters[n].ref = "Babcock (2015) Zostera capricornii.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGtransrate";
+  parameters[n].desc  = "Time scale for seagrass translocation";
+  parameters[n].units = "d-1";
+  parameters[n].sym   = "\\tau_{tran,SG}";
+  parameters[n].value[0] = 0.0333;
+  parameters[n].ref = "Loosely based on Zostera marine Kaldy et al., 2013 MEPS 487:27-39";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGleafden";
+  parameters[n].desc  = "Nitrogen-specific leaf area of seagrass";
+  parameters[n].units = "m2 g N-1";
+  parameters[n].sym   = "\\Omega_{SG}";
+  parameters[n].value[0] = 1.5;
+  parameters[n].ref = "Zostera capricornia: leaf dimensions Kemp et al (1987) Mar Ecol. Prog. Ser. 41:79-86.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGseedfrac";
+  parameters[n].desc  = "Seagrass seed biomass as fraction of 63 % cover";
+  parameters[n].units = "-";
+  parameters[n].sym   = "f_{seed,SG}";
+  parameters[n].value[0] = 0.01;
+  parameters[n].ref = "No source";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGorient";
+  parameters[n].desc  = "Sine of nadir Zostera canopy bending angle";
+  parameters[n].units = "-";
+  parameters[n].sym   = "\\sin \\beta_{blade,SG}";
+  parameters[n].value[0] = 0.5;
+  parameters[n].ref = "No source";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGmlr";
+  parameters[n].desc  = "Compensation irradiance for Zostera";
+  parameters[n].units = "mol m-2";
+  parameters[n].sym   = "E_{comp,SG}";
+  parameters[n].value[0] = 4.5;
+  parameters[n].ref = "Chartrand (2012) Tech report.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SGrootdepth";
+  parameters[n].desc  = "Maximum depth for Zostera roots";
+  parameters[n].units = "m";
+  parameters[n].sym   = "z_{root,SG}";
+  parameters[n].value[0] = -0.15;
+  parameters[n].ref = "Roberts (1993) Aust. J. Mar. Fresh. Res. 44:85-100.";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SG_tau_critical";
+  parameters[n].desc  = "Critical shear stress for SG loss";
+  parameters[n].units = "N m-2";
+  parameters[n].sym   = "\\tau_{SG,shear}";
+  parameters[n].value[0] = 2.0;
+  parameters[n].ref = "NESP project";
+  parameters[n].index = n++;
+
+  parameters[n].name  = "SG_tau_efold";
+  parameters[n].desc  = "Time-scale for critical shear stress for SG loss";
+  parameters[n].units = "s";
+  parameters[n].sym   = "\\tau_{SG,time}";
+  parameters[n].value[0] = 43200.0;
+  parameters[n].ref = "NESP project";
+  parameters[n].index = n++;
+
+ /* Assign acutal number of parameters */
+  *nprm = n;
+
+  /* Assign string values */
+  assign_string_values(parameters, *nprm);
+}
+
+void eco_params_porewater(parameter_info **params, int *nprm)
+{
+  int n;
+  parameter_info *parameters = *params;
+
+  init_parameter_values(parameters);
+
+  n = 0;
+
+  parameters[n].name  = "ageing_decay";
+  parameters[n].desc  = "Age tracer growth rate per day";
+  parameters[n].units = "d d-1";
+  parameters[n].sym   = "n/a";
+  parameters[n].value[0] = 1.0;
+  parameters[n].ref = "EMS manual";
+  parameters[n].index = n++;
+
+  /* Assign acutal number of parameters */
+  *nprm = n;
+
+  /* Assign string values */
+  assign_string_values(parameters, *nprm);
+}
 
 
 void eco_params_bgc2p0(parameter_info **params, int *nprm)
@@ -249,14 +1021,14 @@ void eco_params_bgc2p0(parameter_info **params, int *nprm)
   parameters[n].name  = "Tricho_umax";
   parameters[n].desc  = "Maximum growth rate of Trichodesmium at Tref ";
   parameters[n].units = "d-1";
-  parameters[n].sym   = "\\mu_{MPB}^{max}";
+  parameters[n].sym   = "\\mu_{Tricho}^{max}";
   parameters[n].value[0] = 0.24;
   parameters[n].index = n++;
 
   parameters[n].name  = "Tricho_rad";
   parameters[n].desc  = "Radius of Trichodesmium colonies";
   parameters[n].units = "m";
-  parameters[n].sym   = "r_{MPB}";
+  parameters[n].sym   = "r_{Tricho}";
   parameters[n].value[0] = 0.000005;
   parameters[n].index = n++;
 
@@ -1313,14 +2085,14 @@ void eco_params_bgc3p1(parameter_info **params, int *nprm)
   parameters[n].name  = "Tricho_umax";
   parameters[n].desc  = "Maximum growth rate of Trichodesmium at Tref ";
   parameters[n].units = "d-1";
-  parameters[n].sym   = "\\mu_{MPB}^{max}";
+  parameters[n].sym   = "\\mu_{Tricho}^{max}";
   parameters[n].value[0] = 0.20;
   parameters[n].index = n++;
 
   parameters[n].name  = "Tricho_rad";
   parameters[n].desc  = "Radius of Trichodesmium colonies";
   parameters[n].units = "m";
-  parameters[n].sym   = "r_{MPB}";
+  parameters[n].sym   = "r_{Tricho}";
   parameters[n].value[0] = 0.000005;
   parameters[n].index = n++;
 
@@ -2443,14 +3215,14 @@ void eco_params_gbr4(parameter_info **params, int *nprm)
   parameters[n].name  = "Tricho_umax";
   parameters[n].desc  = "Maximum growth rate of Trichodesmium at Tref ";
   parameters[n].units = "d-1";
-  parameters[n].sym   = "\\mu_{MPB}^{max}";
+  parameters[n].sym   = "\\mu_{Tricho}^{max}";
   parameters[n].value[0] = 0.24;
   parameters[n].index = n++;
 
   parameters[n].name  = "Tricho_rad";
   parameters[n].desc  = "Radius of Trichodesmium colonies";
   parameters[n].units = "m";
-  parameters[n].sym   = "r_{MPB}";
+  parameters[n].sym   = "r_{Tricho}";
   parameters[n].value[0] = 0.000005;
   parameters[n].index = n++;
 

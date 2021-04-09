@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracerstats.c 6444 2019-12-18 23:43:28Z riz008 $
+ *  $Id: tracerstats.c 6520 2020-04-09 12:46:40Z her127 $
  *
  */
 
@@ -336,6 +336,7 @@ void trs_init(void* model, trs_t *trs, FILE *fp) {
   for (n = 0; n < ntr - EX_3D; n++) {
     stat = 0;
     fluxdir = -1;
+
     sprintf(key, "TRACER%1.1d.tracerstat", i_get_param_map_3d(model, n));
     if (prm_read_char(fp, key, tbuf)) {
       nargs = decode_args(tbuf, args, 256);
@@ -648,6 +649,13 @@ void trs_init(void* model, trs_t *trs, FILE *fp) {
       if (strcmp(tok, "rmse") == 0) {
         trs->do_tracerstats = 1;
         stat = O_1|O_2|O_3;
+        /* Read in the averaging period and store temporarily in     */
+        /* tr_3d[4].                                                 */
+        sprintf(key, "TRACER%1.1d.dt", i_get_param_map_3d(model, n));
+        if (!prm_read_char(fp, key, tr_3d[on][4])) {
+          sprintf(key, "STOP_TIME");
+          prm_read_char(fp, key, tr_3d[on][4]);
+        }
         emstag(LTRACE,"tracerstats:init","statistics : %s = RMSE of tracer %s and %s\n",
          trname_3d[n], args[1], args[2]);
         sprintf(key, "TRACER%1.1d.step", i_get_param_map_3d(model, n));
@@ -1270,11 +1278,11 @@ void trs_init(void* model, trs_t *trs, FILE *fp) {
         trs->do_tracerstats = 1;
         stat = O_1|O_2|O_3;
         /* Read in the averaging period and store temporarily in     */
-        /* tr_2d[2].                                                 */
+        /* tr_2d[4].                                                 */
         sprintf(key, "TRACER%1.1d.dt", i_get_param_map_2d(model, n));
-        if (!prm_read_char(fp, key, tr_2d[onS][2])) {
+        if (!prm_read_char(fp, key, tr_2d[onS][4])) {
           sprintf(key, "STOP_TIME");
-          prm_read_char(fp, key, tr_2d[onS][2]);
+          prm_read_char(fp, key, tr_2d[onS][4]);
         }
         emstag(LTRACE,"tracerstats:init","statistics : %s = rmse of tracer %s and %s\n",
          trname_2d[n], args[1], args[2]);
@@ -2564,6 +2572,8 @@ if(i > 0)
     else
 
     if (strcmp(operation_2d[n], "rmse") == 0) {
+      tm_scale_to_secs(tr_2d[n][4], &trs->w1S[m]);
+      trs->w2S[m] = 0.0;
       trs->stat_typeS[m] = RMSE;
       strcpy(trs->trname_2d[m],tr_2d[n][0]);
       strcpy(trs->trname_2d[m + 1],tr_2d[n][1]);
@@ -4427,7 +4437,7 @@ void fill_stat3dfcn(trs_t *trs, char  *op_3d, char  **tr_3d,
     } 
   else if (strcmp(op_3d, "rmse") == 0) 
     {
-      tm_scale_to_secs(tr_3d[2], &w_arr->w1[m]);
+      tm_scale_to_secs(tr_3d[4], &w_arr->w1[m]);
       w_arr->w2[m] = 0.0;
       st_type[m] = RMSE;
       strcpy(trnames[m], tr_3d[0]);

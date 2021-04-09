@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tsfiles.c 6228 2019-05-29 03:28:29Z her127 $
+ *  $Id: tsfiles.c 6573 2020-07-06 03:32:08Z her127 $
  *
  */
 
@@ -906,6 +906,8 @@ int dump_choose_by_time_s(int fid, double t)
     if (fabs(tvals - t) < 0.001) {
       return i;
     }
+    if (i == 0 && t < tvals) return 0;
+    if (i == n - 1 && t > tvals) return(n - 1);
   }
 
   return -1;

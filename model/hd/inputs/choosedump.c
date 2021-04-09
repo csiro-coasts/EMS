@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: choosedump.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: choosedump.c 6608 2020-09-07 03:28:20Z her127 $
  *
  */
 
@@ -121,6 +121,40 @@ int dump_choose_by_time(parameters_t *params, int fid, double t)
   return -1;
 }
 
+int dump_choose_by_time_m(master_t *master, int fid, double t)
+{
+  unsigned int i;
+  size_t n = 0;
+  size_t start;
+  size_t count;
+  double tvals;
+  char timeunits[MAXSTRLEN];
+  if (nc_inq_dimlen(fid, ncw_dim_id(fid, "record"), &n) < 0)
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, "time"), &n) < 0)
+      hd_quit("Can't find 'record' dimension in netCDF file.\n");
+
+  if (n < 1)
+    hd_quit("dump_choose_by_time: No dumps in input file!\n");
+  memset(timeunits, 0, MAXSTRLEN);
+  nc_get_att_text(fid, ncw_var_id(fid, "t"), "units", timeunits);
+  for (i = 0; i < n; ++i) {
+    start = i;
+    count = 1;
+    nc_get_vara_double(fid, ncw_var_id(fid, "t"), &start, &count, &tvals);
+    tm_change_time_units(timeunits, master->timeunit, &tvals, 1);
+    if (i == 0 && t < tvals) return i;
+    if (i == n-1 && t > tvals) return n-1;
+    if (fabs(tvals - t) < START_EPS)
+      return i;
+  }
+
+  hd_quit
+    ("dump_choose_by_time: Input file does not contain the time '%.2f %s'.\n",
+     t, master->timeunit);
+
+  return -1;
+}
+
 int dump_choose_by_time_p(parameters_t *params, int fid, double t)
 {
   unsigned int i;
@@ -152,3 +186,86 @@ int dump_choose_by_time_p(parameters_t *params, int fid, double t)
 
   return -1;
 }
+
+int dump_choose_by_time_mom(master_t *master, int fid, double t)
+{
+  unsigned int i;
+  size_t n;
+  size_t start;
+  size_t count;
+  double tvals, pt;
+  char timeunits[MAXSTRLEN];
+
+  nc_inq_dimlen(fid, ncw_dim_id(fid, "time"), &n);
+
+  if (n < 1)
+    hd_quit("dump_choose_by_time: No dumps in input file!\n");
+  memset(timeunits, 0, MAXSTRLEN);
+  nc_get_att_text(fid, ncw_var_id(fid, "Time_bounds"), "units", timeunits);
+
+  for (i = 0; i < n; ++i) {
+    start = i;
+    count = 1;
+    nc_get_vara_double(fid, ncw_var_id(fid, "time"), &start, &count, &tvals);
+    tm_change_time_units(timeunits, master->timeunit, &tvals, 1);
+    if (i == 0 && t < tvals) return i;
+    if (i == n-1 && t > tvals) return n-1;
+    if (fabs(tvals - t) < START_EPS)
+      return i;
+    if (i > 0 && t > pt && t < tvals)
+      return i;
+    pt = tvals;
+  }
+
+  hd_quit
+    ("dump_choose_by_time: Input file does not contain the time '%.2f %s'.\n",
+     t, master->timeunit);
+
+  return -1;
+}
+
+
+int dump_choose_by_time_ts(master_t *master, char *fname, double t)
+{
+  unsigned int i;
+  double tvals;
+  double r = t;
+  timeseries_t *ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+  datafile_t *df;
+
+  if (ts == NULL)
+    hd_quit("interp_data_s: No memory available.\n");
+  memset(ts, 0, sizeof(timeseries_t));
+    
+  /* Read the time series                                            */
+  ts_read(fname, ts);
+  df = ts->df;
+  tm_change_time_units(master->timeunit, ts->t_units, &r, 1);
+
+  r = get_file_time(ts, r);
+  if (df->rec_modulus) {
+    while (r < 0)
+      r += df->rec_mod_scale;
+    r = fmod(r, df->rec_mod_scale);
+  }
+
+  for (i = 0; i < df->nrecords; ++i) {
+    tvals = df->records[i];
+    if (i == 0 && r < tvals) return i;
+    if (i == df->nrecords-1 && r > tvals) return df->nrecords-1;
+    if (i < df->nrecords-1 && r >= tvals && r < df->records[i+1]) {
+      ts_free(ts);
+      return i;
+    }
+  }
+
+  hd_quit
+    ("dump_choose_by_time: Input file does not contain the time '%.2f %s'.\n",
+     t, master->timeunit);
+
+  ts_free(ts);
+  return(-1);
+}
+
+
+

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6459 2020-02-18 23:42:59Z her127 $
+ *  $Id: proto.h 6729 2021-03-30 00:36:09Z her127 $
  *
  */
 
@@ -38,6 +38,7 @@ parameters_t *auto_params(FILE * fp, int autof);
 void auto_params_roam_pre1(FILE * fp, parameters_t *params);
 void auto_params_roam_pre2(FILE * fp, parameters_t *params);
 void auto_params_roam_pre3(FILE * fp, parameters_t *params);
+void auto_params_roam_pre4(FILE * fp, parameters_t *params);
 void auto_params_recom_pre1(FILE * fp, parameters_t *params);
 void auto_params_recom_pre2(FILE * fp, parameters_t *params);
 void auto_params_roam_post1(FILE * fp, parameters_t *params);
@@ -46,13 +47,14 @@ void auto_params_roam_post3(FILE * fp, parameters_t *params);
 void auto_params_roam_post4(FILE * fp, parameters_t *params);
 void auto_params_roam_post5(FILE * fp, parameters_t *params);
 void auto_params_roam_post6(FILE * fp, parameters_t *params);
+void auto_params_roam_post7(FILE * fp, parameters_t *params);
 void auto_params_recom_post1(FILE * fp, parameters_t *params);
 void auto_params_recom_post2(FILE * fp, parameters_t *params);
 double get_restart_time(char *filename, char *iunits);
 double get_nrt_time(char *filename, char *iunits);
 void readparam(FILE * fp);
 void read_hdiff(parameters_t *params, FILE *fp, int mode);
-int read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj);
+int read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj, char **pname);
 void set_default_param(parameters_t *params);
 void params_write(parameters_t *params, dump_data_t *dumpdata);
 void cookie_cut(master_t *master, parameters_t *params);
@@ -71,6 +73,7 @@ int read_dhw(parameters_t *params, FILE *fp);
 void read_trflux(parameters_t *params, FILE *fp);
 void tracer_setup(parameters_t *params, FILE *fp);
 int numbers_init(parameters_t *params);
+int import_init(parameters_t *params, FILE *fp);
 char *otime(double dt, char *tag);
 void autoset(parameters_t *params, master_t *master, geometry_t *geom);
 void autoset_roam(parameters_t *params, master_t *master, geometry_t **window);
@@ -95,6 +98,9 @@ void value_init_2d(master_t *master, double *ret, FILE *fp, char *fname, char *v
 void value_init_sed(master_t *master, double **ret, FILE *fp, char *fname, char *vname,
 		    char *tag, double fill, char *i_rule);
 int value_init_regions(master_t *master, char *dname, double *tr, int mode);
+int set_variable(master_t *master, char *tag, double *ret, double *tin);
+int is_set_variable(char *fnames);
+poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts);
 void trans_write(hd_data_t *hd_data);
 char *trtypename(int m, char *buf);
 void bathy_compare(master_t *master);
@@ -123,6 +129,9 @@ void neighbour_finder_b(delaunay* d, int ***neic);
 int find_neighbour(int c, double **x, double **y, int *npe, int ns2, int *j);
 int find_neighbour_l(int c, int ***eloc, int *npe, int ns2, int *j);
 void neighbour_none(dump_data_t *dumpdata);
+void create_code(parameters_t *params);
+double get_idcode(char *code, char *id);
+void get_idcodec(char *code, char *id, char *ret);
 
 /*------------------------------------------------------------------*/
 /* Grid generation                                                  */
@@ -158,6 +167,8 @@ void mesh_ofile_name(parameters_t *params, char *key);
 delaunay *make_dual(geometry_t *geom, int kin);
 int mesh_expand_w(geometry_t *window, int *vec);
 int mesh_expand_3d(geometry_t *window, double *u1);
+point *convex_hull(point *v,  int *count);
+void write_swan_mesh(master_t *master);
 
 /*------------------------------------------------------------------*/
 /* Window subroutines                                               */
@@ -418,6 +429,9 @@ void average_OBC_corner(geometry_t *window, open_bdrys_t *open, double *var, int
 void reset_bdry_eta(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		    open_bdrys_t *open, double *eta);
 void reset_obc_adjust(geometry_t *geom, double dt);
+void bdry_tiled_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void bdry_tiled_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void bdry_tiled_eta(geometry_t *geom, master_t *master, geometry_t **window, window_t **windat, win_priv_t **wincon);
 
 /*------------------------------------------------------------------*/
 /* Distributed tranfer routines                                     */
@@ -595,6 +609,7 @@ void get_filter(geometry_t *geom);
 /*------------------------------------------------------------------*/
 void order (double *a, double *b);
 void monitor(master_t *master, geometry_t **window, int mode);
+void history_log(master_t *master, int mode);
 void mass_diag(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void get_tend(geometry_t *window, int *vec, int eb, double *vel,
               double *ovel, double *tendency);
@@ -660,10 +675,13 @@ void check_min(geometry_t *window, double *A, int as, int ae, int *vec,
                char *tag);
 double get_min(geometry_t *window, double *A, int as, int ae,
          int *vec, int *cl);
-double check_cont(geometry_t *window, int c);
+double check_continuity(geometry_t *window, int c);
+void check_volcons(geometry_t *window, window_t *windat, win_priv_t *wincon, 
+		   double *oeta, double *eta, double dt);
 int check_unstable(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		   int mode);
 void debug_c(geometry_t *window, int var, int mode);
+void crash_c(geometry_t *window, int c, int e, char *text);
 double percs(double *aa, int n, double pc);
 void sorts(double *a, int n);
 void sorts2(double *a, double *b, int *c, int n);
@@ -703,7 +721,7 @@ double con_med(geometry_t *window, double *vel, int c);
 double decorr(geometry_t *window, double *a, int sz, int c, int mode, double scale);
 void calc_decorr(geometry_t *window, double *a, double *dex, int sz, int mode, 
 		 double scale);
-void calc_dhd(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void calc_dhd(geometry_t *window, window_t *windat, win_priv_t *wincon, int n);
 double buoyancy_frequency2_m(master_t * master, geometry_t *geom, double *dens, int c);
 
 /*------------------------------------------------------------------*/
@@ -976,6 +994,10 @@ void surf_relax(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double surf_conc(geometry_t *window, window_t *windat, win_priv_t *wincon,
                  double *tr, double osubeta, double subeta, int c, int c2, int cc,
                  double fcbot, double *dtracer);
+double surf_concrk(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		   double *tr, double osubeta, double subeta, int c, int c2, int cc,
+		   double *grad, double *ovol, double *nvol, double fcbot, 
+		   double *dtracer);
 double surf_eta(geometry_t *window, window_t *windat, win_priv_t *wincon,
                  int c, int c2, int cc, double fcbot, double oldeta, double *dtracer);
 int get_icell(geometry_t *geom, geometry_t *window, int cl, int cg, int ci);
@@ -1047,6 +1069,12 @@ void get_linear_metrics(geometry_t *window, window_t *windat, win_priv_t *wincon
 			double **xc, double **yc, double **zc);
 void get_linear_limit(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr);
 double get_linear_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, int co,
+			double x, double y, double z);
+void build_order2_weights(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void get_order2_metrics(geometry_t *window, window_t *windat, win_priv_t *wincon, int co,
+			double **xc, double **yc);
+void get_order2_limit(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr);
+double get_order2_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, int co,
 			double x, double y, double z);
 void get_local_bounds(geometry_t *window, window_t *windat, win_priv_t *wincon, double tr, double *trv,
 		      int e, int co, double *smin, double *smax, int mode);
@@ -1181,6 +1209,7 @@ void vel_relax_cleanup(sched_event_t *event, double t);
 void do_vel_relax(geometry_t *window, window_t *windat, win_priv_t *wincon, int mode);
 void do_vel_increment_2d(geometry_t *window);
 void vint_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void vel_components_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
 /*------------------------------------------------------------------*/
 /* 3D velocity subroutines                                          */
@@ -1297,6 +1326,7 @@ void tra_grad(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	      double *tr, double *ung, double *utg, int mode);
 void vel_tan_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double vel_c2e(geometry_t *geom, double *u, double *v, int e);
+void vel_components_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
 /*------------------------------------------------------------------*/
 /* Turbulence closure routines                                      */

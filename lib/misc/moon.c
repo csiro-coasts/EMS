@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: moon.c 6356 2019-10-03 03:46:58Z riz008 $
+ *  $Id: moon.c 6539 2020-05-01 01:53:02Z bai155 $
  */
 
 #include <stdlib.h>
@@ -80,7 +80,7 @@ void moonvars(double jdate,
 double atr = PI / 648000.;
 /* time arguments                                                    */
 double djd = jdate - 2451545.;
-double t = (djd / 3652.5) + 1;
+double t = (djd / 36525.) + 1.;
 /* fundamental trig arguments (radians)                              */
 double gm = r2r(0.374897 + 0.03629164709 * djd);
 double gm2 = 2. * gm;
@@ -114,7 +114,7 @@ double l = 22640. * sin(gm) - 4586. * sin(gm - em2) + 2370. * sin(em2);
  l = l + 8. * (sin(2. * (em - gs)) - sin(gm2 + gs)) - 7. * (sin(2. * gs) + 
    sin(gm - 2. * (em - gs)) - sin(rm));
  l = l - 6. * (sin(gm - fm2 + em2) + sin(fm2 + em2)) -
-   4. * (sin(gm - em4 + gs) - t * cos(gm + 16. * ls - 18 * lv));
+   4. * (sin(gm - em4 + gs) - t * cos(gm + 16. * ls - 18. * lv));
  l = l - 4. * (sin(gm2 + fm2) - t * sin(gm + 16. * ls - 18. * lv));
  l = l + 3. * (sin(gm - 3. * em) - sin(gm + em2 + gs) -
     sin(gm2 - em4 + gs) + sin(gm - 2. * gs) + sin(gm - em2 - 2. * gs));
@@ -142,7 +142,7 @@ l = l + 2. * (sin(4. * gm) + sin(em4 - gs) + sin(gm2 - em));
 	       sin(gm - fm + em2 - gs));
  *plat = atr * (b + 2. * (sin(gm2 - fm - em2) + sin(gm3 - fm)));
  /* obliquity of the ecliptic (radians)                              */
- obliq = atr * (84428 - 47 * t + 9 * cos(rm));
+ obliq = atr * (84428. - 47. * t + 9. * cos(rm));
  /* geocentric distance (kilometers)                                 */
  r = 60.36298 - 3.27746 * cos(gm) - .57994 * cos(gm - em2);
  r = r - .46357 * cos(em2) - .08904 * cos(gm2) + .03865 * cos(gm2 - em2);
@@ -165,5 +165,6 @@ l = l + 2. * (sin(4. * gm) + sin(em4 - gs) + sin(gm2 - em));
  b = cos(*plon);
  *rasc = atan3(a, b);
  *decl = asin(sin(*plat) * cos(obliq) + cos(*plat) * sin(obliq) * sin(*plon));
+ // printf("Moonvars: jdate %e, rasc %e, decl %e \n",jdate,*rasc,*decl);
 }
 

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6427 2019-11-22 00:24:51Z her127 $
+ *  $Id: proto.h 6657 2020-09-08 06:07:49Z her127 $
  *
  */
 
@@ -38,6 +38,7 @@ parameters_t *auto_params(FILE * fp, int autof);
 void auto_params_roam_pre1(FILE * fp, parameters_t *params);
 void auto_params_roam_pre2(FILE * fp, parameters_t *params);
 void auto_params_roam_pre3(FILE * fp, parameters_t *params);
+void auto_params_roam_pre4(FILE * fp, parameters_t *params);
 void auto_params_recom_pre1(FILE * fp, parameters_t *params);
 void auto_params_recom_pre2(FILE * fp, parameters_t *params);
 void auto_params_roam_post1(FILE * fp, parameters_t *params);
@@ -46,6 +47,7 @@ void auto_params_roam_post3(FILE * fp, parameters_t *params);
 void auto_params_roam_post4(FILE * fp, parameters_t *params);
 void auto_params_roam_post5(FILE * fp, parameters_t *params);
 void auto_params_roam_post6(FILE * fp, parameters_t *params);
+void auto_params_roam_post7(FILE * fp, parameters_t *params);
 void auto_params_recom_post1(FILE * fp, parameters_t *params);
 void auto_params_recom_post2(FILE * fp, parameters_t *params);
 double get_restart_time(char *filename, char *iunits);
@@ -68,6 +70,7 @@ void read_decorr(parameters_t *params, FILE *fp, int mode);
 int read_dhw(parameters_t *params, FILE *fp);
 void tracer_setup(parameters_t *params, FILE *fp);
 int numbers_init(parameters_t *params);
+int import_init(parameters_t *params, FILE *fp);
 char *otime(double dt, char *tag);
 void autoset(parameters_t *params, master_t *master);
 void autoset_roam(parameters_t *params, master_t *master, geometry_t **window);
@@ -90,6 +93,8 @@ void value_init_2d(master_t *master, double *ret, FILE *fp, char *fname, char *v
 void value_init_sed(master_t *master, double **ret, FILE *fp, char *fname, char *vname,
 		    char *tag, double fill, char *i_rule);
 int value_init_regions(master_t *master, char *dname, double *tr, int mode);
+int set_variable(master_t *master, char *tag, double *ret, double *tin);
+int is_set_variable(char *fnames);
 void trans_write(hd_data_t *hd_data);
 char *trtypename(int m, char *buf);
 void bathy_compare(master_t *master);
@@ -101,6 +106,8 @@ void read_explicit_maps(parameters_t *params, FILE *fp);
 void get_output_path(parameters_t *params, FILE *fp);
 void vel_init(geometry_t *geom, parameters_t *params, master_t *master);
 void read_explicit_maps(parameters_t *params, FILE *fp);
+void create_code(parameters_t *params);
+double get_idcode(char *code, char *id);
 
 /*------------------------------------------------------------------*/
 /* Window subroutines                                               */
@@ -316,6 +323,8 @@ void set_lateral_BC_waf(geometry_t *window, /* Processing window     */
 			window_t *windat,   /* Window data structure      */
 			win_priv_t *wincon  /* Window geometry / constants*/
 			);
+void flux_adjust_init(open_bdrys_t *open);
+void flux_adjust_copy(open_bdrys_t *in, open_bdrys_t *out);
 
 /*------------------------------------------------------------------*/
 /* Distributed tranfer routines                                     */
@@ -593,7 +602,7 @@ double con_med(geometry_t *window, double *vel, int c);
 double decorr(geometry_t *window, double *a, int sz, int c, int mode, double scale);
 void calc_decorr(geometry_t *window, double *a, double *dex, double *dey, 
 		 int sz, int mode, double scale);
-void calc_dhd(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void calc_dhd(geometry_t *window, window_t *windat, win_priv_t *wincon, int n);
 double buoyancy_frequency2_m(master_t * master, geometry_t *geom, double *dens, int c);
 
 /*------------------------------------------------------------------*/
@@ -1209,7 +1218,9 @@ void dump_close(int cdfid);
 int dump_choose_by_time(parameters_t *params, int fid, double t);
 int dump_choose_by_time_p(parameters_t *params, int fid, double t);
 int dump_choose_by_time_m(master_t *master, int fid, double t);
+int dump_choose_by_time_mom(master_t *master, int fid, double t);
 int dump_choose_by_time_s(int fid, double t);
+int dump_choose_by_time_ts(master_t *master, char *fname, double t);
 void read_grid_atts(parameters_t *params, int cdfid);
 void read_mean_atts(master_t *master, int fid);
 int dump_read(geometry_t *geom, parameters_t *params, master_t *master,

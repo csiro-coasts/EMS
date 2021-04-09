@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6426 2019-11-22 00:24:20Z her127 $
+ *  $Id: hd_params.h 6605 2020-09-07 03:27:23Z her127 $
  *
  */
 
@@ -192,24 +192,26 @@
 #define NEST_CPD        0x4000
 
 /* Optional boundary flags */
-#define OP_UPSTRM       0x0001
-#define OP_GEOSTR       0x0002
-#define OP_RLEN         0x0004
-#define OP_DYNAHC       0x0008
-#define OP_NOHDIF       0x0010
-#define OP_YANKOVSKY    0x0020
-#define OP_NOSALT       0x0040
-#define OP_FDEPTH       0x0080
-#define OP_IFRESH       0x0100
-#define OP_TRUNCL       0x0200
-#define OP_MULTF        0x0400
-#define OP_ETAFIL       0x0800
-#define OP_OBCCM        0x1000
-#define OP_ISPNG        0x2000
-#define OP_PARFLOW      0x4000
-#define OP_NESTBARO     0x8000
-#define OP_MACREADY     0x01000
-#define OP_OWRITE       0x02000
+#define OP_UPSTRM       0x00001
+#define OP_GEOSTR       0x00002
+#define OP_RLEN         0x00004
+#define OP_DYNAHC       0x00008
+#define OP_NOHDIF       0x00010
+#define OP_YANKOVSKY    0x00020
+#define OP_NOSALT       0x00040
+#define OP_FDEPTH       0x00080
+#define OP_IFRESH       0x00100
+#define OP_TRUNCL       0x00200
+#define OP_MULTF        0x00400
+#define OP_ETAFIL       0x00800
+#define OP_OBCCM        0x01000
+#define OP_ISPNG        0x02000
+#define OP_PARFLOW      0x04000
+#define OP_NESTBARO     0x08000
+#define OP_MACREADY     0x10000
+#define OP_OWRITE       0x20000
+#define OP_FAS          0x40000
+#define OP_FAT          0x80000
 
 /* Tidal boundary flags */
 #define TD_ETA          0x0002
@@ -217,6 +219,18 @@
 #define TD_NV           0x0008
 #define TD_TU           0x0010
 #define TD_TV           0x0020
+/* Tide forcing options */
+#define TD_EQT     0x0001     /* Equilibrium tide */
+#define TD_TPXOE   0x0002     /* TPXO elevation diagnostic */
+#define TD_TPXOV   0x0004     /* TPXO velocity diagnostic */
+#define TD_OBCE    0x0008     /* TIDALC elevation OBC */
+#define TD_OBCN    0x0010     /* TIDALC normal 3D velocity OBC */
+#define TD_OBCT    0x0020     /* TIDALC tangential 3D velocity OBC */
+#define TD_OBCNA   0x0040     /* TIDALC normal 2D velocity OBC */
+#define TD_OBCTA   0x0080     /* TIDALC tangential 2D velocity OBC */
+#define TD_VEL     0x0100     /* TPXO velocities (ms-1) supplied */
+#define TD_TRAN    0x0200     /* TPXO transports (m2s-1) supplied */
+#define TD_CSR     0x0400     /* CSR elevation OBC */
 
 /* Stability adjustment method flags                                         */
 #define ORIGINAL         1       /* Original stability adjustment */
@@ -306,6 +320,7 @@
 #define A_RECOM_R2      128
 #define A_ROAM_R3       256
 #define A_ROAM_R4       512
+#define A_ROAM_R5       1024
 
 /* Advection scheme flags                                                    */
 #define ORDER1        0x000002
@@ -437,6 +452,7 @@
 #define EKPUMP       0x4000000
 #define GLIDER       0x8000000
 #define PASS         0x10000000
+#define DENSITY      0x20000000
 
 /* Wind input */
 #define SPEED         2
@@ -471,13 +487,14 @@
 #define OVELV          256
 
 /* Eta relaxation flags */
-#define RELAX          1
-#define ALERT          2
-#define BOUNDARY       4
-#define INCREMENT      8
-#define ETA_RELAX      16
-#define FLUX_ADJUST    32
-#define ETA_ADPT       64
+#define RELAX          0x001
+#define ALERT          0x002
+#define BOUNDARY       0x004
+#define INCREMENT      0x008
+#define ETA_RELAX      0x010
+#define FLUX_ADJUST    0x020
+#define ETA_ADPT       0x040
+#define TIDE_ADJUST    0x080
 
 /* Horizontal diffusion/viscosity methods */
 #define LAPLACIAN      1
@@ -548,6 +565,7 @@
 #define SP_FFSL           0x10000000
 #define DO_SWR            0x20000000
 #define DO_OBC            0x40000000
+#define SP_SET            0x80000000
 
 #define REINIT            0x0001
 #define NOINIT            0x0002
@@ -750,6 +768,8 @@
 # define SWR_2D     0x0001
 # define SWR_3D     0x0002
 # define SWR_SPLIT  0x0004
+# define SWR_ATTN   0x0008
+# define SWR_TRAN   0x0010
 
 /* Generic interface */
 # define GINT_OK   0x0001
@@ -783,6 +803,7 @@
 #define TS_CLOS    0x0100
 #define TS_PRED    0x0200
 #define TS_GLIDER  0x0400
+#define TS_MINMAX  0x0800
 
 /* Degree heating diagnostic */
 #define DHW_NOAA   1

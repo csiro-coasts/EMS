@@ -26,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_mortality_proto_epi.c 6057 2019-02-06 02:33:51Z bai155 $
+ *  $Id: seagrass_spectral_mortality_proto_epi.c 6534 2020-05-01 01:21:36Z bai155 $
  *
  */
 
@@ -270,7 +270,7 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
       ws->SG_shear_mort_i += OFFSET_EPI;
     break;
   default:
-    e->quitfn("ecology: error: \"%s\": \"%s(%s)\": unexpected seagrass type: expected \"Zostera\", \"Halophila\" or \"Posidonia\"\n", e->processfname, p->name, prm);
+    e->quitfn("ecology: error: \"%s\": \"%s(%s)\": unexpected seagrass type: expected \"Zostera\", \"Halophila\", \"Deep\" or \"Posidonia\"\n", e->processfname, p->name, prm);
   }    
 }
 

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_wc.c 6293 2019-08-12 02:50:06Z bai155 $
+ *  $Id: massbalance_wc.c 6553 2020-05-11 06:23:26Z bai155 $
  *
  */
 
@@ -167,7 +167,7 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
     TC = y[ws->TC_i];
 
     if (ws->Amm_fl_i > -1){
-      TN += y[ws->Amm_fl_i] / SEC_PER_DAY / c->dz_wc ;
+      TN += y[ws->Amm_fl_i] / SEC_PER_DAY / c->dz_wc;
     }
 
     CO2_flux = (ws->CO2_flux_i >= 0) ? y[ws->CO2_flux_i] : 0.0;
@@ -195,6 +195,10 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
 	  // add nitrate into oxygen mass balance.
 
 	  TO = TO + y[ws->NO3_i] / 14.01 * 48.0;
+
+	  if (ws->Amm_fl_i > -1){
+	    TO += y[ws->Amm_fl_i]/2.0 * 48.0 / 14.01 / SEC_PER_DAY / c->dz_wc;
+	  }
 
 	  /* because TO can be close to zero */
 

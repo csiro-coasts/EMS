@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 6473 2020-02-18 23:52:03Z her127 $
+ *  $Id: dumpfile.c 6742 2021-03-30 00:42:53Z her127 $
  *
  */
 
@@ -421,6 +421,22 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
       /* Transfer to master */
       if (master->nwindows > 1 && (doeta || dov2d)) {
 	for (n = 1; n <= master->nwindows; n++) {
+
+	  if (df->flag & DF_ETA) {
+	    for (cc = 1; cc <= window[n]->b2_t; cc++) {
+	      c = window[n]->w2_t[cc];
+	      gc = window[n]->wsa[c];
+	      master->eta[gc] = windat[n]->eta[c];
+	    }
+	  }
+	  if (df->flag & DF_V2D) {
+	    for (cc = 1; cc <= window[n]->b2_e1; cc++) {
+	      c = window[n]->w2_e1[cc];
+	      gc = window[n]->wse[c];
+	      master->u1av[gc] = windat[n]->u1av[c];
+	    }
+	  }
+	  continue;
 	  for (bn = 0; bn < window[n]->nobc; bn++) {
 	    open_bdrys_t *open = window[n]->open[bn];
 	    if (df->flag & DF_ETA) {
@@ -429,28 +445,37 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
 		gc = window[n]->wsa[c];
 		master->eta[gc] = windat[n]->eta[c];
 	      }
+	      /*
 	      for (cc = 1; cc <= open->no3_t; cc++) {
 		c = open->obc_t[cc];
 		gc = window[n]->wsa[c];
 		master->temp[gc] = windat[n]->temp[c];
 	      }
+	      */
 	    }
 	    if (df->flag & DF_V2D) {
 	      for (cc = 1; cc <= open->no2_e1; cc++) {
 		c = open->obc_e1[cc];
-		gc = window[n]->wsa[c];
+		gc = window[n]->wse[c];
 		master->u1av[gc] = windat[n]->u1av[c];
 	      }
 	      for (cc = open->no3_e1 + 1; cc <= open->to2_e1; cc++) {
 		c = open->obc_e1[cc];
-		gc = window[n]->wsa[c];
+		gc = window[n]->wse[c];
 		master->u1av[gc] = windat[n]->u1av[c];
 	      }
-	      for (cc = 1; cc <= open->to3_e1; cc++) {
+	      /*
+	      for (cc = 1; cc <= open->no3_e1; cc++) {
 		c = open->obc_e1[cc];
 		gc = window[n]->wsa[c];
 		master->u1[gc] = windat[n]->u1[c];
 	      }
+	      for (cc = open->no3_e1 + 1; cc <= open->to3_e1; cc++) {
+		c = open->obc_e1[cc];
+		gc = window[n]->wsa[c];
+		master->u1[gc] = windat[n]->u1[c];
+	      }
+	      */
 	    }
 	  }
 	}
@@ -459,14 +484,14 @@ void dump_eta_snapshot(master_t *master,    /* Master data          */
       if (doeta && df->flag & DF_ETA) {
 	if (dumpdata->us_type & US_IJ) {
 	  s2c_2d(geom, master->eta, dumpdata->eta, geom->nce1, geom->nce2);
-	  s2c_3d(geom, master->temp, dumpdata->tr_wc[master->tno], geom->nce1, geom->nce2, geom->nz);
+	  /*s2c_3d(geom, master->temp, dumpdata->tr_wc[master->tno], geom->nce1, geom->nce2, geom->nz);*/
 	}
 	doeta = 0;
       }
       if (dov2d && df->flag & DF_V2D) {
 	if (dumpdata->us_type & US_IJ) {
 	  s2c_2d(geom, master->u1av, dumpdata->u1av, geom->nfe1, geom->nce2);
-	  s2c_3d(geom, master->u1, dumpdata->u1, geom->nfe1, geom->nce2, geom->nz);
+	  /*s2c_3d(geom, master->u1, dumpdata->u1, geom->nfe1, geom->nce2, geom->nz);*/
 	}
 	dov2d = 0;
       }
@@ -493,21 +518,54 @@ void init_2way(master_t *master,
 	       window_t **windat, 
 	       win_priv_t **wincon)
 {
-  int f, n;
+  int f, n, bn;
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
   dump_file_t *df;
+  int bf = 0;
+  int tf = 0;
+
+  master->obcf = 0;
+  for (n = 1; n <= master->nwindows; n++) {
+    wincon[n]->obcf = 0;
+  }
+
+  /* Check for 2-way exchanges.                                     */
+  /* Set a flag if any OBC is configured for tiled coupling.        */
+  for (bn = 0; bn < geom->nobc; bn++) {
+    open_bdrys_t *open = geom->open[bn];
+    if (open->options & OP_TILED) tf = 1;
+    if (open->bcond_nor2d & VERTIN && open->bcond_tan2d & VERTIN) tf = 2;
+  }
 
   for (f = 0; f < dumpdata->ndf; f++) {
     df = &dumpdata->dumplist[f];
-    if (df->flag & DF_MPK && df->flag & DF_ETA && df->flag & DF_V2D) {
-      master->obcf = DF_BARO;
+    /* If tiled coupling is configured, set the flag if any output  */
+    /* is mempack.                                                  */
+    if ((tf & 1) && df->flag & DF_MPK) {
+      master->obcf |= DF_TILE;
       for (n = 1; n <= master->nwindows; n++) {
-	wincon[n]->obcf = DF_BARO;
+	wincon[n]->obcf |= DF_TILE;
       }
     }
+    if (df->flag & DF_MPK && df->flag & DF_ETA) bf |= DF_ETA;
+    if (df->flag & DF_MPK && df->flag & DF_V2D) bf |= DF_V2D;
+    /*
+    if (df->flag & DF_MPK && df->flag & DF_ETA && df->flag & DF_V2D) {
+      master->obcf |= DF_BARO;
+      for (n = 1; n <= master->nwindows; n++) {
+	wincon[n]->obcf |= DF_BARO;
+      }
+    }
+    */
   }
-
+  /* Set the flag for barotropic coupling                           */
+  if (bf == (DF_ETA|DF_V2D) && !(tf & 2)) {
+    master->obcf |= DF_BARO;
+    for (n = 1; n <= master->nwindows; n++) {
+      wincon[n]->obcf |= DF_BARO;
+    }
+  }
 }
 
 /* END init_2way()                                                  */
@@ -737,7 +795,6 @@ int dumpfiles(dump_data_t *dumpdata, double t, FILE * fp)
     if (t >= (dumpdata->dumplist[f].tout - DT_EPS) &&
         t <= dumpdata->dumplist[f].tstop &&
         !(dumpdata->dumplist[f].finished)) {
-
       emstag(LDEBUG,"hd:output:dumpfile:dumpfiles", "Writing dump %f days to '%s' of type '%s'", t / 86400.0,
              dumpdata->dumplist[f].name,dumpdata->dumplist[f].type);
 
@@ -1049,7 +1106,8 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
 	    strcmp(list->vars[ii], "v") == 0 ||
 	    strcmp(list->vars[ii], "u1") == 0) bf = 1;
       }
-      if (!bf && !(list->flag & DF_BARO) && !barof) {
+      /*if (!bf && !(list->flag & DF_BARO) && !barof) {*/
+      if (!bf && !(list->flag & DF_BARO)) {
 	barof = 1;
 	list->flag |= DF_BARO;
       }
@@ -1104,7 +1162,8 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
       /*list->sinc = list->tinc-dumpdata->master->grid_dt/dumpdata->master->iratio;*/
       list->sinc = list->tinc;
     } else
-      list->sinc = list->tinc;
+      list->sinc = dumpdata->master->grid_dt/dumpdata->master->iratio;
+    /*list->sinc = list->tinc;*/
  }
   /*
   if (list->flag & DF_MPK && barof) {
@@ -1195,7 +1254,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
     else
       hd_quit("dumpfile_init: unknown outfile chunk '%s' specified\n", buf);
   }
-  
+
   /* Read the subsection */
   list->ilower = 0;
   list->jlower = 0;
@@ -1424,8 +1483,14 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
 
   /* Set up each file list entry */
   strcpy(dumpdata->rev, params->rev);
+  strcpy(dumpdata->reference, params->reference);
+  strcpy(dumpdata->runcode, params->runcode);
+  strcpy(dumpdata->trl, params->trl);
   sprintf(dumpdata->grid_name, "%s", params->grid_name);
-  if (params->runno > 0) dumpdata->runno = params->runno;
+  if (params->runno > 0) {
+    dumpdata->runno = params->runno;
+    strcpy(dumpdata->runnoc, params->runnoc);
+  }
   if (type == 1) {
     FILE *ip, *op;
     int nf, nn, m, i;
@@ -3034,7 +3099,16 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
+  if (strlen(dumpdata->rev))
+    write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
 
   nc_enddef(cdfid);
 
@@ -3304,7 +3378,16 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CF-1.0");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
+  if (strlen(dumpdata->rev))
+    write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
 
   nc_enddef(cdfid);
 
@@ -3503,7 +3586,7 @@ static int df_simple_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
     var->v = (void **)&dumpdata->eta;
     var->units = dumpdata->lenunit;
     var->long_name = "Surface elevation";
-    var->std_name = "sea_surface_height_above_sea_level";
+    var->std_name = "sea_surface_height_above_geoid";
     var->valid_range[0] = -master->etamax;
     var->valid_range[1] = master->etamax;
   }
@@ -4578,6 +4661,7 @@ typedef struct {
   int *cells;                   /* Cell locations used in the interpolation */
   int *ids;                     /* Delaunay indices used in the interpolation */
   int *c2k;                     /* Interpolation cells to layer map */
+  int *botk;                    /* Bottom layer number for cell centres */
   int ncells;                   /* Number of cells used in the interpolation */
   int nz;                       /* Surface layer number */
   int ncs;                      /* Cell centres in surface layer */
@@ -4588,6 +4672,7 @@ typedef struct {
   int *eells;                   /* Edge locations used in the interpolation */
   int *eds;                     /* Delaunay indices used in the interpolation */
   int *e2k;                     /* Interpolation edge to layer map */
+  int *botek;                   /* Bottom layer number for edges */
   int neells;                   /* Number of edgess used in the interpolation */
   int nes;                      /* Edges in surface layer */
   int ec;                       /* Total edge centres */
@@ -4929,10 +5014,17 @@ void *df_parray_create(dump_data_t *dumpdata, dump_file_t *df)
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
- 
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
+
   nc_enddef(cdfid);
 
   df_parray_writegeom(dumpdata, df);
@@ -5401,8 +5493,8 @@ static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
   data->fid = fid;
 
   /* Allocate and initialize the grid_spec structures for            */
-  /* interpolation. Note: two of these exist for cell centered       */
-  /* variables (which can be iunterpolated onto a geographic         */
+  /* interpolation. Note: two of these exist; one for cell centered  */
+  /* variables (which can be interpolated onto a geographic          */
   /* location using the i_rule) or edge variables (which are dumped  */
   /* as the nearest neighbour edge to the geographic location).      */
   /* The var->vector_mode distinguished between centred and edge     */
@@ -6021,6 +6113,7 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
   int *mask, *n2i;
   GRID_SPECS **gs;
   int isalloc;
+  int usegst = 1;
 
   isalloc = (data->gs && data->d) ? 1 : 0;
 
@@ -6029,10 +6122,12 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
     np = 0;
     data->ncells = 0;
     data->nz = geom->nz - 1;
+    data->botk = i_alloc_1d(df->npoints);
     mask = i_alloc_1d(geom->szc);
     memset(mask, 0, geom->szc * sizeof(int));
     for (i = 0; i < df->npoints; ++i) {
       c = hd_grid_xytoij(master, df->x[i], df->y[i], &fi, &fj);
+      data->botk[i] = data->nz;
       if (c > 0 && c < geom->szcS) {
 	c2 = geom->m2d[c];
 	while (c != geom->zm1[c]) {
@@ -6044,7 +6139,7 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 
 	  for (j = 1; j <= geom->npe[c2]; j++) {
 	    cn = geom->c2c[j][c];
-	    if (geom->wgst[cn]) continue;
+	    if (!usegst && geom->wgst[cn]) continue;
 	    if (!mask[cn]) {
 	      if (cn == geom->m2d[cn]) np++;
 	      data->ncells ++;
@@ -6053,6 +6148,7 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 	  }
 
 	  data->nz = min(data->nz, geom->s2k[c]);
+	  data->botk[i] = geom->s2k[c];
 	  c = geom->zm1[c];
 	}
       }
@@ -6113,6 +6209,7 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
       }
     }
     data->nc = n;
+
     /* Set the cells surrounding the cell centres                    */
     for (i = 0; i < data->ncs; i++) {
       c = data->cells[i];
@@ -6121,7 +6218,7 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 	k = geom->s2k[c];
 	for (j = 1; j <= geom->npe[c2]; j++) {
 	  cn = geom->c2c[j][c];
-	  if (geom->wgst[cn]) continue;
+	  if (!usegst && geom->wgst[cn]) continue;
 	  if (!mask[cn]) {
 	    data->ids[n] = nk[k];
 	    data->c2k[n] = k;
@@ -6277,7 +6374,7 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
   int isalloc;
   double x, y, dist, dm;
 
-  isalloc = (data->gs && data->de) ? 1 : 0;
+  isalloc = (data->ge && data->de) ? 1 : 0;
   /* Check for edge vectors requiring output                         */
   if (!isalloc) {
     isalloc = 1;
@@ -6292,11 +6389,13 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
     np = 0;
     data->neells = 0;
     data->nz = geom->nz - 1;
+    data->botek = i_alloc_1d(df->npoints);
     mask = i_alloc_1d(geom->sze);
     memset(mask, 0, geom->sze * sizeof(int));
     eloc = i_alloc_1d(df->npoints);
     for (i = 0; i < df->npoints; ++i) {
       c = hd_grid_xytoij(master, df->x[i], df->y[i], &fi, &fj);
+      data->botek[i] = data->nz;
       if (c > 0 && c < geom->szcS) {
 	/* Find the edge closest to the dump location                */
 	c2 = geom->m2d[c];
@@ -6308,6 +6407,7 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	  if (dist < dm) {
 	    dm = dist;
 	    e = geom->c2e[j][c];
+	    fj = j;
 	  }
 	}
 	eloc[i] = e;
@@ -6331,6 +6431,7 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	    }
 	  }
 	  data->nz = min(data->nz, geom->e2k[e]);
+	  data->botek[i] = geom->e2k[e];
 	  e = geom->zm1e[e];
 	}
       }
@@ -6620,12 +6721,11 @@ void *df_memory_create(dump_data_t *dumpdata, dump_file_t *df)
     hd_quit
       ("df_memory_create: No valid points have been specified for output.");
 
-
   df_memory_init_data(dumpdata, df);
   mem = (df_parray_data_t *)df->private_data;
   mem->data = (df_mempack_t *)malloc(sizeof(df_mempack_t));
   data = mem->data;
-  data->runcode =  (dumpdata->runcode == RS_FAIL) ? DF_FAIL : DF_RUN;
+  data->runcode =  (dumpdata->crf == RS_FAIL) ? DF_FAIL : DF_RUN;
 
   /* Get the number of variables and populate the headers */
   n2d = n3d = 0;    /* x and y */
@@ -6726,7 +6826,7 @@ void df_memory_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   tm_change_time_units(dumpdata->timeunit, df->tunit, &newt, 1);
   */
   data->time = newt;
-  data->runcode =  (dumpdata->runcode == RS_FAIL) ? DF_FAIL : DF_RUN;
+  data->runcode =  (dumpdata->crf == RS_FAIL) ? DF_FAIL : DF_RUN;
 
   /* Loop over each variable */
   v2d = data->v2d;
@@ -6898,12 +6998,26 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
   */
   c = 0;
   for (i = 0; i < df->npoints; ++i) {
-    for (k = 0; k < geom->nz; ++k){
+    double vb;
+    for (k = 0; k < nz; k++) {
+      if (d[k] != NULL && k >= mem->botk[i]) {
+	vb = get_var_value(df, var, id, i, k);
+	break;
+      }
+    }
+    for (k = 0; k < nz; k++) {
       v3d[c] = 0.0;
-      if (d[k] != NULL) {
+      if (d[k] != NULL && k >= mem->botk[i]) {
 	id = mem->ids[i];
 	v3d[c] = get_var_value(df, var, id, i, k);
-	/*if(k==geom->nz-1&&df->x[i]==34874 && df->y[i]==13464)printf("dump %f %d %s %f\n",master->days,c,var->name,v3d[c]);*/
+      }
+      /* Set a no-gradient below the sea bed. d[k] may != NULL, but  */
+      /* have no points surrounding (df->x,df->y) because this df    */
+      /* point lies below the sea bed. This shouldn't be used in     */
+      /* subsequent interpolation, but set to the nearest valid      */
+      /* value in the water column just in case.                     */ 
+      else {
+	v3d[c] = vb;
       }
       c++;
     }
@@ -6985,12 +7099,21 @@ static void df_memory_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
 
   e = 0;
   for (i = 0; i < df->npoints; ++i) {
+    double vb;
+    for (k = 0; k < nz; k++) {
+      if (d[k] != NULL && k >= mem->botek[i]) {
+	vb = get_var_value(df, var, id, i, k);
+	break;
+      }
+    }
     for (k = 0; k < nz; ++k){
       v3d[e] = get_missing(var);
       v3d[e] = 0.0;
-      if (d[k] != NULL) {
+      if (d[k] != NULL && k >= mem->botek[i]) {
 	id = mem->eds[i];
 	v3d[e] = get_var_value(df, var, id, i, k);
+      } else {
+	v3d[e] = vb;
       }
       e++;
     }
@@ -7125,11 +7248,11 @@ static void df_memory_dump(dump_file_t *df)
   m = data->n2d * data->npoints;
   fprintf(fp, "var2d %d\n", m);
   for(n = 0; n < m; n++)
-    fprintf(fp, "%f\n", data->v2d[n]);
+    fprintf(fp, "%15.12e\n", data->v2d[n]);
   m =  data->n3d * data->npoints * data->nz;
   fprintf(fp, "var3d %d\n", m);
   for(n = 0; n < m; n++)
-    fprintf(fp, "%f\n", data->v3d[n]);
+    fprintf(fp, "%15.12e\n", data->v3d[n]);
   fprintf(fp, "end\n");
   fflush(fp);
   fclose(fp);

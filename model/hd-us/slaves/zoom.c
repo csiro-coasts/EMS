@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zoom.c 6328 2019-09-13 04:38:11Z her127 $
+ *  $Id: zoom.c 6746 2021-03-30 00:44:44Z her127 $
  *
  */
 
@@ -143,7 +143,7 @@ void smooth3e(master_t *master, /* Model data structure              */
 	d1 += geom->edgearea[es];
       }
     }
-    aa[e] /= d1;
+    aa[e] = (d1) ? aa[e]/ d1 : A[e];
   }
   memcpy(A, aa, sz * sizeof(double));
   d_free_1d(aa);

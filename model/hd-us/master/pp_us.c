@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 6398 2019-11-21 22:59:02Z her127 $
+ *  $Id: pp_us.c 6736 2021-03-30 00:39:49Z her127 $
  *
  */
 
@@ -254,15 +254,16 @@ void build_sparse_grid_us(parameters_t *params,
   double *xloc, *yloc;
   int ***eloc;
   int nvert;
+  int tage = 1;      /* Include tangential ghost edges               */
   int pc = 0;        /* Print cell centre information                */
   int pe = 0;        /* Print cell edge information                  */
   int printcell = 0; /* Print cell number coordinates                */
-  double printlocx = NOTVALID;
-  double printlocy = NOTVALID;
+  double printlocx = NOTVALID;  /* Cell x location for debugging     */
+  double printlocy = NOTVALID;  /* Cell y location for debugging     */
   int newcode = 1;
   int newvert = 1;
   int *wgsts;
-  
+
   if (DEBUG("init_m"))
     dlog("init_m", "\nStart unstructured preprocessor\n");
 
@@ -1017,7 +1018,8 @@ void build_sparse_grid_us(parameters_t *params,
       mask[c] = 1;
     }
     /* Tangential ghost cells                                        */
-    num_gst[k] += find_edges_tan(sgrid, m, k, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    if (tage)
+      num_gst[k] += find_edges_tan(sgrid, m, k, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
   }
 
   /* Find the end location of wet cells in each layer.               */
@@ -1189,7 +1191,8 @@ void build_sparse_grid_us(parameters_t *params,
     }
 
     /* Tangential ghost cells.                                       */
-    find_edges_tan(sgrid, m, k, &e, &ee, &c4, &b4, maske, vle, tegl);
+    if (tage)
+      find_edges_tan(sgrid, m, k, &e, &ee, &c4, &b4, maske, vle, tegl);
     e = end_wet[k] + num_gst[k] + 1;
   }
   d_free_2d(locx);
@@ -1452,6 +1455,8 @@ void build_sparse_grid_us(parameters_t *params,
   /* h1acell : length between edges, in the upstream (index 0) dir.  */
   /*           i.e. distance across a cell                           */
   /* Length between edges: cell centred                              */
+  /* thetau1 : angle between u1 vector and x axis                    */
+  /* thetau2 : angle between u1 vector and y axis                    */
   sgrid->h2au1 = d_alloc_1d(sgrid->szeS);
   sgrid->h1au1 = d_alloc_1d(sgrid->szeS);
   sgrid->cellarea = d_alloc_1d(sgrid->n2_t + 1);
@@ -2588,9 +2593,16 @@ void build_sparse_grid_us(parameters_t *params,
     /* Initialize                                                      */
     for (j = 0; j < sgrid->nce2; j++)
       for (i = 0; i < sgrid->nce1; i++) {
-	topo[j][i] = NaN;
-	for (k = nz - 1; k >= 0; k--)
-	  flag[k][j][i] = SOLID;
+	if (params->topo)
+	  topo[j][i] = params->topo[j][i];
+	else
+	  topo[j][i] = NaN;
+	for (k = nz - 1; k >= 0; k--) {
+	  if (params->flag)
+	    flag[k][j][i] = params->flag[j][i];
+	  else
+	    flag[k][j][i] = SOLID;
+	}
       }
     for (k = nz - 1; k >= 0; k--) {
       for (cc = 1; cc <= ns2; cc++) {
@@ -3178,6 +3190,10 @@ void build_sparse_grid_us(parameters_t *params,
 	if (open->bcond_tra[tn] & (TRCONC|TRCONF)) i = open->bgz;
 	open->ntt++;
       }
+      if (open->bcond_tra[tn] & NOTHIN) {
+	if (open->bcond_tra[tn] & (TRCONC|TRCONF)) i = open->bgz;
+    }
+
     }
     open->ttsz = 0;
     open->t_imap = NULL;
@@ -3192,16 +3208,18 @@ void build_sparse_grid_us(parameters_t *params,
   /* Get the cyclic boundary locations.                              */
   for (n = 0; n < sgrid->nobc; n++) {
     /* Tracers                                                       */
+
     for (cc = 1; cc <= sgrid->open[n]->no3_t; cc++) {
       c = sgrid->open[n]->obc_t[cc];
       cs = sgrid->m2d[c];
-      sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
-      /* Move outwards an extra cell                                 */
-      if (params->us_type & US_HEX) 
-	sgrid->open[n]->cyc_t[cc] = sgrid->c2c[omapc[cs]][sgrid->open[n]->cyc_t[cc]];
-      /*
-      if(n==0&&c==cs)printf("%f %f %f %f\n",sgrid->cellx[cs],sgrid->celly[cs],sgrid->cellx[sgrid->open[n]->cyc_t[cc]],sgrid->celly[sgrid->open[n]->cyc_t[cc]]);
-      */
+      if (sgrid->open[n]->bcond_ele & CYCLIC || 
+	  ANY0(CYCLIC, sgrid->open[n]->bcond_tra, sgrid->open[n]->ntr)) {
+	sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+
+	/* Move outwards an extra cell                               */
+	if (params->us_type & US_HEX) 
+	  sgrid->open[n]->cyc_t[cc] = sgrid->c2c[omapc[cs]][sgrid->open[n]->cyc_t[cc]];
+      }
     }
 
     /* Normal velocity component                                              */
@@ -3211,11 +3229,13 @@ void build_sparse_grid_us(parameters_t *params,
       es = sgrid->m2de[e];
       cs = sgrid->m2d[c];
       j = (sgrid->open[n]->ceni[ee]) ? sgrid->e2e[e][1] : sgrid->e2e[e][0];
-      c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
-      if (params->us_type & US_HEX)
-	c1 = sgrid->c2c[omapc[cs]][c1];
-      if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
-      sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
+      if (sgrid->open[n]->bcond_nor & CYCLIC) {
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	if (params->us_type & US_HEX)
+	  c1 = sgrid->c2c[omapc[cs]][c1];
+	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
+	sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
+      }
     }
 
     /* Tangential velocity component                                          */
@@ -3225,11 +3245,13 @@ void build_sparse_grid_us(parameters_t *params,
       c = sgrid->open[n]->obc_e2[ee];
       cs = sgrid->m2d[c];
       j = sgrid->e2e[e][0];
-      c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
-      if (params->us_type & US_HEX)
-	c1 = sgrid->c2c[omapc[cs]][c1];
-      if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
-      sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
+      if (sgrid->open[n]->bcond_tan & CYCLIC) {
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	if (params->us_type & US_HEX)
+	  c1 = sgrid->c2c[omapc[cs]][c1];
+	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
+	sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
+      }
     }
 
     /* Get the bottom coordinate vector                              */
@@ -3456,6 +3478,7 @@ void build_sparse_grid_us(parameters_t *params,
   }
 
   if (printcell) {
+    char buf[MAXSTRLEN];
     c = printcell;;
     cc = sgrid->c2cc[c];
     printf("cell cc=%d c=%d [%f %f]\n",cc,c,m->xloc[m->eloc[0][cc][0]],m->yloc[m->eloc[0][cc][0]]);
@@ -3464,7 +3487,9 @@ void build_sparse_grid_us(parameters_t *params,
       e = sgrid->c2e[n][c];
       c1 = sgrid->e2c[e][0];
       c2 = sgrid->e2c[e][1];
-      printf("c=%d cc=%d n=%d v=%d[%f %f] e=%d[%f %f] co=%d[%f %f] c1=%d[%f %f]\n",c,sgrid->c2cc[c],n,v,sgrid->gridx[v],sgrid->gridy[v],e,sgrid->u1x[e],sgrid->u1y[e], c1, sgrid->cellx[c1],sgrid->celly[c1], c2, sgrid->cellx[c2],sgrid->celly[c2]);
+      strcpy(buf, "out");
+      if (sgrid->eSc[n][c] == -1) strcpy(buf, "in");
+      printf("c=%d cc=%d n=%d v=%d[%f %f] e=%d[%f %f]:%s co=%d[%f %f] c1=%d[%f %f] theta=%f\n",c,sgrid->c2cc[c],n,v,sgrid->gridx[v],sgrid->gridy[v],e,sgrid->u1x[e],sgrid->u1y[e], buf, c1, sgrid->cellx[c1],sgrid->celly[c1], c2, sgrid->cellx[c2],sgrid->celly[c2],sgrid->thetau1[e]*180.0/PI);
     }
   }
   if (DEBUG("init_m"))
@@ -3616,6 +3641,9 @@ int check_vert2d(geometry_t *sgrid,
 	/* Ghost vector - OBC limits at wet-OBC intersections        */
 	if ((maske[e] == -1 || maske[e1] >= 0) ||
 	    (maske[e] >= 0 || maske[e1] == -1)) {
+	  /* Place these in ghost vector. Sould be in the wet vector */
+	  /* so that vorticity is computed at wet edges that share a */
+	  /* vertex with a tangential OBC edge.
 	  sgrid->n2_e2++;
 	  if (b3 != NULL) {
 	    if (pf) printf("ghost v=%d e1=%d e2=%d\n",*b3,e,e1);
@@ -3625,6 +3653,19 @@ int check_vert2d(geometry_t *sgrid,
 	  } else
 	    vs = 1;
 	  ret = 3;
+	  */
+
+	  /* Wet vector - OBC limits at wet-OBC intersections        */
+	  sgrid->v2_e2++;
+	  if (b1 != NULL) {
+	    vs = *b1;
+	    if (pf) printf("wet v=%d e1=%d e2=%d\n",*b1,e,e1);
+	    sgrid->w2_e2[sgrid->v2_e2] = vs;
+	    *b1 += 1;
+	  } else
+	    vs = 1;
+	  ret = 1;
+
 	}
 	emap[e][i1] = vs;
       }
@@ -3712,7 +3753,9 @@ int check_vert3d(geometry_t *sgrid,
   k--;
 
   while (ed <= eb) {
-    /* Wet vector - both vertices of the edge are wet            */
+    /* Wet vector - both vertices of the edge are wet (or two    */
+    /* wet edges intersect a tangential OBC edge - see above in  */
+    /* check_vert2d().                                           */
     if (vv <= sgrid->v2_e2) {
       sgrid->v3_e2++;
       if (c1 != NULL) {
@@ -4708,8 +4751,10 @@ int cyc_m2(geometry_t *sgrid, /* Window geometry                   */
   int cyc;                      /* Cyclic sparse coordinate */
   cyc = c;
 
-  while (c != nmap[nmap[c]])
+  while (c != nmap[nmap[c]]) {
     c = nmap[c];
+    printf("%d %d\n",cyc,c);
+  }
   cyc = omap[omap[c]];
   return (cyc);
 }
@@ -4970,7 +5015,7 @@ void create_delaunay_cell(geometry_t *geom, parameters_t *params)
   int n, cc, c, vv, v;
   int np;
   point *pin;
-  int filef = 1;
+  int filef = (params->meshinfo) ? 1 : 0;
   int ee, e, c1, c2;
   int ntriangles;
   int inc_gst = 0;    /* Include ghost cell coordinates              */
@@ -5118,7 +5163,7 @@ void build_delaunay_cell(geometry_t *geom, parameters_t *params, point *tegl)
   int n, cc, c, cg, vv, v;
   int **nei;
   point *pin;
-  int filef = 1;
+  int filef = (params->meshinfo) ? 1 : 0;
   int j, jp;
   int ee, e, c1, c2;
   int inc_gst = 1;    /* Include ghost cell coordinates              */
@@ -5661,28 +5706,6 @@ int get_bind(geometry_t *sgrid, int c, int *mask)
 /* END get_bind()                                                    */
 /*-------------------------------------------------------------------*/
 
-
-/*-------------------------------------------------------------------*/
-/* Returns 1 is the sparse coordinate corresponds to the mesh index  */
-/*-------------------------------------------------------------------*/
-int is_index(geometry_t *geom,     /* Window or global geometry      */
-	     int cc,               /* Mesh index                     */
-	     int c                 /* Sparse cell centre coordinate  */
-	     )
-{
-  geometry_t *ggeom = master->geom;
-  int ret = 0;
-
-  if (geom == ggeom) {
-    if (c == ggeom->cc2s[cc]) ret = 1;
-  } else {
-    if (geom->wsa[c] == ggeom->cc2s[cc]) ret = 1;
-  }
-  return(ret);
-}
-
-/* END is_index()                                                    */
-/*-------------------------------------------------------------------*/
 
 
 int get_nve(int npe)

@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_ugrid.c 6403 2019-11-21 23:01:37Z her127 $
+ *  $Id: df_ugrid.c 6645 2020-09-08 01:43:13Z her127 $
  *
  */
 
@@ -566,9 +566,16 @@ void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
   nc_put_att_int(cdfid, NC_GLOBAL, "face_dim", NC_INT, 1, &dumpdata->face_dim);
   nc_put_att_int(cdfid, NC_GLOBAL, "edge_dim", NC_INT, 1, &dumpdata->edge_dim);
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
   write_mean_atts(dumpdata, cdfid);
 }
 
@@ -1018,9 +1025,16 @@ void write_dump_attributes_ugrid3(dump_data_t *dumpdata, int cdfid,
   nc_put_att_int(cdfid, NC_GLOBAL, "face_dim", NC_INT, 1, &dumpdata->face_dim);
   nc_put_att_int(cdfid, NC_GLOBAL, "edge_dim", NC_INT, 1, &dumpdata->edge_dim);
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
 
 }
 

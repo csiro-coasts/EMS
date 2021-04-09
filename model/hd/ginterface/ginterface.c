@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6377 2019-11-06 05:22:46Z bai155 $
+ *  $Id: ginterface.c 6562 2020-06-18 03:19:06Z her127 $
  *
  */
 
@@ -167,7 +167,7 @@ double sinterface_get_adsorb_rate(void* model, char *name)
 /* Generic interface functions. General functions are prefixed with  */
 /* i_. Routines prefixed by ginterface_ are typically used by        */
 /* ecology or sediments. There exist some wrapper functions in this  */
-/* class for convenience call the more generic i_ functions.         */
+/* class for convenience that call the more generic i_ functions.    */
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
 
@@ -240,6 +240,13 @@ int i_get_num_tracers_3d(void* hmodel, int *atr)
     win_priv_t *wincon = window->wincon;
     *atr = master->atr;
     return wincon->ntr;
+}
+
+/* Returns 1 if the model grid is geographic                         */
+int i_is_geographic(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  return(window->is_geog);
 }
 
 /* Returns the number of 3D tracers                                  */

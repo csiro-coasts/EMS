@@ -29,8 +29,6 @@ acdatadir = $(datadir)/autoconf
 includedir = @includedir@
 mandir = @mandir@/manl
 
-GRIDINC=-I../model/lib/grid/include
-
 #### End of system configuration section. ####
 
 # Generate include/svn_rev.h
@@ -119,6 +117,27 @@ misc/tracer_utils.o \
 misc/pointsourcesink.o \
 misc/istack.o
 
+# Grid library objects
+INTERPOBJS = \
+interp/csa/csa.o \
+interp/delaunay/delaunay.o \
+interp/delaunay/triangle.o \
+interp/gridmap/gridaverager.o \
+interp/gridmap/gridmap.o \
+interp/gridmap/gridnodes.o \
+interp/linear/baycentric.o \
+interp/linear/bilinear.o \
+interp/linear/lpi.o \
+interp/lsq/svd.o \
+interp/lsq_lin/lsql.o \
+interp/lsq_quad/lsqq.o \
+interp/misc/grid_utils.o \
+interp/misc/minell.o \
+interp/misc/preader.o \
+interp/nn/nnai.o \
+interp/nn/nnpi.o \
+interp/nrst/nrst.o \
+interp/grid_entry.o
 
 GEODESYOBJS= \
 geodesy/geodetic.o \
@@ -132,7 +151,8 @@ $(GEOMOBJS) \
 $(GRIDOBJS) \
 $(MATHOBJS) \
 $(MISCOBJS) \
-$(GEODESYOBJS)
+$(GEODESYOBJS) \
+$(INTERPOBJS)
 
 TESTS= \
 tests/check_dfmap.o \
@@ -144,18 +164,22 @@ tests/dftest.o
 
 
 .c.o:
-	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.c
+	$(CC) $(CFLAGS) $(NETCDFINC) -o $*.o -c $(DEBUGINC) $*.c
 
 .cpp.o:
-	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.cpp
+	$(CC) $(CFLAGS) $(NETCDFINC) -o $*.o -c $(DEBUGINC) $*.cpp
 
 all:	$(EMSLIB)
 
+# Special rule for triangle
+interp/delaunay/triangle.o : interp/delaunay/triangle.c
+	$(CC) $(CFLAGS) -DTRILIBRARY -c $< -o $*.o
+
 misc/eqn_parser.o : misc/eqn_parser.cpp
-	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.cpp -D_GLIBCXX_GTHREAD_USE_WEAK=0
+	$(CC) $(CFLAGS) $(NETCDFINC) -o $*.o -c $(DEBUGINC) $*.cpp -D_GLIBCXX_GTHREAD_USE_WEAK=0
 
 io/nc_buffered.o : io/nc_buffered.cpp
-	$(CC) $(CFLAGS) $(NETCDFINC) $(GRIDINC) -o $*.o -c $(DEBUGINC) $*.cpp -D_GLIBCXX_GTHREAD_USE_WEAK=0
+	$(CC) $(CFLAGS) $(NETCDFINC) -o $*.o -c $(DEBUGINC) $*.cpp -D_GLIBCXX_GTHREAD_USE_WEAK=0
 
 libemslib.a: $(OBJECTS)
 	$(AR) $(ARFLAGS) libemslib.a $(OBJECTS)

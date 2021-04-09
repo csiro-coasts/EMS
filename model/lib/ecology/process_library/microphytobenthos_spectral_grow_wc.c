@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_spectral_grow_wc.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: microphytobenthos_spectral_grow_wc.c 6547 2020-05-08 03:33:21Z bai155 $
  *
  */
 
@@ -149,20 +149,6 @@ void microphytobenthos_spectral_grow_wc_postinit(eprocess* p)
     workspace* ws = p->workspace;
     double v1,v2,v3,v4,v5;
 
-  /*
-   * Not valid during a pre_build (RECOM)
-   */
-  if (!e->pre_build) {
-    v1 = einterface_gettracersvel(e->model,"MPB_N");
-    v2 = einterface_gettracersvel(e->model,"MPB_NR");
-    v3 = einterface_gettracersvel(e->model,"MPB_PR");
-    v4 = einterface_gettracersvel(e->model,"MPB_Chl");
-    v5 = einterface_gettracersvel(e->model,"MPB_I");
-    
-    if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
-      e->quitfn("Sinking rates of MPB :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
-    }
-  }
     ws->do_mb = (try_index(e->cv_model, "massbalance_wc", e) >= 0) ? 1 : 0;
 
     ws->KI_MPB_i = -1;

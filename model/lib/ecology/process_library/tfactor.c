@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tfactor.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: tfactor.c 6549 2020-05-10 23:12:28Z bai155 $
  *
  */
 
@@ -55,8 +55,18 @@ void tfactor_init(eprocess* p)
     /*
      * parameters
      */
-    ws->Q10 = get_parameter_value(e, "Q10");
-    ws->Tref = get_parameter_value(e, "Tref");
+
+    ws->Q10 = try_parameter_value(e, "Q10");
+    if (isnan(ws->Q10)){
+      ws->Q10 = 2.0;
+      eco_write_setup(e,"Code default of Q10 = %e \n",ws->Q10);
+    }
+
+    ws->Tref = try_parameter_value(e, "Tref");
+    if (isnan(ws->Tref)){
+      ws->Tref = 20.0;
+      eco_write_setup(e,"Code default of Tref = %e \n",ws->Tref);
+    }
 
     /*
      * common variables

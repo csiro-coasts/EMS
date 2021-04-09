@@ -38,7 +38,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: gas_exchange_wc.c 5929 2018-09-10 06:22:56Z bai155 $
+ *  $Id: gas_exchange_wc.c 6545 2020-05-06 06:57:00Z bai155 $
  *
  */
 
@@ -227,10 +227,12 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
   double tmp1;
 
   if (ws->CO2_flux_i > -1 && ws->DIC_i > -1) {
-    tmp1 = ( 0.0283 / (3600.0*100.0)) * U * U * U * sqrt((660.0/Sc)); /*dco2star in mol m-3 so *1e3 to get 
-                                                                                     dco2star in mmol m-3*/
+    tmp1 = ( 0.0283 / (3600.0*100.0)) * U * U * U * sqrt((660.0/Sc));
 
-    y[ws->CO2_flux_i]= - tmp1 * y[ws->dco2star_i]* 1.0e3 * 12.01;    
+    // dco2star in mmol/m3: flux units: mg/m2/s
+
+    y[ws->CO2_flux_i] = - tmp1 * y[ws->dco2star_i] * 1.0e3 * 12.01;
+    
   }
   
   salt = y[ws->salt_i];
@@ -239,7 +241,7 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
   
   Sc = 1953.4 + 128.00 * temp + 3.9918 * temp * temp - 0.050091 * temp * temp * temp;
   
-  // Sea - air flux - negative is into the water.
+  // Sea - air flux - negative is into the water [m/s]
   
   c->cv[ws->O2_coeff_i] = ( 0.0283 / (3600.0 * 100.0) ) * U * U * U * sqrt((660.0/Sc));
 

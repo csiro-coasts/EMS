@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 6471 2020-02-18 23:50:34Z her127 $
+ *  $Id: vel2d.c 6740 2021-03-30 00:41:49Z her127 $
  *
  */
 
@@ -52,6 +52,7 @@ void pressure_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void coriolis_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void bottom_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void nonlinear_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void asselin_tiled_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
 /*-------------------------------------------------------------------*/
 /* 2D window step part 1                                             */
@@ -60,6 +61,12 @@ void mode2d_step_window_p1(master_t *master,
 			   geometry_t *window,
 			   window_t *windat, win_priv_t *wincon)
 {
+  /* If tiled coupling occurs at the barotropic level, update the    */
+  /* barotropic variables.                                           */
+  if (wincon->obcf & DF_BARO) {
+    bdry_tiled_2d(window, windat, wincon);
+    asselin_tiled_2d(window, windat, wincon);
+  }
 
   /*-----------------------------------------------------------------*/
   /* Get the cell centred east and north velocities                  */
@@ -174,7 +181,6 @@ void mode2d_step(geometry_t *geom,    /* Global geometry             */
 #if defined(HAVE_OMP)
 #pragma omp parallel for private(n)
 #endif
-
   for (n = 1; n <= nwindows; n++) {
     memset(windat[n]->u1flux, 0, window[n]->szeS * sizeof(double));
     memcpy(wincon[n]->oldeta, windat[n]->eta, window[n]->szcS * sizeof(double));
@@ -188,10 +194,11 @@ void mode2d_step(geometry_t *geom,    /* Global geometry             */
   /*-----------------------------------------------------------------*/
   /* Loop to step the 2D mode iratio times                           */
   for (ic = 0; ic < windat[1]->iratio; ic++) {
+    int ico = (master->obcf & DF_BARO) ? 0 : 1;
 
     /*---------------------------------------------------------------*/
     /* Do the custom elevation routines on the master                */
-    master->t3d = oldtime + (double)(ic+1) * master->dt2d;
+    master->t3d = oldtime + (double)(ic+ico) * master->dt2d;
     bdry_eval_eta_m(geom, master);
     bdry_eval_u1av_m(geom, master);
     if (master->regf & RS_OBCSET) bdry_reconfigure(master, window);
@@ -415,14 +422,10 @@ void vel_u1av_update(geometry_t *window,  /* Window geometry         */
   /*-----------------------------------------------------------------*/
   /* Debugging                                                       */
   if (dbc) {
-    for (ee = 1; ee <= wincon->vcs; ee++) {
-      e = wincon->s3[ee];
-      if (window->e2e[e][0] == dbj && window->e2c[e][dbj] == dbc) {
-	wincon->b1 = wincon->tend2d[T_BTP][e];
-	wincon->b2 = wincon->tend2d[T_COR][e];
-	wincon->b3 = wincon->tend2d[T_BOT][e];
-      }
-    }
+    e = window->c2e[dbj][dbc];
+    wincon->b1 = wincon->tend2d[T_BTP][e];
+    wincon->b2 = wincon->tend2d[T_COR][e];
+    wincon->b3 = wincon->tend2d[T_BOT][e];
   }
   if (wincon->mode2d) debug_c(window, D_INIT, D_POST);
   debug_c(window, D_UA, D_POST);
@@ -1023,6 +1026,137 @@ void bdry_u1_2d(geometry_t *window, /* Window geometry               */
 
 
 /*-------------------------------------------------------------------*/
+/* Updates the transfer vectors and sets the 2D OBCs for tiled       */
+/* coupling. This is performed at the start of the time-step so that */
+/* elevations and velocities go into the timestep with boundary      */
+/* values corresponding to the parent tiles.                         */
+/*-------------------------------------------------------------------*/
+void bdry_tiled_eta(geometry_t *geom,  /* Global geometry            */
+	      master_t *master,        /* Master data structure      */
+	      geometry_t **window,     /* Window geometry            */
+	      window_t **windat,       /* Window data                */
+	      win_priv_t **wincon      /* Window constants           */
+	      )
+{
+  int n, nn;
+
+  /* Update the transfer vectors at the start of the time-step       */
+  master->t3d = master->t;
+  bdry_eval_eta_m(geom, master);
+  bdry_eval_u1av_m(geom, master);
+
+  for (nn = 1; nn <= master->nwindows; nn++) {
+    n = wincon[1]->twin[nn];
+    /* Transfer to the slaves                                        */
+    bdry_transfer_eta(master, window[n], windat[n]);
+    bdry_transfer_u1av(master, window[n], windat[n]);
+    /* Update elevation and 2D velocity OBCs                         */
+    bdry_tiled_2d(window[n], windat[n], wincon[n]);
+  }
+}
+
+/* end_bdry_tiled_eta()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Updates velocity in the open boundaries for tiled 2-way coupling  */
+/* (at the 3D time-step). Here the velocity data from an alternative */
+/* tile should be updated in u1av at the start of the time-step,     */
+/* rather than updating nu1av at the end of the time-step.           */
+/* This must be done because the scheduled dump for data exchange    */
+/* occurs after the model hd_step for u1av, so it's not possible to  */
+/* update nu1av with this data prior to leapfrog_update.             */
+/* Note; if 2D OBCs = VERTIN, then this is done in bdry_tiled_3d()   */
+/* after the 3D velocities are updates. This condition remains       */
+/* invariant over the 2D mode.                                       */
+/*-------------------------------------------------------------------*/
+void bdry_tiled_2d(geometry_t *window, /* Window geometry            */
+		   window_t *windat,   /* Window data                */
+		   win_priv_t *wincon  /* Window constants           */
+  )
+{
+  int cc, c, ee, e, n;                 /* Counters                   */
+
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+
+    if (open->options & OP_TILED) {
+      /* Elevation                                                   */
+      if (open->bcond_ele == FILEIN) {
+	for (cc = 1; cc <= open->no2_t; cc++) {
+	  c = open->obc_t[cc];
+	  windat->eta[c] = open->transfer_eta[cc];
+	}
+      }
+      /* Normal boundary velocity                                    */
+      if (open->bcond_nor2d & FILEIN) {
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  windat->u1av[e] = windat->nu1av[e] = open->transfer_u1av[ee];
+	}
+      }
+      /* Tangential boundary velocity                                */
+      if (open->bcond_tan2d & FILEIN) {
+	for (ee = open->no3_e1 + 1; ee <= open->to2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  windat->u1av[e] = windat->nu1av[e] = open->transfer_u2av[ee];
+	}
+      }
+    }
+  }
+}
+
+/* END bdry_tiled_2d()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Updates the backward velocity with the Asslin time filter. This   */
+/* backward filtered velocity is used in the horizontal mixing for   */
+/* stability. The filtering is usually done on u1av before time      */
+/* resetting of u1av to u1avb, but since time filtering uses nu1av,  */
+/* on the boundary interface for tiling (which we don't have when    */
+/* u1av is filtered) we must perform the filtering on u1avb at the   */
+/* start of the next time-step, after we've copied u1av (= nu1av     */
+/* from the previous step) from the alternative tile.                */
+/*-------------------------------------------------------------------*/
+void asselin_tiled_2d(geometry_t *window, /* Window geometry         */
+		      window_t *windat,   /* Window data             */
+		      win_priv_t *wincon  /* Window constants        */
+  )
+{
+  int cc, c, ee, e, n;                 /* Counters                   */
+
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+
+    if (open->options & OP_TILED) {
+      /* Normal boundary velocity                                    */
+      if (open->bcond_nor2d & FILEIN) {
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  windat->u1avb[e] = windat->u1avb[e] + 0.5 * 0.1 *
+	    (open->d2[ee] - 2.0 * windat->u1avb[e] + windat->u1av[e]);
+	}
+      }
+      /* Tangential boundary velocity                                */
+      if (open->bcond_tan2d & FILEIN) {
+	for (ee = open->no3_e1 + 1; ee <= open->to2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  windat->u1avb[e] = windat->u1avb[e] + 0.5 * 0.1 *
+	    (open->d2[ee] - 2.0 * windat->u1avb[e] + windat->u1av[e]);
+	}
+      }
+    }
+  }
+}
+
+/* END asselin_tiled_2d()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Sets up arrays for the u1av calculation                           */
 /*-------------------------------------------------------------------*/
 void precalc_u1_2d(geometry_t *window,  /* Window geometry           */
@@ -1229,10 +1363,7 @@ void eta_step(geometry_t *window,   /* Window geometry               */
   double colflux;               /* Velocity transport divergence     */
   double *u1flux = wincon->d2;  /* Flux in e1 direction              */
   double d1;
-  /*
-  FILE *fp = fopen("aa.ts","a");
-  FILE *op = fopen("bb.ts","w");
-  */
+
   /*-----------------------------------------------------------------*/
   /* Get the fluxes at time t over the whole window                  */
   memset(u1flux, 0, window->szeS * sizeof(double));
@@ -1309,19 +1440,6 @@ void eta_step(geometry_t *window,   /* Window geometry               */
       (wincon->neweta[c] - windat->etab[c]) / windat->dt2d;
 
   }
-  /*
-  colflux=0.0;
-  c=999;
-  while(windat->eta[c]>0.05) {
-    c=window->c2c[2][c];
-    colflux+=200.0;
-    fprintf(op,"%d %f\n",window->s2j[c]*200,windat->eta[c]);
-  }
-  d1 = windat->u1[window->c2e[4][999]];
-  fprintf(fp,"%f %f %f\n",windat->days,colflux,wincon->g*windat->eta[999]*windat->eta[999]/(2.0*wincon->Cd[999]*d1*d1));
-  fclose(fp);
-  fclose(op);
-  */
 
   /*-----------------------------------------------------------------*/
   /* Adjust the updated elevation due to eta relaxation.             */
@@ -1404,6 +1522,15 @@ void bdry_eta(geometry_t *window,   /* Window geometry               */
 	}
       }
 
+      /* eta is held constand over the 3D step as eta OBC data       */
+      /*
+      if (open[n]->options & OP_TILED && open[n]->bcond_ele == FILEIN) {
+        for (cc = 1; cc <= open[n]->no2_t; cc++) {
+          c = open[n]->obc_t[cc];
+	  wincon->neweta[c] = windat->eta[c];
+	}
+      }
+      */
       /* Scaling                                                     */
       if (!open[n]->adjust_flux) {
 	if (scale->type == (TRSC_SUM | TRSC_NUM)) {
@@ -1653,6 +1780,9 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	ci = open->obc_e2[ee];
 	if (!mask[ci])
 	  windat->u1av[e] = u1av[e];
+	/* For tiled coupling, save the backward velocity for time   */
+	/* filtering at the start of the next time-step.             */
+	if (open->options & OP_TILED) open->d2[ee] = windat->u1avb[e];
       }
     }
     if (open->bcond_nor2d & (VERTIN|FILEIN|CUSTOM|TIDALC)) {
@@ -1669,21 +1799,28 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	  ci = open->obc_e2[ee];
 	  if (!mask[ci])
 	    windat->u1av[e] = u1av[e];
+
+	  if (open->options & OP_TILED) open->d2[ee] = windat->u1avb[e];
 	}
       }
       /*-------------------------------------------------------------*/
       /* Adjust the boundary velocity if required                    */
       if (open->adjust_flux) {
-	double adjust_flux;
+	double adjust_flux, adjust_flux_s;
 
 	if (wincon->rampf & FLUX_ADJUST && windat->rampval < 1.0) {
 	  double dtr = wincon->rampend - wincon->rampstart;
 	  adjust_flux = (windat->t - wincon->rampstart) * 
 	    (open->adjust_flux - yr) / dtr + yr;
-	} else
+	    adjust_flux_s = 0.0;
+	} else {
 	  adjust_flux = open->adjust_flux;
+	  adjust_flux_s = open->adjust_flux_s;
+	}
+	if (wincon->rampf & TIDE_ADJUST && windat->rampval < 1.0)
+	  adjust_flux_s = 0.0;
 	rts = windat->dtb2 / adjust_flux;
-	
+
 	/* Loop through the U1 boundary cells                        */
 	for (cc = 1; cc <= open->no2_t; cc++) {
 	  c = open->obc_t[cc];
@@ -1705,6 +1842,8 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	    }
 	    adjust_flux *= open->nepc[cc];
 	    rts = windat->dtb2 / adjust_flux;
+	    if (open->options & OP_FAS)
+	      rts /= fabs(open->adjust_flux);
 	    /*
 	    if (wincon->rampf & FLUX_ADJUST && windat->rampval < 1.0) {
 	      double dtr = wincon->rampend - wincon->rampstart;
@@ -1789,9 +1928,23 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	  */
 
 	  /* Dual relaxation: Relax hard to the tidal signal         */
-	  if (open->adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
+	  if (adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
 	    double depth, etat, df, etadiff;
-	    double rtst = (open->adjust_flux_s < 0.0) ? rts : windat->dtb2 / open->adjust_flux_s;
+	    double rtst = windat->dtb2 / open->adjust_flux_s;
+	    if(open->adjust_flux_s < 0.0) {
+	      adjust_flux_s = 0.0;
+	      for (j = 1; j <= window->npe[c]; j++) {
+		if ((e = open->bec[j][cc])) {
+		  adjust_flux_s += (window->h2au1[e] /
+				    sqrt(wincon->g * windat->depth_e1[e] * wincon->Ds[c]));
+		}
+	      }
+	      adjust_flux_s *= open->nepc[cc];
+	      rtst = windat->dtb2 / adjust_flux_s;
+	      
+	      if (open->options & OP_FAT)
+		rtst /= fabs(open->adjust_flux_s);
+	    }
 	    f2 *= 0.5;
 	    df = f2;
 	    
@@ -2198,6 +2351,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
       if (fabs(wincon->neweta[c]) > wincon->etamax) {
 	if (window->nwindows > 1) {
 	  write_site(window, window->cellx[c], window->celly[c], "eta");
+	  crash_c(window, c, 0, "eta");
 	  if (window->us_type & US_IJ)
 	    hd_quit_and_dump
 	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(i=%d j=%d [%f %f]) cg=%d wn=%d t=%8.3f days\n",
@@ -2210,6 +2364,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	       window->cellx[c], window->celly[c], window->wn, windat->t / 86400);
 	} else {
 	  write_site(window, window->cellx[c], window->celly[c], "eta");
+	  crash_c(window, c, 0, "eta");
 	  if (window->us_type & US_IJ)
 	    hd_quit_and_dump
 	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(i=%d j=%d [%f %f]) t=%8.3f days\n",

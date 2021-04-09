@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 5916 2018-09-05 03:51:46Z riz008 $
+ *  $Id: pt.c 6743 2021-03-30 00:43:20Z her127 $
  *
  */
 
@@ -290,7 +290,7 @@ void pt_params_init(master_t *master, FILE * fp)
     }
     if (nf == 1) {
       int *iloc, *jloc;
-      read_blocks(fp, key, &n, &iloc, &jloc);
+      read_blocks(fp, key, &n, &iloc, &jloc, NULL);
       for (m = 1; m <= n; m++) {
 	c = geom->cc2s[iloc[m]];
 	while (c != geom->zm1[c] && geom->cellz[c] <= top && geom->cellz[c] >= bot) {
@@ -739,6 +739,8 @@ void pt_new(master_t *master, long np, particle_t *p)
 
 	/* Get the source map for this particle                      */
 	master->pt_sm[n] = i;
+
+	if (master->ptmsk) p[n].flag |= PT_IN;
 
         count++;
       }

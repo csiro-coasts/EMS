@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 6014 2018-11-03 05:19:44Z riz008 $
+ *  $Id: main.c 6597 2020-09-03 05:29:26Z riz008 $
  *
  */
 
@@ -113,8 +113,6 @@ void print_vers(void)
 	  get_minor_vers(), get_patch_vers());
   fprintf(stderr, "emslib\t\t %d.%d.%d\n", get_emslib_major_vers(),
 	  get_emslib_minor_vers(),get_emslib_patch_vers());
-  fprintf(stderr, "gridlib\t\t %d.%d.%d\n", get_gridlib_major_vers(),
-	  get_gridlib_minor_vers(),get_gridlib_patch_vers());
 #ifdef HAVE_TRACERSTATS_MODULE
   fprintf(stderr, "tracerstats\t %d.%d.%d\n", get_tracerstats_major_vers(),
     get_tracerstats_minor_vers(),get_tracerstats_patch_vers());

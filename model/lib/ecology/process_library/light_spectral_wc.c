@@ -47,7 +47,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_wc.c 6383 2019-11-13 06:03:41Z bai155 $
+ *  $Id: light_spectral_wc.c 6679 2021-01-08 00:45:59Z bai155 $
  *
  */
 
@@ -157,27 +157,38 @@ typedef struct {
   int at_440_i;
   int bt_550_i;
   int Kd_490_i;
+  int bb_700_i;
+  
   int PAR_i;
   int PAR_z_i;
+
+  int Ed_440_i;
+  int Ed_490_i;
+  int Ed_550_i;
+  int Ed_670_i;
+  
+  int if_glider;
 
   int ap_670_i;
   int Turbidity_i;
   
   int wPAR_bot;
   int w440;
+  int w470;
   int w490;
   int w550;
   int w590;
   int w670;
   int w488;
   int w678;
+  int w700;
   int wPAR_top;
 
   int w709;
   int w665;
 
   int Fluorescence_i;
-  int w470; 
+  int BLP_i;
 
   int temp_i;
   int salt_i;
@@ -263,7 +274,8 @@ void light_spectral_wc_init(eprocess* p)
   ws->FineSed_i = -1;
   ws->Dust_i = -1;
   ws->Mud_i = -1;
-
+  ws->cdom_gbr_i = -1;
+  
   switch (ws->domain){
   case 'G':
     eco_write_setup(e,"\nUsing BGC2p0 GBR optical properties \n");
@@ -295,16 +307,30 @@ void light_spectral_wc_init(eprocess* p)
     e->quitfn("ecology: error: \"%s\": \"%s(%s)\": unexpected domain for light model.", e->processfname, p->name, prm);
   }
 
-  if (p->prms->n==2){
+  if (p->prms->n>1){
     prm = p->prms->se[1]->s;
     ws->pig = prm[0];
   }else{
     ws->pig = 'G';   // default is Guassian.
   }
 
-  if (p->prms->n==3){
+  int is_geog = 0;
+  if (!e->pre_build)
+    is_geog = i_is_geographic(e->model);
+
+  eco_write_setup(e,"Is the grid PROJECTION geographic (0 = no; 1= yes): %d\n",is_geog);
+  
+  if (p->prms->n>2){
     prm = p->prms->se[2]->s;
     ws->moon = prm[0];
+
+    // Over-ride definition of moon if projection is not geographic
+
+    if (is_geog == 0){
+      eco_write_setup(e,"Moonlight calculation not undertaken because PROJECTION is not geographic.\n");
+      ws->moon = 'X';
+    }
+    
   }else{
     ws->moon = 'X';   // default is no moolight.
   }
@@ -414,10 +440,24 @@ void light_spectral_wc_init(eprocess* p)
   ws->Kd_490_i = e->try_index(tracers, "Kd_490", e);
   ws->K_heat_i = e->try_index(tracers, "K_heat", e);
 
+  ws->Ed_440_i   = e->try_index(tracers, "Ed_440", e);
+  ws->Ed_490_i   = e->try_index(tracers, "Ed_490", e);
+  ws->Ed_550_i   = e->try_index(tracers, "Ed_550", e);
+  ws->Ed_670_i   = e->try_index(tracers, "Ed_670", e);
+  ws->bb_700_i   = e->try_index(tracers, "bb_700", e);
+  
+
+  ws->if_glider = 0;
+  if ((ws->Ed_440_i > -1) && (ws->Ed_490_i > -1) && (ws->Ed_550_i > -1) && (ws->Ed_670_i > -1) && ws->bb_700_i > -1){
+    ws->if_glider = 1;
+    eco_write_setup(e,"Tracer lists contains Ed at 440, 490, 550, and 670, and bb at 700, so do glider calculations. \n");
+  }
+ 
   ws->ap_670_i   = e->try_index(tracers, "ap_670", e);
   ws->Turbidity_i   = e->try_index(tracers, "Turbidity", e);
 
   ws->Fluorescence_i = e->try_index(tracers, "Fluorescence", e);
+  ws->BLP_i = e->try_index(tracers, "BLP", e);
 
   /* get water mass properties for determining IOPs */
 
@@ -544,7 +584,10 @@ void light_spectral_wc_postinit(eprocess* p)
 
   if (e->pre_build) return;
 
-  if (process_present(e,PT_WC,"recom_extras")){
+  int is_geog = 0;
+  is_geog = i_is_geographic(e->model);
+
+  if (process_present(e,PT_WC,"recom_extras") && is_geog==1 ){
     ws->moon = 'M';
   }
   
@@ -577,25 +620,43 @@ void light_spectral_wc_postinit(eprocess* p)
   ws->w_bot_i  = find_index_or_add_vector(e->cv_column, "w_bot", e, e->num_rsr_waves);
   ws->u_surf_i = find_index_or_add_vector(e->cv_column, "u_surf", e, e->num_rsr_waves);
 
+  /* Search for special wavelengths */
+
+  ws->wPAR_bot = -1;
+  ws->w440 = -1;
+  ws->w470 = -1;
+  ws->w490 = -1;
+  ws->w550 = -1;
+  ws->w590 = -1;
+  ws->w670 = -1;
+  ws->wPAR_top = -1;
+  
   for (w=0; w<ws->num_waves; w++){
-    if (ws->wave[w] == 410.0)
+    if (ws->wave[w] > 400.0 && ws->wPAR_bot < 0){
       ws->wPAR_bot = w;
+      eco_write_setup(e,"Bottom of PAR range is centred on %4.2f nm with edge %4.2f nm \n",ws->wave[w],(ws->wave[w-1]+ws->wave[w])/2.0);
+    }
     if (ws->wave[w] == 440.0)
       ws->w440 = w;
+    if (ws->wave[w] == 470.0)
+      ws->w470 = w;
     if (ws->wave[w] == 490.0)
       ws->w490 = w;
     if (ws->wave[w] == 550.0)
       ws->w550 = w;
+    if (ws->wave[w] == 590.0)
+      ws->w590 = w;
     if (ws->wave[w] == 670.0)
       ws->w670 = w;
-    if (ws->wave[w] == 690.0)
-      ws->wPAR_top = w;
+    if (ws->wave[w] > 700.0 && ws->wPAR_top < 0){
+      ws->wPAR_top = w-1;
+      eco_write_setup(e,"Top of PAR range is centred on %4.2f nm with edge %4.2f nm \n",ws->wave[w-1],(ws->wave[w-1]+ws->wave[w])/2.0);
+    }
   }
-
-  ws->w590 = -1;
-  ws->w470 = -1;
+  
   ws->w488 = -1;
   ws->w678 = -1;
+  ws->w700 = -1;
   for (w=0; w<e->num_rsr_waves; w++){
     if (e->rsr_waves[w] == 590.0)
       ws->w590 = w;
@@ -605,6 +666,8 @@ void light_spectral_wc_postinit(eprocess* p)
       ws->w488 = w;
     if (e->rsr_waves[w] == 678.0)
       ws->w678 = w;
+    if (e->rsr_waves[w] == 700.0)
+      ws->w700 = w;
   }
 
   if (ws->MA_N_wc_i > -1){
@@ -793,7 +856,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       double moon_phase = 0.0;
       double lunar_dec = 0.0;
       
-      ginterface_moonvars(col->model,col->b, &moonlon_obs, &moonlat_obs, &earth_sun_dist,&moon_earth_dist, &lunar_angle, &sun_angle, &moon_phase,&lunar_dec);
+      ginterface_moonvars(col->model,col->b+1, &moonlon_obs, &moonlat_obs, &earth_sun_dist,&moon_earth_dist, &lunar_angle, &sun_angle, &moon_phase,&lunar_dec);
       
       // Could have an if statement for moon below horizon
       
@@ -811,7 +874,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       // **********************************************************************************************************
       // wrap this into a function, in matlab syntax:
       
-      // Ak[w] = moon_full_disk_reflectance(moonlat_obs,moonlon_obs,earth_sun_dist,moon_earth_dist,gmo,moonlon_sun)
+      // Ak[w] = moon_full_disk_reflectance(moonlat_obs,moonlon_obs,earth_sun_dist,moon_earth_dist,gmo,moonlon_sun,num_waves)
       
       // gmo = gmo * 180.0/M_PI;
       double moonlon_obs_deg = moonlon_obs*180.0/M_PI;
@@ -893,7 +956,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
       
       cv_lunar_zenith[0] = lunar_zenith;
       cv_lunar_phase[0] = moon_phase;
-      cv_moon_fulldisk[0] = (lunar_zenith == M_PI/2.0)? 0:moonlight; // zero if below horizon.
+      cv_moon_fulldisk[0] = (lunar_zenith > M_PI/2.0 - 1.0e-15)? 0:moonlight; // zero if below horizon.
       cv_moonlight[0] = moonlight * cos(lunar_zenith) * attenuation_by_clouds * transmission;
       
       // printf("lunar_dec %e, lunar_angle %e, lunar_zenith %e, cos(lunar_zenith) %e \n",lunar_dec,lunar_angle,lunar_zenith,cos(lunar_zenith)); 
@@ -907,7 +970,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
     energy += lighttop_s[w];
   }
 
-  if (energy < 0.01){
+  if (energy < 0.0){
     
     for (w=0; w<num_waves; w++) {
       lighttop_s[w] =  0.0;
@@ -952,6 +1015,13 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
     }
     if (ws->K_heat_i > -1){ // i.e. outputting
       y[ws->K_heat_i] = 0.04;  // clear water value. 
+    }
+    if (ws->if_glider){
+      y[ws->Ed_440_i] = 0.0;
+      y[ws->Ed_490_i] = 0.0;
+      y[ws->Ed_550_i] = 0.0;
+      y[ws->Ed_670_i] = 0.0;
+      y[ws->bb_700_i] = 0.0;
     }
     return;
    }
@@ -1525,6 +1595,12 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   if (ws->ap_670_i > -1){ /* total absorption - water at 670 nm */
     y[ws->ap_670_i] = at_s[ws->w670] - bio->kw_s[ws->w670];
   }
+  if (ws->if_glider){   // need to divide by waveband width:  W m-2 nm-1
+      y[ws->Ed_440_i] = lighttop_s[ws->w440]/10.0;
+      y[ws->Ed_490_i] = lighttop_s[ws->w490]/20.0;
+      y[ws->Ed_550_i] = lighttop_s[ws->w550]/20.0;
+      y[ws->Ed_670_i] = lighttop_s[ws->w670]/20.0;
+    }
 
   /*/ reuse energy variable, but as mol photon m-2 s-1*/
   
@@ -1750,12 +1826,12 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
     zenith = (fabs(zenith)<1.0e-15)? 1.0e-15:zenith;
     zenith = ((zenith-M_PI/2.0)-fabs(zenith-M_PI/2.0))/2.0+M_PI/2.0;
     
-    if (zenith > (M_PI/2.0 - 0.01)){
+    /* if (zenith > (M_PI/2.0 - 0.01)){
       for (w2=0; w2<e->num_rsr_waves; w2++) {
 	col->cv[ws->w_bot_i][w2] = 0.0;
       }
       return;
-    }
+      } */
     
     double thetaw = asin(sin(zenith)/1.33);
     
@@ -2046,8 +2122,8 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	//bb_r[w2] += bio->B_terr_rsr[w2] * bio->bC_KAO1[w2] * (Mud_mineral+FineSed+NAP_noEFI) * 1000.0; /* NAP backscattering */
 	//* bt_r[w2] += bio->bbp_A2[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
 	//* bb_r[w2] += bio->B_terr_rsr[w2] * bio->bbp_A2[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
-	bt_r[w2] += bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
-	bb_r[w2] += bio->B_terr_rsr[w2] * bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	//20nov bt_r[w2] += bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
+	//20nov bb_r[w2] += bio->B_terr_rsr[w2] * bio->LJCO_bNAP_rsr[w2] * (Dust + Mud_mineral+FineSed+NAP_noEFI);
 	
 	break;
       case 'C' :
@@ -2098,30 +2174,65 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
 	bt_r[w2] += ws->bphy * y[ws->Tricho_N_i] / ws->NtoCHL ;
       }
 
-      /* approx. vertical attentuation coefficient */
+      /* output backscatter at 700 nm for glider comparison */
 
+      if (w2 == ws->w700){
+	if (ws->bb_700_i > -1)
+	  y[ws->bb_700_i] = bb_r[w2];
+      }
+
+      /* add Hazen true colour scale Palin (1995) Water and Water Engineering 59, 341-345. ? */ 
+      
+      /* approx. vertical attentuation coefficient */
+      
       adlen = sqrt(1.0 + (gone*costhetaw-gtwo) * bt_r[w2] / at_r[w2]) / costhetaw;
       
       Kd_r = at_r[w2] * adlen;
 
-      double nFLHadd = 0.0;
+      /* Now add sources of light to reflectance calculations. The source must be spread across a waveband, which is sensor dependednt */
 
+      double nFLHadd = 0.0;
+      double BLadd = 0.0;
+      double BLP = 0.0;
+      double BLstim = 1.0;
+      double iso2upwell = 0.4135669939329333; // 0.5 * 1/(pi*(3/4/pi)^(2/3)) m3/m2
+
+      // I guess we should use cell centred downwelling irradiance, but we haven't calculated it.
+      
       if (w2 == ws->w678){ // wavelength of nFLH, wPAR_top is 690.
 
-	/* remember light in is over 20 nm, which is about right */
+	/* remember light in is over 20 nm, which is about right */ 
 	
 	double light678 = lighttop_s[ws->w670] * (12.0/20.0) + lighttop_s[ws->wPAR_top] * (8.0/20.0);
 	
 	if (light678 > 1.0e-3){  // avoid divide by zero.
-	  nFLHadd = nFLH * ( 1.0 / (4.0 * 3.1459)) / (light678 * 8.359335857479461e-09 * 678.0);  // mol photon m-3 /mol m-2
+	  nFLHadd = nFLH * iso2upwell / (light678 * 8.359335857479461e-09 * 678.0);  // unitless
 	}
       }      
 
-      // w_bot is what is remaining //
+      // Add bioluminescence from large phytoplankton at 470 (actually 472 +/- 35 nm for noctiluca Mobely).
 
+      // BLstim is a placeholder to include the effect of stimuli and physiology. At the moment all cells luminescencing at maximum.
+
+      if (w2 == ws->w470){
+	
+	// BLP = BLstim * cellnum_l * 3.0e10 * (6.63e-34 *3.0e8) / (470.0e-9);  // W m-3 - Mobley 94
+	BLP = BLstim * (y[ws->PhyL_Chl_i] / 1000.0) * 1.1 * 6.63e-34 * 3.0e8 *6.022e23 / 470.0e-9 / 86400.0;  // W m-3 - Ondercin 1995
+	// printf("ws->BLP_i %d, cellnum_l %e, BLadd %e \n",ws->BLP_i,cellnum_l,BLadd);
+	// printf("Chl way %e, cell way %e\n",y[ws->PhyL_Chl_i]*1.1/1000.0,cellnum_l * 3.0e10);
+        if (ws->BLP_i > -1){
+	  y[ws->BLP_i] = BLP * 1.0e3;  // Ouput as uW m-3
+	}
+      
+	BLadd = iso2upwell * BLP / max(lighttop_s[ws->w470],0.015/10.0); // minimum is 10 percent full moonlight
+	// printf("iso2upwell * BLP %e, max(lighttop_s[ws->w470],0.015/10.0) %e, u %e \n",iso2upwell * BLP,lighttop_s[ws->w470],bb_r[w2] / (at_r[w2] + bb_r[w2]));
+      }
+      
+      // w_bot is what is remaining //
+      
       top = w_bot[w2];
       w_bot[w2] = top * exp(-2.0 * Kd_r * dz);
-      u_surf[w2] += (nFLHadd + (bb_r[w2] / (at_r[w2] + bb_r[w2]))) * (top - w_bot[w2]);
+      u_surf[w2] += (nFLHadd + BLadd + (bb_r[w2] / (at_r[w2] + bb_r[w2]))) * (top - w_bot[w2]);
     }
 
     /* do Secchi depth calculation */

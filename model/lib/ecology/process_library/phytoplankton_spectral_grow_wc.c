@@ -30,7 +30,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_spectral_grow_wc.c 6058 2019-02-07 02:59:39Z bai155 $
+ *  $Id: phytoplankton_spectral_grow_wc.c 6669 2020-09-14 01:43:01Z bai155 $
  *
  */
 
@@ -95,10 +95,8 @@ typedef struct {
    * common cell variables
    */
 
-  int KI_s_i;
-  int KI_l_i;
-  int yCfac_s_i;
-  int yCfac_l_i;
+  int KI_i;
+  int yCfac_i;
 
   int DNO3_i;
   int DPO4_i;
@@ -191,10 +189,9 @@ void phytoplankton_spectral_grow_wc_postinit(eprocess* p)
 
   ws->do_mb = (try_index(e->cv_model, "massbalance_wc", e) >= 0) ? 1 : 0;
 
-  ws->KI_s_i = -1;
-  ws->KI_l_i = -1;
-  ws->yCfac_s_i = -1;
-  ws->yCfac_l_i = -1;
+  ws->KI_i = -1;
+  ws->yCfac_i = -1;
+
   /*
    * Define KI's here
    */
@@ -203,11 +200,11 @@ void phytoplankton_spectral_grow_wc_postinit(eprocess* p)
       emstag(LPANIC, "eco:phytoplankton_spectral_grow_wc_init",
 	     "Phytoplankton grow is specified to be spectral but light_spectral_wc process not found!");
     if (ws->large){
-      ws->KI_l_i = find_index_or_add(e->cv_cell, "KI_l", e);
-      ws->yCfac_l_i = find_index_or_add(e->cv_cell, "yCfac_l", e);
+      ws->KI_i = find_index_or_add(e->cv_cell, "KI_l", e);
+      ws->yCfac_i = find_index_or_add(e->cv_cell, "yCfac_l", e);
     }else{
-      ws->KI_s_i = find_index_or_add(e->cv_cell, "KI_s", e);
-      ws->yCfac_s_i = find_index_or_add(e->cv_cell, "yCfac_s", e);
+      ws->KI_i = find_index_or_add(e->cv_cell, "KI_s", e);
+      ws->yCfac_i = find_index_or_add(e->cv_cell, "yCfac_s", e);
     }
 
  /*
@@ -324,17 +321,8 @@ void phytoplankton_spectral_grow_wc_calc(eprocess* p, void* pp)
 
     /* LIGHT ABSORPTION */
 
-    double KI;            // mol photon cell-1 s-1
-    double Chlsynfactor;  // d aA / d Chl a 
-
-    if (ws->large){
-      KI = c->cv[ws->KI_l_i];
-      Chlsynfactor = c->cv[ws->yCfac_l_i];
-    }
-    else{
-      KI = c->cv[ws->KI_s_i];
-      Chlsynfactor = c->cv[ws->yCfac_s_i];
-    }
+    double KI = c->cv[ws->KI_i];               // mol photon cell-1 s-1
+    double Chlsynfactor = c->cv[ws->yCfac_i];  // d aA / d Chl a 
     
     double KN = (ws->psi * cv[ws->DNO3_i] * DIN);   /* mg N cell-1 s-1 */
     double KP = (ws->psi * cv[ws->DPO4_i] * DIP);   /* mg P cell-1 s-1 */

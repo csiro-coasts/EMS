@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_grow_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: macroalgae_grow_epi.c 6687 2021-03-24 00:45:06Z wil00y $
  *
  */
 
@@ -215,8 +215,8 @@ void macroalgae_grow_epi_calc(eprocess* p, void* pp)
         double Oxy_pr = growth * atk_W_O / dz_wc;
 
         y1[ws->MA_N_i] += growth;
-        y1[ws->MA_N_gr_i] += growthrate / umax;
-        y1[ws->MA_N_pr_i] += growth * SEC_PER_DAY;
+        y1[ws->MA_N_gr_i] += growthrate * SEC_PER_DAY;
+        y1[ws->MA_N_pr_i] += growth * SEC_PER_DAY * atk_W_C;
         y1[ws->NH4_wc_i] -= growth * NH4_wc / DIN_wc / dz_wc;
         y1[ws->NO3_wc_i] -= growth * NO3_wc / DIN_wc / dz_wc;
         y1[ws->DIP_wc_i] -= growth * atk_W_P / dz_wc;

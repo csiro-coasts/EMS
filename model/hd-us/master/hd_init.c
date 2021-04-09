@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 6468 2020-02-18 23:47:02Z her127 $
+ *  $Id: hd_init.c 6735 2021-03-30 00:39:22Z her127 $
  *
  */
 
@@ -107,6 +107,8 @@ hd_data_t *hd_init(FILE * prmfd)
     if (params->us_type & US_IJ)
       params->topo = set_bathy(params, icdfid);
   }
+  /* Create the id code                                             */
+  create_code(params);
 
   /*----------------------------------------------------------------*/
   /* Make the mesh structure for -g. This is created from data in   */
@@ -224,7 +226,7 @@ hd_data_t *hd_init(FILE * prmfd)
   tracer_reset2d_init(master);
 
   /* Initialise the DHW diagnostic.  */
-  tracer_dhw_init(master);
+  /*tracer_dhw_init(master);*/
 
   /* Initialise the geometric arrays in the windows with master */
   /* geometry data.  */
@@ -249,7 +251,7 @@ hd_data_t *hd_init(FILE * prmfd)
 
   /* Make and initialise the window private data structures */
   wincon = win_consts_init(master, window);
-  
+
   /* Calculate required initial conditions */
   TIMING_SET;
   pre_run_setup(master, window, windat, wincon);
@@ -325,6 +327,7 @@ hd_data_t *hd_init(FILE * prmfd)
 
   write_mom_grid(dumpdata);
   write_roms_grid(dumpdata);
+  write_swan_mesh(master);
   if (strlen(params->wind_file))
     dump_windows_us(master, window, params->wind_file, params->prmname);
 
@@ -352,14 +355,22 @@ hd_data_t *hd_init(FILE * prmfd)
 		     dump_event, dump_cleanup, master,
 		     dump_dispatch, dump_progress);
   }
+
+  /* Initialise the DHW diagnostic. This must occur after the dumps */
+  /* have been scheduled so that the scheduler performs it prior to */
+  /* dumping. This is important for daily NRT operation.            */
+  tracer_dhw_init(master);
+
   /* Print the runtime diagnostics */
+  history_log(master, HST_PRE);
   write_run_setup(hd_data);
+  history_log(master, HST_POST);
   if (strlen(master->opath)) {
     /* Write also to the output path */
     char buf[MAXSTRLEN];
     sprintf(buf, "%s%s", master->opath, setup_logfile);
     if (params->runno != 0.0)
-      sprintf(buf, "%ssetup%2.1f.txt", master->opath, params->runno);
+      sprintf(buf, "%ssetup%s.txt", master->opath, params->runnoc);
     strcpy(setup_logfile, buf);
     write_run_setup(hd_data);
   }
@@ -568,6 +579,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->momsc = params->momsc;
   master->momsc2d = master->momsc;
   master->ultimate = params->ultimate;
+  master->rkstage = params->rkstage;
   master->osl = params->osl;
   master->smagorinsky = params->smagorinsky;
   master->sue1 = params->sue1;
@@ -577,6 +589,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->smag_smooth = params->smag_smooth;
   master->diff_scale = params->diff_scale;
   master->visc_method = params->visc_method;
+  master->visc_fact = params->visc_fact;
   master->stab = params->stab;
   master->thin_merge = params->thin_merge;
   master->sigma = params->sigma;
@@ -675,8 +688,16 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->porusplate = params->porusplate;
   strcpy(master->reef_frac, params->reef_frac);
   master->gint_errfcn = params->gint_errfcn;
-  master->dhwf = params->dhwf;
-  master->dhwh = params->dhwh;
+  master->ndhw = params->ndhw;
+  if (master->ndhw) {
+    int m;
+    master->dhwf = i_alloc_1d(master->ndhw);
+    master->dhwh = d_alloc_1d(master->ndhw);
+    for (m = 0; m < params->ndhw; m++) {
+      master->dhwf[m] = params->dhwf[m];
+      master->dhwh[m] = params->dhwh[m];
+    }
+  }
   master->swr_type = params->swr_type;
   master->togn = TOPRIGHT;
   master->crf = NONE;
@@ -822,6 +843,10 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     master->tdif_h[tn] = params->tdif_h[tn];
   for (tn = 0; tn < master->ntdif_v; tn++)
     master->tdif_v[tn] = params->tdif_v[tn];
+  for (tn = 0; tn < master->ntdif_hs; tn++)
+    master->tdif_hs[tn] = params->tdif_hs[tn];
+  for (tn = 0; tn < master->ntdif_vs; tn++)
+    master->tdif_vs[tn] = params->tdif_vs[tn];
 
   /* Transport mode : get additional variables to be reset           */
   master->ntrvars = master->ntrvarsS = 0;
@@ -925,6 +950,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   if (master->swr_attn) {
     double d1;
     int cc, c;
+    master->attn_tr = -1;
     if (sscanf(params->swr_attn, "%lf", &d1) == 1) {
       if (params->swr_type & SWR_2D) {
         for (cc = 1; cc <= geom->b2_t; cc++) {
@@ -945,6 +971,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	master->swr_attn1[c] = d1;
       }
     }
+    master->tran_tr = -1;
     if (master->swr_tran && sscanf(params->swr_tran, "%lf", &d1) == 1) {
       for (cc = 1; cc <= geom->b2_t; cc++) {
 	c = geom->w2_t[cc];
@@ -1194,19 +1221,32 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 
     geom->sinthcell[c] = 0.0;
     geom->costhcell[c] = 0.0;
-    if (master->cellres)
-      master->cellres[c] = 0.0;
+    if (master->cellres) master->cellres[c] = 0.0;
+    if (master->carea) master->carea[c] = 0.0;
+    if (master->earea) master->earea[c] = 0.0;
+    if (master->sarea) master->sarea[c] = 0.0;
+    if (master->searea) master->searea[c] = 0.0;
     for (m = 1; m <= geom->npe[c]; m++) {
       e = geom->c2e[m][c];
       geom->sinthcell[c] += sin(geom->thetau1[e]);
       geom->costhcell[c] += cos(geom->thetau1[e]);
       if (master->cellres)
 	master->cellres[c] += (2.0 * geom->hacell[m][c]); 
+      if (master->earea)
+	master->earea[c] += geom->edgearea[e];
+      if (master->searea)
+	master->searea[c] += sqrt(geom->edgearea[e]);
     }
     geom->sinthcell[c] /= (double)geom->npe[c];
     geom->costhcell[c] /= (double)geom->npe[c];
     if (master->cellres)
       master->cellres[c] /= (double)geom->npe[c];
+    if (master->earea)
+      master->earea[c] /= (double)geom->npe[c];
+    if (master->searea)
+      master->searea[c] /= (double)geom->npe[c];
+    if (master->carea) master->carea[c] = geom->cellarea[c];
+    if (master->sarea) master->sarea[c] = sqrt(geom->cellarea[c]);
     geom->dHde1[e] = 0.5 * (geom->botz[geom->e2c[e][0]] - geom->botz[geom->e2c[e][1]]);
   }
   master->amean = geom->totarea / (double)geom->b2_t;
@@ -1220,6 +1260,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   /*-----------------------------------------------------------------*/
   /* Scale horizontal mixing coefficients by cell size.              */ 
   /* Cell centered horizontal diffusivity.                           */
+  /*
   memset(master->u1kh, 0, geom->szc * sizeof(double));
   for (cc = 1; cc <= geom->n3_t; cc++) {
     c = geom->w3_t[cc];
@@ -1236,7 +1277,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 			       geom->cellarea[c2] / master->amean);
     }
   }
-
+  */
   master->u1vh0 = params->u1vh;
   master->u2vh0 = params->u2vh;
   master->u1kh0 = params->u1kh;
@@ -1315,11 +1356,63 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
 
   /* Horizontal viscosity                                            */
-  if (params->u1vh > 0.0 || params->bsue1 > 0.0) {
-    double vh = (params->u1vh > 0.0) ? params->u1vh : params->bsue1;
+  if (params->u1vh > 0.0 || params->bsue1 > 0.0 || 
+      params->diff_scale & VH_REG) {
+    double vh, smag;
     int etype = 1;   /* 0 : use h1au1 as the edge length             */
                      /* 1 : use sqrt(edgearea) as the edge length    */
                      /* 2 : use sqrt(cellarea) of common cells       */
+    double *u1vh = d_alloc_1d(geom->szeS);
+    if (params->diff_scale & H_LEN)
+      etype = 0;
+    else if (params->diff_scale & E_LEN)
+      etype = 1;
+    else if (params->diff_scale & C_LEN)
+      etype = 2;
+    /* Regionalised or file input of u1vh                            */
+    if (params->diff_scale & VH_REG) {
+      double *u1vhc = d_alloc_1d(geom->szeS);
+      double *smagc = d_alloc_1d(geom->szcS);
+      char buf[MAXSTRLEN];
+      memset(smagc, 0, geom->szcS * sizeof(double));
+      strcpy(buf, params->u1vhc);
+      value_init_2d(master, u1vhc, params->prmfd, buf,
+		    "u1vh", "U1VH", params->u1vh, "linear"); 
+      if (params->u1vh == 0.0) {
+	smag = 1.0;
+	for (cc = 1; cc < geom->b2_t; cc++) {
+	  c = geom->w2_t[cc];
+	  if (u1vhc[c] < 0.0) {
+	    vh = fabs(u1vhc[c]);
+	    smag = -1.0;
+	    u1vhc[c] = floor(vh);
+	    smagc[c] = vh - u1vhc[c];
+	  }
+	  params->u1vh += fabs(u1vhc[c]);
+	}
+	params->u1vh *= (smag / (double)geom->b2_t);
+      }
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	c1 = geom->e2c[e][0];
+	c2 = geom->e2c[e][1];
+	vh = 0.5 * (u1vhc[c1] + u1vhc[c2]);
+	u1vh[e] = floor(vh);
+	master->smagv[e] = 0.5 * (smagc[c1] + smagc[c2]);
+      }
+      d_free_1d(u1vhc);
+      d_free_1d(smagc);
+    } else {
+      vh = (params->u1vh > 0.0) ? params->u1vh : params->bsue1;
+      smag = 0.0;
+      if (params->smagorinsky < 1.0) smag = params->smagorinsky;
+      if (params->smagorinsky == 1.0 && params->sue1) smag = params->sue1;
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	u1vh[e] = vh;
+	master->smagv[e] = smag;
+      }
+    }
     memset(master->u1vh, 0, geom->sze * sizeof(double));
     memset(master->u2kh, 0, geom->sze * sizeof(double));
     for (ee = 1; ee <= geom->n3_e1; ee++) {
@@ -1327,6 +1420,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       es = geom->m2de[e];
       c1 = geom->e2c[e][0];
       c2 = geom->e2c[e][1];
+      vh = u1vh[es];
       if (etype == 0) {
 	d1 = geom->h1au1[es];
 	dh = master->hmean1;
@@ -1362,6 +1456,14 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       if (params->diff_scale & SCALEBI)
 	master->u1vh[e] *= (0.125 * geom->edgearea[es]);
     }
+    for (ee = 1; ee <= geom->n2_e1; ee++) {
+      e = geom->w2_e1[ee];
+      master->basev[e] = master->u1vh[e];
+      /* Save base rates un-scaled for bi-harmonic viscosity         */
+      if (params->diff_scale & SCALEBI)
+	master->basev[e] /= (0.125 * geom->edgearea[e]);
+    }
+    d_free_1d(u1vh);
 
     /* Cell centered horizontal viscosity diagnostic                 */
     if (master->u1vhc) {
@@ -1388,7 +1490,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     /* Smoothing                                                     */
     if (params->diff_scale & CUBIC) {
       int cs, j, eoe;
-      double *u1vh = d_alloc_1d(geom->sze);
+      double *u1vh = d_alloc_1d(geom->szm);
       double a1, a2;
 
       for (cc = 1; cc <= geom->b3_t; cc++) {
@@ -1431,14 +1533,64 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
 
   /* Set the edge centered horizontal diffusivity                    */
-  if (params->u1kh > 0.0 || params->bkue1 > 0.0) {
-    double vh = (params->u1kh > 0.0) ? params->u1kh : params->bkue1;
+  memset(master->u1kh, 0, geom->szc * sizeof(double));
+  if (params->u1kh > 0.0 || params->bkue1 > 0.0 || 
+      params->diff_scale & KH_REG) {
+    double kh, smag;
+    double *u2kh = d_alloc_1d(geom->szeS);
+    double *smagc = d_alloc_1d(geom->szcS);
+    char buf[MAXSTRLEN];
+    memset(smagc, 0, geom->szcS * sizeof(double));
+    /* Regionalised or file input of u1kh                            */
+    if (params->diff_scale & KH_REG) {
+      strcpy(buf, params->u1khc);
+      value_init_2d(master, master->u1kh, params->prmfd, buf,
+		    "u1kh", "U1KH", params->u1kh, "linear"); 
+      if (params->u1kh == 0.0) {
+	smag = 1.0;
+	for (cc = 1; cc < geom->b2_t; cc++) {
+	  c = geom->w2_t[cc];
+	  if (master->u1kh[c] < 0.0) {
+	    kh = fabs(master->u1kh[c]);
+	    smag = -1.0;
+	    master->u1kh[c] = floor(kh);
+	    smagc[c] = kh - master->u1kh[c];
+	  }
+	  params->u1kh += fabs(master->u1kh[c]);
+	}
+	params->u1kh *= (smag / (double)geom->b2_t);
+      }
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	c1 = geom->e2c[e][0];
+	c2 = geom->e2c[e][1];
+	kh = 0.5 * (master->u1kh[c1] + master->u1kh[c2]);
+	u2kh[e] = floor(kh);
+	master->smagk[e] = 0.5 * (smagc[c1] + smagc[c2]);
+      }
+      d_free_1d(smagc);
+    } else {
+      kh = (params->u1kh > 0.0) ? params->u1kh : params->bkue1;
+      smag = 0.0;
+      if (params->smagorinsky < 1.0) smag = params->smagorinsky;
+      if (params->smagorinsky == 1.0 && params->kue1) smag = params->kue1;
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	u2kh[e] = kh;
+	master->smagk[e] = smag;
+      }
+      for (cc = 1; cc <= geom->n2_t; cc++) {
+	c = geom->w2_t[cc];
+	master->u1kh[c] = kh;
+      }
+    }
     for (ee = 1; ee <= geom->n3_e1; ee++) {
       int etype = 1;
       e = geom->w3_e1[ee];
       es = geom->m2de[e];
       c1 = geom->e2c[e][0];
       c2 = geom->e2c[e][1];
+      kh = u2kh[es];
       if (etype == 0) {
 	d1 = geom->h1au1[es];
 	dh = master->hmean1;
@@ -1451,15 +1603,37 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	dh = sqrt(master->amean);
       }
       if (params->diff_scale & NONE)
-	master->u2kh[e] = fabs(vh);
+	master->u2kh[e] = fabs(kh);
       /* Note : horizontal diffusion coeffients are scaled to the grid */
       if (params->diff_scale & LINEAR)
-	master->u2kh[e] = fabs(vh * d1 / dh);
+	master->u2kh[e] = fabs(kh * d1 / dh);
       if (params->diff_scale & (NONLIN|CUBIC))
-	master->u2kh[e] = fabs(vh * d1 * d1 / (dh * dh));
+	master->u2kh[e] = fabs(kh * d1 * d1 / (dh * dh));
       if (params->diff_scale & AREAL) {
-	master->u2kh[e] = fabs(vh * geom->edgearea[es] / master->edmean);
+	master->u2kh[e] = fabs(kh * geom->edgearea[es] / master->edmean);
       }
+    }
+    for (ee = 1; ee <= geom->n2_e1; ee++) {
+      e = geom->w2_e1[ee];
+      master->basek[e] = master->u2kh[e];
+    }
+    d_free_1d(u2kh);
+  }
+  /* Cell centered horizontal diffusivity.                           */
+  for (cc = 1; cc <= geom->n3_t; cc++) {
+    double kh;
+    c = geom->w3_t[cc];
+    c2 = geom->m2d[c];
+    kh = master->u1kh[c2];
+    if (params->u1kh > 0.0) {
+      if (params->diff_scale & NONE)
+	master->u1kh[c] = fabs(kh);
+      if (params->diff_scale & LINEAR) {
+	master->u1kh[c] = fabs(kh * sqrt(geom->cellarea[c2]) /
+			       sqrt(master->amean));
+      }
+      if (params->diff_scale & (NONLIN|CUBIC|AREAL))
+	master->u1kh[c] = fabs(kh * geom->cellarea[c2] / master->amean);
     }
   }
 
@@ -1474,15 +1648,15 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   /*-----------------------------------------------------------------*/
   /* Optimised horizontal mixing                                     */
   if(params->diff_scale & AUTO) {
-    double hf = 0.05;             /* Factor for horizontal diffusion */
+    double hf = 0.0;              /* Factor for horizontal diffusion */
     double step = 1;              /* Integral step of diffusion > 1  */
     double hmax = 1e10;
     double d1, d2;
     int u1khf = 0, u1vhf = 0, u2khf = 0, i1, cs;
-    if (params->u1kh >= 0.0)
-      u1khf = u2khf = 1;
-    if (params->u1vh >= 0.0)
+    if (params->u1vh > 0.0 || params->bsue1 > 0.0 || params->diff_scale & VH_REG)
       u1vhf = 1;
+    if (params->u1kh > 0.0 || params->bkue1 > 0.0 || params->diff_scale & KH_REG)
+      u1khf = u2khf = 1;
 
     for (cc = 1; cc <= geom->n3_t; cc++) {
       c = geom->w3_t[cc];
@@ -1494,7 +1668,8 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       hmax = 1.0 / ((2.0 / geom->cellarea[cs]) * 4.0 * params->grid_dt);
       i1 = (int)hmax / (int)step;
       hmax = step * (double)i1;
-      d1 = 0.01 * 4.0 * geom->cellarea[cs] / params->grid_dt;
+      d2 = 0.01 * geom->cellarea[cs] / params->grid_dt;
+      d1 = d2 * (master->u1kh[c] / 100.0);        /* Scaling             */
       i1 = (int)d1 / (int)step;
       if (u1khf)
 	master->u1kh[c] = step * (double)i1;
@@ -1506,25 +1681,38 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	if (master->u1kh[c] < hf * hmax) {
 	  i1 = (int)(hf * hmax) / (int)step;
 	  master->u1kh[c] = step * (double)i1;
+	  if (master->u1kh[c] == 0.0) master->u1kh[c] = hf * hmax;
 	}
       }
     }
 
-    for (ee = 1; ee <= geom->n3_e2; ee++) {
+    for (ee = 1; ee <= geom->n3_e1; ee++) {
       e = geom->w3_e1[ee];
       es = geom->m2de[e];
+      /* Input viscosities are percentages: if scaling for bi-       */
+      /* harmonic viscoity has taken place, then revert to the       */
+      /* original percent value.                                     */
+      if (params->diff_scale & SCALEBI)
+	master->u1vh[e] /= (0.125 * geom->edgearea[es]);
+
       /* Use the same stability approach as for centres above. Could */
       /* also assume h1 = h1au1 and h2 = h2au1 for edges and use the */
       /* criterion for quads.                                        */
       hmax = 1.0 / ((2.0 / geom->edgearea[es]) * 4.0 * params->grid_dt);
       i1 = (int)hmax / (int)step;
       hmax = step * (double)i1;
-      d1 = 0.01 * geom->edgearea[es] / params->grid_dt;
+      d2 = 0.01 * geom->edgearea[es] / params->grid_dt;
+
+      d1 = d2 * (master->u1vh[e] / 100.0);    /* Scaling u1vh        */
       i1 = (int)d1 / (int)step;
-      if (u1vhf)
-	master->u1vh[e] = master->u2kh[e] = step * (double)i1;
+      if (u1vhf) master->u1vh[e] = step * (double)i1;
       if (master->u1vh[e] == 0.0) master->u1vh[e] = d1;
+
+      d1 = d2 * (master->u2kh[e] / 100.0);    /* Scaling u2kh        */
+      i1 = (int)d1 / (int)step;
+      if (u1khf) master->u2kh[e] = step * (double)i1;	
       if (master->u2kh[e] == 0.0) master->u2kh[e] = d1;
+
       /* Set limits */
       if (u1vhf) {
 	if (master->u1vh[e] > hmax)
@@ -1532,6 +1720,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	if (master->u1vh[e] < hf * hmax) {
 	  i1 = (int)(hf * hmax) / (int)step;
 	  master->u1vh[e] = step * (double)i1;
+	  if (master->u1vh[e] == 0.0) master->u1vh[e] = hf * hmax;
 	}
 	if (params->diff_scale & SCALEBI || params->visc_method & US_BIHARMONIC)
 	  master->u1vh[e] *= (0.125 * geom->edgearea[es]);
@@ -1542,8 +1731,15 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	if (master->u2kh[e] < hf * hmax) {
 	  i1 = (int)(hf * hmax) / (int)step;
 	  master->u2kh[e] = step * (double)i1;
+	  if (master->u2kh[e] == 0.0) master->u2kh[e] = hf * hmax;
 	}
       }
+
+      master->basev[es] = master->u1vh[es];
+      master->basek[es] = master->u2kh[es];
+      /* Save base rates un-scaled for bi-harmonic viscosity         */
+      if (params->diff_scale & SCALEBI)
+	master->basev[es] /= (0.125 * geom->edgearea[es]);
     }
   }
 
@@ -1596,6 +1792,29 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     c2 = geom->bine1[ee];
     master->u1vh[e] = master->u1vh[c2];
     master->u2kh[e] = master->u2kh[c2];
+  }
+
+  /* Cell centered horizontal viscosity diagnostic                   */
+  if (master->u1vhc) {
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      c2 = geom->m2d[c];
+      master->u1vhc[c] = 0.0;
+      d1 = 0.0;
+      for (ee = 1; ee <= geom->npe[c2]; ee++) {
+	e = geom->c2e[ee][c];
+	es = geom->m2de[e];
+	dh = geom->edgearea[es];
+	if (params->diff_scale & LINEAR) dh = sqrt(dh);
+	if (params->diff_scale & CUBIC) dh = dh * sqrt(dh);
+	if (params->diff_scale & AUTO) dh = 1.0;
+	master->u1vhc[c] += (dh * master->u1vh[e]);
+	d1 += dh;
+      }
+      master->u1vhc[c] /= d1;
+      if (params->diff_scale & SCALEBI)
+	master->u1vhc[c] /= (0.125 * geom->cellarea[c2]);
+    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -1697,6 +1916,8 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   master->prmfd = params->prmfd;
   master->ntdif_h = params->ntdif_h;
   master->ntdif_v = params->ntdif_v;
+  master->ntdif_hs = params->ntdif_hs;
+  master->ntdif_vs = params->ntdif_vs;
   master->ntr = params->ntr;
   master->atr = params->atr;
   master->ntrS = params->ntrS;
@@ -1811,6 +2032,10 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
     master->tdif_h = i_alloc_1d(master->ntdif_h);
   if (master->ntdif_v)
     master->tdif_v = i_alloc_1d(master->ntdif_v);
+  if (master->ntdif_hs)
+    master->tdif_hs = i_alloc_1d(master->ntdif_hs);
+  if (master->ntdif_vs)
+    master->tdif_vs = i_alloc_1d(master->ntdif_vs);
   master->trname = (char **)malloc(master->ntr * sizeof(char *));
   for (tn = 0; tn < master->ntr; tn++) {
      master->trname[tn] = (char *)malloc(sizeof(char)*MAXSTRLEN);
@@ -1892,6 +2117,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
 
   /* Atmospheric variables                                           */
   master->wind1 = d_alloc_1d(geom->szeS);
+  master->wind2 = d_alloc_1d(geom->szeS);
   master->windspeed = d_alloc_1d(geom->szeS);
   master->winddir = d_alloc_1d(geom->szeS);
   if (params->wind_dt && params->storm_dt) {
@@ -1917,13 +2143,16 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   /* Uncomment this code if separate sponges apply in the e1 and e2  */
   /* directions.                                                     */
 
-  if (params->smagorinsky > 0.0 && params->u1vh < 0.0) {
+  if (params->diff_scale & VH_REG ||
+      (params->smagorinsky > 0.0 && params->u1vh < 0.0)) {
     int n;
     if (params->smagorinsky == 1.0 && params->sue1 != 1.0) 
       master->smagcode |= U1_SA;
     for (n = 0; n < params->nobc; ++n)
       if (params->open[n]->sponge_zone_h)
 	master->smagcode |= U1_SA;
+    if (params->diff_scale & VH_REG)
+      master->smagcode |= U1_SA;
     if (master->smagcode & U1_SA) {
       master->u1vh = d_alloc_1d(geom->sze);
       master->sde = d_alloc_1d(geom->sze);
@@ -1937,7 +2166,13 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
     master->u1vh = d_alloc_1d(geom->sze);
     master->smagcode |= U1_A;
   }
-  if (params->smagorinsky > 0.0 && params->u1kh < 0.0) {
+  master->basev = d_alloc_1d(geom->szeS);
+  master->smagv = d_alloc_1d(geom->szeS);
+  memset(master->basev, 0, geom->szeS * sizeof(double));
+  memset(master->smagv, 0, geom->szeS * sizeof(double));
+
+  if (params->diff_scale & KH_REG ||
+      (params->smagorinsky > 0.0 && params->u1kh < 0.0)) {
     int n;
     tn = tracer_find_index("smagorinsky", master->ntr, master->trinfo_3d);
     if (params->smagorinsky == 1.0 && params->kue1 != 1.0) 
@@ -1948,6 +2183,8 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
       if (params->open[n]->bcond_tra[tn] == FILEIN)
       	master->smagcode |= U1_SBC;
     }
+    if (params->diff_scale & KH_REG)
+      master->smagcode |= U1_SAK;
     if (master->smagcode & U1_SAK) {
       master->u1kh = d_alloc_1d(geom->szc);
       if (!master->sde) master->sde = d_alloc_1d(geom->sze);
@@ -1965,6 +2202,10 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
     if (params->sigma)
       hd_warn("** Smagorinsky e1 diffusion works best with sigma. **\n");
   }
+  master->basek = d_alloc_1d(geom->szeS);
+  master->smagk = d_alloc_1d(geom->szeS);
+  memset(master->basek, 0, geom->szeS * sizeof(double));
+  memset(master->smagk, 0, geom->szeS * sizeof(double));
   master->t11 = d_alloc_1d(geom->szm);
   master->t22 = d_alloc_1d(geom->szm);
   master->t12 = d_alloc_1d(geom->szm);

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 6462 2020-02-18 23:44:11Z her127 $
+ *  $Id: readdump.c 6634 2020-09-08 01:39:38Z her127 $
  *
  */
 
@@ -43,7 +43,9 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 double smooth_bathy(unsigned long ***flag, int nz, int i, int j, int **xm, int **xp, 
 		    int **ym, int **yp, double **bathy, double bmin, double bmax);
 double bathy_smooth_us(mesh_t *m, double *bathy, int cc);
-void testest(parameters_t *params, double bmin);
+void testest(parameters_t *params, double bmin, double rmin);
+void testbasin(parameters_t *params, double bmin, double bmax, int orf);
+void testchan(parameters_t *params, double bmin, double bmax, int orf);
 
 /*-------------------------------------------------------------------*/
 /* Routine to set variables at ghost cells                           */
@@ -1398,7 +1400,7 @@ void set_bathy_us(parameters_t *params)
   */
   if (maskf) {
     int *bmi, *bmj;
-    int mode = read_blocks(params->prmfd, "BATHY_MASK", &n, &bmi, &bmj);
+    int mode = read_blocks(params->prmfd, "BATHY_MASK", &n, &bmi, &bmj, NULL);
     if (mode & (B_LISTC|B_BLOCKC)) {
       for (k = 1; k <= n; k++) {
 	cc = bmi[k];
@@ -1426,7 +1428,7 @@ void set_bathy_us(parameters_t *params)
 	  mdh = atof(fields[0]);
 	  if (mdh > 0.0) mdh *= -1.0;
 	  sprintf(buf, "BATHY_MASK%d", ip);
-	  mode = read_blocks(params->prmfd, buf, &n, &bmi, &bmj);
+	  mode = read_blocks(params->prmfd, buf, &n, &bmi, &bmj, NULL);
 	  if (mode & (B_LISTC|B_BLOCKC)) {
 	    for (k = 1; k <= n; k++) {
 	      cc = bmi[k];
@@ -1506,7 +1508,7 @@ void set_bathy_us(parameters_t *params)
       if (prm_read_double(params->prmfd, buf, &mdh))
 	if (mdh > 0.0) mdh *= -1.0;
       sprintf(buf, "BATHY_MASK%d", ip);
-      mode = read_blocks(params->prmfd, buf, &n, &bmi, &bmj);
+      mode = read_blocks(params->prmfd, buf, &n, &bmi, &bmj, NULL);
       if (mode & (B_LISTC|B_BLOCKC)) {
 	for (k = 1; k <= n; k++) {
 	  cc = bmi[k];
@@ -1887,7 +1889,27 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
   char dir = '\0';
 
   if (params->us_type & US_RUS) return(NULL);
-  /*testest(params, 20.0);*/
+  if (strlen(params->testcase)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    n = parseline(params->testcase, fields, MAXNUMARGS);
+    if (strcmp(fields[0], "estuary") == 0) {
+      d1 = atof(fields[1]);
+      d2 = atof(fields[2]);
+      testest(params, d1, d2);
+    }
+    if (strcmp(fields[0], "basin") == 0) {
+      d1 = atof(fields[1]);
+      d2 = atof(fields[2]);
+      i = atof(fields[3]);
+      testbasin(params, d1, d2, i);
+    }
+    if (strcmp(fields[0], "channel") == 0) {
+      d1 = atof(fields[1]);
+      d2 = atof(fields[2]);
+      i = atof(fields[3]);
+      testchan(params, d1, d2, i);
+    }
+  }
 
   /* Allocate memory */
   bathy = d_alloc_2d(nce1, nce2);
@@ -1950,7 +1972,6 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
   } else
     hd_quit
       ("set_bathy: bad bathymetry data (neither 0 nor number of cells)\n");
-
 
 
   /*-----------------------------------------------------------------*/
@@ -2114,7 +2135,7 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
   }
   if (maskf) {
     int *bmi, *bmj;
-    int mode = read_blocks(params->prmfd, "BATHY_MASK", &n, &bmi, &bmj);
+    int mode = read_blocks(params->prmfd, "BATHY_MASK", &n, &bmi, &bmj, NULL);
     if (mode & (B_LISTIJ|B_BLOCKIJ)) {
       for (k = 1; k <= n; k++) {
 	i = bmi[k];
@@ -2140,7 +2161,7 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
       if (prm_read_double(params->prmfd, buf, &mdh))
 	mdh *= -1.0;
       sprintf(buf, "BATHY_MASK%d", ip);
-      read_blocks(params->prmfd, buf, &n, &bmi, &bmj);
+      read_blocks(params->prmfd, buf, &n, &bmi, &bmj, NULL);
       for (k = 1; k <= n; k++) {
 	i = bmi[k];
 	j = bmj[k];
@@ -3318,8 +3339,13 @@ void remove_channel(parameters_t *params, unsigned long ***flag, double **bathy)
 /*-------------------------------------------------------------------*/
 
 /*-------------------------------------------------------------------*/
+/* Routine to create a test estuary of size nce1 x nce2.             */
+/* Bathymetry is stored in params->bathy.                            */
 /*-------------------------------------------------------------------*/
-void testest(parameters_t *params, double bmin)
+void testest(parameters_t *params, 
+	     double bmin,               /* Bathymetry of the bay     */
+	     double rmin
+	     )
 {
   mesh_t *mesh = params->mesh;
   int nce1 = params->nce1;
@@ -3329,7 +3355,7 @@ void testest(parameters_t *params, double bmin)
   int imid = (int)(0.6 * (nce1 - 2));
   int dmid = (int)(0.4 * (nce1 - 2));
   int jmid = (int)(0.5 * (nce2 - 2))+1;
-  double slope, rd = 5.0;
+  double slope;
   double **bathy = d_alloc_2d(nce1, nce2);
   int verbose = 0;
 
@@ -3345,9 +3371,9 @@ void testest(parameters_t *params, double bmin)
   }
 
   /* Set the river */
-  slope = (bmin - rd) / (double)(imid - 1);
+  slope = (bmin - rmin) / (double)(imid - 1);
   for (i = 1; i <= imid; i++) {
-    bathy[jmid][i] = -(slope * (double)(i - 1) + rd);
+    bathy[jmid][i] = -(slope * (double)(i - 1) + rmin);
   }
 
   /* Open boundaries */
@@ -3381,6 +3407,153 @@ void testest(parameters_t *params, double bmin)
   d_free_2d(bathy);
 }
 
+/* END testest()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to create a test basin of size nce1 x nce2.               */
+/* Bathymetry is stored in params->bathy.                            */
+/*-------------------------------------------------------------------*/
+void testbasin(parameters_t *params, 
+	       double bmin,            /* Minimum bathymetry         */
+	       double bmax,            /* Maximum bathymetry         */
+	       int orf                 /* Orientation flag           */
+	       )
+{
+  mesh_t *mesh = params->mesh;
+  int nce1 = params->nce1;
+  int nce2 = params->nce2;
+  int i, j;
+  int cc, c;
+  double slope;
+  double **bathy = d_alloc_2d(nce1, nce2);
+  int verbose = 0;
+
+  for (j = 0; j < nce2; j++)
+    for (i = 0; i < nce1; i++)
+      bathy[j][i] = -LANDCELL;
+
+  /* Set the main basin */
+  if (orf == 1) {
+    slope = (bmax - bmin) / (double)(nce2 - 2);
+    for (j = 1; j < nce2-1; j++) {
+      for (i = 1; i < nce1-1; i++) {
+	bathy[j][i] = slope * (double)(j - 1) + bmin;
+      }
+    }
+  }
+  if (orf == 2) {
+    slope = (bmin - bmax) / (double)(nce2 - 2);
+    for (j = 1; j < nce2-1; j++) {
+      for (i = 1; i < nce1-1; i++) {
+	bathy[j][i] = slope * (double)(j - 1) + bmax;
+
+      }
+    }
+  }
+  if (orf == 3) {
+    slope = (bmax - bmin) / (double)(nce1 - 2);
+    for (j = 1; j < nce2-1; j++) {
+      for (i = 1; i < nce1-1; i++) {
+	bathy[j][i] = slope * (double)(i - 1) + bmin;
+      }
+    }
+  }
+  if (orf == 4) {
+    slope = (bmin - bmax) / (double)(nce1 - 2);
+    for (j = 1; j < nce2-1; j++) {
+      for (i = 1; i < nce1-1; i++) {
+	bathy[j][i] = slope * (double)(i - 1) + bmax;
+      }
+    }
+  }
+
+  cc = 0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (verbose) printf("%4.0f ",bathy[j][i]);
+      params->bathy[cc++] = bathy[j][i];
+    }
+    if (verbose) printf("\n");
+  }
+  d_free_2d(bathy);
+}
+
+/* END testbasin()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to create a test basin of size nce1 x nce2.               */
+/* Bathymetry is stored in params->bathy.                            */
+/*-------------------------------------------------------------------*/
+void testchan(parameters_t *params, 
+	      double bmin,             /* Minimum bathymetry         */
+	      double bmax,             /* Maximum bathymetry         */
+	      int orf                  /* Orientation flag           */
+	      )
+{
+  mesh_t *mesh = params->mesh;
+  int nce1 = params->nce1;
+  int nce2 = params->nce2;
+  int i, j;
+  int cc, c;
+  double slope;
+  double **bathy = d_alloc_2d(nce1, nce2);
+  int verbose = 0;
+
+  for (j = 0; j < nce2; j++)
+    for (i = 0; i < nce1; i++)
+      bathy[j][i] = -LANDCELL;
+
+  /* Set the main basin */
+  if (orf == 1) {
+    slope = (bmax - bmin) / (double)(nce2 - 2);
+    for (j = 1; j < nce2-1; j++) {
+      for (i = 0; i < nce1; i++) {
+	bathy[j][i] = slope * (double)(j - 1) + bmin;
+      }
+    }
+  }
+  if (orf == 2) {
+    slope = (bmin - bmax) / (double)(nce2 - 2);
+    for (j = 1; j < nce2-1; j++) {
+      for (i = 0; i < nce1; i++) {
+	bathy[j][i] = slope * (double)(j - 1) + bmax;
+
+      }
+    }
+  }
+  if (orf == 3) {
+    slope = (bmax - bmin) / (double)(nce1 - 2);
+    for (j = 0; j < nce2; j++) {
+      for (i = 1; i < nce1-1; i++) {
+	bathy[j][i] = slope * (double)(i - 1) + bmin;
+      }
+    }
+  }
+  if (orf == 4) {
+    slope = (bmin - bmax) / (double)(nce1 - 2);
+    for (j = 0; j < nce2; j++) {
+      for (i = 1; i < nce1-1; i++) {
+	bathy[j][i] = slope * (double)(i - 1) + bmax;
+      }
+    }
+  }
+
+  cc = 0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (verbose) printf("%4.0f ",bathy[j][i]);
+      params->bathy[cc++] = bathy[j][i];
+    }
+    if (verbose) printf("\n");
+  }
+  d_free_2d(bathy);
+}
+
+/* END testchan()                                                    */
 /*-------------------------------------------------------------------*/
 
 

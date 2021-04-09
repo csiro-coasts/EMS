@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 6461 2020-02-18 23:43:48Z her127 $
+ *  $Id: meshes.c 6732 2021-03-30 00:37:56Z her127 $
  *
  */
 
@@ -80,13 +80,14 @@ void tria_ortho_edge_2d(double *bb, double *p1, double *p2);
 void tria_com(double *bb, double *p1, double *p2, double *p3);
 void remove_duplicates(int ns2, double **x, double **y, mesh_t *mesh);
 void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc);
+int mesh_expand_do(geometry_t *window, double *u, int *vec, int *ni, int *filla);
 void xy_to_d(delaunay *d, int np, double *x, double *y);
 void circen(double *p1, double *p2, double *p3);
 double is_obtuse(double *p0, double *p1, double *p2);
 void init_J_jig(jigsaw_jig_t *J_jig);
 double coast_dist(msh_t *msh, double xloc, double yloc);
 double point_dist(int npoints, point *p, double xloc, double yloc);
-double poly_dist(int npoly, poly_t **pl, double hmin, double xloc, double yloc);
+double poly_dist(int npoly, poly_t **pl, double hmin, double xloc, double yloc, int *mask);
 double bathyset(double b, double bmin, double bmax, double hmin,
 		double hmax, double expf);
 static void st_transform(jigsaw_msh_t *J_msh, ST3PROJ kind,
@@ -121,7 +122,8 @@ void create_bounded_mesh(int npts,     /* Number of perimeter points */
 			 double *y,    /* Perimeter y coordinates    */
 			 double rmin,  /* Min. resolution in m       */
 			 double rmax,  /* Max. resolution in m       */
-			 jigsaw_msh_t *J_mesh);
+			 jigsaw_msh_t *J_mesh,
+			 int filef);
 
 /*-------------------------------------------------------------------*/
 /* Compute the geographic metrics on the sphere using a false pole   */
@@ -504,6 +506,8 @@ void convert_quad_mesh(parameters_t *params)
   double area, na;
   int ip, im, jp, jm;
   double bmean;
+
+  filef = (params->meshinfo) ? 1 : 0;
 
   /*-----------------------------------------------------------------*/
   /* Interpolation method. Options:                                  */
@@ -1203,6 +1207,7 @@ void convert_hex_mesh(parameters_t *params, delaunay *d, int mode)
 
   /*-----------------------------------------------------------------*/
   /* Allocate                                                        */
+  filef = (params->meshinfo) ? 1 : 0;
   nvedge = i_alloc_1d(d->npoints);
   bmask = i_alloc_1d(d->npoints);
   memset(bmask, 0, d->npoints * sizeof(int));
@@ -1974,6 +1979,7 @@ void convert_tri_mesh(parameters_t *params, delaunay *d)
 
   /*-----------------------------------------------------------------*/
   /* Write to file                                                   */
+  filef = (params->meshinfo) ? 1 : 0;
   if (filef) {
     mesh_ofile_name(params, key);
     sprintf(buf,"%s_us.us", key);
@@ -2106,6 +2112,7 @@ void convert_mesh_input(parameters_t *params,
   int iv;
   int oldcode = 0;
 
+  if (!params->meshinfo) wf = 0;
   if (DEBUG("init_m"))
     dlog("init_m", "\nStart mesh conversion\n");
 
@@ -2332,6 +2339,7 @@ void meshstruct_s(parameters_t *params, geometry_t *geom)
   int filef = 1;
 
   /* Allocate                                                        */
+  filef = (params->meshinfo) ? 1 : 0;
   free_mesh(params->mesh);
   params->mesh = mesh_init(params, geom->b2_t, 4);
   m = params->mesh;
@@ -2484,6 +2492,7 @@ void meshstruct_us(parameters_t *params)
   /*-----------------------------------------------------------------*/
   /* If an unstructured mesh configuration is input from file, then  */
   /* the mesh structure is populated in read_mesh_us(), so return.   */
+  if (!params->meshinfo) filef = 0;
   if (params->us_type & US_IUS) {
     mesh_init_OBC(params, params->mesh);
     m = params->mesh;
@@ -2509,8 +2518,16 @@ void meshstruct_us(parameters_t *params)
   if (strlen(params->addquad)) {
     char *fields[MAXSTRLEN * MAXNUMARGS];
     n = parseline(params->addquad, fields, MAXNUMARGS);
-    for (i = 0; i < n; i++) {
-      add_quad_grid(params, fields[i]);
+    if (n == 1 && atoi(fields[0]) > 0) {
+      for (i = 0; i < atoi(fields[0]); i++) {
+	sprintf(key, "QUAD%d", i);
+	prm_read_char(params->prmfd, key, buf);
+	add_quad_grid(params, buf);
+      }
+    } else {
+      for (i = 0; i < n; i++) {
+	add_quad_grid(params, fields[i]);
+      }
     }
   }
 
@@ -2671,6 +2688,7 @@ void meshstruct_us(parameters_t *params)
   /* Write to file from the mesh structure                           */
   if (filef == 2) {
     FILE *ef;
+
     sprintf(buf,"%s_e.txt", key);
     if ((ef = fopen(buf, "w")) == NULL) filef = 0;
     if (filef) {
@@ -3494,8 +3512,9 @@ void write_mesh_us(parameters_t *params,
   if (mode == 4) {
     FILE *ef;
     char key[MAXSTRLEN], buf[MAXSTRLEN];
-    int filef = 1;
+    int filef = (params->meshinfo) ? 1 : 0;
 
+    if (!filef) return;
     mesh_ofile_name(params, key);
     sprintf(buf,"%s_e.txt", key);
     if ((ef = fopen(buf, "w")) == NULL) filef = 0;
@@ -3539,8 +3558,9 @@ void write_mesh_us(parameters_t *params,
   if (mode == 8) {
     FILE *ef;
     char key[MAXSTRLEN], buf[MAXSTRLEN];
-    int filef = 1;
+    int filef = (params->meshinfo) ? 1 : 0;
 
+    if (!filef) return;
     if (mesh == NULL) return;
     mesh_ofile_name(params, key);
     sprintf(buf,"%s_e.txt", key);
@@ -3874,6 +3894,8 @@ void create_hex_radius(double crad,   /* Radius in metres     */
    *       matter in this case due to the symmetry in stereographic projection
    *       space.
    */
+  /* wgt = (exp(-(x*x + y*y) / (4 * scale * scale))); */
+  gscale *= crad; /* relative spread */
   n = 0;
   for (i=0; i<=nHfun; i++)
     for (j=0; j<=nHfun; j++) {
@@ -3939,6 +3961,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   int fid;
   int ncerr;
   int dims;
+  int ugrid = 0;
   double stime;
   double bmin, bmax, bnin, bnax, hmin = 0.0, hmax = 0.0, s;
   double *exlon, *exlat, *exrad, *exbth;
@@ -3954,6 +3977,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   double *hmx, *hmn, *bmx, *bmn, *exf;
   int nord;
 
+  filef = (params->meshinfo) ? 1 : 0;
   /*-----------------------------------------------------------------*/
   /* Get the interpolation method                                    */
   /*if(endswith(fname,".nc")) {*/
@@ -4104,7 +4128,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     if (imeth & I_USR)
       hd_quit("Can't create a mesh with user input. Use HFUN_GRID.\n");
 
-    create_bounded_mesh(cm->np, cm->x, cm->y, hmin, hmax, J_hfun);
+    create_bounded_mesh(cm->np, cm->x, cm->y, hmin, hmax, J_hfun, filef);
     nhfun = J_hfun->_vert2._size;
     jigsaw_alloc_reals(hfvals, nhfun);
   } else {
@@ -4182,6 +4206,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     size_t count[4];
     timeseries_t *ts = NULL;
     int idb;
+    int dimf;
 
     /* Initialize the bathymetry file                                */
     ts = (timeseries_t *)malloc(sizeof(timeseries_t));
@@ -4191,6 +4216,8 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
     
     /* Read the bathymetry file                                      */
     ts_read(fname, ts);
+    ugrid = df_is_ugrid(ts->df);
+
     if (strlen(vname)) {
       strcpy(key, vname);
       nc_inq_varndims(fid, ncw_var_id(fid, vname), &dims);
@@ -4202,6 +4229,10 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	      key, fname);
 
     b = d_alloc_1d(nhfun);
+    if (ugrid)
+      dimf = (dims == 3) ? 3 : 2;
+    else
+      dimf = (dims == 4) ? 3 : 2;
 
     if (imeth & I_GRID) {
       /* Interpolate bathymetry onto the grid                        */
@@ -4210,7 +4241,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	for (j = 0; j < nce2; j++) {
 	  xloc = hfx->_data[i];
 	  yloc = hfy->_data[j];
-	  if (dims == 4)
+	  if (dimf == 3)
 	    b[n] = ts_eval_xyz(ts, idb, stime, xloc, yloc, 0.0);
 	  else
 	    b[n] = ts_eval_xy(ts, idb, stime, xloc, yloc);
@@ -4471,6 +4502,9 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
 	}
       } else 
 	hfvals->_data[n] = bathyset(b[n], bmin, bmax, hmin, hmax, expf);
+
+      /* Sanity check: JIGSAW only acceps values > 0                 */
+      if (hfvals->_data[n] <= 0.0) hfvals->_data[n] = hmin;
 
       /*printf("%d %f %f min=%f max=%f\n",n, hfvals->_data[n]*deg2m, b[n],bmin,bmax);*/
       if (dof) {
@@ -4813,12 +4847,15 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   int perimf = 0; /* Set hfun perimeter to maximum resolution        */
   int npass = 0;
   int npoints;
-  int npoly;
+  int npoly = 0;
   point *p;
   poly_t **pl;
+  double *polyres;
+  int *pmask;
   double *hmx, *hmn, *bmx, *bmn, *exf;
   msh_t *msh = cm->msh;
 
+  filef = (params->meshinfo) ? 1 : 0;
   /*-----------------------------------------------------------------*/
   /* Get the seed points if required                                 */
   if (mode & H_POINT) {
@@ -4830,15 +4867,45 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
     }
   }
   if (mode & H_POLY) {
-    char *fields[MAXSTRLEN * MAXNUMARGS];
-    prm_read_char(fp, "HFUN_POLY", buf);
-    npoly = parseline(buf, fields, MAXNUMARGS);
-    pl = (poly_t **)malloc(npoly * sizeof(poly_t));
-    for (n = 0; n < npoly; n++) {
-      pl[n] = poly_create();
-      if ((hf = fopen(fields[n], "r")) != NULL) {
-	m = poly_read(pl[n], hf);
-	fclose(hf);
+    if (prm_read_char(fp, "HFUN_POLY", buf)) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      npoly = parseline(buf, fields, MAXNUMARGS);
+      pl = (poly_t **)malloc(npoly * sizeof(poly_t));
+      polyres = d_alloc_1d(npoly);
+      for (n = 0; n < npoly; n++) {
+	char *tok, *pname;
+	strcpy(buf, fields[n]);
+	pname = strtok(buf, ":");
+	if ((tok = strtok(NULL, ":")) != NULL)
+	  polyres[n] = atof(tok);
+	else 
+	  polyres[n] = 0.0;
+	pl[n] = poly_create();
+	if ((hf = fopen(pname, "r")) != NULL) {
+	  m = poly_read(pl[n], hf);
+	  fclose(hf);
+	} else
+	  hd_quit("hfun_from_coast: Can't open polygon file %s\n",pname);
+      }
+    }
+    if (prm_read_int(fp, "NHFUN_POLY", &npoly)) {
+      pl = (poly_t **)malloc(npoly * sizeof(poly_t));
+      polyres = d_alloc_1d(npoly);
+      for (n = 0; n < npoly; n++) {
+	char *tok, *pname;
+	sprintf(key, "HFUN_POLY%d", n);
+	prm_read_char(fp, key, buf);
+	pname = strtok(buf, ":");
+	if ((tok = strtok(NULL, ":")) != NULL)
+	  polyres[n] = atof(tok);
+	else 
+	  polyres[n] = 0.0;
+	pl[n] = poly_create();
+	if ((hf = fopen(pname, "r")) != NULL) {
+	  m = poly_read(pl[n], hf);
+	  fclose(hf);
+	} else
+	  hd_quit("hfun_from_coast: Can't open polygon file %s\n",pname);
       }
     }
   }
@@ -4893,7 +4960,6 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
     prm_read_double(fp, "HFUN_TYPE", &expf);
   }
   prm_read_int(fp, "HFUN_SMOOTH", &smooth);
-
   nexp = 0;
   if (prm_read_int(fp, "HFUN_EXCLUDE", &nexp)) {
     exlon = d_alloc_1d(nexp);
@@ -4949,7 +5015,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   } else {
     /* Get a triangulation based on the mesh perimeter               */
     /*xy_to_d(d, cm->np, cm->x, cm->y);*/
-    create_bounded_mesh(cm->np, cm->x, cm->y, hmin, hmax, J_hfun);
+    create_bounded_mesh(cm->np, cm->x, cm->y, hmin, hmax, J_hfun, filef);
     nhfun = J_hfun->_vert2._size;
   }
   jigsaw_alloc_reals(hfvals, nhfun);
@@ -4957,6 +5023,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   /*-----------------------------------------------------------------*/
   /* Make a gridded distance to coast array                          */
   b = d_alloc_1d(nhfun);
+  if (mode & H_POLY) pmask = i_alloc_1d(nhfun);
   if (imeth & I_GRID) {
     /* Get the minimum distance to the coast                         */
     n = 0;
@@ -4970,7 +5037,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
 	if (mode & H_POINT)
 	  b[n] = min(b[n], point_dist(npoints, p, xloc, yloc));
 	if (mode & H_POLY)
-	  b[n] = min(b[n], poly_dist(npoly, pl, bmin, xloc, yloc));
+	  b[n] = min(b[n], poly_dist(npoly, pl, bmin, xloc, yloc, &pmask[n]));
 	if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
 	n++;
       }
@@ -4986,7 +5053,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
       if (mode & H_POINT)
 	b[n] = min(b[n], point_dist(npoints, p, xloc, yloc));
       if (mode & H_POLY)
-	b[n] = min(b[n], poly_dist(npoly, pl, bmin, xloc, yloc));
+	b[n] = min(b[n], poly_dist(npoly, pl, bmin, xloc, yloc, &pmask[n]));
       if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
     }
     J_hfun->_flags = JIGSAW_EUCLIDEAN_MESH;
@@ -5056,6 +5123,24 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
       hfvals->_data[i] = hmin;
       i = J_hfun->_edge2._data[n]._node[1];
       hfvals->_data[i] = hmin;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Set resolution inside polygons if required                      */
+  if (mode & H_POLY) {
+    for (n = 0; n < npoly; n++) {
+      if (polyres[n] == 0.0) 
+	polyres[n] = hmin;
+      else
+	polyres[n] /= deg2m;
+      cm->hfun_min = min(cm->hfun_min, polyres[n]);
+      cm->hfun_max = max(cm->hfun_max, polyres[n]);
+    }
+    for (n = 0; n < nhfun; n++) {
+      if ((m = pmask[n]) >= 0) {
+	hfvals->_data[n] = polyres[m];
+      }
     }
   }
 
@@ -5223,6 +5308,8 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   }
   /*for (n = 0; n < nhfun; n++) hfvals->_data[n] = 1.0;*/
   d_free_1d(b); 
+  if(polyres) d_free_1d(polyres);
+  if(pmask) i_free_1d(pmask);
   if (mode & H_POLY) {
     for (n = 0; n < npoly; n++)
       poly_destroy(pl[n]);
@@ -5285,14 +5372,16 @@ double point_dist(int npoints, point *p, double xloc, double yloc)
 /*-------------------------------------------------------------------*/
 /* Computs the minimum distance to a coastline                       */
 /*-------------------------------------------------------------------*/
-double poly_dist(int npoly, poly_t **pl, double hmin, double xloc, double yloc)
+ double poly_dist(int npoly, poly_t **pl, double hmin, double xloc, double yloc, int *mask)
 {
   int n, i;
   double d, x, y;
   double dist = HUGE;
 
+  *mask = -1;
   for (n = 0; n < npoly; n++) {
     if (poly_contains_point(pl[n], xloc, yloc)) {
+      *mask = n;
       return(hmin);
     } else {
       for (i = 0; i < pl[n]->n; i++) {
@@ -5318,10 +5407,10 @@ void create_bounded_mesh(int npts,     /* Number of perimeter points */
 			 double *y,    /* Perimeter y coordinates    */
 			 double rmin,  /* Min. resolution in m       */
 			 double rmax,  /* Max. resolution in m       */
-			 jigsaw_msh_t *J_mesh
+			 jigsaw_msh_t *J_mesh,
+			 int filef
 			 )
 {
-  int filef = 1;
   FILE *ef;
   char buf[MAXSTRLEN], key[MAXSTRLEN];
   int np = npts - 1;
@@ -5463,10 +5552,10 @@ void init_J_jig(jigsaw_jig_t *J_jig)
 void create_jigsaw_mesh(coamsh_t *cm, 
 			jigsaw_msh_t *J_mesh,
 			jigsaw_msh_t *J_hfun,
-			int powf, int stproj
+			int powf, int stproj,
+			int filef
 			)
 {
-  int filef = 1;
   FILE *ef;
   char buf[MAXSTRLEN], key[MAXSTRLEN];
   double xmid = 0.0, ymid = 0.0;
@@ -5639,6 +5728,7 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 #ifdef HAVE_JIGSAWLIB
   jigsaw_msh_t *msh = (jigsaw_msh_t*)jmsh;
 #endif
+  filef = (params->meshinfo) ? 1 : 0;
   params->d = d = malloc(sizeof(delaunay));
   params->us_type |= US_JUS;
   if (params->us_type & US_POW) centref = 2;
@@ -8073,14 +8163,33 @@ void mesh_reduce(parameters_t *params, double *bathy, double **xc, double **yc)
   mask = i_alloc_1d(ns);
   memset(mask, 0, ns * sizeof(int));
   for (cc = 1; cc <= params->nland; cc++) {
-    c = params->lande1[cc];
-    mask[c] = c;
-    mesh->npe[c] = 0;
-    dored = 1;
+    if (params->polyland != NULL && strlen(params->polyland[cc])) {
+      FILE *fp;
+      poly_t *pl = poly_create();
+      if ((fp = fopen(params->polyland[cc], "r")) != NULL) {
+	j = poly_read(pl, fp);
+	for (c = 1; c <= mesh->ns2; c++) {
+	  if (poly_contains_point(pl, mesh->xloc[mesh->eloc[0][c][0]], 
+				  mesh->yloc[mesh->eloc[0][c][0]])) {
+	    mask[c] = c;
+	    mesh->npe[c] = 0;
+	    dored = 1;
+	  }
+	}
+	fclose(fp);
+	poly_destroy(pl);
+      }
+    } else {
+      c = params->lande1[cc];
+      mask[c] = c;
+      mesh->npe[c] = 0;
+      dored = 1;
+    }
   }
   if (!dored) return;
 
   /* Make a copy of the current map                                  */
+  if (verbose) printf("Mesh reduction on %d cells\n", params->nland);
   ns2i = mesh->ns2;
   neic = i_alloc_2d(mesh->ns2+1, mesh->mnpe+1);
   n2o = i_alloc_1d(mesh->ns2+1);
@@ -8531,29 +8640,35 @@ void add_quad_grid(parameters_t *params, char *iname)
 {
   FILE *fp;
   char buf[MAXSTRLEN];
+  char polyr[MAXSTRLEN];
   int i, j, n, nc, ns2, ncells, nce1, nce2;
   double *x, *y;
   double **lat, **lon;
   double **xc, **yc;
   double *bathy, nbathy = NOTVALID;
   double xr1, yr1, xr2, yr2, d, dist1, dist2;
-  int *npe2, ir, jr1, jr2;
+  int *npe2, ir, jr1, jr2, *mask;
   int verbose = 0;
   int dirf = 1;    /* Coordinates are ordered across the river       */
   int sortdir = 1; /* Sort verices; 1=clockwise, -1=anticlockwise    */
 
   /*-----------------------------------------------------------------*/
   /* Open the file to merge and read the merge location              */
-  if ((fp = fopen(iname, "r")) == NULL) return;
+  if ((fp = fopen(iname, "r")) == NULL) {
+    hd_warn("Can't open merge grid '%s'\n", iname);
+    return;
+  }
   if (prm_read_char(fp, "MERGE_LOC", buf))
     sscanf(buf, "(%lf %lf)-(%lf %lf)", &xr1, &yr1, &xr2, &yr2);
   else {
-    hd_warn("Can't find MERGE_LOC: no mesh merging.\n");
+    hd_warn("Can't find MERGE_LOC for %s: no mesh merging.\n", iname);
     return;
   }
   prm_read_double(fp, "BATHYVAL", &nbathy);
   if (prm_read_char(fp, "MERGE_DIR", buf))
     dirf = is_true(buf);
+  sprintf(polyr, "%c", '\0');
+  prm_read_char(fp, "REMOVE", polyr);
 
   /* The merge location is set to the closest vertices in the mesh.  */
   /* Also make a copy of the current mesh.                           */
@@ -8562,6 +8677,8 @@ void add_quad_grid(parameters_t *params, char *iname)
   bathy = d_alloc_1d(params->ns2+1);
   xc = d_alloc_2d(params->npe+1, params->ns2+1);
   yc = d_alloc_2d(params->npe+1, params->ns2+1);
+  mask = i_alloc_1d(params->ns2+1);
+  memset(mask, 0, (params->ns2+1) * sizeof(int));
   for (i = 1; i <= params->ns2; i++) {
     npe2[i] = params->npe2[i];
     bathy[i] = params->bathy[i];
@@ -8588,7 +8705,9 @@ void add_quad_grid(parameters_t *params, char *iname)
   xr2 = xc[ir][jr2];
   yr2 = yc[ir][jr2];
   if (nbathy == NOTVALID) nbathy = bathy[ir];
-
+  hd_warn("Adding QUAD grid %s into mesh at locations (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
+ 
+  /*-----------------------------------------------------------------*/
   /* Read and save the vertices and centre of the quadrilateral grid */
   prm_read_int(fp, "NCE1", &nce1);
   prm_read_int(fp, "NCE2", &nce2);
@@ -8607,6 +8726,11 @@ void add_quad_grid(parameters_t *params, char *iname)
   dist1 = dist2 = HUGE;
   if (verbose) printf("file=%s ncells=%d nc=%d dir=%d\n", iname, ncells, nc, dirf);
 
+  /* If dirf = 1 then the orthogonal grid coordinates are ordered    */
+  /* with values increasing sequentially across the channel. If      */
+  /* dirf = 0 then the coordinates are ordered such that values      */
+  /* sequentially increase along the channel. The user must discern  */
+  /* which is the case and set MERGE_DIR accordingly.                */
   if (dirf) {
     for (i = 0; i < ncells; i++) {
       n = i * 6;
@@ -8638,6 +8762,9 @@ void add_quad_grid(parameters_t *params, char *iname)
       if(verbose && i==0)for(n=0; n<=4; n++)printf("%f %f n%d\n",lon[i][n],lat[i][n],n);
     }
   }
+
+  /*-----------------------------------------------------------------*/
+  /* Set the merge location to the closest vertices in the grid      */
   for (i = 0; i < ncells; i++) {
     sort_circle_g(lon[i], lat[i], 4, sortdir);
     for (j = 1; j <= 4; j++) {
@@ -8650,11 +8777,12 @@ void add_quad_grid(parameters_t *params, char *iname)
     }
   }
 
-  /* Set the merge location to the closest vertices in the grid      */
   lon[ir][jr1] = xr1;
   lat[ir][jr1] = yr1;
+  /*
   xr1 = xc[ir][jr1];
   yr1 = yc[ir][jr1];
+  */
   for (j = 0; j <= 4; j++) {
     d = sqrt((lon[ir][j] - xr2) * (lon[ir][j] - xr2) + (lat[ir][j] - yr2) * (lat[ir][j] - yr2));
     if (j > 0 && j != jr1 && d < dist2) {
@@ -8666,9 +8794,101 @@ void add_quad_grid(parameters_t *params, char *iname)
   lat[ir][jr2] = yr2;
   hd_warn("Curvilinear grid %s added at (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
 
+  /*-----------------------------------------------------------------*/
+  /* Merge a second set of coordinates if required (e.g. for two     */
+  /* ends of a channel.                                              */
+  if (prm_read_char(fp, "MERGE_LOC2", buf)) {
+    sscanf(buf, "(%lf %lf)-(%lf %lf)", &xr1, &yr1, &xr2, &yr2);
+
+    /* The merge location is set to the closest vertices in the      */
+    /* mesh.                                                         */
+    dist1 = dist2 = HUGE;
+    for (i = 1; i <= params->ns2; i++) {
+      for (j = 0; j <= params->npe2[i]; j++) {
+	xc[i][j] = params->x[i][j];
+	yc[i][j] = params->y[i][j];
+	d = sqrt((xc[i][j] - xr1) * (xc[i][j] - xr1) + (yc[i][j] - yr1) * (yc[i][j] - yr1));
+	if (j > 0 && d < dist1) {
+	  dist1 = d;
+	  ir = i;
+	  jr1 = j;
+	}
+      }
+    }
+    xr1 = xc[ir][jr1];
+    yr1 = yc[ir][jr1];
+    for (j = 0; j <= params->npe2[ir]; j++) {
+      d = sqrt((xc[ir][j] - xr2) * (xc[ir][j] - xr2) + (yc[ir][j] - yr2) * (yc[ir][j] - yr2));
+      if (j > 0 && j != jr1 && d < dist2) {
+	dist2 = d;
+	jr2 = j;
+      }
+    }
+    xr2 = xc[ir][jr2];
+    yr2 = yc[ir][jr2];
+    hd_warn("  Second coordinates to merge are (%f %f)-(%f %f)\n", xr1, yr1, xr2, yr2);
+
+    /* Set the merge location to the closest vertices in the grid    */
+    dist1 = dist2 = HUGE;
+    for (i = 0; i < ncells; i++) {
+      sort_circle_g(lon[i], lat[i], 4, sortdir);
+      for (j = 1; j <= 4; j++) {
+	d = sqrt((lon[i][j] - xr1) * (lon[i][j] - xr1) + (lat[i][j] - yr1) * (lat[i][j] - yr1));
+	if (d < dist1) {
+	  dist1 = d;
+	  ir = i;
+	  jr1 = j;
+	}
+      }
+    }
+    lon[ir][jr1] = xr1;
+    lat[ir][jr1] = yr1;
+    /*
+    xr1 = xc[ir][jr1];
+    yr1 = yc[ir][jr1];
+    */
+    for (j = 0; j <= 4; j++) {
+      d = sqrt((lon[ir][j] - xr2) * (lon[ir][j] - xr2) + (lat[ir][j] - yr2) * (lat[ir][j] - yr2));
+      if (j > 0 && j != jr1 && d < dist2) {
+	dist2 = d;
+	jr2 = j;
+      }
+    }
+    lon[ir][jr2] = xr2;
+    lat[ir][jr2] = yr2;
+    hd_warn("Curvilinear grid %s added at second location (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
+  }
+
+  ns2 = params->ns2;
+  /* Sometimes a few cells from the mesh should be removed so that   */
+  /* the quad grid can seamlessly interface with the mesh.           */
+  /* Read polygons to remove some cells if required                  */
+  if (strlen(polyr)) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    int npoly = parseline(polyr, fields, MAXNUMARGS);
+    FILE *fp;
+    poly_t *pl = poly_create();
+    ns2 = params->ns2;
+    for (n = 0; n < npoly; n++) {
+      if ((fp = fopen(fields[n], "r")) == NULL) {
+	hd_warn("Can't find file %s to remove from quad addition %s\n", 
+		fields[0], iname);
+	continue;
+      }
+      j = poly_read(pl, fp);
+      for (i = 1; i <= ns2; i++) {
+	if (poly_contains_point(pl, params->x[i][0], params->y[i][0])) {
+	  mask[i] = i;
+	  params->ns2--;
+	}
+      }
+      fclose(fp);
+      poly_destroy(pl);
+    }
+  }
+
   /* Reallocate and reset the (x,y) arrays, including the points in  */
   /* the grid.                                                       */
-  ns2 = params->ns2;
   params->ns2 += ncells;
   i_free_1d(params->npe2);
   d_free_1d(params->bathy);
@@ -8680,11 +8900,12 @@ void add_quad_grid(parameters_t *params, char *iname)
   params->y = d_alloc_2d(params->npe+1, params->ns2+1);
   n = 1;
   for (i = 1; i <= ns2; i++) {
-    params->npe2[n] = npe2[n];
-    params->bathy[n] = bathy[n];
+    if (mask[i]) continue;
+    params->npe2[n] = npe2[i];
+    params->bathy[n] = bathy[i];
     for (j = 0; j <= params->npe2[n]; j++) {
-      params->x[n][j] = xc[n][j];
-      params->y[n][j] = yc[n][j];
+      params->x[n][j] = xc[i][j];
+      params->y[n][j] = yc[i][j];
     }
     n++;
   }
@@ -8707,7 +8928,7 @@ void add_quad_grid(parameters_t *params, char *iname)
   d_free_2d(lat);
   d_free_2d(xc);
   d_free_2d(yc);
-
+  i_free_1d(mask);
 }
 
 /* END add_quad_grid()                                               */
@@ -8943,3 +9164,234 @@ static void convert_jigsaw_grid_to_mesh(jigsaw_msh_t *imsh,
   jigsaw_free_msh_t(imsh);
   
 }
+
+point p0;
+/*-------------------------------------------------------------------*/  
+/* A utility function to swap two points                             */
+/*-------------------------------------------------------------------*/  
+void swap(point *p1, point *p2)
+{
+  point temp = *p1;
+  *p1 = *p2;
+  *p2 = temp;
+}
+
+/*-------------------------------------------------------------------*/  
+/* A utility function to return square of distance between p1 and p2 */
+/*-------------------------------------------------------------------*/  
+double distSq(point p1, point p2)
+{
+  return((p1.x - p2.x)*(p1.x - p2.x) + (p1.y - p2.y)*(p1.y - p2.y));
+}
+
+/*-------------------------------------------------------------------*/  
+/* To find orientation of ordered triplet (p, q, r).                 */
+/* The function returns following values:                            */
+/* 0 --> p, q and r are colinear                                     */
+/* 1 --> Clockwise                                                   */
+/* 2 --> Counterclockwise                                            */
+/*-------------------------------------------------------------------*/  
+int orientation(point p, point q, point r)
+{
+  double val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+  if (val == 0) return 0;
+  return (val > 0) ? 1 : 2;
+}
+
+/*-------------------------------------------------------------------*/
+/* A function used by library function qsort() to sort an array of   */
+/* points with respect to the first point.                           */
+/*-------------------------------------------------------------------*/
+int compare(const void *vp1, const void *vp2) 
+{
+  point *p1 = (point *)vp1;
+  point *p2 = (point *)vp2;
+
+  int o = orientation(p0, *p1, *p2);
+  if (o == 0)
+    return (distSq(p0, *p2) >= distSq(p0, *p1))? -1 : 1;
+
+  return (o == 2) ? -1: 1;
+}
+
+/*-------------------------------------------------------------------*/
+/* Finds convex hull of a set of n points using Graham Scan          */
+/* algorithm.                                                        */
+/* Adapted from:                                                     */
+/* https://www.geeksforgeeks.org/convex-hull-set-2-graham-scan/      */
+/* https://stackoverflow.com/questions/37635258/convex-hull-in-c     */
+/*-------------------------------------------------------------------*/
+point *convex_hull(point *v,  int *count)
+{
+  int n = *count;
+  double ymin = v[0].y;
+  int min = 0;
+  int i, m;
+  point *stack;
+
+  /* Pick the bottom-most or chose the left most point in case of a  */
+  /* tie.                                                            */
+  for(i = 1; i < n; i++) {
+    if((v[i].y < ymin) || ((v[i].y == ymin) && (v[i].x < v[min].x))) {
+      ymin = v[i].y;
+      min = i;
+    }
+  }
+
+  /* Place the bottom-most point at first position                   */
+  swap(&v[0], &v[min]);
+
+  /* Sort n-1 points with respect to the first point. A point p1     */
+  /* comes before p2 in sorted output if p2 has larger polar angle   */
+  /* (in counterclockwise direction) than p1.                        */
+  p0 = v[0];
+  if(n > 1)
+    qsort(&v[1], n - 1, sizeof(point), compare);
+
+  /* If two or more points make same angle with p0, remove all but   */
+  /* the one that is farthest from p0. Remember that, in above       */
+  /* sorting, our criteria was to keep the farthest point at the end */
+  /* when more than one points have same angle.                      */
+  m = 1; /* Initialize size of modified array.                       */
+  for(i = 1; i < n; i++) {
+    while((i < n - 1) && orientation(v[0], v[i], v[i + 1]) == 0)
+      i++;
+    v[m++] = v[i];
+  }
+  *count = n = m;
+
+  /* If modified array of points has less than 3 points, convex hull */
+  /* is not possible.                                                */
+  if(n < 3) return v;
+
+  /* Allocate the hull points and push first three points to it.     */
+  stack = (point *)malloc(n * sizeof(point));
+  stack[0] = v[0];
+  stack[1] = v[1];
+  stack[2] = v[2];
+
+  /* Process remaining n-3 points                                    */
+  m = 2;
+  for(i = 3; i < n; i++) {
+    /* Keep removing top while the angle formed by points next-to-   */
+    /* top, top, and points[i] makes a non-left turn.                */
+    while(orientation(stack[m-1], stack[m], v[i]) != 2) {
+      m--;
+    }
+    stack[++m] = v[i];
+  }
+
+  *count = n = ++m;
+
+  return stack;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Prints the dual of the COMPAS mesh (i.e. the triangulation) to    */
+/* files with format compatible for input into SWAN.                 */
+/*-------------------------------------------------------------------*/
+void write_swan_mesh(master_t *master)
+{
+  geometry_t *geom = master->geom;
+  parameters_t *params = master->params;
+  FILE *np, *ep, *bp, *op;
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
+  int c, cc, c1, v, vv, nc, n;
+  int *c2cc, *mask;
+  int mk;
+  int checkf = 1;
+
+  if (!params->doswan) return;
+  c2cc = i_alloc_1d(geom->szcS);
+  memset(c2cc, 0, geom->szcS * sizeof(int));
+  mask = i_alloc_1d(geom->szcS);
+  memset(mask, 0, geom->szcS * sizeof(int));
+
+  mesh_ofile_name(params, key);
+
+  /* Get the mask for valid centres                                  */
+  nc = 0;
+  for (vv = 1; vv <= geom->v2_e2; vv++) {
+    v = geom->w2_e2[vv];
+    for (cc = geom->nvc[v]; cc >= 1; cc--) {
+      c = geom->v2c[v][cc];
+      if (!mask[c]) nc++;
+      mask[c] = 1;
+    }
+  }
+
+  /* Print the triangulation of non-boundary cells                   */
+  sprintf(buf, "%s.node", key);
+  np = fopen(buf, "w");
+  sprintf(buf, "%s.bth", key);
+  bp = fopen(buf, "w");
+  fprintf(np, "%d 2 0 1\n", nc);
+  nc = 1;
+  for (cc = 1; cc <= geom->v2_t; cc++) {
+    c = geom->w2_t[cc];
+    if (mask[c]) {
+      mk = 0;
+      for (n = 1; n <= geom->npe[c]; n++) {
+	c1 = geom->c2c[n][c];
+	if (geom->wgst[c1]) {
+	  mk = 1;
+	  break;
+	}
+      }
+      fprintf(np, "%d %f %f %d\n", nc, geom->cellx[c], geom->celly[c], mk);
+      fprintf(bp, "%f\n", geom->botz[c]);
+      c2cc[c] = nc++;
+    }
+  }
+  /* Print the triangulation of boundary cells                       */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = open->obc_t[cc];
+      if (mask[c]) {
+	fprintf(np, "%d %f %f %d\n", nc, geom->cellx[c], geom->celly[c], open->id+2);
+	fprintf(bp, "%f\n", geom->botz[c]);
+	c2cc[c] = nc++;
+      }
+    }
+  }
+  fclose(np);
+  fclose(bp);
+  i_free_1d(mask);
+
+  /* Print the triangle connectivity                                 */
+  sprintf(buf, "%s.ele", key);
+  ep = fopen(buf, "w");
+  fprintf(ep, "%d 3 0\n", geom->v2_e2);
+  if (checkf) {
+    sprintf(buf, "%s_swan.txt", key);
+    op = fopen(buf, "w");
+  }
+  for (vv = 1; vv <= geom->v2_e2; vv++) {
+    v = geom->w2_e2[vv];
+    fprintf(ep, "%d ", vv);
+    if (geom->nvc[v] != 3) hd_warn("swan_mesh(): found more than 3 v2c maps at v=%d[%f %f]\n", v,
+				   geom->gridx[v], geom->gridy[v]);
+    for (cc = geom->nvc[v]; cc >= 1; cc--) {
+      c = geom->v2c[v][cc];
+      if (c == 0) hd_warn("swan_mesh(): zero centre found at v=%d, cc=%d\n", v, cc);
+      fprintf(ep, "%d ", c2cc[c]);
+      if (checkf) fprintf(op, "%f %f\n", geom->cellx[c], geom->celly[c]);
+    }
+    fprintf(ep, "\n");
+    if (checkf) {
+      cc = geom->nvc[v];
+      c = geom->v2c[v][cc];
+      fprintf(op, "%f %f\n", geom->cellx[c], geom->celly[c]);
+      fprintf(op, "NaN NaN\n");
+    }
+  }
+  fclose(ep);
+  if (checkf) fclose(op);
+
+  i_free_1d(c2cc);
+}
+
+/* END swan_mesh()                                                   */
+/*-------------------------------------------------------------------*/

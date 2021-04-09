@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: statistics.c 5842 2018-06-29 02:17:22Z riz008 $
+ *  $Id: statistics.c 6519 2020-04-09 12:46:12Z her127 $
  *
  */
 
@@ -105,21 +105,34 @@ void tracer_rmse_3d(trs_t *trs, stat3d_work_arrays *w_arr,
   double **tr1 = tr_vals[n + 1];
   double **tr2 = tr_vals[n + 2];
 
-  /*reset the child flag in a new step */
-  if(trs->new_step) {
-    w_arr->w2[n] += trs->dt;
-  }
-
   /* Re-initialise at the averaging interval                         */
   if((w_arr->w2[n] > w_arr->w1[n])  && trs->new_step) {
     w_arr->w2[n] = trs->dt;
   }
 
   /* Get the mean                                                    */
-  for(k = botk; k <= topk; k++) {
+  if (w_arr->w2[n]) {
+    for(k = botk; k <= topk; k++) {
+    /*
     rmse = sqrt((*tr1[k] - *tr2[k]) * (*tr1[k] - *tr2[k]));
     *tr_vals[n][k] = (*tr_vals[n][k] * (w_arr->w2[n] - trs->dt) +
 		      rmse * trs->dt) / w_arr->w2[n];
+    */
+      double mse = *tr_vals[n][k] * *tr_vals[n][k];
+      rmse = (*tr1[k] - *tr2[k]) * (*tr1[k] - *tr2[k]);
+      *tr_vals[n][k] = sqrt((mse * w_arr->w2[n] + rmse * trs->dt) /
+			    (w_arr->w2[n] + trs->dt));
+
+    }
+  } else {
+    for(k = botk; k <= topk; k++)
+      *tr_vals[n][k] = sqrt((*tr1[k] - *tr2[k]) * (*tr1[k] - *tr2[k]));
+  }
+
+
+  /*reset the child flag in a new step */
+  if(trs->new_step) {
+    w_arr->w2[n] += trs->dt;
   }
 }
 /* END tracer_rmse_3d()                                              */
@@ -1039,10 +1052,16 @@ void tracer_rmse_2d(trs_t *trs, int* nn, void* data) {
 
   /* Get the mean                                                    */
   if(trs->w2S[n]) {
+    /*
     rmse = sqrt((*tr1 - *tr2) * (*tr1 - *tr2));
     *trs->tr_in[n] = (*trs->tr_in[n] * trs->w2S[n] +
          rmse * trs->dt) /
                      (trs->w2S[n] + trs->dt);
+    */
+    double mse = *trs->tr_in[n] * *trs->tr_in[n];
+    rmse = (*tr1 - *tr2) * (*tr1 - *tr2);
+    *trs->tr_in[n] = sqrt((mse * trs->w2S[n] + rmse * trs->dt) /
+			  (trs->w2S[n] + trs->dt));
   }
   else {
     *trs->tr_in[n] = sqrt((*tr1 - *tr2) * (*tr1 - *tr2));

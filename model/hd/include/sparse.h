@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6428 2019-11-22 00:25:04Z her127 $
+ *  $Id: sparse.h 6658 2020-09-08 06:08:13Z her127 $
  *
  */
 
@@ -334,6 +334,8 @@ struct win_priv {
   double wave_alpha;            /* Alpha parameter for waves */
   double wave_hf;               /* Scaling factor for significant wave height */
   double wave_b1;               /* b1 parameter for waves */
+  double eqt_alpha;             /* Constant for tidal self attraction / loading */
+  double eqt_beta;              /* Constant for tidal body force */
   int smooth_VzKz;              /* Shuman smoothing of Vz and Kz */
   int fcf;                      /* Flag for k-w Wilcox (1988)/(1998) models */
   int trasc;                    /* Advection scheme type flag (tracers) */
@@ -357,6 +359,8 @@ struct win_priv {
   int nonlinear;                /* Non-linearity flag */
   int calc_dens;                /* Calculate density flag */
   int mode2d;                   /* Run in 2D mode */
+  int tidef;                    /* Tidal forcing options */
+  int tidep;                    /* Include tidal potential */
   int heatflux;                 /* Type of heatflux specification */
   int saltflux;                 /* Type of saltflux specification */
   int cfl;                      /* CFL time-step diagnostic */
@@ -428,14 +432,17 @@ struct win_priv {
   int filter;                   /* Filtering options */
   int trout;                    /* Transport file output flag */
   int swr_type;                 /* Type of attenuation */
-  int dhwf;                     /* Degree heating diagnostic */
-  double dhwh;                  /* Hour for DHW temperature snapshot */
+  int ndhw;                     /* Number of DHW diagnostics */
+  int *dhwf;                    /* Degree heating diagnostic */
+  double *dhwh;                 /* Hour for DHW temperature snapshot */
   int **e1bs, **e1be;           /* Start and end blend indicies in e1 direction */
   int **e2bs, **e2be;           /* Start and end blend indicies in e2 direction */
   int *ne1b, *ne2b;             /* Number of blend indicies */
   int nbl1, nbl2;               /* Number of blend zones */
   blend_t **ble1;               /* e1 blend structure */
   blend_t **ble2;               /* e2 blend structure */
+  int attn_tr;
+  int tran_tr;
 
   double albedo;                /* Albedo for swr */
   int nswreg;                   /* Number of swr estimation regions */
@@ -1021,6 +1028,7 @@ typedef struct {
   char opath[MAXSTRLEN];        /* Output path for files */
   char trkey[MAXSTRLEN];        /* Transport keyname */
   double runno;                 /* Unique run identification number */
+  char runcode[MAXSTRLEN];      /* Unique run identification code */
   char rev[MAXSTRLEN];          /* Version number for parameter file */
   int gridcode;                 /* Code to specify grid type */
   grid_rect_t *rg;              /* Rectangular grid information */
@@ -1079,6 +1087,8 @@ typedef struct {
   int calc_dens;                /* Calculate density flag */
   char densname[MAXSTRLEN];     /* Name of density tracer */
   int mode2d;                   /* Run in 2D mode */
+  int tidef;                    /* Tidal forcing options */
+  int tidep;                    /* Include tidal potential */
   int cfl;                      /* CFL time-step diagnostic */
   char cfl_dt[MAXSTRLEN];       /* Time for active cfl specification */
   int mixlayer;                 /* Mixed layer depth diagnostic */
@@ -1089,11 +1099,15 @@ typedef struct {
   char trpercr[MAXSTRLEN];      /* Region name for percentile calc. */
   int trflsh;                   /* Flushing tracer flag */
   char trage[MAXSTRLEN];        /* Age tracer flag */
-  char dhw[MAXSTRLEN];          /* Degree heating week diagnostic */
-  char dhdf[MAXSTRLEN];         /* Degree heating day file */
-  double dhw_dt;                /* DHW update increment */
-  int dhwf;                     /* Degree heating diagnostic flag */
-  double dhwh;                  /* Hour for DHW temperature snapshot */
+  int ndhw;                     /* Number of DHW diagnostics */
+  /*char dhw[MAXSTRLEN];*/          /* Degree heating week diagnostic */
+  /*char dhdf[MAXSTRLEN];*/         /* Degree heating day file */
+  char **dhw;                   /* Degree heating week diagnostic */
+  char **dhdf;                  /* Degree heating day file */
+  char **dhwt;                  /* Degree heating week text */
+  double *dhw_dt;               /* DHW update increment */
+  int *dhwf;                    /* Degree heating diagnostic flag */
+  double *dhwh;                 /* Hour for DHW temperature snapshot */
   int tendf;                    /* Momentum tendency flag */
   char trtend[MAXSTRLEN];       /* Tracer tendency flag */
   int means;                    /* Mean velocity diagnostic */
@@ -1211,6 +1225,15 @@ typedef struct {
   int *lande2;                  /* e2 list of defined land cells */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   char particles[MAXSTRLEN];    /* Auto particle sources */
+  char imp2df[MAXSTRLEN];       /* Auto 2D file import */
+  char imp2dn[MAXSTRLEN];       /* 2D file import name */
+  char imp2du[MAXSTRLEN];       /* 2D file import units */
+  char imp2dt[MAXSTRLEN];       /* 2D file import time */
+  char imp3df[MAXSTRLEN];       /* Auto 3D file import */
+  char imp3dn[MAXSTRLEN];       /* 3D file import name */
+  char imp3du[MAXSTRLEN];       /* 3D file import units */
+  char imp3dt[MAXSTRLEN];       /* 3D file import time */
+  char import3d[MAXSTRLEN];     /* Auto 3D file import */
   int data_infill;              /* Use cascade search on input file data */
   char *da_anom_file;           /* File name for the anomaly fields */
   char *da_anom_states;         /* State names to read from the anomaly fields */
@@ -1229,6 +1252,8 @@ typedef struct {
   char lenunit[MAXSTRLEN];      /* Length units */
   char codeheader[MAXSTRLEN];
   char parameterheader[MAXSTRLEN];
+  char reference[MAXSTRLEN];
+  char trl[MAXSTRLEN];
   char projection[MAXSTRLEN];
   char grid_desc[MAXSTRLEN];
   char grid_name[MAXSTRLEN];
@@ -1247,6 +1272,8 @@ typedef struct {
   double u1kh;                  /* Horizontal diffusivity, e1 direction */
   double u2kh;                  /* Horizontal diffusivity, e2 direction */
   double z0;                    /* Bottom roughness */
+  double eqt_alpha;             /* Constant for tidal self attraction / loading */
+  double eqt_beta;              /* Constant for tidal body force */
   double *z0s;                  /* Spatial bottom roughness */
   double *coriolis;             /* Coriolis parameter */
   double *surface;              /* Initial surface height */
@@ -1535,6 +1562,8 @@ struct master {
   int nonlinear;                /* Non-linearity flag */
   int calc_dens;                /* Calculate density flag */
   int mode2d;                   /* Run in 2D mode */
+  int tidef;                    /* Tidal forcing options */
+  int tidep;                    /* Include tidal potential */
   int cfl;                      /* CFL time-step diagnostic */
   double cfl_dt;                /* Time for active cfl specification */
   double lnm;                   /* Level of no motion for steric height */
@@ -1585,8 +1614,9 @@ struct master {
   int filter;                   /* Filtering options */
   int trfilter;                 /* Tracer filtering options */
   int porusplate;               /* Include porus plate sub-gridscale parameterisation */
-  int dhwf;                     /* Degree heating diagnostic */
-  double dhwh;                  /* Hour for DHW temperature snapshot */
+  int ndhw;                     /* Number of DHW diagnostics */
+  int *dhwf;                    /* Degree heating diagnostic */
+  double *dhwh;                 /* Hour for DHW temperature snapshot */
   char reef_frac[MAXSTRLEN];    /* Cell area blocked by reef */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
@@ -1636,6 +1666,8 @@ struct master {
   double rampstart;             /* Start time of ramp period */
   double rampend;               /* End time of ramp period */
   double rampval;               /* Ramp value for forcing */
+  double eqt_alpha;             /* Constant for tidal self attraction / loading */
+  double eqt_beta;              /* Constant for tidal body force */
   double *Cd;                   /* Drag coefficient */
   double *coriolis;             /* Coriolis parameter */
   double *u1c1;                 /* e1 advection term constant */
@@ -1763,6 +1795,7 @@ struct master {
   double *Vi;                   /* Volume error */
   double *unit;                 /* Unit tracer */
   double *glider;               /* Glider density */
+  double *density;              /* Potential density */
   double *regionid;             /* Region ids */
   double *regres;               /* Region residence time */
   double *sederr;               /* Error percentage map for sediments */
@@ -1770,9 +1803,9 @@ struct master {
   double *decv;                 /* Decorrelation length scale variable */
   double *decv1;                /* e1 decorrelation length scale */
   double *decv2;                /* e2 decorrelation length scale */
-  double *dhd;                  /* Degree heating day */
-  double *dhwc;                 /* Degree heating week climatology */
-  double *dhw;                  /* Degree heating week */
+  double **dhd;                 /* Degree heating day */
+  double **dhwc;                /* Degree heating week climatology */
+  double **dhw;                 /* Degree heating week */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   double *bathy_range_max;
   double *bathy_range_min;
@@ -1969,6 +2002,8 @@ struct master {
   double *swrms;                /* RMS error from swr estimation */
   double *attn_mean;            /* Mean swr attenuation */
   double *tran_mean;            /* Mean swr transmission */
+  int attn_tr;
+  int tran_tr;
 
   /* Heat flux variables */
   int heatflux;                 /* Type of heatflux specification */
@@ -2591,6 +2626,7 @@ struct window {
   double *Vi;                   /* Volume error */
   double *unit;                 /* Unit tracer */
   double *glider;               /* Glider density */
+  double *density;              /* Potential density */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
   int *totid;                   /* Tracer numbers for 3D totals */
@@ -2600,9 +2636,9 @@ struct window {
   double *ecoerr;               /* Error percentage map for ecology */
   double *decv1;                /* e1 decorrelation length scale */
   double *decv2;                /* e2 decorrelation length scale */
-  double *dhd;                  /* Degree heating day */
-  double *dhwc;                 /* Offset degree heating day */
-  double *dhw;                  /* Degree heating day */
+  double **dhd;                 /* Degree heating day */
+  double **dhwc;                /* Offset degree heating day */
+  double **dhw;                 /* Degree heating day */
   double sederrstep;            /* Sediment error step */
   double ecoerrstep;            /* Ecology error step */
   int ntot;                     /* Number of additional total tracers */

@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_epi.c 6293 2019-08-12 02:50:06Z bai155 $
+ *  $Id: massbalance_epi.c 6553 2020-05-11 06:23:26Z bai155 $
  *
  */
 
@@ -239,6 +239,11 @@ void massbalance_epi_postcalc(eprocess* p, void* pp)
 
     TO += - y[ws->BOD_epi_i];
 
+    if (ws->Amm_fl_sed_i > -1){
+      TO += y[ws->Amm_fl_wc_i]/2.0 * 48.0 / 14.01 / SEC_PER_DAY ;
+      TO += y[ws->Amm_fl_sed_i]/2.0 * 48.0 / 14.01 / SEC_PER_DAY ;
+    }
+    
     double TN = (y[ws->TN_wc_i] - Nfix_wc) * dz_wc + y[ws->TN_sed_i] * dz_sed + y[ws->Den_fl_sed_i] / SEC_PER_DAY + y[ws->TN_epi_i];
 
     if (ws->Amm_fl_sed_i > -1)

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6475 2020-02-18 23:53:06Z her127 $
+ *  $Id: windows.c 6751 2021-03-31 00:45:05Z her127 $
  *
  */
 
@@ -72,6 +72,7 @@ int joc(geometry_t *geom, int c, int cn);
 void init_turb(master_t *master, geometry_t **window, win_priv_t **wincon);
 void local_map_build_v2c(geometry_t *geom, int c, int cc, int wn,
 			 int **nmap, int *wsa, int *ac, int nsaux);
+void obc_setup(master_t *master, geometry_t **window);
 
 /* Codes for edges */
 #define W_GHOST 2
@@ -516,6 +517,7 @@ void window_build(geometry_t *geom,     /* Global geometry           */
       /*-------------------------------------------------------------*/
       /* Get the 3D - 1D map                                         */
       memset(window[n]->s2k, 0, window[n]->szc * sizeof(int));
+
       for (cc = 1; cc <= window[n]->n3_t; cc++) {
 	c = window[n]->w3_t[cc];
 	c1 = window[n]->wsa[c];
@@ -523,7 +525,14 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 	window[n]->s2j[c] = geom->s2j[c1];
 	window[n]->s2k[c] = geom->s2k[c1];
       }
-
+      /*
+      for (cc = 1; cc <= window[n]->enon; cc++) {
+	c = window[n]->wsa[cc];
+	window[n]->s2i[cc] = geom->s2i[c];
+	window[n]->s2j[cc] = geom->s2j[c];
+	window[n]->s2k[cc] = geom->s2k[c];
+      }
+      */
       for (ee = 1; ee <= window[n]->n3_e1; ee++) {
 	e = window[n]->w3_e1[ee];
 	window[n]->e2ijk[e] = NOTVALID;
@@ -3701,7 +3710,7 @@ void get_local_wse(geometry_t *geom,
 		  window[wn]->w2_e1[gc2D[wn]] = le;
 		  if (verbose) printf("Smag ghost wn=%d ee=%d e=%d(%d)\n",wn, gc2D[wn], le, e);
 		  gc2D[wn]++;
-		  window[wn]->n2_e1++;
+		  /*window[wn]->n2_e1++;*/
 		}
 	      } else {
 		window[wn]->w3_e1[ec[wn]] = le;
@@ -4725,6 +4734,13 @@ void OBC_build(open_bdrys_t **open, /* Global OBC structure          */
       window[nn]->open[n]->i1 = i_alloc_1d(cl);
       window[nn]->open[n]->dum = d_alloc_1d(cl);
       window[nn]->open[n]->dum1 = d_alloc_1d(cl);
+      /*
+      if (open[n]->options & OP_TILED) {
+	int cl2 = max(window[nn]->open[n]->no2_t + 1, window[nn]->open[n]->to2_e1 + 1);
+      */
+	window[nn]->open[n]->d2 = d_alloc_1d(cl);
+	window[nn]->open[n]->d3 = d_alloc_1d(cl);
+
       window[nn]->open[n]->dumn = d_alloc_2d(cl, window[nn]->open[n]->ntr);
 
       window[nn]->open[n]->u1d =
@@ -4856,7 +4872,7 @@ void set_sponge_cells(geometry_t *window)
       memset(mask, 0, window->szm * sizeof(int));
       for (cc = 1; cc <= window->b2_t; cc++) {
 	c = window->w2_t[cc];
-	for (i1 = 1; i1 <= open->no2_e1; i1++) {
+	for (i1 = 1; i1 <= open->no2_t; i1++) {
 	  i2 = open->obc_t[i1];
 	  d1 = window->cellx[c] - window->cellx[i2];
 	  d2 = window->celly[c] - window->celly[i2];
@@ -4869,24 +4885,28 @@ void set_sponge_cells(geometry_t *window)
 	}
       }
       open->nspc--;
+    }
+  }
 
-      /*-------------------------------------------------------------*/
-      /* Set up the mask                                             */
-      memset(mask, 0, window->szm * sizeof(int));
-      for (cc = window->v2_t+1; cc <= window->n2_t; cc++) {
-	c = window->w2_t[cc];
-	mask[c] = 1;
-      }
-      for (cc = window->b2_t+1; cc <= window->a2_t; cc++) {
-	c = window->w2_t[cc];
-	mask[c] = 0;
-      }
-      for (ee = 1; ee <= open->no2_e1; ee++) {
-	c = open->obc_e2[ee];
-	cn = open->ogc_t[ee];
-	mask[c] = mask[cn] = 1;
-      }
-
+  /*-----------------------------------------------------------------*/
+  /* Set up the mask                                                 */
+  memset(mask, 0, window->szm * sizeof(int));
+  for (cc = window->v2_t+1; cc <= window->n2_t; cc++) {
+    c = window->w2_t[cc];
+    mask[c] = 1;
+  }
+  for (cc = window->b2_t+1; cc <= window->a2_t; cc++) {
+    c = window->w2_t[cc];
+    mask[c] = 1;
+  }
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    for (ee = 1; ee <= open->no2_e1; ee++) {
+      c = open->obc_e2[ee];
+      cn = open->ogc_t[ee];
+      mask[c] = mask[cn] = 1;
+    }
+    if (open->sponge_zone_h) {
       /*-------------------------------------------------------------*/
       /* Get the closest boundary cell to sponge cells               */
       for (cc = 1; cc <= open->nspc; cc++) {
@@ -4907,6 +4927,12 @@ void set_sponge_cells(geometry_t *window)
 	}
 	mask[c] = 1;
       }
+    }
+  }
+
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    if (open->sponge_zone_h) {
       /*-------------------------------------------------------------*/
       /* Find the cells on the outer limit of the zone               */
       nscm = 0;
@@ -4921,6 +4947,7 @@ void set_sponge_cells(geometry_t *window)
 	}
       }
       scm = i_alloc_1d(nscm + 1);
+      memset(scm, 0, (nscm + 1) * sizeof(int));
       nscm = 1;
       for (cc = 1; cc <= open->nspc; cc++) {
 	c = open->spc[cc];
@@ -4963,7 +4990,7 @@ void set_sponge_cells(geometry_t *window)
 	    d2 = window->celly[cn] - window->celly[i2];
 	    dist = sqrt(d1 * d1 + d2 * d2);
 	    if (is_geog) dist *= deg2m;
-	    open->swc[cc] /= dist;
+	    open->swc[cc] = (dist) ? open->swc[cc] / dist : 0.0;
 	  }
 	}
       }
@@ -4990,6 +5017,7 @@ void set_sponge_cells(geometry_t *window)
 	  }
 	}
       }
+
       open->spe1 = i_alloc_1d(open->nspe1 + 1);
       open->swe1 = d_alloc_1d(open->nspe1 + 1);
       open->sne1 = i_alloc_1d(open->nspe1 + 1);
@@ -5020,7 +5048,6 @@ void set_sponge_cells(geometry_t *window)
 	    dist = sqrt(d1 * d1 + d2 * d2);
 	    if (is_geog) dist *= deg2m;
 	    open->swe1[open->nspe1] = dist;
-
 	    /* Get the edge corresponding to the closest cell on the */
 	    /* outer perimeter (i.e. the closest edge on the outer   */
 	    /* perimeter).                                           */
@@ -5044,17 +5071,14 @@ void set_sponge_cells(geometry_t *window)
 	    d2 = window->u1y[ep] - window->u1y[eb];
 	    dist = sqrt(d1 * d1 + d2 * d2);
 	    if (is_geog) dist *= deg2m;
-	    open->swe1[open->nspe1] /= dist;
-	    /*
-	      if(window->e2e[e][0]==1&&window->s2j[c]==10)
-	      printf("%d %d %d %d %f\n",window->s2i[c],e,ep,open->sne1[open->nspe1],open->swe1[open->nspe1]);
-	    */
+	    open->swe1[open->nspe1] = (dist) ? open->swe1[open->nspe1] / dist : 0.0;
 	    if (window->eask) window->eask[e] |= W_SOBC;
 	    open->spe1[open->nspe1++] = e;
 	    mask[e] = 1;
 	  }
 	}
       }
+      open->nspe1--;
       i_free_1d(scm);
     }
   }
@@ -5817,7 +5841,8 @@ window_t **win_data_build(master_t *master,   /* Master data         */
       NULL;
     windat[n]->Q2 = windat[n]->Q2L = windat[n]->Kq = NULL;
     windat[n]->u1m = windat[n]->u2m = windat[n]->wm = windat[n]->Kzm = NULL;
-    windat[n]->tempm = windat[n]->saltm = windat[n]->tram = NULL;
+    windat[n]->tempm = windat[n]->saltm = NULL;
+    /*if (master->means & MTRA3D) windat[n]->tram = NULL;*/
     windat[n]->u1_adv = windat[n]->u1_hdif = windat[n]->u1_vdif = NULL;
     windat[n]->u1_cor = windat[n]->u1_btp = windat[n]->u1_bcp = NULL;
     windat[n]->u2_adv = windat[n]->u2_hdif = windat[n]->u2_vdif = NULL;
@@ -5836,6 +5861,11 @@ window_t **win_data_build(master_t *master,   /* Master data         */
     windat[n]->reefe1 = windat[n]->reefe2 = windat[n]->agetr = NULL;
     windat[n]->tr_adv = windat[n]->tr_hdif = windat[n]->tr_vdif = windat[n]->tr_ncon = NULL;
     windat[n]->wave_stke1 = windat[n]->wave_stke1 = windat[n]->mono = NULL;
+    if (master->ndhw) {
+      windat[n]->dhw = (double **)p_alloc_1d(master->ndhw);
+      windat[n]->dhd = (double **)p_alloc_1d(master->ndhw);
+      windat[n]->dhwc = (double **)p_alloc_1d(master->ndhw);
+    }
 
     for (tn = 0; tn < windat[n]->ntr; tn++) {
       if (strcmp("salt", master->trname[tn]) == 0) {
@@ -5868,7 +5898,7 @@ window_t **win_data_build(master_t *master,   /* Master data         */
         windat[n]->tempm = windat[n]->tr_wc[tn];
       else if (strcmp("salt_mean", master->trname[tn]) == 0)
         windat[n]->saltm = windat[n]->tr_wc[tn];
-      else if (strcmp("tracer_mean", master->trname[tn]) == 0)
+      else if (strcmp("tracer_mean", master->trname[tn]) == 0 && master->means & MTRA3D)
         windat[n]->tram = windat[n]->tr_wc[tn];
       else if (strcmp("Kzmean", master->trname[tn]) == 0)
         windat[n]->Kzm = windat[n]->tr_wc[tn];
@@ -5986,6 +6016,10 @@ window_t **win_data_build(master_t *master,   /* Master data         */
         windat[n]->glider = windat[n]->tr_wc[tn];
       } else if (strcmp("u1vhc", master->trname[tn]) == 0) {
         windat[n]->u1vhc = windat[n]->tr_wc[tn];
+      } else if (strcmp("vol_cont", master->trname[tn]) == 0) {
+        windat[n]->volcont = windat[n]->tr_wc[tn];
+      } else if (strcmp("cell_index", master->trname[tn]) == 0) {
+        windat[n]->centi = windat[n]->tr_wc[tn];
       } else if (strcmp("nprof", master->trname[tn]) == 0) {
         windat[n]->nprof = windat[n]->tr_wc[tn];
       } else if (strcmp("unit", master->trname[tn]) == 0) {
@@ -6017,13 +6051,21 @@ window_t **win_data_build(master_t *master,   /* Master data         */
 	sprintf(buf, "%s_ncon", master->trinfo_3d[master->trtend].name);
 	if (strcmp(buf, master->trname[tn]) == 0)
 	  windat[n]->tr_ncon = windat[n]->tr_wc[tn];
-      } else if (master->dhwf & DHW_NOAA) {
-	if (strcmp("dhd", master->trname[tn]) == 0)
-	  windat[n]->dhd = windat[n]->tr_wc[tn];
-	else if (strcmp("dhwc", master->trname[tn]) == 0)
-	  windat[n]->dhwc = windat[n]->tr_wc[tn];
-	else if (strcmp("dhw", master->trname[tn]) == 0)
-	  windat[n]->dhw = windat[n]->tr_wc[tn];
+      } else if (master->ndhw) {
+	char buf[MAXSTRLEN];
+	for (cc = 0; cc < master->ndhw; cc++) {
+	  if (master->dhwf[cc] & DHW_NOAA) {
+	    sprintf(buf, "dhd%d", cc);
+	    if (strcmp(buf, master->trname[tn]) == 0)
+	      windat[n]->dhd[cc] = windat[n]->tr_wc[tn];
+	    sprintf(buf, "dhwc%d", cc);
+	    if (strcmp(buf, master->trname[tn]) == 0)
+	      windat[n]->dhwc[cc] = windat[n]->tr_wc[tn];
+	    sprintf(buf, "dhw%d", cc);
+	    if (strcmp(buf, master->trname[tn]) == 0)
+	      windat[n]->dhw[cc] = windat[n]->tr_wc[tn];
+	  }
+	}
       }
     }
 
@@ -6151,6 +6193,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->nrvor = d_alloc_1d(winsize);
     windat->npvor = d_alloc_1d(winsize);
     /* Others                                                        */
+    if (master->means & MTRA2D) windat->tram = NULL;
     if (master->velrlx & RELAX) {
       relax_info_t *relax = master->vel_rlx;
       windat->vel_rlx = relax_info_init(relax->rlxn, relax->rlxtc, 
@@ -6238,6 +6281,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->depth_e1 = d_alloc_1d(winsize);
     windat->u1bot = d_alloc_1d(winsize);
     windat->wind1 = d_alloc_1d(winsize);
+    windat->wind2 = d_alloc_1d(winsize);
     windat->windspeed = d_alloc_1d(winsize);
     windat->winddir   = d_alloc_1d(winsize);
     windat->u1avb = d_alloc_1d(winsize);
@@ -6317,6 +6361,8 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->u1am = windat->tr_wcS[m];
       if (strcmp("u2av_mean", master->trinfo_2d[m].name) == 0)
         windat->u2am = windat->tr_wcS[m];
+      if (strcmp("tracer_mean", master->trinfo_2d[m].name) == 0 && master->means & MTRA2D)
+        windat->tram = windat->tr_wcS[m];
       if (strcmp("nhf", master->trinfo_2d[m].name) == 0)
         windat->nhfd = windat->tr_wcS[m];
       if (strcmp("swr", master->trinfo_2d[m].name) == 0) {
@@ -6541,6 +6587,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->wtop = master->wtop;
     windat->wbot = master->wbot;
     windat->wind1 = master->wind1;
+    windat->wind2 = master->wind2;
     windat->windspeed = master->windspeed;
     windat->winddir = master->winddir;
     windat->patm = master->patm;
@@ -6663,8 +6710,11 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->eta_tc = master->eta_tc;
     windat->sederr = master->sederr;
     windat->ecoerr = master->ecoerr;
+    windat->sep = master->sep;
+    windat->bep = master->bep;
     if (master->etarlx & (RELAX|ALERT|BOUNDARY|ETA_TPXO)) 
       windat->eta_rlx = master->eta_rlx;
+    if (master->means & (MTRA2D|MTRA3D)) windat->tram = master->tram;
 
     /* Diagnostic indicies                                           */
     windat->precipn = master->precipn;
@@ -6780,6 +6830,7 @@ void win_data_clear(window_t *windat  /* Window data structure       */
   if (windat->cloud)
     d_free_1d(windat->cloud);
   d_free_1d(windat->wind1);
+  d_free_1d(windat->wind2);
   if(windat->windspeed != NULL)
     d_free_1d(windat->windspeed);
   if(windat->winddir != NULL)
@@ -6873,6 +6924,8 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->nsed = master->nsed;
     wincon[n]->ntdif_h = master->ntdif_h;
     wincon[n]->ntdif_v = master->ntdif_v;
+    wincon[n]->ntdif_hs = master->ntdif_hs;
+    wincon[n]->ntdif_vs = master->ntdif_vs;
     wincon[n]->rampf = master->rampf;
     wincon[n]->calc_closure = master->calc_closure;
     wincon[n]->s_func = master->s_func;
@@ -6912,6 +6965,8 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->gmap = i_alloc_1d(szm);
     wincon[n]->tend3d = d_alloc_2d(window[n]->sze, TEND3D);
     wincon[n]->tend2d = d_alloc_2d(window[n]->szeS, TEND2D);
+    wincon[n]->tr_rk = d_alloc_2d(window[n]->szc, master->rkstage);
+    wincon[n]->tr_gr = d_alloc_2d(window[n]->szc, master->rkstage);
     memset(wincon[n]->s1, 0, szm * sizeof(int));
     memset(wincon[n]->s2, 0, szm * sizeof(int));
     if (windat->u1_adv || windat->u1_hdif || windat->u1_vdif ||
@@ -6947,6 +7002,10 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
 	wincon[n]->suro = i_alloc_1d(window[n]->szcS);
     }
     if(master->trasc & FCT) {
+      wincon[n]->crfxc = d_alloc_1d(szm);
+      wincon[n]->crfyc = d_alloc_1d(szm);
+      wincon[n]->crfxf = d_alloc_1d(szm);
+      wincon[n]->crfyf = d_alloc_1d(szm);
       wincon[n]->Fxh = d_alloc_1d(window[n]->sze);
       wincon[n]->Fzh = d_alloc_1d(window[n]->szc);
       wincon[n]->Ax = d_alloc_1d(window[n]->sze);
@@ -7086,6 +7145,10 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->u1adv = d_alloc_1d(sze);
       wincon[n]->u1inter = d_alloc_1d(sze);
       wincon[n]->coriolis = d_alloc_1d(szc);
+      wincon[n]->basev = d_alloc_1d(window[n]->szeS);
+      wincon[n]->smagv = d_alloc_1d(window[n]->szeS);
+      wincon[n]->basek = d_alloc_1d(window[n]->szeS);
+      wincon[n]->smagk = d_alloc_1d(window[n]->szeS);
     } else {
       /* Single window. The master and the window are the same -     */
       /* point the window to the master data structure arrays.       */
@@ -7120,6 +7183,10 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->u1adv = master->u1adv;
       wincon[n]->u1inter = master->u1inter;
       wincon[n]->coriolis = master->coriolis;
+      wincon[n]->smagv = master->smagv;
+      wincon[n]->basev = master->basev;
+      wincon[n]->smagk = master->smagk;
+      wincon[n]->basek = master->basek;
     }
 
     /*---------------------------------------------------------------*/
@@ -7128,6 +7195,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->tz = tm_tz_offset(master->timeunit);
     wincon[n]->ambpress = master->ambpress;
     wincon[n]->trasc = master->trasc;
+    wincon[n]->rkstage = master->rkstage;
     wincon[n]->trasf = 0;
     wincon[n]->momsc = master->momsc;
     wincon[n]->momsc2d = master->momsc2d;
@@ -7155,6 +7223,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->diff_scale = master->diff_scale;
     wincon[n]->smag_smooth = master->smag_smooth;
     wincon[n]->visc_method = master->visc_method;
+    wincon[n]->visc_fact = master->visc_fact;
     wincon[n]->stab = master->stab;
     wincon[n]->cfl = master->cfl;
     wincon[n]->cfl_dt = master->cfl_dt;
@@ -7269,12 +7338,21 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->trout = master->trout;
     wincon[n]->gint_errfcn = master->gint_errfcn;
     wincon[n]->da = master->da;
+    wincon[n]->attn_tr = master->attn_tr;
+    wincon[n]->tran_tr = master->tran_tr;
     wincon[n]->swr_type = master->swr_type;
-    wincon[n]->dhwf = master->dhwf;
-    wincon[n]->dhwh = master->dhwh;
     wincon[n]->monon = master->monon;
     wincon[n]->monomn = master->monomn;
     wincon[n]->monomx = master->monomx;
+    if (master->ndhw) {
+      wincon[n]->ndhw = master->ndhw;
+      wincon[n]->dhwf = i_alloc_1d(master->ndhw);
+      wincon[n]->dhwh = d_alloc_1d(master->ndhw);
+      for (i = 0; i < master->ndhw; i++) {
+	wincon[n]->dhwf[i] = params->dhwf[i];
+	wincon[n]->dhwh[i] = params->dhwh[i];
+      }
+    }
 
     /* FR: Strictly speaking this is not good
      *     It will obviously work for shared memory and luckily
@@ -7351,7 +7429,11 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->tdif_h = i_alloc_1d(wincon[n]->ntdif_h);
     if (wincon[n]->ntdif_v)
       wincon[n]->tdif_v = i_alloc_1d(wincon[n]->ntdif_v);
-    wincon[n]->ntbdy = 0;
+    if (wincon[n]->ntdif_hs)
+      wincon[n]->tdif_hs = i_alloc_1d(wincon[n]->ntdif_hs);
+    if (wincon[n]->ntdif_vs)
+      wincon[n]->tdif_vs = i_alloc_1d(wincon[n]->ntdif_vs);
+    wincon[n]->ntbdy = wincon[n]->ntbdys = 0;
     wincon[n]->nrlx = master->nrlx;
     wincon[n]->nres = master->nres;
     wincon[n]->nres2d = master->nres2d;
@@ -7383,6 +7465,10 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->tdif_h[tn] = master->tdif_h[tn];
     for (tn = 0; tn < wincon[n]->ntdif_v; tn++)
       wincon[n]->tdif_v[tn] = master->tdif_v[tn];
+    for (tn = 0; tn < wincon[n]->ntdif_hs; tn++)
+      wincon[n]->tdif_hs[tn] = master->tdif_hs[tn];
+    for (tn = 0; tn < wincon[n]->ntdif_vs; tn++)
+      wincon[n]->tdif_vs[tn] = master->tdif_vs[tn];
 
     /* Get the tracers which need OBC's to be set                    */
     if (wincon[n]->ntbdy)
@@ -7398,6 +7484,32 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
         wincon[n]->tbdy[wincon[n]->ntbdy] = tn;
         wincon[n]->ntbdy++;
       }
+    }
+    /* Split tracer transport                                        */
+    if (wincon[n]->trsplit) {
+      int nvec, *vec, t, tn;
+      nvec = wincon[n]->ntbdy;
+      vec = i_alloc_1d(nvec);
+      memcpy(vec, wincon[n]->tbdy, nvec * sizeof(int));
+      if (wincon[n]->ntbdy) {
+	wincon[n]->ntbdys = wincon[n]->ntbdy - 2;
+	if (wincon[n]->ntbdys) {
+	  wincon[n]->tbdys = i_alloc_1d(wincon[n]->ntbdys);
+	  wincon[n]->ntbdy = wincon[n]->ntbdys = 0;
+	  for (tn = 0; tn < nvec; tn++) {
+	    tracer_info_t *tracer;
+	    t = vec[tn];
+	    tracer = &master->trinfo_3d[t];
+	    if (strcmp(tracer->name, "salt") == 0)
+	      wincon[n]->tbdy[wincon[n]->ntbdy++] = t;
+	    else if (strcmp(tracer->name, "temp") == 0)
+	      wincon[n]->tbdy[wincon[n]->ntbdy++] = t;
+	    else
+	      wincon[n]->tbdys[wincon[n]->ntbdys++] = t;
+	  }
+	}
+      }
+      i_free_1d(vec);
     }
 
     /* Get the tracers that have a surface flux tracer set           */
@@ -7508,6 +7620,10 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->u1vh[ee] = master->u1vh[e];
       wincon[n]->u2kh[ee] = master->u2kh[e];
       if (ee <= window[n]->n2_e1) {
+	wincon[n]->basev[ee] = master->basev[e];
+	wincon[n]->smagv[ee] = master->smagv[e];
+	wincon[n]->basek[ee] = master->basek[e];
+	wincon[n]->smagk[ee] = master->smagk[e];
         wincon[n]->u1c1[ee] = master->u1c1[e];
         wincon[n]->u1c3[ee] = master->u1c3[e];
         wincon[n]->u1c4[ee] = master->u1c4[e];
@@ -7561,7 +7677,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       if (open->type & U1BDRY) {
 	if (open->bcond_nor & LINEAR || open->linear_zone_nor)
 	  wincon[n]->dolin_u1 = 1;
-	if (open->bcond_nor & (LINEAR|NOTHIN|CUSTOM))
+	if (open->bcond_nor & (LINEAR|NOTHIN|CUSTOM|FILEIN))
 	  wincon[n]->dobdry_u1 = 1;
 	if (open->stagger & INFACE)
 	  wincon[n]->dobdry_u1 = 1;
@@ -7814,6 +7930,10 @@ void win_consts_clear(geometry_t **window, int nwindows)
       d_free_1d(wincon->u1kh);
     if (wincon->u2kh && !(wincon->smagcode & U1_SPK))
       d_free_1d(wincon->u2kh);
+    if (wincon->basev) d_free_1d(wincon->basev);
+    if (wincon->smagv) d_free_1d(wincon->smagv);
+    if (wincon->basek) d_free_1d(wincon->basek);
+    if (wincon->smagk) d_free_1d(wincon->smagk);
     d_free_1d(wincon->t11);
     d_free_1d(wincon->t12);
     d_free_1d(wincon->t22);
@@ -7879,6 +7999,8 @@ void win_consts_clear(geometry_t **window, int nwindows)
     i_free_1d(wincon->gmap);
     d_free_2d(wincon->tend3d);
     d_free_2d(wincon->tend2d);
+    d_free_2d(wincon->tr_rk);
+    d_free_2d(wincon->tr_gr);
     d_free_1d(wincon->tmass);
     d_free_1d(wincon->tsmass);
     i_free_1d(wincon->obcmap);
@@ -8028,7 +8150,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     }
 
   /*-----------------------------------------------------------------*/
-  /* Vertival velociyu and velocity initialisation                   */
+  /* Vertical velocity and velocity initialisation                   */
   if (!(master->vinit & NONE)) {
     for (n = 1; n <= nwindows; n++) {
       /* Transfer velocities for w computation                       */
@@ -8037,6 +8159,17 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
       vel_w_update(window[n], windat[n], wincon[n]);
       vint_3d(window[n], windat[n], wincon[n]);
     }
+  }
+  /* Cell centrered velocity (for restarts)                          */
+  for (n = 1; n <= nwindows; n++) {
+    win_data_refill_3d(master, window[n], windat[n], master->nwindows, VELOCITY);
+    vel_components_3d(window[n], windat[n], wincon[n]);
+    for (ee = 1; ee <= window[n]->nm2se1S; ee++) {
+      lc = window[n]->m2se1[ee];
+      e = window[n]->wse[lc];
+      windat[n]->u1av[lc] = master->u1av[e];
+    }
+    vel_components_2d(window[n], windat[n], wincon[n]);
   }
 
   /*-----------------------------------------------------------------*/
@@ -8074,6 +8207,12 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     for (cc = 1; cc <= window[n]->b2_t; cc ++) {
       c = window[n]->w2_t[cc];
       windat[n]->etab[c] = wincon[n]->oldeta[c] = windat[n]->eta[c];
+    }
+    if (wincon[n]->numbers1 & CENTI) {
+      for (cc = 1; cc <= window[n]->b3_t; cc ++) {
+	c = window[n]->w3_t[cc];
+	windat[n]->centi[c] = (double)c;
+      }
     }
     /* Set the lateral boundary conditions for velocity.             */
 #if !GLOB_BC
@@ -8134,8 +8273,20 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     if(wincon[n]->trasc & (LAGRANGE|FFSL) || 
        wincon[n]->momsc & LAGRANGE ||
        wincon[n]->do_pt) {
+      int osl = L_LSLIN;
+      if (wincon[n]->osl & L_LSQUAD) osl = L_LSQUAD;
       tran_grid_init(window[n], windat[n], wincon[n]);
-      build_linear_weights(window[n], windat[n], wincon[n]); 
+      if (osl & L_LSLIN) {
+	wincon[n]->build_weights = build_linear_weights;
+	wincon[n]->get_limit = get_linear_limit;
+	wincon[n]->get_value = get_linear_value;
+      } else if (osl & L_LSQUAD) {
+	wincon[n]->build_weights = build_order2_weights;
+	wincon[n]->get_limit = get_order2_limit;
+	wincon[n]->get_value = get_order2_value;
+      }
+      /*build_linear_weights(window[n], windat[n], wincon[n]); */
+      wincon[n]->build_weights(window[n], windat[n], wincon[n]); 
     }
 
     /* Get the weights for the second derivative                     */
@@ -8208,6 +8359,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     }
   }
 
+  obc_setup(master, window);
   get_timesteps(window, windat, wincon, nwindows, master);
   timeaux(window, windat, wincon, nwindows);
   init_flushing(master, window, wincon);
@@ -8306,6 +8458,97 @@ void set_reef_frac(master_t *master,
 }
 
 /* END set_reef_frac()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initialises any OBC specific parameterisations                    */
+/*-------------------------------------------------------------------*/
+void obc_setup(master_t *master, geometry_t **window)
+{
+  geometry_t *geom = master->geom;
+  int cc, c, n, nn, c1;
+  int fam = 0;
+  int fat = 1;
+
+  /* Scaling of default flux adjustment to minimum boundary CFL      */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    if (open->options & (OP_FAS|OP_FAT)) {
+      double btws, d1, d3, h;
+      double cfl2d = HUGE;
+      double mws = HUGE;
+      double spd = 2.0;
+      
+      /* Minimum cfl for each boundary                               */
+      for(cc = 1; cc <= open->no2_t; cc++) {
+	c = open->obc_t[cc];
+
+	d1 = sqrt((double)geom->npe[c] / (2.0 * geom->cellarea[c]));
+	btws = sqrt(-master->g * geom->botz[c]);
+	h = sqrt(geom->cellarea[c]);
+	if (h / btws < mws) mws = h / btws;
+	d3 = 2.0 * btws + spd;
+	d3 = 1.0 / (d1 * d3);
+	if (d3 < cfl2d) cfl2d = d3;
+      }
+
+      /* Scaling to dt2d                                             */
+      d1 = master->grid_dt / (double)master->iratio;
+      if (open->adjust_flux < 0.0 && open->options & OP_FAS) {
+
+	if (fam == 0) {
+	  /* Fastest wave scales to (min CFL) / (h/sqrt(gD)) on the  */
+	  /* OBC.                                                    */
+	  open->adjust_flux = -d1 / cfl2d;
+	} else {
+	  /* Fastest wave scales to absolute value of adjust_flux    */
+	  open->adjust_flux /= mws;
+	}
+      }
+      if (open->adjust_flux_s < 0.0 && open->options & OP_FAT) {
+
+	if (fat == 0) {
+	  /* Fastest wave scales to (min CFL) / (h/sqrt(gD)) on the  */
+	  /* OBC.                                                    */
+	  open->adjust_flux_s = -d1 / cfl2d;
+	} else {
+	  /* Fastest wave scales to absolute value of adjust_flux    */
+	  open->adjust_flux_s /= mws;
+	}
+      }
+    }
+
+    /* Distribute to windows                                         */
+    for (nn = 1; nn <= geom->nwindows; nn++) {
+      c1 = geom->owc[n][nn];
+      if (c1 != -1) {
+	if (open->options & (OP_FAS|OP_FAT)) {
+	  window[nn]->open[c1]->adjust_flux = open->adjust_flux;;
+	  window[nn]->open[c1]->adjust_flux_s = open->adjust_flux_s;
+	}
+	/* If the 2D velocities are tidally forced and dual          */
+	/* relaxation is used, then set the ramp to TIDE_ADJUST.     */
+	/* This uses single relaxation over the ramp period so that  */
+	/* the tidal relaxation does not drive the sea level to      */
+	/* zero. The tidal velocities remain ramped so that tides    */
+	/* are not suddenly imposed.                                 */
+	if (window[nn]->open[c1]->bcond_ele & TIDALC && 
+	    window[nn]->open[c1]->bcond_nor2d & TIDALC &&
+	    window[nn]->open[c1]->bcond_tan2d & TIDALC && 
+	    window[nn]->open[c1]->adjust_flux_s != 0.0) {
+	  window[nn]->wincon->rampf |= TIDE_ADJUST;
+	}
+	/*
+	flux_adjust_init(window[nn]->open[c1]);
+	flux_adjust_copy(open, window[nn]->open[c1]);
+	*/
+      }
+    }
+  }
+}
+
+/* END obc_setup()                                                   */
 /*-------------------------------------------------------------------*/
 
 

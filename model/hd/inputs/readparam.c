@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 6429 2019-11-22 00:25:21Z her127 $
+ *  $Id: readparam.c 6659 2020-09-08 06:08:27Z her127 $
  *
  */
 
@@ -87,6 +87,8 @@ char *btname(int m);
 char *adname(int m);
 char *tf(int m);
 void write_grid_specs(FILE *op, parameters_t *params);
+void decode_id(parameters_t *params, char *ifile, char *name, double *grd_id,
+	       double *hyd_id, double *sed_id, double *bgc_id);
 
 
 /*-------------------------------------------------------------------*/
@@ -96,6 +98,8 @@ void set_default_param(parameters_t *params)
 {
   sprintf(params->codeheader, "%c", '\0');
   sprintf(params->parameterheader, "%c", '\0');
+  sprintf(params->reference, "%c", '\0');
+  sprintf(params->trl, "%c", '\0');
   sprintf(params->opath, "%c", '\0');
   sprintf(params->trkey, "%c", '\0');
   sprintf(params->sequence, "%c", '\0');
@@ -104,6 +108,7 @@ void set_default_param(parameters_t *params)
   sprintf(params->rivldir, "%c", '\0');
   sprintf(params->trans_dt, "%c", '\0');
   params->runno = 0;
+  sprintf(params->runcode, "%c", '\0');
   sprintf(params->rev, "%c", '\0');
   params->momsc = ORDER2;
   params->trasc = VANLEER;
@@ -146,8 +151,11 @@ void set_default_param(parameters_t *params)
   sprintf(params->trpercr, "%c", '\0');
   params->trflsh = 0;
   sprintf(params->trage, "%c", '\0');
+  params->ndhw = 0;
+  /*
   params->dhwf = 0;
   sprintf(params->dhw, "%c", '\0');
+  */  
   params->tendf = 0;
   sprintf(params->trtend, "%c", '\0');
   params->thin_merge = 1;
@@ -185,6 +193,7 @@ void set_default_param(parameters_t *params)
   sprintf(params->swr_attn1, "%c", '\0');
   sprintf(params->swr_tran, "%c", '\0');
   sprintf(params->swr_regions, "%c", '\0');
+  params->swreg_dt = 86400.0;
   strcpy(params->swr_data, "GHRSST");
   sprintf(params->densname, "%c", '\0');
   sprintf(params->regions, "%c", '\0');
@@ -192,6 +201,8 @@ void set_default_param(parameters_t *params)
   sprintf(params->region_vars, "%c", '\0');
   sprintf(params->region_mode, "%c", '\0');
   params->region_obc = 0;
+  sprintf(params->imp2df, "%c", '\0');
+  sprintf(params->imp3df, "%c", '\0');
   params->nbl1 = params->nbl2 = 0;
   params->do_pt = 0;
   strcpy(params->dp_mode, "none");
@@ -248,6 +259,10 @@ void set_default_param(parameters_t *params)
   params->noutside = 0;
   params->porusplate = 0;
   params->sharp_pyc = 0;
+  params->tidef = 0;
+  params->tidep = 0;
+  params->eqt_alpha = 0.948;
+  params->eqt_beta = 0.7;
   sprintf(params->nprof, "%c", '\0');
   sprintf(params->nprof2d, "%c", '\0');
   sprintf(params->reef_frac, "%c", '\0');
@@ -618,7 +633,15 @@ parameters_t *params_read(FILE *fp)
     params->mode2d = is_true(buf);
   sprintf(keyword, "SLIP");
   prm_read_double(fp, keyword, &params->slipprm);
-
+  sprintf(keyword, "TIDE_POTENTIAL");
+  if (prm_read_char(fp, keyword, buf)) {
+    if (params->tidep = is_true(buf)) {
+      prm_read_double(fp, "EQT_ALPHA", &params->eqt_alpha);
+      prm_read_double(fp, "EQT_BETA", &params->eqt_beta);
+      params->ntrS += 1;
+      params->tidef |= TD_EQT;
+    }
+  }
   read_means(params, fp, 0);
 
   /* Window sizes */
@@ -852,6 +875,7 @@ parameters_t *params_read(FILE *fp)
 
   /* Diagnistic numbers */
   params->ntr += numbers_init(params);
+  params->ntr += import_init(params, fp);
 
   /* Degree heating days */
   params->ntr += read_dhw(params, fp);
@@ -1053,6 +1077,10 @@ parameters_t *params_read(FILE *fp)
   sprintf(keyword, "PARAMETERHEADER");
   prm_read_char(fp, keyword, params->parameterheader);
   strcpy(parameterheader, params->parameterheader);
+  sprintf(keyword, "REFERENCE");
+  prm_read_char(fp, keyword, params->reference);
+  sprintf(keyword, "TECHNOLOGY_READINESS_LEVEL");
+  prm_read_char(fp, keyword, params->trl);
   sprintf(keyword, "G");
   prm_read_double(fp, keyword, &params->g);
   sprintf(keyword, "SPECHEAT");
@@ -1728,6 +1756,18 @@ parameters_t *params_read(FILE *fp)
   }
 
   /* Read the csr tide model paths if required */
+  sprintf(keyword, "TIDE_CSR_ORTHOWEIGHTS");
+  prm_read_char(fp, keyword, params->orthoweights);
+  sprintf(keyword, "TIDE_CSR_CON_DIR");
+  prm_read_char(fp, keyword, params->nodal_dir);
+  sprintf(keyword, "TIDE_CONSTITUENTS");
+  prm_read_char(fp, keyword, params->tide_con_file);
+  sprintf(keyword, "TIDE_CONSTITUENTS_TRAN");
+  if (prm_read_char(fp, keyword, params->tide_con_file)) 
+    params->tidef |= TD_TRAN;
+  sprintf(keyword, "TIDE_CONSTITUENTS_VEL");
+  if (prm_read_char(fp, keyword, params->tide_con_file)) 
+    params->tidef |= TD_VEL;
   for (n = 0; n < params->nobc; n++) {
     if(params->open[n]->bcond_ele & TIDALH) {
       prm_set_errfn(hd_quit);
@@ -2031,6 +2071,10 @@ parameters_t *auto_params(FILE * fp, int autof)
   if (!(prm_read_char(fp, keyword, params->parameterheader)))
     strcpy(params->parameterheader, "Auto grid");
   strcpy(parameterheader, params->parameterheader);
+  sprintf(keyword, "REFERENCE");
+  prm_read_char(fp, keyword, params->reference);
+  sprintf(keyword, "TECHNOLOGY_READINESS_LEVEL");
+  prm_read_char(fp, keyword, params->trl);
 
   /* Mixing scheme (optional) */
   sprintf(keyword, "MIXING_SCHEME");
@@ -2375,6 +2419,7 @@ parameters_t *auto_params(FILE * fp, int autof)
 
   /* Diagnistic numbers (optional) */
   params->atr += numbers_init(params);
+  params->atr += import_init(params, fp);
 
   params->atr += read_dhw(params, fp);
 
@@ -2543,6 +2588,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 	params->roammode = A_ROAM_R3;
       else if (strcmp(buf, "ROAMv4") == 0)
 	params->roammode = A_ROAM_R4;
+      else if (strcmp(buf, "ROAMv5") == 0)
+	params->roammode = A_ROAM_R5;
       else if (strcmp(buf, "6") == 0 || strcmp(buf, "RECOMv1") == 0)
 	params->roammode = A_RECOM_R1;
       else if (strcmp(buf, "7") == 0 || strcmp(buf, "RECOMv2") == 0)
@@ -2559,6 +2606,8 @@ parameters_t *auto_params(FILE * fp, int autof)
       auto_params_roam_pre3(fp, params);
     else if (params->roammode == A_ROAM_R4)
       auto_params_roam_pre3(fp, params);
+    else if (params->roammode == A_ROAM_R5)
+      auto_params_roam_pre4(fp, params);
     else
       auto_params_roam_pre1(fp, params);
   }
@@ -2953,6 +3002,12 @@ parameters_t *auto_params(FILE * fp, int autof)
 	prm_read_char(fp, keyword, params->nodal_dir);
 	sprintf(keyword, "TIDE_CONSTITUENTS");
 	prm_read_char(fp, keyword, params->tide_con_file);
+	sprintf(keyword, "TIDE_CONSTITUENTS_TRAN");
+	if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	  params->tidef |= TD_TRAN;
+	sprintf(keyword, "TIDE_CONSTITUENTS_VEL");
+	if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	  params->tidef |= TD_VEL;
       }
     }
     return (params);
@@ -3276,6 +3331,12 @@ parameters_t *auto_params(FILE * fp, int autof)
       prm_read_char(fp, keyword, params->nodal_dir);
       sprintf(keyword, "TIDE_CONSTITUENTS");
       prm_read_char(fp, keyword, params->tide_con_file);
+      sprintf(keyword, "TIDE_CONSTITUENTS_TRAN");
+      if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	params->tidef |= TD_TRAN;
+      sprintf(keyword, "TIDE_CONSTITUENTS_VEL");
+      if (prm_read_char(fp, keyword, params->tide_con_file)) 
+	params->tidef |= TD_VEL;
       break;
     }
   }
@@ -3632,6 +3693,8 @@ parameters_t *auto_params(FILE * fp, int autof)
       auto_params_roam_post5(fp, params);
     if (params->roammode == A_ROAM_R4)   /* A_ROAM_R4 with TPXO tide */
       auto_params_roam_post6(fp, params);
+    if (params->roammode == A_ROAM_R5)   /* A_ROAM_R5 with TPXO tide and dual relaxation */
+      auto_params_roam_post7(fp, params);
     if (params->roammode == A_RECOM_R1)   /* RECOM */
       auto_params_recom_post1(fp, params);
     if (params->roammode == A_RECOM_R2)   /* RECOM + ROBUST */
@@ -4728,13 +4791,17 @@ int numbers_init(parameters_t *params      /* Input parameter data   */
 	params->numbers |= EKPUMP;
 	params->ntrS+=2;
       }
+      if (contains_token(buf, "DENSITY") != NULL) {
+	params->numbers |= DENSITY;
+	ntr++;
+      }
       if (contains_token(buf, "ALL_NUMBERS") != NULL) {
 	params->numbers |= (BRUNT|INT_WAVE|RICHARD_GR|RICHARD_FL|REYNOLDS|
 			    FROUDE|SOUND|ROSSBY_IN|ROSSBY_EX|SHEAR_V|
 			    BUOY_PROD|SHEAR_PROD|SPEED_3D|SPEED_2D|
 			    OBC_PHASE|SPEED_SQ|SIGMA_T|ENERGY|WET_CELLS|
-			    SLOPE|SURF_LAYER|BOTSTRESS|UNIT|EKPUMP);
-	ntr+=17;
+			    SLOPE|SURF_LAYER|BOTSTRESS|UNIT|EKPUMP|DENSITY);
+	ntr+=18;
 	params->ntrS += 15;
       }
     }
@@ -4749,49 +4816,107 @@ int numbers_init(parameters_t *params      /* Input parameter data   */
 
 
 /*-------------------------------------------------------------------*/
+/* Reads automated 2D or 3D file import                              */
+/*-------------------------------------------------------------------*/
+int import_init(parameters_t *params, FILE *fp)
+{
+  char buf[MAXSTRLEN], keyword[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int n;
+
+  sprintf(keyword, "IMPORT2D");
+  if (prm_read_char(fp, keyword, buf)) {
+    n = parseline(buf, fields, MAXNUMARGS);
+    strcpy(params->imp2dn, fields[0]);
+    strcpy(params->imp2du, fields[1]);
+    strcpy(params->imp2df, fields[2]);
+    if (n > 3) {
+      sprintf(params->imp2dt, "%s%s", fields[3], fields[4]);
+    }
+    params->ntrS += 1;
+  }
+  sprintf(keyword, "IMPORT3D");
+  if (prm_read_char(fp, keyword, buf)) {
+    n = parseline(buf, fields, MAXNUMARGS);
+    strcpy(params->imp3dn, fields[0]);
+    strcpy(params->imp3du, fields[1]);
+    strcpy(params->imp3df, fields[2]);
+    if (n > 3) {
+      sprintf(params->imp3dt, "%s%s", fields[3], fields[4]);
+    }
+    return(1);
+  }
+  return(0);
+}
+
+/* END import_init()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Initializes the degree heating diagnostic                         */
 /*-------------------------------------------------------------------*/
 int read_dhw(parameters_t *params, FILE *fp)
 {
   char buf[MAXSTRLEN], keyword[MAXSTRLEN];
   char *fields[MAXSTRLEN * MAXNUMARGS];
-  int n, ret;
+  int n, m, ret = 0;
 
-  sprintf(keyword, "DHW");
+  if (prm_read_int(fp, "NDHW", &params->ndhw)) {
+    
+    params->dhw = (char **)malloc(params->ndhw * sizeof(char *));
+    params->dhdf = (char **)malloc(params->ndhw * sizeof(char *));
+    params->dhwt = (char **)malloc(params->ndhw * sizeof(char *));
+    params->dhwf = i_alloc_1d(params->ndhw);
+    params->dhw_dt = d_alloc_1d(params->ndhw);
+    params->dhwh = d_alloc_1d(params->ndhw);
 
-  if (prm_read_char(fp, keyword, buf)) {
-    n = parseline(buf, fields, MAXNUMARGS);
-    if (n == 1) {
-      strcpy(params->dhw, fields[0]);
-      ret = 3;
-      params->dhwf = DHW_RT;
-    }
-    if (n >= 2) {
-      strcpy(params->dhw, fields[0]);
-      strcpy(params->dhdf, fields[1]);
-      sprintf(keyword, "DHW_DT");
-      if (prm_read_char(fp, keyword, buf))
-	tm_scale_to_secs(buf, &params->dhw_dt);
-      else
-	params->dhw_dt = 86400.0;
-      params->dhwf = DHW_NOAA;
-      if (n == 3) {
-	if (strcmp(fields[2], "mean") == 0 || strcmp(fields[2], "MEAN") == 0) 
-	  params->dhwf |= DHW_MEAN;
-	else {
-	  params->dhwf |= DHW_SNAP;
-	  params->dhwh = atof(fields[2]);
+    for (m = 0; m < params->ndhw; m++) {
+      params->dhw[m] = (char *)malloc(sizeof(char)*MAXSTRLEN);
+      params->dhdf[m] = (char *)malloc(sizeof(char)*MAXSTRLEN);
+      params->dhwt[m] = (char *)malloc(sizeof(char)*MAXSTRLEN);
+      params->dhwf[m] = 0;
+      sprintf(params->dhw[m], "%c", '\0');
+      sprintf(params->dhwt[m], "%c", '\0');
+      
+      sprintf(keyword, "DHW%d", m);
+      if (prm_read_char(fp, keyword, buf)) {
+	sprintf(keyword, "DHW%d.text", m);
+	prm_read_char(fp, keyword, params->dhwt[m]);
+	n = parseline(buf, fields, MAXNUMARGS);
+	if (n == 1) {
+	  strcpy(params->dhw[m], fields[0]);
+	  ret += 3;
+	  params->dhwf[m] = DHW_RT;
 	}
-      } else
-	params->dhwf |= DHW_INT;
-      ret = 3;
+	if (n >= 2) {
+	  strcpy(params->dhw[m], fields[0]);
+	  strcpy(params->dhdf[m], fields[1]);
+	  sprintf(keyword, "DHW_DT%d", m);
+	  if (prm_read_char(fp, keyword, buf))
+	    tm_scale_to_secs(buf, &params->dhw_dt[m]);
+	  else
+	    params->dhw_dt[m] = 86400.0;
+	  params->dhwf[m] = DHW_NOAA;
+	  if (n == 3) {
+	    if (strcmp(fields[2], "mean") == 0 || strcmp(fields[2], "MEAN") == 0) 
+	      params->dhwf[m] |= DHW_MEAN;
+	    else {
+	      params->dhwf[m] |= DHW_SNAP;
+	      params->dhwh[m] = atof(fields[2]);
+	    }
+	  } else
+	    params->dhwf[m] |= DHW_INT;
+	  ret += 3;
+	}
+      }
     }
     return(ret);
   }
   return(0);
 }
 
-/* END init_dhw()                                                    */
+/* END read_dhw()                                                    */
 /*-------------------------------------------------------------------*/
 
 
@@ -5079,6 +5204,16 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
   fprintf(op, "PARAMETERHEADER      %s\n", params->parameterheader);
   fprintf(op, "DESCRIPTION          %s\n", params->grid_desc);
   fprintf(op, "NAME                 %s\n", params->grid_name);
+  if (strlen(params->reference))
+    fprintf(op, "REFERENCE            %s\n", params->reference);
+  if (strlen(params->trl))
+    fprintf(op, "TECHNOLOGY_READINESS_LEVEL %s", params->trl);
+  if (params->runno > 0)
+    fprintf(op, "ID_NUMBER            %5.2f\n", params->runno);
+  if (strlen(params->runcode))
+    fprintf(op, "ID_CODE              %s\n", params->runcode);
+  if (strlen(params->rev))
+  fprintf(op, "REVISION             %s\n", params->rev);
   if (strlen(params->projection))
     fprintf(op, "PROJECTION           %s\n", params->projection);
   fprintf(op, "TIMEUNIT             %s\n", params->timeunit);
@@ -5325,7 +5460,9 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
   fprintf(op, "\n# Tracers\n");
   ntr = params->ntr;
   if (params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
-    ntr = 2; if (strlen(params->dhw)) ntr += 3;
+    ntr = 2; 
+    /*if (strlen(params->dhw)) ntr += 3;*/
+    if (params->ndhw) ntr += 3;
   }
   fprintf(op, "NTRACERS             %d\n\n", ntr);
   tn = 0;
@@ -5520,9 +5657,9 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
 
   fprintf(op, "# Open boundaries\n");
   fprintf(op, "NBOUNDARIES           %d\n\n", params->nobc);
-  if (strlen(params->orthoweights))
-    fprintf(op, "TIDE_CSR_CON_DIR %s\n", params->nodal_dir);
   if (strlen(params->nodal_dir))
+    fprintf(op, "TIDE_CSR_CON_DIR %s\n", params->nodal_dir);
+  if (strlen(params->orthoweights))
     fprintf(op, "TIDE_CSR_ORTHOWEIGHTS %s\n\n", params->orthoweights);
   if (strlen(params->tide_con_file))
     fprintf(op, "TIDE_CONSTITUENTS %s\n\n", params->tide_con_file);
@@ -5624,6 +5761,10 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
       fprintf(op, "BOUNDARY%1.1d.RELAX_ZONE_NOR %d\n", n, open->relax_zone_nor);
     if (open->relax_zone_tan)
       fprintf(op, "BOUNDARY%1.1d.RELAX_ZONE_TAN %d\n", n, open->relax_zone_tan);
+    if (strlen(open->scale_e))
+      fprintf(op, "BOUNDARY%1.1d.SCALE_ETA      %s\n", n, open->scale_e);
+    if (strlen(open->tide_con))
+      fprintf(op, "BOUNDARY%1.1d.T_CONSTITUENTS  %s\n", n, open->tide_con);
     if (open->stagger & INFACE)
       fprintf(op, "BOUNDARY%1.1d.STAGGER       INFACE\n", n);
     if (open->bathycon)
@@ -6524,9 +6665,12 @@ void read_swr(parameters_t *params, FILE *fp, int mode)
   sprintf(keyword, "SWR_BOT_ABSORB");
   if (prm_read_char(fp, keyword, params->swr_babs))
     params->ntrS++;
+
   /* Check for swr partitioning; default = none                      */
   sprintf(keyword, "SWR_ATTENUATION");
   if (prm_read_char(fp, keyword, params->swr_attn)) {
+    params->ntrS+=1;
+    params->swr_type |= (SWR_2D|SWR_ATTN);
     /* Check for 2 layer swr attenuation                             */
     sprintf(keyword, "SWR_ATTENUATION_DEEP");
     if (prm_read_char(fp, keyword, params->swr_attn1)) {
@@ -6536,37 +6680,34 @@ void read_swr(parameters_t *params, FILE *fp, int mode)
 	hd_quit_and_dump
 	  ("params_read() : Split swr attenuation requires SWR_FRACTION set.\n");
       }
-      params->swr_type = (SWR_2D|SWR_SPLIT);
-      params->ntrS+=3;
-    } else {
-      /* Check the transmission coefficient : default = 1            */
-      sprintf(keyword, "SWR_TRANSMISSION");
-      if (!(prm_read_char(fp, keyword, params->swr_tran))) {
-	hd_warn("params_read() : SWR_TRANSMISSION set to 1.0.\n");
-	strcpy(params->swr_tran, "1.0");
-      }
-      params->swr_type = SWR_2D;
+      params->swr_type |= SWR_SPLIT;
       params->ntrS+=2;
+    } else {
+      /* Check the transmission coefficient                          */
+      sprintf(keyword, "SWR_TRANSMISSION");
+      if (prm_read_char(fp, keyword, params->swr_tran))
+	params->swr_type |= SWR_TRAN;
+      else
+	strcpy(params->swr_tran, "1.0");
+      params->ntrS+=1;
     }
   }
   sprintf(keyword, "SWR_ATTENUATION3D");
   if (prm_read_char(fp, keyword, params->swr_attn)) {
     /* Check the transmission coefficient : default = 1            */
     sprintf(keyword, "SWR_TRANSMISSION");
-    if (!(prm_read_char(fp, keyword, params->swr_tran))) {
-      hd_warn("params_read() : SWR_TRANSMISSION set to 1.0.\n");
+    if (prm_read_char(fp, keyword, params->swr_tran))
+      params->swr_type |= SWR_TRAN;
+    else
       strcpy(params->swr_tran, "1.0");
-    }
     params->ntrS+=1;
     if (mode)
       params->atr += 1;
     else
       params->ntr += 1;
-    params->swr_type = SWR_3D;
+    params->swr_type |= (SWR_3D|SWR_ATTN);
   }
 
-  if (strlen(params->swr_attn) && !strlen(params->swr_tran))
-    strcpy(params->swr_tran, "1.0");
   sprintf(keyword, "WATER_TYPE");
   if (prm_read_char(fp, keyword, buf)) {
     if (strcmp(buf, "TYPE_I") == 0)
@@ -6583,19 +6724,39 @@ void read_swr(parameters_t *params, FILE *fp, int mode)
   if (params->water_type != NONE) {
     sprintf(params->swr_attn, "%f", swr_type[0][params->water_type]);
     sprintf(params->swr_tran, "%f", swr_type[1][params->water_type]);
-    params->swr_type = SWR_2D;
+    params->swr_type = (SWR_2D|SWR_ATTN|SWR_TRAN);
     params->ntrS+=2;
+  }
+
+  /* SWR parameter estimation                                        */
+  sprintf(keyword, "SWR_REGIONS");
+  if (prm_read_char(fp, keyword, params->swr_regions)) {
+    sprintf(keyword, "SWR_DT");
+    prm_get_time_in_secs(fp, keyword, &params->swreg_dt);
+    prm_read_char(fp, "SWR_DATA", params->swr_data);
+    params->ntrS+=4;
+    if (!(params->swr_type & SWR_ATTN)) {
+      strcpy(params->swr_attn, "0.0");
+      params->swr_type |= SWR_2D;
+      params->ntrS+=1;
+    }
+    if (!(params->swr_type & SWR_TRAN)) {
+      if (prm_read_char(fp, "SWR_TRANSMISSION", params->swr_tran))
+	params->swr_type |= SWR_TRAN;
+      else
+	strcpy(params->swr_tran, "0.0");
+      if (!(params->swr_type & SWR_SPLIT)) params->ntrS+=1;
+    }
+  }
+
+  if (params->swr_type & SWR_ATTN && !(params->swr_type & SWR_TRAN) &&
+      !(params->swr_type & SWR_SPLIT)) {
+    strcpy(params->swr_tran, "1.0");
+    params->ntrS++;
   }
   if (strlen(params->swr_attn) && !strlen(params->swr_babs)) {
     strcpy(params->swr_babs, "1.0");
     params->ntrS++;
-  }
-  sprintf(keyword, "SWR_REGIONS");
-  if (prm_read_char(fp, keyword, params->swr_regions)) {
-    sprintf(keyword, "SWREG_DT");
-    prm_get_time_in_secs(fp, keyword, &params->swreg_dt);
-    prm_read_char(fp, "SWR_DATA", params->swr_data);
-    params->ntrS+=4;
   }
 }
 
@@ -7200,9 +7361,9 @@ void create_ghrsst_list(parameters_t *params)
       if (is_mnc == 1) {
 	if (intype == 1) {    /* Assume it is a GHRSST file          */
 	  if (n == nfiles-1)
-	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error)", fields[n]);
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsst_error=analysis_error)", fields[n]);
 	  else
-	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsste=analysis_error) ", fields[n]);
+	    sprintf(fname, "%s(ghrsst=analysed_sst)(ghrsst_error=analysis_error) ", fields[n]);
 	  if ((ap = fopen(path, "r")) == NULL)
 	    hd_warn("Can't open GHRSST file '%s'\n", path);
 	  else {
@@ -7517,6 +7678,7 @@ void read_means(parameters_t *params, FILE *fp, int mode)
   char keyword[MAXSTRLEN];
   char buf[MAXSTRLEN];
   char trname[MAXSTRLEN];
+  char meanbuf[MAXSTRLEN];
 
   prm_set_errfn(hd_silent_warn);
   prm_read_int(fp, "NTRACERS", &ntr);
@@ -7525,32 +7687,57 @@ void read_means(parameters_t *params, FILE *fp, int mode)
   params->means = 0;
   sprintf(params->means_dt, "%c", '\0');
   if (prm_read_char(fp, keyword, buf)) {
+    strcpy(meanbuf, buf);
     if (contains_token(buf, "NONE") != NULL)
       params->means |= NONE;
-    if (contains_token(buf, "VEL3D") != NULL)
+    if (contains_token(buf, "VEL3D") != NULL) {
       params->means |= VEL3D;
-    if (contains_token(buf, "VEL2D") != NULL)
+      strip(meanbuf, "VEL3D");
+    }
+    if (contains_token(buf, "VEL2D") != NULL) {
       params->means |= VEL2D;
-    if (contains_token(buf, "FLUX") != NULL)
+      strip(meanbuf, "VEL2D");
+    }
+    if (contains_token(buf, "FLUX") != NULL) {
       params->means |= FLUX;
-    if (contains_token(buf, "TENDENCY") != NULL)
+      strip(meanbuf, "FLUX");
+    }
+    if (contains_token(buf, "TENDENCY") != NULL) {
       params->means |= TENDENCY;
-    if (contains_token(buf, "WIND") != NULL)
+      strip(meanbuf, "TENDENCY");
+    }
+    if (contains_token(buf, "WIND") != NULL) {
       params->means |= WIND;
-    if (contains_token(buf, "ETA") != NULL)
+      strip(meanbuf, "WIND");
+    }
+    if (contains_token(buf, "ETA") != NULL) {
       params->means |= ETA_M;
-    if (contains_token(buf, "KZ_M") != NULL)
+      strip(meanbuf, "ETA");
+    }
+    if (contains_token(buf, "KZ_M") != NULL) {
       params->means |= KZ_M;
-    if (contains_token(buf, "TS") != NULL)
+      strip(meanbuf, "KZ_M");
+    }
+    if (contains_token(buf, "TS") != NULL) {
       params->means |= TS;
-    if (contains_token(buf, "TS|MMM") != NULL)
+      strip(meanbuf, "TS");
+    }
+    if (contains_token(buf, "TS|MMM") != NULL) {
       params->means |= (TS|MMM);
-    if (contains_token(buf, "TIDAL") != NULL)
+      strip(meanbuf, "TS|MMM");
+    }
+    if (contains_token(buf, "TIDAL") != NULL) {
       params->means |= TIDAL;
-    if (contains_token(buf, "TRANSPORT") != NULL)
+      strip(meanbuf, "TIDAL");
+    }
+    if (contains_token(buf, "TRANSPORT") != NULL) {
       params->means |= TRANSPORT;
-    if (contains_token(buf, "VOLFLUX") != NULL)
+      strip(meanbuf, "TRANSPORT");
+    }
+    if (contains_token(buf, "VOLFLUX") != NULL) {
       params->means |= VOLFLUX;
+      strip(meanbuf, "VOLFLUX");
+    }
     for (n = 0; n < ntr; n++) {
       sprintf(keyword, "TRACER%1.1d.name", n);
       if (prm_read_char(fp, keyword, trname) > 0) {
@@ -7570,11 +7757,13 @@ void read_means(parameters_t *params, FILE *fp, int mode)
     /* Generic (auto) tracers */
     if (contains_token(buf, "TRA3D") != NULL) {
       params->means |= MTRA3D;
-      strcpy(params->means_tra, buf);
+      strip(meanbuf, "TRA3D");
+      strcpy(params->means_tra, meanbuf);
     }
     if (contains_token(buf, "TRA2D") != NULL) {
       params->means |= MTRA2D;
-      strcpy(params->means_tra, buf);
+      strip(meanbuf, "TRA2D");
+      strcpy(params->means_tra, meanbuf);
     }
 
     if (params->means & ETA_M)
@@ -8019,13 +8208,20 @@ void tracer_setup(parameters_t *params, FILE *fp)
       params->rsalt = 0;
       ntr++;
     }
-  if (params->dhwf & DHW_NOAA) {
-    if (tracer_find_index("dhw", params->ntr, params->trinfo_3d) >= 0)
-      ntr++;
-    if (tracer_find_index("dhd", params->ntr, params->trinfo_3d) >= 0)
-      ntr++;
-    if (tracer_find_index("dhwc", params->ntr, params->trinfo_3d) >= 0)
-      ntr++;
+  if (params->ndhw) {
+    for (m = 0; m < params->ndhw; m++) {
+      if (params->dhwf[m] & DHW_NOAA) {
+	sprintf(buf, "dhw%d", m);
+	if (tracer_find_index(buf, params->ntr, params->trinfo_3d) >= 0)
+	  ntr++;
+	sprintf(buf, "dhd%d", m);
+	if (tracer_find_index(buf, params->ntr, params->trinfo_3d) >= 0)
+	  ntr++;
+	sprintf(buf, "dhwc%d", m);
+	if (tracer_find_index("dhwc", params->ntr, params->trinfo_3d) >= 0)
+	  ntr++;
+      }
+    }
   }
 
   /* Re-order tracers defined in the input parameter file to account */
@@ -8138,6 +8334,218 @@ double intpf(double a, double b, double xs, double xe, double x)
 }
 
 /*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Constructs a run code from previous codes in output files, and    */
+/* run identifiers in the parameter file.                            */
+/* The code is of the form:                                          */
+/* NAME|Ggrd_id|Hhyd_id|Ssed_id|Bbgc_id                              */
+/* NAME is a text string, grd_id, hyd_id, sed_id and bgc_id are      */
+/* floating point, e.g.                                              */
+/* GBR|G2.3|H5.2|S1.0|B0.0                                           */
+/* The individual ids can be in any order, but must be separated by  */
+/* '|'.                                                              */
+/* An id of 0.0 indicates that model component has not been invoked. */
+/*-------------------------------------------------------------------*/
+void create_code(parameters_t *params)
+{
+  char name[MAXSTRLEN], buf[MAXSTRLEN];
+  double grd_id, hyd_id, sed_id, bgc_id;
+  FILE *fp;
+  long t;
+  int sedf = 0;
+
+  /* Define if sediments is invoked stand alone or in ecology        */
+#if defined(HAVE_SEDIMENT_MODULE)
+  if (params->do_sed) sedf = SEDIM;
+#endif 
+#if defined(HAVE_ECOLOGY_MODULE)
+  sedf = 0;
+  if (params->do_eco) sedf = ECOLOGY; 
+  if (params->do_sed) {
+    if (params->do_eco) 
+      sedf = ECOLOGY;
+    else
+      sedf = SEDIM;
+  }
+#endif 
+
+  /* Open the parameter file                                         */
+  fp = fopen(params->prmname, "r+");
+  strcpy(name, params->grid_name);
+
+  /* Grid generation from AUTO with -a or -r. grd_id always set to   */
+  /* 1.0 unless specified otherwise.                                 */
+  if (params->runmode & AUTO) {
+    strcpy(name, params->grid_name);
+    if (params->runno == 0.0)
+      grd_id = 1.0;
+    else
+      grd_id = params->runno;
+  }
+  /* netCDF INPUT file generated by -g. grd_id inherits the current  */
+  /* ID_NUMBER.  If no number is specified, set to 1.0.               */
+  if (params->runmode & DUMP) {
+    strcpy(name, params->grid_name);
+    if (params->runno == 0.0)
+      grd_id = 1.0;
+    else
+      grd_id = params->runno;
+  }
+  /* Run using -p. Read the GRD ID from input file and set the HYD   */
+  /* ID to the ID_NUMBER.                                            */
+  if (params->runmode & (MANUAL | RE_ROAM)) {
+    /* Read the NAME and GRD ID from INPUT_FILE                      */
+    decode_id(params, params->idumpname, name, 
+	      &grd_id, &hyd_id, &sed_id, &bgc_id);
+
+    /* Set the HYD ID                                                */
+    if (params->runno == 0.0)
+      hyd_id = 1.0;
+    else
+      hyd_id = params->runno;
+  }
+  /* Run using -t. Read GRD and hyd_id from the transport file, and  */
+  /* set the sed_id or bgc_id to the ID_NUMBER.                      */
+  if (params->runmode & TRANS) {
+    /* Read the NAME, GRD ID and HYD ID from INPUT_FILE              */
+    decode_id(params, params->trans_data, name, 
+	      &grd_id, &hyd_id, &sed_id, &bgc_id);
+    /* If the model component is SED, then record the runno in the   */
+    /* parameter file. This is used downstream to include SED IDs    */
+    /* in BGC runs.                                                  */
+    if (sedf == SEDIM)
+      sed_id = params->runno;
+    /* If the model component is BGC, then read the sediment ID from */
+    /* the parameter file.                                           */
+    if (sedf == ECOLOGY) {
+      prm_read_char(fp, "ID_CODE", buf);
+      sed_id = get_idcode(buf, "S");
+      if (sed_id == 0.0)
+                hd_warn("Can't find sediment transport ID in file %s\n", params->prmname);
+      bgc_id = params->runno;
+    } 
+  }
+
+  /* Make the id code                                                */
+  sprintf(params->runcode, "%s|G%3.2f|H%3.2f|S%3.2f|B%3.2f", name,
+	  grd_id, hyd_id, sed_id, bgc_id);
+
+  if (sedf == SEDIM) {
+    if (prm_skip_to_start_of_key(fp, "ID_CODE")) {
+      fprintf(fp, "ID_CODE %s\n", params->runcode);
+    } else {
+      fseek(fp, 0, SEEK_END);
+      fprintf(fp, "\nID_CODE %s\n", params->runcode);
+    }
+  }
+  /*
+  time(&t);
+  if (prm_skip_to_start_of_key(fp, "Last_run")) {
+    fprintf(fp, "Last_run %s\n", ctime(&t));
+  } else {
+    fseek(fp, 0, SEEK_END);
+    fprintf(fp, "Last_run %s\n", ctime(&t));
+  }
+  */
+  fclose(fp);
+}
+
+/* END create_code()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Decodes a runcode from netCDF output into its constituent IDs.    */
+/*-------------------------------------------------------------------*/
+void decode_id(parameters_t *params,
+	       char *ifile,
+	       char *name,
+	       double *grd_id,
+	       double *hyd_id,
+	       double *sed_id,
+	       double *bgc_id
+	       )
+{
+  int i, n, fid, ncerr;
+  char rcode[MAXSTRLEN], buf[MAXSTRLEN], fname[MAXSTRLEN];
+  char *tok;
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+
+  n = parseline(ifile, fields, MAXNUMARGS);
+  if (n == 1)
+    strcpy(fname, fields[0]);
+  if (endswith(fname, ".mnc")) {
+    FILE *fp;
+    fp = fopen(fname, "r");
+    prm_read_char(fp, "file0.filename", buf);
+    strcpy(fname, buf);
+    fclose(fp);
+  }
+  /* Strip out any variable substitution                             */
+  if (!(endswith(fname, ".nc"))) {
+    strcpy(buf, fname);
+    tok = strtok(buf, ".");
+    sprintf(fname, "%s.nc", buf);
+  }
+
+  for (i = 0; i < MAXSTRLEN; i++) {
+    rcode[i] = 0;
+  }
+
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    hd_warn("Can't find input file %s\n", fname);
+  }
+  nc_get_att_text(fid, NC_GLOBAL, "Run_code", rcode);
+  strcpy(buf, rcode);
+  tok = strtok(buf, "|");
+  if (tok != NULL) strcpy(name, tok);
+  *grd_id = get_idcode(rcode, "G");
+  *hyd_id = get_idcode(rcode, "H");
+  *sed_id = get_idcode(rcode, "S");
+  *bgc_id = get_idcode(rcode, "B");
+  nc_close(fid);
+}
+
+/* END decode_id()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Gets an id from a run code                                        */
+/*-------------------------------------------------------------------*/
+double get_idcode(char *code, char *id)
+{
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
+  char *tok;
+  int i, nn, n = strlen(buf);
+  int j = 0;
+
+  sprintf(key, "%c", '\0');
+  strcpy(buf, code);
+  tok = strtok(buf, "|");
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "G") == 0) strcpy(key, tok);
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "H") == 0) strcpy(key, tok);
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "S") == 0) strcpy(key, tok);
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "B") == 0) strcpy(key, tok);
+  if (strlen(key)) {
+    for (n = 0; n < strlen(key) - 1; n++)
+      buf[n] = key[n+1];
+    buf[n] = '\0';
+    return(atof(buf));
+  } else {
+    return(0.0);
+  }
+}
+
+/* END get_idcode()                                                  */
+/*-------------------------------------------------------------------*/
+
 char *otime(double dt, char *tag)
 {
   if (dt >= 86400)

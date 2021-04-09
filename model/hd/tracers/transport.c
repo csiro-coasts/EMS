@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 5994 2018-10-17 04:55:14Z her127 $
+ *  $Id: transport.c 6720 2021-03-29 00:59:30Z her127 $
  *
  */
 
@@ -396,7 +396,8 @@ void transport_step(master_t *master, geometry_t **window,
 
     /*---------------------------------------------------------------*/
     /* Increment the mean counter if required                        */
-    reset_means(window[n], windat[n], wincon[n], RESET);
+    /* Reset occurs @ TS at the end of tracer_step_3d()              */
+    /*reset_means(window[n], windat[n], wincon[n], RESET);*/
 
     /*-----------------------------------------------------------------*/
     /* Get the initial total mass of tracer using cells to process and */

@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tide.c 6453 2020-02-18 23:40:13Z her127 $
+ *  $Id: tide.c 6724 2021-03-30 00:32:52Z her127 $
  *
  */
 
@@ -465,7 +465,7 @@ void custom_tide_init(master_t *master,
 	    tc->pha[vs][i] = zoneshift(name, tc->pha[vs][i], (int)tzi/3600, 0); 
 	    tc->map[cc] = vs;
 	    set_tmaps_3d(window[n], bcond, c, vs, tc->map, bs, be, bec);
-	    /* Velocoty amplitudes from file are transports; divide  */
+	    /* Velocity amplitudes from file are transports; divide  */
 	    /* by model depth to get velocity.                       */
 	    if (botzf) {
 	      int c1 = window[n]->e2c[c][0];
@@ -516,11 +516,8 @@ void custom_tide_init(master_t *master,
 int check_tidefile_type(char *name, char *fname, int mode)
 {
   char buf[MAXSTRLEN];
-  char buf1[MAXSTRLEN];
-  char buf2[MAXSTRLEN];
   char units[MAXSTRLEN];
-  char units1[MAXSTRLEN];
-  int fid;
+  int fid, vid;
 
   nc_open(fname, NC_NOWRITE, &fid);
 
@@ -531,10 +528,10 @@ int check_tidefile_type(char *name, char *fname, int mode)
     sprintf(buf, "%s_v",name);
   else
     sprintf(buf, "%s", name);
-  sprintf(units, "%c", '\0');
-  if (nc_get_att_text(fid, ncw_var_id(fid, buf), "units", units) >= 0) {
-    strcpy(buf1, units);
-    if (strcmp(buf1, "ms-1") == 0) {
+  vid = ncw_var_id(fid, buf);
+  if (vid > -1) {
+    ncw_get_att_text(fname, fid, vid, "units", units);
+    if (strcmp(units, "ms-1") == 0) {
       strcpy(name, buf);
       nc_close(fid);
       return(0);
@@ -546,13 +543,14 @@ int check_tidefile_type(char *name, char *fname, int mode)
     sprintf(buf, "%s_V",name);
   else
     sprintf(buf, "%s",name);
-  sprintf(buf1, "%c", '\0');
-  nc_get_att_text(fid, ncw_var_id(fid, buf), "units", units1);
-  strcpy(buf2, units1);
-  if (strcmp(buf2, "m2s-1") == 0) {
-    strcpy(name, buf);
-    nc_close(fid);
-    return(1);
+  vid = ncw_var_id(fid, buf);
+  if (vid > -1) {
+    ncw_get_att_text(fname, fid, vid, "units", units);
+    if (strcmp(units, "m2s-1") == 0) {
+      strcpy(name, buf);
+      nc_close(fid);
+      return(1);
+    }
   }
   nc_close(fid);
   return(-1);

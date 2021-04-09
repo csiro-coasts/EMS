@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: nitrification_denitrification_sed.c 6289 2019-08-12 02:39:20Z bai155 $
+ *  $Id: nitrification_denitrification_sed.c 6546 2020-05-06 06:58:13Z bai155 $
  *
  */
 
@@ -91,12 +91,12 @@ void nitrification_denitrification_sed_init(eprocess* p)
   ws->KO_Amm = try_parameter_value(e,"KO_Amm");
   if (isnan(ws->KO_Amm)){
       ws->KO_Amm = 10000.0;
-      eco_write_setup(e,"Anammox not implenented: add KO_Amm to parameter file to implement. \n");
+      eco_write_setup(e,"Anammox not implemented: add KO_Amm to parameter file to implement. \n");
   }
   ws->r_amm_t0 = try_parameter_value(e,"r_amm");
   if (isnan(ws->r_amm_t0)){
       ws->r_amm_t0 = 0.0;
-      eco_write_setup(e,"Anammox not implenented: add KO_Amm to parameter file to implement. \n");
+      eco_write_setup(e,"Anammox not implemented: add KO_Amm to parameter file to implement. \n");
   }
 
 

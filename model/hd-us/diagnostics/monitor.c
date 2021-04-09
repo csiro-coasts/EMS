@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 6454 2020-02-18 23:40:39Z her127 $
+ *  $Id: monitor.c 6726 2021-03-30 00:33:54Z her127 $
  *
  */
 
@@ -213,12 +213,14 @@ void monitor(master_t *master,     /* Master data                    */
 	  }
 	}
 #endif
-	if (mode == 3)
+	if (mode == 3) {
 	  fprintf(dfp, "** CRASHED **\n");
-	else {
-	  if (master->t == schedule->stop_time)
+	  history_log(master, HST_NOK);
+	} else {
+	  if (master->t == schedule->stop_time) {
 	    fprintf(dfp, "Run successful.\n");
-	  else
+	    history_log(master, HST_OK);
+	  } else
 	    fprintf(dfp, "Running...\n");
 	}
         n = fclose(dfp);
@@ -394,7 +396,8 @@ void debug_c(geometry_t *window, int var, int mode)
       fflush(wincon->dbf);
       return;
     }
-    fprintf(wincon->dbf, "Post-diffusion U1AV = %f\n", windat->nu1av[e1s]);
+    fprintf(wincon->dbf, "Post-diffusion U1AV = %f\n", windat->nu1av[e1s] + 
+	    wincon->tend2d[T_HDF][e1s]);
   }
   if (var == D_UA && mode == D_POST) {
     if (wincon->dbgf & D_STEP) {
@@ -402,10 +405,10 @@ void debug_c(geometry_t *window, int var, int mode)
       fflush(wincon->dbf);
       return;
     }
-    fprintf(wincon->dbf, "Barotropic pressure U1AV = %f\n", wincon->b1);
-    fprintf(wincon->dbf, "Coriolis U1AV = %f\n", wincon->b2);
-    fprintf(wincon->dbf, "Bottom friction U1AV = %f\n", wincon->b3);
-    fprintf(wincon->dbf, "Wind stress/baroclinic pressure U1AV = %f\n", wincon->u1inter[e1s]);
+    fprintf(wincon->dbf, "Barotropic pressure U1AV = %e\n", wincon->b1);
+    fprintf(wincon->dbf, "Coriolis U1AV = %e\n", wincon->b2);
+    fprintf(wincon->dbf, "Bottom friction U1AV = %e\n", wincon->b3);
+    fprintf(wincon->dbf, "Wind stress/baroclinic pressure U1AV = %e\n", wincon->u1inter[e1s]);
     fprintf(wincon->dbf, "U1AV + tendencies = %f\n", windat->nu1av[e1s]);
   }
   if (var == D_UA && mode == D_BDRY) {
@@ -422,10 +425,14 @@ void debug_c(geometry_t *window, int var, int mode)
       if (fabs(windat->nu1av[e]) > max) {
 	max = fabs(windat->nu1av[e]);
 	cm = window->e2ijk[e];
+	e1 = e;
       }
     }
-    fprintf(wincon->dbf, "Maximum |u1av| in window%d = %f @ (%d %d)\n\n",
-	    window->wn, max, window->s2i[cm], window->s2j[cm]);
+    for (ee = 1; ee <= window->npe[cm]; ee++) {
+      if (window->c2e[ee][cm] == e1) break;
+    }
+    fprintf(wincon->dbf, "Maximum |u1av| in window%d = %f @ (e=%d ee=%d c=%d cg=%d)\n\n",
+	    window->wn, max, e1, ee, window->s2i[cm], window->s2j[cm]);
     fflush(wincon->dbf);
   }
 
@@ -515,6 +522,113 @@ void debug_c(geometry_t *window, int var, int mode)
 }
 
 /* END debug_c()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* print debugging information for model crashes                     */
+/*-------------------------------------------------------------------*/
+void crash_c(geometry_t *window, int c, int e, char *text)
+{
+  FILE *fp;
+  window_t *windat = window->windat;    /* Window data               */
+  win_priv_t *wincon = window->wincon;  /* Window constants          */
+  int wn, es, cc, cs, cm, j;
+  int ee, e1, e1s;
+  int eed = 0;
+  double max;
+
+  if (c == 0) c = window->e2c[e][0];
+  cs = window->m2d[c];
+  cc = window->c2cc[c];
+  wn = window->wn;
+  if (e == 0) {
+    max = 0.0;
+    for (ee = 1; ee <= window->npe[cs]; ee++) {
+      e1 = window->c2e[ee][cs];
+      if (isnan(windat->u1av[e1]) || fabs(windat->u1av[e1]) > max) {
+	e = e1;
+	eed = ee;
+	max = fabs(windat->u1av[e1]);
+	if (isnan(windat->u1av[e1])) break;
+      }
+    }
+  }
+  es = window->m2de[e];
+
+  fp = fopen("crash.txt", "w");
+  fprintf(fp, "Crash diagnostics : %s instability\n\n", text);
+  fprintf(fp, "Cell location %d = (%d %d %d), time %f\n\n",
+	  c, window->s2i[c], window->s2j[c], window->s2k[c], windat->days);
+  fprintf(fp, "nstep = %d\n", windat->nstep);
+  fprintf(fp, "Window number = %d\n", wn);
+  fprintf(fp, "edges = %d\n", window->npe[cs]);
+  fprintf(fp, "cc = %d\n", cc);
+  fprintf(fp, "cs = %d\n", cs);
+  fprintf(fp, "cb = %d\n", window->bot_t[cc]);
+  fprintf(fp, "cg = %d\n", window->wsa[c]);
+  fprintf(fp, "Cell location = %f %f\n", window->cellx[cs], window->celly[cs]);
+  fprintf(fp, "Edge location = %f %f\n", window->u1x[es], window->u1y[es]);
+  if (eed)
+    fprintf(fp, "e = %d, eg = %d, ee = %d\n", e, window->wse[e], eed);
+  else
+    fprintf(fp, "e = %d, eg = %d\n", e, window->wse[e]);
+  for (j = 1; j <= window->npe[cs]; j++) {
+    e = window->c2e[j][c];
+    es = window->m2de[e];
+    fprintf(fp, "e = %d : e1s = %d, dir=%d\n", e, es, j);
+  }
+  for (j = 1; j <= window->npe[cs]; j++) {
+    fprintf(fp, "c2c[%d] = %d\n", j, window->c2c[j][c]);
+  }
+  fprintf(fp, "depth = %5.2f\n", window->botz[cs]);
+  for (cc = 1; cc <= wincon->vcs; cc++) {
+    c = wincon->s1[cc];
+    if (cs == window->m2d[c]) break;
+  }
+  if (c == 0)c = cs;
+  fprintf(fp,"\nc       k   eta    u1av   u1     temp  salt   dz    dzu1  gridz\n");
+  fprintf(fp,"%-7d %-3d %-5.3f  %-6.3f %-6.3f %5.2f %5.2f %5.2f %5.2f %5.2f\n",
+	  c, window->s2k[c], windat->eta[cs], windat->u1av[es], windat->u1[e], 
+	  windat->temp[c], windat->sal[c], wincon->dz[c], windat->dzu1[e], 
+	  window->gridz[c]);    
+  c = window->zm1[c];
+  if (c != window->zm1[c]) {
+    do {
+      fprintf(fp,"%-7d %-3d               %-6.3f %5.2f %5.2f %5.2f %5.2f %5.2f\n",
+	      c, window->s2k[c], windat->u1[e], windat->temp[c], 
+	      windat->sal[c], wincon->dz[c], windat->dzu1[e],
+	      window->gridz[c]);
+      c = window->zm1[c];
+    } while (c != window->zm1[c]);
+  }
+
+  fprintf(fp, "\n3D velocity tendencies\n");
+  fprintf(fp, "Advection tendency = %f\n", wincon->tend3d[T_ADV][e]);
+  fprintf(fp, "Horizontal diffusion tendency = %f\n", wincon->tend3d[T_HDF][e]);
+  fprintf(fp, "Vertical diffusion tendency = %f\n", wincon->tend3d[T_VDF][e]);
+  fprintf(fp, "Barotropic pressure tendency = %f\n", wincon->tend3d[T_BTP][e]);
+  fprintf(fp, "Baroclinic pressure tendency = %f\n", wincon->tend3d[T_BCP][e]);
+  if(wincon->waves & STOKES_DRIFT)
+    fprintf(fp, "Stokes tendency = %f\n", wincon->tend3d[T_STK][e]);
+
+  fprintf(fp, "\n2D velocity tendencies\n");
+  fprintf(fp, "Advection tendency = %f\n", wincon->tend2d[T_ADV][es]);
+  fprintf(fp, "Horizontal diffusion tendency = %f\n", wincon->tend2d[T_HDF][es]);
+  fprintf(fp, "Barotropic pressure tendency = %f\n", wincon->tend2d[T_BTP][es]);
+  fprintf(fp, "Bottom stress tendency = %f\n", wincon->tend2d[T_BOT][es]);
+  fprintf(fp, "3D contributions (wind, density) tendency = %f\n", wincon->u1inter[es]);
+  fprintf(fp, "Non-linear contributions = %f\n", wincon->tend2d[T_NLI][es]);
+
+  fprintf(fp, "\n2D velocity\n");
+  for (ee = 1; ee <= window->npe[cs]; ee++) {
+    e = window->c2e[ee][cs];
+    fprintf(fp, "%d %d %f\n",ee, e, windat->u1av[e]);
+  }
+  fclose(fp);
+}
+
+/* END crash_c()                                                     */
 /*-------------------------------------------------------------------*/
 
 
@@ -2357,8 +2471,8 @@ void calc_cfl(geometry_t *window,   /* Window geometry               */
 	  int e = window->c2e[j][c];
 	  int es = window->m2de[e];
 	  u = fabs(windat->u1[e]);
-	  /*windat->courn[c] = max(windat->courn[c], u * windat->dt / window->h2au1[es]);*/
-	  windat->courn[c] = u * windat->dt / window->h2au1[es];
+	  windat->courn[c] = max(windat->courn[c], u * windat->dt / window->h2au1[es]);
+	  /*windat->courn[c] = u * windat->dt / window->h2au1[es];*/
 	  u = (u) ? window->h2au1[es] / u : HUGE;
 	  windat->cour[c] = min(windat->cour[c], u);
 	  u = fabs(windat->u[window->e2c[e][0]] - 
@@ -2620,9 +2734,11 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
 	e = window->c2e[ee][c];
 	es = window->m2de[e];
 	d2 = window->edgearea[es];
+	if (wincon->diff_scale & NONE)  d2 = 1.0;
 	if (wincon->diff_scale & LINEAR) d2 = sqrt(d2);
 	if (wincon->diff_scale & CUBIC) d2 = d2 * sqrt(d2);
 	windat->u1vhc[c] += (d2 * wincon->u1vh[e]);
+	/*windat->u1vhc[c] += (d2 * wincon->u2kh[e]);*/
 	d1 += d2;
       }
       windat->u1vhc[c] /= d1;

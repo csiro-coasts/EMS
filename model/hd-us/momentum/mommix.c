@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommix.c 6400 2019-11-21 22:59:38Z her127 $
+ *  $Id: mommix.c 6739 2021-03-30 00:41:13Z her127 $
  *
  */
 
@@ -21,7 +21,7 @@
 #include "hd.h"
 #include "tracer.h"
 
-void scale_hdiff(geometry_t *window, double *AH, double AH0, double smag, int mode);
+void scale_hdiff(geometry_t *window, double *AH, double AH0, double smag, int mode, double *base, double *smg);
 void bihar_tend(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		double *div, double *rvor, double dt, double *u1vh, double *nu1,
 		int mode);
@@ -424,10 +424,26 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
     /* Copy Smagorinsky diffusion to horizontal diffusion. This is   */
     /* not subject to LEVEL1 alerts or sponge zones.                 */
     if (wincon->smagcode & U1_SAK) {
+      /*
       memcpy(wincon->u1kh, windat->sdc, window->szc * sizeof(double));
-      scale_hdiff(window, wincon->u1kh, wincon->bkue1, wincon->kue1, 3);
+      scale_hdiff(window, wincon->u1kh, wincon->bkue1, wincon->kue1, 3, 
+		  NULL, NULL);
+      */
       memcpy(wincon->u2kh, windat->sde, window->sze * sizeof(double));
-      scale_hdiff(window, wincon->u2kh, wincon->bkue1, wincon->kue1, 1);
+      scale_hdiff(window, wincon->u2kh, wincon->bkue1, wincon->kue1, 1, 
+		  wincon->basek, wincon->smagk);
+
+      for (cc = 1; cc <= window->n3_t; cc++) {
+	c = window->w3_t[cc];
+	cs = window->m2d[c];
+	wincon->u1kh[c] = 0.0;
+	for (j = 1; j <= window->npe[cs]; j++) {
+	  e = window->c2e[j][c];
+	  wincon->u1kh[c] += wincon->u2kh[e];
+	}
+	wincon->u1kh[c] /= (double)window->npe[cs];
+
+      }
     }
 
     /* Copy Smagorinsky diffusion to horizontal viscosity. This is   */
@@ -441,7 +457,8 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
       }
       */
       memcpy(wincon->u1vh, windat->sde, window->sze * sizeof(double));
-      scale_hdiff(window, wincon->u1vh, wincon->bsue1, wincon->sue1, 1);
+      scale_hdiff(window, wincon->u1vh, wincon->bsue1, wincon->sue1, 1, 
+		  wincon->basev, wincon->smagv);
     }
     /* Reset diffusion throughout the water column for active alerts */
     /* Alerts at 3d locations.                                       */
@@ -643,6 +660,8 @@ void hvisc_u1_3dus(geometry_t *window,  /* Window geometry           */
 /* from c1 to c2.                                                    */
 /* Note also the tangent velocity points to v1 here, whereas it      */
 /* points to v2 in Ringler et al, 2010, Fig3.                        */
+/* Note: the tendency is negative: see MPAS-O User Manual v6, Eq.    */
+/* 10.12.                                                            */
 /*-------------------------------------------------------------------*/
 void hvisc_u1_3dusb(geometry_t *window,  /* Window geometry          */
 		    window_t *windat,    /* Window data              */
@@ -727,6 +746,24 @@ void hvisc_u1_3dusb(geometry_t *window,  /* Window geometry          */
   }
 
   /*-----------------------------------------------------------------*/
+  /* Compute the visc_fact * Laplacian horizontal mixing tendency    */
+  if (wincon->visc_fact) {
+    for (ee = 1; ee <= window->v3_e1; ee++) {
+      e = window->w3_e1[ee];
+      es = window->m2de[e];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      v1 = window->e2v[e][0];
+      v2 = window->e2v[e][1];
+      d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] + 
+	(windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es];
+      if (!(window->eask[es] & W_SOBC))
+	tend[e] += wincon->visc_fact * windat->dt * wincon->u1vh[e] * d1 / 
+	  (0.125 * window->edgearea[es]);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Compute the horizontal mixing tendency                          */
   bihar_tend(window, windat, wincon, windat->div, windat->rvor, 
 	     windat->dt, wincon->u1vh, tend, 1);
@@ -776,6 +813,7 @@ void bihar_tend(geometry_t *window,  /* Window geometry              */
     vvec = window->w3_e2;
     memset(delsqu, 0, window->sze * sizeof(double));
     f = 1.0;
+    if (wincon->visc_fact) f *= (1.0 - wincon->visc_fact);
   } else {
     nee = window->n2_e1;
     ne = window->a2_e1;
@@ -787,6 +825,7 @@ void bihar_tend(geometry_t *window,  /* Window geometry              */
     vvec = window->w2_e2;
     memset(delsqu, 0, window->szeS * sizeof(double));
     f = (wincon->diff_scale & SCALE2D) ? (double)windat->iratio : 1.0;
+    if (wincon->visc_fact) f *= (1.0 - wincon->visc_fact);
   }
 
   /*-----------------------------------------------------------------*/
@@ -847,7 +886,6 @@ void bihar_tend(geometry_t *window,  /* Window geometry              */
       nu1[e] -= dt * f * u1vh[e] * d1;
   }
 }
-
 
 /* END bihar_tend()                                                  */
 /*-------------------------------------------------------------------*/
@@ -1180,6 +1218,7 @@ void hvisc_u1_2dus(geometry_t *window,  /* Window geometry           */
       (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es] ;
     tend[e] += windat->dt2d * AH[e] * f * d1;
   }
+  debug_c(window, D_UA, D_HDIFF);
 }
 
 /* END hvisc_u1_2dus()                                               */
@@ -1274,8 +1313,26 @@ void hvisc_u1_2dusb(geometry_t *window,  /* Window geometry          */
 	v2 = window->e2v[e][1];
 	d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] + 
 	  (windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es];
-	tend[e] += windat->dt2d * AH[e] * f * d1 / (0.125 * window->edgearea[es]);
+	  tend[e] += windat->dt2d * AH[e] * f * d1 / (0.125 * window->edgearea[es]);
       }
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Compute the visc_fact * Laplacian horizontal mixing tendency    */
+  if (wincon->visc_fact) {
+    for (ee = 1; ee <= window->v2_e1; ee++) {
+      e = window->w2_e1[ee];
+      es = window->m2de[e];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      v1 = window->e2v[e][0];
+      v2 = window->e2v[e][1];
+      d1 = (windat->div[c1] - windat->div[c2]) / window->h2au1[es] +
+	(windat->rvor[v2] - windat->rvor[v1]) / window->h1au1[es] ;
+      if (!(window->eask[es] & W_SOBC))
+	tend[e] += wincon->visc_fact * windat->dt2d * AH[e] * f * d1 / 
+	  (0.125 * window->edgearea[es]);
     }
   }
 
@@ -1284,6 +1341,7 @@ void hvisc_u1_2dusb(geometry_t *window,  /* Window geometry          */
   bihar_tend(window, windat, wincon, windat->div, windat->rvor, windat->dt2d, 
 	     AH, tend, 0);
 
+  debug_c(window, D_UA, D_HDIFF);
 }
 
 /* END hvisc_u1_2dusb()                                              */
@@ -1489,12 +1547,15 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
 		 double *AH,              /* Mixing coefficient      */
 		 double AH0,              /* Base mixing coefficient */
 		 double smag,             /* Smagorinsky coefficient */
-		 int mode                 /* 1 = edges, 3 = centres  */
+		 int mode,                /* 1 = edges, 3 = centres  */
+		 double *base,            /* Spatial base rate       */
+		 double *smg              /* Spatial Smag constant   */
 		 )
 {
   window_t *windat = window->windat;    /* Window data               */
   win_priv_t *wincon = window->wincon;  /* Window constants          */
   double *h1, hm;                       /* Cell size                 */
+  double A0;                            /* Base rate                 */
   int cc, c, c2;                        /* Counters, cell locations  */
   int nv;                               /* Stencil size              */
   int *vec;                             /* Cells to process          */
@@ -1510,6 +1571,12 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
 
   /* Assign pointers                                                 */
   scalef = wincon->diff_scale;
+  if (scalef & H_LEN)
+    etype = 0;
+  else if (scalef & E_LEN)
+    etype = 1;
+  else if (scalef & C_LEN)
+    etype = 2;
   if (mode == 1) {
     nv = window->n3_e1;
     vec = window->w3_e1;
@@ -1524,6 +1591,7 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
       } else if (etype == 1) {
 	hm = sqrt(wincon->edmean);
 	for (cc = 1; cc <= window->b2_e1; cc++) {
+	  c = window->w2_e1[cc];
 	  area[c] = sqrt(window->edgearea[c]);
 	}
 	h1 = area;
@@ -1560,20 +1628,24 @@ void scale_hdiff(geometry_t *window,      /* Window geometry         */
     c = vec[cc];
     c2 = m2d[c];
     len = h1[c2];
+    A0 = (base != NULL) ? base[c2] : AH0;
     /* Note; wincon->smagorinsky = 1 for this option, and smag=sue1  */
     /* for mode=1, and smag=kue1 for mode=3.                         */
-    AH[c] = smag * AH[c];
+    if (smg != NULL)
+      AH[c] = smg[c2] * AH[c];
+    else
+      AH[c] = smag * AH[c];
     if (scalef & NONE)
-      AH[c] += fabs(AH0);
+      AH[c] += fabs(A0);
     if (scalef & LINEAR)
-      AH[c] += fabs(AH0 * len / hm);
+      AH[c] += fabs(A0 * len / hm);
     if (scalef & NONLIN)
-      AH[c] += fabs(AH0 * len * len / (hm * hm));
+      AH[c] += fabs(A0 * len * len / (hm * hm));
     if (scalef & AREAL)
-      AH[c] += fabs(AH0 * len / hm);
-    
+      AH[c] += fabs(A0 * len / hm);
+
     if (scalef & CUBIC && AH == wincon->u1vh)
-      AH[c] += fabs(AH0 * len * len * len / (hm * hm * hm));
+      AH[c] += fabs(A0 * len * len * len / (hm * hm * hm));
     /* Scale the Laplacian viscosity to a biharmonic value, see      */
     /* Griffies and Hallberg (2000) Mon. Wea. Rev. 128. Section 2a   */
     /* where we use h1au1^2 for del^2.                               */

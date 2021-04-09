@@ -217,7 +217,9 @@ if test -z "$JIGSAW_PATH" ; then
    JIGSAWRPATH=
    JIGSAWDIR=
 else
-   AX_CHECK_COMPILE_FLAG([-std=c++11],[],[AC_MSG_ERROR('This version of gcc does not support the 2011 C++ standard')])
+   dnl There must be a more standard way of doing this ...
+   m4_include([/usr/share/aclocal/ax_cxx_compile_stdcxx_11.m4])
+   AX_CXX_COMPILE_STDCXX_11()
    AC_DEFINE(HAVE_JIGSAWLIB)
    dnl Make this all relative to model/hd-us
    JIGSAWINC=-I../../${JIGSAW_PATH}/inc
@@ -381,25 +383,6 @@ fi
 AC_SUBST(TRACERSTATSDIR)
 AC_SUBST(TRACERSTATSINC)
 AC_SUBST(TRACERSTATSLIB)
-
-
-dnl ###########################################################################
-dnl #### CHECK FOR GRID
-dnl ###########################################################################
-AC_FIND_MODULE(${MODEL_LIB_PREFIX}grid, GRIDDIR=$module_path, GRIDDIR=)
-if test -z "$GRIDDIR" ; then
-   AC_MSG_WARN('grid module not located - disabled.')
-   GRIDINC=
-   GRIDLIB=
-else
-   AC_DEFINE(HAVE_GRID_MODULE)
-   AC_BUILD_MODULE_DEPS(${GRIDDIR})
-   GRIDINC=-I../${MODEL_LIB_OFFSET}${GRIDDIR}/include
-   GRIDLIB="-L../${MODEL_LIB_OFFSET}${GRIDDIR} -lgrid"
-fi
-AC_SUBST(GRIDDIR)
-AC_SUBST(GRIDINC)
-AC_SUBST(GRIDLIB)
 
 
 dnl ###########################################################################

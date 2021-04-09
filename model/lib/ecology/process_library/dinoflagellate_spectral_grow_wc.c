@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dinoflagellate_spectral_grow_wc.c 5957 2018-09-19 08:29:58Z bai155 $
+ *  $Id: dinoflagellate_spectral_grow_wc.c 6579 2020-07-29 03:46:14Z bai155 $
  *
  */
 
@@ -151,20 +151,6 @@ void dinoflagellate_spectral_grow_wc_postinit(eprocess* p)
     workspace* ws = p->workspace;
     double v1,v2,v3,v4,v5;
 
-  /*
-   * Not valid during a pre_build (RECOM)
-   */
-  if (!e->pre_build) {
-    v1 = einterface_gettracersvel(e->model,"PhyD_N");
-    v2 = einterface_gettracersvel(e->model,"PhyD_NR");
-    v3 = einterface_gettracersvel(e->model,"PhyD_PR");
-    v4 = einterface_gettracersvel(e->model,"PhyD_Chl");
-    v5 = einterface_gettracersvel(e->model,"PhyD_I");
-    
-    if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
-      e->quitfn("Sinking rates of PhyD :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
-    }
-  }
     ws->do_mb = (try_index(e->cv_model, "massbalance_wc", e) >= 0) ? 1 : 0;
 
     ws->KI_PhyD_i = -1;

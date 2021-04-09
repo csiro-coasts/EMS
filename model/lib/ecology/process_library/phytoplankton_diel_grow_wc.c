@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_diel_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: phytoplankton_diel_grow_wc.c 6698 2021-03-24 01:11:43Z wil00y $
  *
  */
 
@@ -377,11 +377,6 @@ void phytoplankton_diel_grow_wc_calc(eprocess* p, void* pp)
 
         y1[ws->Phy_N_pr_i] += growth * SEC_PER_DAY * red_W_C;
         y1[ws->Phy_N_gr_i] = growthrate * SEC_PER_DAY;
-      /*UR 29/3/2005 adjustment for J.Kremer by JP
-       * to change to absolute growth values
-        y1[ws->Phy_N_pr_i] += growth * SEC_PER_DAY * c->dz_wc;
-        y1[ws->Phy_N_gr_i] = growthrate / umax;*/
-
         y1[ws->Oxy_pr_i] += growth * red_W_O * SEC_PER_DAY;
     }
 }

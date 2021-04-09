@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dhw.c 6456 2020-02-18 23:41:45Z her127 $
+ *  $Id: dhw.c 6626 2020-09-08 01:34:43Z her127 $
  *
  */
 
@@ -40,6 +40,7 @@ typedef struct {
   char dhdo[MAXSTRLEN];         /* Offset dhd file */
   double offset;                /* Offset dhd increment (sec) */
   int mtype;                    /* Type of daily mean */
+  int nd;                       /* Number of diagnostic */
   int checked;
   int first;
 } tr_dhw_data_t;
@@ -81,35 +82,40 @@ void tracer_dhw_init(master_t *master)
   char fname[MAXSTRLEN];
   char buf[MAXSTRLEN];
   char *oset = "12 week";
-  double dt;
-  int i;
+  double dt = 0.0;
+  int n, i;
   tr_dhw_data_t *dhw = NULL;
   int rst[master->ntr];
 
-  if (!(master->dhwf & DHW_NOAA)) return;
+  for (n = 0; n < master->ndhw; n++) {
+    if (!(master->dhwf[n] & DHW_NOAA)) continue;
 
-  /* Allocate memory for dhw structure, populate and           */
-  /* register the scheduler events.                            */
-  dhw = (tr_dhw_data_t *)malloc(sizeof(tr_dhw_data_t));
-  memset(dhw, 0, sizeof(tr_dhw_data_t));
+    /* Allocate memory for dhw structure, populate and         */
+    /* register the scheduler events.                          */
+    dhw = (tr_dhw_data_t *)malloc(sizeof(tr_dhw_data_t));
+    memset(dhw, 0, sizeof(tr_dhw_data_t));
 
-  dhw->master = master;
-  dhw->dt = params->dhw_dt;
-  strcpy(dhw->dhdo, params->dhdf);
-  tm_scale_to_secs(oset, &dt);
-  dhw->offset = dt;
-  dhw->checked = 0;
-  dhw->first = 1;
-  if (params->dhwf & DHW_INT)
-    dhw->mtype = DHW_INT;
-  else if (params->dhwf & DHW_MEAN)
-    dhw->mtype = DHW_MEAN;
-  else
-    dhw->mtype = DHW_SNAP;
-
-  /* Register the scheduled function */
-  sched_register(schedule, "dhw", dhw_init, dhw_event, dhw_cleanup,
+    dhw->master = master;
+    dhw->dt = params->dhw_dt[n];
+    strcpy(dhw->dhdo, params->dhdf[n]);
+    tm_scale_to_secs(oset, &dt);
+    dhw->offset = dt;
+    dhw->checked = 0;
+    dhw->first = 1;
+    dhw->nd = n;
+    if (params->dhwf[n] & DHW_INT)
+      dhw->mtype = DHW_INT;
+    else if (params->dhwf[n] & DHW_MEAN)
+      dhw->mtype = DHW_MEAN;
+    else
+      dhw->mtype = DHW_SNAP;
+    
+    /* Register the scheduled function */
+    sprintf(buf, "dhw%d", n);
+    sched_register(schedule, buf, dhw_init, dhw_event, dhw_cleanup,
 		 dhw, NULL, NULL);
+    memset(master->dhd[n], 0, master->geom->sgsiz * sizeof(double));
+  }
 }
 
 /* END tracer_dhw_init()                                             */
@@ -126,12 +132,14 @@ double dhw_event(sched_event_t *event, double t)
 {
   tr_dhw_data_t *dhw = (tr_dhw_data_t *)schedGetPublicData(event);
   master_t *master = dhw->master;
+  char tname[MAXSTRLEN];
   int c, cs, cc, n;
   double dhdo, tin;
   double fact = 1.0 / 7.0;
   int varid;
   int found = 1;
   int nanf = 0;
+  int tn = dhw->nd;
 
   /* Only increment the dhw after the first day of iteration         */
   if(dhw->first) {
@@ -144,17 +152,18 @@ double dhw_event(sched_event_t *event, double t)
 
     /* Open the dhd offset file                                      */
     open_dhd_tsfiles(master, dhw->dhdo, dhw);
+    sprintf(tname, "dhd%d", tn);
 
     /* Check that the offset dhd data exists in file */
     for (n = 0; n < dhw->ntsfiles; ++n) {
       char buf[MAXSTRLEN];
       timeseries_t *ts = dhw->tsfiles[n];
-      varid = ts_get_index(ts, fv_get_varname(dhw->tsnames[n], "dhd", buf));
+      varid = ts_get_index(ts, fv_get_varname(dhw->tsnames[n], tname, buf));
       if (varid < 0) found = 0;
     }
     if (found && !dhw->checked) {
       prm_set_errfn(hd_silent_warn);
-      hd_ts_multifile_check(dhw->ntsfiles, dhw->tsfiles, dhw->tsnames, "dhd",
+      hd_ts_multifile_check(dhw->ntsfiles, dhw->tsfiles, dhw->tsnames, tname,
 					  schedule->start_time, schedule->stop_time);
       dhw->checked = 1;
     }
@@ -178,7 +187,7 @@ double dhw_event(sched_event_t *event, double t)
       dhdo = 0.0;
       if (found)
 	dhdo = hd_ts_multifile_eval_xyz_by_name(dhw->ntsfiles, dhw->tsfiles,
-						dhw->tsnames, "dhd", tin,
+						dhw->tsnames, tname, tin,
 						geom->cellx[cs], 
 						geom->celly[cs],
 						geom->cellz[c] * master->Ds[cs]);
@@ -191,15 +200,15 @@ double dhw_event(sched_event_t *event, double t)
 
       /* DHD is the integral of temp-MMM over the day                */
       if (dhw->mtype & (DHW_INT|DHW_SNAP))
-	master->dhw[c] += fact * (master->dhd[c] - dhdo);
+        master->dhw[tn][c] += fact * (master->dhd[tn][c] - dhdo);
       /* DHD is the daily mean temp - MMM                            */
       if (dhw->mtype & DHW_MEAN) {
-	if (master->dhd[c] > master->dhwc[c] + thresh)
-	  master->dhw[c] += fact * ((master->dhd[c] - master->dhwc[c]) - dhdo);
+        if (master->dhd[tn][c] > master->dhwc[tn][c] + thresh)
+	  master->dhw[tn][c] += fact * ((master->dhd[tn][c] - master->dhwc[tn][c]) - dhdo);
       }
 
       /* Reinitialize the dhd value                                  */
-      master->dhd[c] = 0.0;
+      master->dhd[tn][c] = 0.0;
     }
 
     event->next_event += dhw->dt;
@@ -242,41 +251,42 @@ void dhw_cleanup(sched_event_t *event, double t)
 /*-------------------------------------------------------------------*/
 void calc_dhd(geometry_t *window,       /* Window geometry       */
 	      window_t *windat,         /* Window data           */
-	      win_priv_t *wincon        /* Window constants      */
+	      win_priv_t *wincon,       /* Window constants      */
+	      int n
 	      )
 {
   int c, cc, cs;
   double fact = 1.0 / 86400.0;
 
-  if (wincon->dhwf & DHW_NOAA) {
-    if (windat->dhd && windat->dhwc) {
+  if (wincon->dhwf[n] & DHW_NOAA) {
+    if (windat->dhd[n] && windat->dhwc[n]) {
       /* DHD is the integral of temp-MMM over the day                */
-      if (wincon->dhwf & DHW_INT) {
+      if (wincon->dhwf[n] & DHW_INT) {
 	for (cc = 1; cc <= window->b3_t; cc++) {
 	  c = window->w3_t[cc];
-	  if (windat->temp[c] > windat->dhwc[c] + thresh) {
-	    windat->dhd[c] += fact * (windat->temp[c] - windat->dhwc[c]) * windat->dt;
+	  if (windat->temp[c] > windat->dhwc[n][c] + thresh) {
+	    windat->dhd[n][c] += fact * (windat->temp[c] - windat->dhwc[n][c]) * windat->dt;
 	  }
 	}
       }
       /* DHD is the daily mean temp                                  */
-      if (wincon->dhwf & DHW_MEAN) {
+      if (wincon->dhwf[n] & DHW_MEAN) {
 	for (cc = 1; cc <= window->b3_t; cc++) {
 	  c = window->w3_t[cc];
-	  windat->dhd[c] += fact * windat->temp[c] * windat->dt;
+	  windat->dhd[n][c] += fact * windat->temp[c] * windat->dt;
 	}
       }
       /* DHD is the temp at dhwh hours                               */
-      if (wincon->dhwf & DHW_SNAP) {
-	double hrs = floor(windat->days) + fabs(wincon->dhwh) / 24.0;
-	if (windat->days < hrs && wincon->dhwf & DHW_SET)
-	  wincon->dhwf &= ~DHW_SET;
-	if (windat->days >= hrs && !(wincon->dhwf & DHW_SET)) {
-	  wincon->dhwf |= DHW_SET;
+      if (wincon->dhwf[n] & DHW_SNAP) {
+	double hrs = floor(windat->days) + fabs(wincon->dhwh[n]) / 24.0;
+	if (windat->days < hrs && wincon->dhwf[n] & DHW_SET)
+	  wincon->dhwf[n] &= ~DHW_SET;
+	if (windat->days >= hrs && !(wincon->dhwf[n] & DHW_SET)) {
+	  wincon->dhwf[n] |= DHW_SET;
 	  for (cc = 1; cc <= window->b3_t; cc++) {
 	    c = window->w3_t[cc];
-	    if (windat->temp[c] > windat->dhwc[c] + thresh) {
-	      windat->dhd[c] = windat->temp[c] - windat->dhwc[c];
+	    if (windat->temp[c] > windat->dhwc[n][c] + thresh) {
+	      windat->dhd[n][c] = windat->temp[c] - windat->dhwc[n][c];
 	    }
 	  }
 	}

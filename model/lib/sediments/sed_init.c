@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed_init.c 6442 2019-12-09 01:00:27Z bai155 $
+ *  $Id: sed_init.c 6577 2020-07-08 01:28:07Z mar644 $
  *
  */
 
@@ -1262,7 +1262,7 @@ void sed_params_std(sediment_t *sediment)
   param->consolidate =  0;
   // param->minpor_wc = 0.1;
   // param->minpor_sed = 0.1;
-  param->minseddz = 0.000001;
+  param->minseddz =  0.000001;
   param->finpor_sed = 0.4;
   param->consolrate =  10.0;
   param->cssmode = 4;
@@ -1344,7 +1344,7 @@ void sed_params_shf(sediment_t *sediment)
   param->consolidate =  0;
   param->minpor_wc = 0.1;
   param->minpor_sed = 0.1;
-  param->minseddz = 0.000001;
+  param->minseddz =  0.000001;
   param->finpor_sed = 0.4;
   param->consolrate =  10.0;
   param->cssmode = 4;
@@ -1395,7 +1395,7 @@ void sed_params_bsc(sediment_t *sediment)
   param->consolidate =  0;
   param->minpor_wc = 0.1;
   param->minpor_sed = 0.1;
-  param->minseddz = 0.000001;
+  param->minseddz =  0.000001;
   param->finpor_sed = 0.4;
   param->consolrate =  10.0;
   param->cssmode = 4;

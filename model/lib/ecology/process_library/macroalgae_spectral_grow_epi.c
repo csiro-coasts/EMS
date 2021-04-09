@@ -7,7 +7,13 @@
  *  Description: Macroalgae growth.
  *  
  *  Mass transfer limited nutrient uptake of nitrogen (NH4 preferentially), phosphorus.
- *  Respiration considered in mortality.  
+ *  Respiration considered in mortality.
+ *
+ *  Options: macroalgae_spectral_grow_epi(b|g|r)
+ *
+ *  First argument:   b - brown algae (default).
+ *                    g - green algae.
+ *                    r - red algae.
  *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -15,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_spectral_grow_epi.c 5946 2018-09-14 00:21:27Z bai155 $
+ *  $Id: macroalgae_spectral_grow_epi.c 6688 2021-03-24 00:47:16Z wil00y $
  *
  */
 
@@ -37,6 +43,7 @@
 
 typedef struct {
   int do_mb;                  /* flag */
+  char species;
 
   /*
    * parameters
@@ -55,6 +62,8 @@ typedef struct {
   int EpiTP_i;
   int EpiTC_i;
   int EpiBOD_i;
+
+  int EpiOxy_pr_i;
   
   int ustrcw_skin_i;
 
@@ -88,22 +97,110 @@ void macroalgae_spectral_grow_epi_init(eprocess* p)
     stringtable* tracers = e->tracers;
     stringtable* epis = e->epis;
 
+    char* prm = NULL;
+
     int OFFSET_EPI = tracers->n * 2;
 
     p->workspace = ws;
 
-    /*
-     * parameters
-     */
-    ws->umax_t0 = get_parameter_value(e, "MAumax");
-    ws->Benth_resp = get_parameter_value(e, "Benth_resp") * atk_A_I;
-    ws->MAleafden = get_parameter_value(e, "MAleafden");
+    if (p->prms->n){
+      prm = p->prms->se[0]->s;
+      ws->species = prm[0];
+    }else{
+       ws->species = 'b';
+    }
 
-    /*
-     * epis
-     */
-    ws->MA_N_i = e->find_index(epis, "MA_N", e) + OFFSET_EPI;
-   
+    switch (ws->species){
+      
+    case 'r':
+      eco_write_setup(e,"Choosen red macroalgae \n");
+
+      ws->umax_t0 = try_parameter_value(e, "MARumax");
+      if (isnan(ws->umax_t0)){
+	ws->umax_t0 = 1.0/86400.0;
+	eco_write_setup(e,"Code default: MARumax = %e \n",ws->umax_t0);
+      }
+
+      ws->Benth_resp = get_parameter_value(e, "Benth_resp") * atk_A_I;
+
+      ws->MAleafden = try_parameter_value(e, "MARleafden");
+      if (isnan(ws->MAleafden)){
+	ws->MAleafden = 1.0;
+	eco_write_setup(e,"Code default: MARleafden  = %e \n",ws->MAleafden);
+      }
+      
+      ws->MA_N_i = e->find_index(epis, "MAR_N", e) + OFFSET_EPI;
+
+      ws->MA_N_pr_i = e->try_index(epis, "MAR_N_pr", e);
+      if (ws->MA_N_pr_i > -1) 
+	ws->MA_N_pr_i  += OFFSET_EPI;
+      
+      ws->MA_N_gr_i = e->try_index(epis, "MAR_N_gr", e);
+      if (ws->MA_N_gr_i > -1) 
+	ws->MA_N_gr_i  += OFFSET_EPI;
+      
+      break;
+
+    case 'g':
+
+      eco_write_setup(e,"Choosen green macroalgae \n");
+
+      ws->umax_t0 = try_parameter_value(e, "MAGumax");
+      if (isnan(ws->umax_t0)){
+	ws->umax_t0 = 1.0/86400.0;
+	eco_write_setup(e,"Code default: MAGumax = %e \n",ws->umax_t0);
+      }
+
+      ws->Benth_resp = get_parameter_value(e, "Benth_resp") * atk_A_I;
+
+      ws->MAleafden = try_parameter_value(e, "MAGleafden");
+      if (isnan(ws->MAleafden)){
+	ws->MAleafden = 1.0;
+	eco_write_setup(e,"Code default: MAGleafden  = %e \n",ws->MAleafden);
+      }
+      
+      ws->MA_N_i = e->find_index(epis, "MAG_N", e) + OFFSET_EPI;
+
+      ws->MA_N_pr_i = e->try_index(epis, "MAG_N_pr", e);
+      if (ws->MA_N_pr_i > -1) 
+	ws->MA_N_pr_i  += OFFSET_EPI;
+      
+      ws->MA_N_gr_i = e->try_index(epis, "MAG_N_gr", e);
+      if (ws->MA_N_gr_i > -1) 
+	ws->MA_N_gr_i  += OFFSET_EPI;
+
+      break;
+
+    case 'b':
+
+      eco_write_setup(e,"Choosen (or default) brown macroalgae \n");
+
+      ws->umax_t0 = try_parameter_value(e, "MAumax");
+      if (isnan(ws->umax_t0)){
+	ws->umax_t0 = 1.0/86400.0;
+	eco_write_setup(e,"Code default: MAumax = %e \n",ws->umax_t0);
+      }
+     
+      ws->Benth_resp = get_parameter_value(e, "Benth_resp") * atk_A_I;
+      
+      ws->MAleafden = try_parameter_value(e, "MAleafden");
+      if (isnan(ws->MAleafden)){
+	ws->MAleafden = 1.0;
+	eco_write_setup(e,"Code default: MAleafden  = %e \n",ws->MAleafden);
+      }
+
+      ws->MA_N_i = e->find_index(epis, "MA_N", e) + OFFSET_EPI;
+
+      ws->MA_N_pr_i = e->try_index(epis, "MA_N_pr", e);
+      if (ws->MA_N_pr_i > -1) 
+	ws->MA_N_pr_i  += OFFSET_EPI;
+      
+      ws->MA_N_gr_i = e->try_index(epis, "MA_N_gr", e);
+      if (ws->MA_N_gr_i > -1) 
+	ws->MA_N_gr_i  += OFFSET_EPI;
+      
+      break;
+    }  
 
     ws->EpiTN_i = e->find_index(epis, "EpiTN", e) + OFFSET_EPI;
     ws->EpiTP_i = e->find_index(epis, "EpiTP", e) + OFFSET_EPI;
@@ -121,18 +218,12 @@ void macroalgae_spectral_grow_epi_init(eprocess* p)
     ws->NO3_wc_i = e->find_index(tracers, "NO3", e);
     ws->DIP_wc_i = e->find_index(tracers, "DIP", e);
 
-
     /*non essential diagnostic tracers*/
 
     ws->Oxy_pr_wc_i = e->try_index(tracers, "Oxy_pr", e);
-
-    ws->MA_N_pr_i = e->try_index(epis, "MA_N_pr", e);
-    if (ws->MA_N_pr_i > -1) 
-	 ws->MA_N_pr_i  += OFFSET_EPI;
-
-    ws->MA_N_gr_i = e->try_index(epis, "MA_N_gr", e);
-    if (ws->MA_N_gr_i > -1) 
-	 ws->MA_N_gr_i  += OFFSET_EPI;
+    ws->EpiOxy_pr_i = e->try_index(epis, "EpiOxy_pr", e);
+      if (ws->EpiOxy_pr_i > -1) 
+	ws->EpiOxy_pr_i  += OFFSET_EPI;
 
     /*
      * common variables
@@ -150,7 +241,22 @@ void macroalgae_spectral_grow_epi_postinit(eprocess* p)
     workspace* ws = p->workspace;
 
     ws->do_mb = (try_index(e->cv_model, "massbalance_epi", e) >= 0) ? 1 : 0;
-    ws->KI_MA_i = find_index_or_add(e->cv_cell, "KI_MA", e);
+
+/* In this routine KI_MA is generic, but species-specific cell variables 
+       must be added for light_spectral_epi.c */
+
+    switch (ws->species){
+
+    case 'r':   /* Red algae */
+      ws->KI_MA_i = find_index_or_add(e->cv_cell, "KI_MAR", e);
+      break;
+    case 'g':   /* Green algae */
+      ws->KI_MA_i = find_index_or_add(e->cv_cell, "KI_MAG", e);
+      break;
+    case 'b':   /* Brown algae */
+      ws->KI_MA_i = find_index_or_add(e->cv_cell, "KI_MA", e);
+      break;
+    }
 }
 
 void macroalgae_spectral_grow_epi_destroy(eprocess* p)
@@ -251,13 +357,16 @@ void macroalgae_spectral_grow_epi_calc(eprocess* p, void* pp)
     y1[ws->DIP_wc_i] -= growth * 1000.0 * atk_W_P / dz_wc;
     y1[ws->DIC_wc_i] -= growth * 1000.0 * atk_W_C / dz_wc;
     y1[ws->Oxygen_wc_i] += Oxy_pr;
-    
+
     if (ws->MA_N_gr_i> -1)
-      y1[ws->MA_N_gr_i] += growthrate;
+      y1[ws->MA_N_gr_i] += growthrate * SEC_PER_DAY;
     if (ws->MA_N_pr_i> -1)
-      y1[ws->MA_N_pr_i] += growth * SEC_PER_DAY;
+      y1[ws->MA_N_pr_i] += growth * SEC_PER_DAY * atk_W_C; /* gC m-2 d-1 */
+
     if (ws->Oxy_pr_wc_i> -1)      
-      y1[ws->Oxy_pr_wc_i] += Oxy_pr * SEC_PER_DAY;     
+      y1[ws->Oxy_pr_wc_i] += Oxy_pr * SEC_PER_DAY; /* mgO m-3 d-1 */     
+    if (ws->EpiOxy_pr_i> -1)      
+      y1[ws->EpiOxy_pr_i] += Oxy_pr * SEC_PER_DAY * dz_wc ; /* mgO m-2 d-1 */  
 
 }
 void macroalgae_spectral_grow_epi_postcalc(eprocess* p, void* pp)

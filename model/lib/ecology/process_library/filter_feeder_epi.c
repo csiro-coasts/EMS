@@ -60,6 +60,9 @@ typedef struct {
     int EpiTC_i;
     int EpiBOD_i;
 
+    int EpiOxy_pr_i;
+    int EpiNH4_pr_i;
+
 /* Tracers */
 
   int ZooL_N_wc_i;
@@ -90,8 +93,9 @@ typedef struct {
   int MPB_Chl_wc_i;
 
   int DetPL_N_wc_i;
-  int Mud_wc_i;
-  int FineSed_wc_i;
+  /*int FineSed_wc_i;
+    int Mud_wc_i;*/
+  int EFI_wc_i;
 
   int NH4_wc_i;
   int DIC_wc_i;
@@ -100,6 +104,7 @@ typedef struct {
 
   /*  int temp_wc_i;
       int salt_wc_i; */
+  int COD_wc_i;
   int NH4_pr_wc_i;
   int Oxy_pr_wc_i;
 
@@ -122,31 +127,51 @@ void filter_feeder_epi_init(eprocess* p)
 	ecology* e = p->ecology;
 	stringtable* tracers = e->tracers;
 	workspace* ws = malloc(sizeof(workspace));
-	 stringtable* epis = e->epis;
+	stringtable* epis = e->epis;
         int OFFSET_EPI = tracers->n * 2;
-
-	 /* not sure if need this?
-       int OFFSET_SED = tracers->n; */
 
 	p->workspace = ws;
 
 /*parameters*/
-  ws->FF_umax_t0 = get_parameter_value(e, "FFumax");
-  ws->FF_mort_t0 = get_parameter_value(e, "FFmort");
+	ws->FF_umax_t0 = try_parameter_value(e, "FFumax");
+	if (isnan(ws->FF_umax_t0)){
+	  ws->FF_umax_t0 = 0.08/86400.0;
+	  eco_write_setup(e,"Code default of FF_umax_t0 = %e \n",ws->FF_umax_t0);
+	}
+	
+	ws->FF_mort_t0 = try_parameter_value(e, "FFmort");
+	if (isnan(ws->FF_mort_t0)){
+	  ws->FF_mort_t0 = 0.00004/86400.0;
+	  eco_write_setup(e,"Code default of FF_mort_t0 = %e \n",ws->FF_mort_t0);
+	}
 
-  ws->FF_den = get_parameter_value(e, "FFden");
-  ws->FF_area = get_parameter_value(e, "FFarea");
-  
+	ws->FF_den = try_parameter_value(e, "FFden");
+	if (isnan(ws->FF_den)){
+	  ws->FF_den = 0.002;
+	  eco_write_setup(e,"Code default of FF_den = %e \n",ws->FF_den);
+	}
+	
+	ws->FF_area = try_parameter_value(e, "FFarea");
+	if (isnan(ws->FF_area)){
+	  ws->FF_area = 0.1;
+	  eco_write_setup(e,"Code default of FF_area = %e \n",ws->FF_area);
+	}
+	
   ws->KO_aer = get_parameter_value(e, "KO_aer");
   
 /* epis */
-    ws->nFF_i = e->try_index(epis, "nFF", e) + OFFSET_EPI;
     ws->FF_N_i = e->find_index(epis, "FF_N", e) + OFFSET_EPI;
-    ws->FF_N_pr_i = e->find_index(epis, "FF_N_pr", e) + OFFSET_EPI;
-    ws->FF_N_rm_i = e->find_index(epis, "FF_N_rm", e) + OFFSET_EPI;
+    ws->nFF_i = e->try_index(epis, "nFF", e);
+    if (ws->nFF_i > -1)
+	 ws->nFF_i += OFFSET_EPI;
+    ws->FF_N_pr_i = e->try_index(epis, "FF_N_pr", e);
+    if (ws->FF_N_pr_i > -1)
+	 ws->FF_N_pr_i += OFFSET_EPI;
+    ws->FF_N_rm_i = e->try_index(epis, "FF_N_rm", e);
+    if (ws->FF_N_rm_i > -1)
+	 ws->FF_N_rm_i += OFFSET_EPI;
 
     ws->MA_N_i = e->try_index(epis, "MA_N", e);
-
     if (ws->MA_N_i > -1){
 	 ws->MA_N_i += OFFSET_EPI;
 	 ws->MAleafden = get_parameter_value(e, "MAleafden");
@@ -156,6 +181,13 @@ void filter_feeder_epi_init(eprocess* p)
     ws->EpiTP_i = e->find_index(epis, "EpiTP", e) + OFFSET_EPI;
     ws->EpiTC_i = e->find_index(epis, "EpiTC", e) + OFFSET_EPI;
     ws->EpiBOD_i = e->find_index(epis, "EpiBOD", e) + OFFSET_EPI;
+
+    ws->EpiOxy_pr_i = e->try_index(epis, "EpiOxy_pr", e);
+    if (ws->EpiOxy_pr_i > -1)
+	 ws->EpiOxy_pr_i += OFFSET_EPI;
+    ws->EpiNH4_pr_i = e->try_index(epis, "EpiNH4_pr", e);
+    if (ws->EpiNH4_pr_i > -1)
+	 ws->EpiNH4_pr_i += OFFSET_EPI;
 
 /* TRACERS */
   ws->ZooS_N_wc_i = e->find_index(tracers, "ZooL_N", e);
@@ -174,17 +206,19 @@ void filter_feeder_epi_init(eprocess* p)
   ws->PhyS_Chl_wc_i = e->find_index(tracers, "PhyS_Chl", e);
 
   ws->DetPL_N_wc_i = e->find_index(tracers, "DetPL_N", e);
-  ws->Mud_wc_i = e->find_index(tracers, "Mud", e);
-  ws->FineSed_wc_i = e->find_index(tracers, "FineSed", e);
-
+  /*ws->FineSed_wc_i = e->find_index(tracers, "FineSed", e);
+    ws->Mud_wc_i = e->try_index(tracers, "Mud", e);*/
+  ws->EFI_wc_i = e->try_index(tracers, "EFI", e);
+ 
   ws->NH4_wc_i = e->find_index(tracers, "NH4", e);
   ws->DIC_wc_i = e->find_index(tracers, "DIC", e);
   ws->DIP_wc_i = e->find_index(tracers, "DIP", e);
   ws->Oxygen_wc_i = e->find_index(tracers, "Oxygen", e);
+  ws->COD_wc_i = e->find_index(tracers, "COD", e);
 
   ws->Oxy_pr_wc_i = e->try_index(tracers, "Oxy_pr", e);
   ws->NH4_pr_wc_i = e->try_index(tracers, "NH4_pr", e);
- 
+  
  // non essential 
   ws->PhyD_N_wc_i = e->try_index(tracers, "PhyD_N", e);
   ws->PhyD_NR_wc_i = e->try_index(tracers, "PhyD_NR", e);
@@ -258,11 +292,6 @@ void filter_feeder_epi_precalc(eprocess* p, void* pp)
         cv[ws->FF_umax_i] = ws->FF_umax_t0 * Tfactor;
         cv[ws->FF_mort_i] = ws->FF_mort_t0 * Tfactor;
  
-    // Bail out if deeper than 20m - does this also have to be in calc??
-    double z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
-    if (z_centre < -24.0)
-      return;
-
   if (ws->do_mb) {
     double FF_N = y[ws->FF_N_i];
     
@@ -293,15 +322,16 @@ workspace* ws = p->workspace;
 /*LOCAL DECLARATION*/
     
   double FF_N = y[ws->FF_N_i];      /* Filter feeders assumed at Redfield Ratio; quantified mgN per m2. */
-  double nFF = y[ws->nFF_i];        /* number of FF per m2 */
+  /*double nFF = y[ws->nFF_i];         number of FF per m2 */
 
   double MA_N = 0.0;
     if (ws->MA_N_i > -1){
       MA_N = y[ws->MA_N_i];
     }
 
-  double Mud = y[ws->Mud_wc_i];
-  double FineSed = y[ws->FineSed_wc_i];
+    /*double FineSed = y[ws->FineSed_wc_i];
+      double Mud = y[ws->Mud_wc_i];*/
+  double EFI = y[ws->EFI_wc_i];
 
   double DetPL_N = y[ws->DetPL_N_wc_i];
 
@@ -370,11 +400,15 @@ workspace* ws = p->workspace;
     double FF_len = 6.;
     double FF_dw = 0.0089 * pow(FF_len,2.82) ;  /* g dw */
 
+    /* calculate number of individuals of size FF_len corresponding to biomass; assume 9% of soft tissue DW = organic N */
+    double nFF  = FF_N / (FF_dw * 0.09 * 1000) ;  /* number of FF per m2 - this suggests 125.3 mg N per 6 cm ind */
+
     /* plankton DW ~ 2 x cell C (Lund 1964, Verduin et al, 1976) */
 
     double POM_N = (DetPL_N + PhyS_N + PhyL_N + PhyD_N + MPB_N + ZooS_N + ZooL_N);
     double POM_dw = (POM_N * red_W_C * 2.0) / 1000.; /* mg /L */
-    double TPM_dw = POM_dw + ((Mud + FineSed) * 1000.0 * 1000.0) / 1000. ; /* mg /L */
+    /*   double TPM_dw = POM_dw + ((Mud + FineSed) * 1000.0 * 1000.0) / 1000. ;  mg /L */
+    double TPM_dw = POM_dw + (EFI * 1000.0 * 1000.0) / 1000. ; /* mg /L */
 
     /* clearance rate depends on composition of sppm and is regulated up/down as a fn of organic matter content Velasco 2002; assumed FF_dw in g */
     /* CR_TPM capped at 4 l h-1 e.g. at spm < 5 mg/l */
@@ -455,7 +489,11 @@ workspace* ws = p->workspace;
     y1[ws->DIC_wc_i] += DIC_release / dz_wc;
 
     double Oxy_pr = -DIC_release * red_W_O / red_W_C * Oxygen / (ws->KO_aer + e_max(Oxygen));
-    y1[ws->Oxygen_wc_i] += Oxy_pr / dz_wc;
+    /*y1[ws->Oxygen_wc_i] += Oxy_pr / dz_wc; */
+    /* ANEROBIC DEMAND ON RELEASED DIC included by sigmoid */
+    double sigmoid = (Oxygen * Oxygen) / ((ws->KO_aer * ws->KO_aer) + (Oxygen * Oxygen));
+    y1[ws->Oxygen_wc_i] += Oxy_pr * sigmoid / dz_wc;
+    y1[ws->COD_wc_i] += Oxy_pr * (1.0-sigmoid) / dz_wc;
 
     /* Update diagnostics */
 
@@ -464,9 +502,14 @@ workspace* ws = p->workspace;
     if (ws->FF_N_rm_i > -1)
       y1[ws->FF_N_rm_i] += total_grazing * red_W_C* SEC_PER_DAY ; /* mgC m-2 d-1 */
     if (ws->Oxy_pr_wc_i  > -1)
-      y1[ws->Oxy_pr_wc_i] += Oxy_pr * SEC_PER_DAY / dz_wc;
+      y1[ws->Oxy_pr_wc_i] += Oxy_pr * sigmoid * SEC_PER_DAY / dz_wc; /* mgO m-3 d-1 */
     if (ws->NH4_pr_wc_i  > -1)
-      y1[ws->NH4_pr_wc_i] += NH4_prod * SEC_PER_DAY / dz_wc;
+      y1[ws->NH4_pr_wc_i] += NH4_prod * SEC_PER_DAY / dz_wc; /*mgN m-3 d-1 */
+
+    if (ws->EpiOxy_pr_i  > -1)
+      y1[ws->EpiOxy_pr_i] += Oxy_pr * sigmoid * SEC_PER_DAY; /*mgO m-2 d-1 */
+    if (ws->EpiNH4_pr_i  > -1)
+      y1[ws->EpiNH4_pr_i] += NH4_prod * SEC_PER_DAY; /*mgN m-2 d-1 */
 
 }
 

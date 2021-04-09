@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: process_defaults.c 6330 2019-09-13 06:51:32Z bai155 $
+ *  $Id: process_defaults.c 6722 2021-03-29 05:00:58Z bai155 $
  *
  */
 
@@ -30,6 +30,29 @@
  * Alternatively, this could be consolidated into a single nested structure
  *
  */
+
+// "porewater_age" water column
+const char *WC_PROCESS_PORE[] = {
+  "recom_extras"
+};
+const int NUM_WC_PROCESS_PORE =
+  (int)(sizeof(WC_PROCESS_PORE)/sizeof(char *));
+
+// "optics" epibenthos
+const char *EPI_PROCESS_PORE[] = {
+  "values_common_epi"
+};
+const int NUM_EPI_PROCESS_PORE =
+  (int)(sizeof(EPI_PROCESS_PORE)/sizeof(char *));
+
+// "optics" sediment
+const char *SED_PROCESS_PORE[] = {
+  "age_sed"
+};
+const int NUM_SED_PROCESS_PORE =
+  (int)(sizeof(SED_PROCESS_PORE)/sizeof(char *));
+
+// **********************************************************
 
 // "optics" water column
 const char *WC_PROCESS_OPT[] = {
@@ -51,7 +74,8 @@ const int NUM_EPI_PROCESS_OPT =
 // "optics" sediment
 const char *SED_PROCESS_OPT[] = {
   "values_common",
-  "light_sed"
+  "light_spectral_sed",
+  "recom_extras"
 };
 const int NUM_SED_PROCESS_OPT =
   (int)(sizeof(SED_PROCESS_OPT)/sizeof(char *));
@@ -70,8 +94,7 @@ const int NUM_WC_PROCESS_GAS =
 
 // "gas" epibenthos
 const char *EPI_PROCESS_GAS[] = {
-  "tfactor_epi",
-  "diffusion_epi"
+  "tfactor_epi"    // removed "diffusion_epi" */
 };
 const int NUM_EPI_PROCESS_GAS =
   (int)(sizeof(EPI_PROCESS_GAS)/sizeof(char *));
@@ -526,7 +549,6 @@ const char *WC_PROCESS_BGC3p1[] = {
   "gas_exchange_wc(carbon,oxygen)",
   "massbalance_wc",
   "light_spectral_wc(H,HPLC)",
-  "age_wc",
   "recom_extras"
 };
 const int NUM_WC_PROCESS_BGC3p1 =
@@ -571,11 +593,135 @@ const char *SED_PROCESS_BGC3p1[] = {
   "trichodesmium_mortality_sed",
   "nitrification_denitrification_sed",
   "p_adsorption_sed",
+  "age_sed",
   "massbalance_sed",
   "recom_extras"
 };
 const int NUM_SED_PROCESS_BGC3p1 =
   (int)(sizeof(SED_PROCESS_BGC3p1)/sizeof(char *));
+
+
+/*
+ * Dead_only for nesting RECOM\.
+ */
+
+// "Dead_only" water column
+const char *WC_PROCESS_DEAD[] = {
+  "tfactor",
+  "viscosity",
+  "moldiff",
+  "values_common",
+  "remineralization",
+  "nitrification_denitrification_anammox",
+  "p_adsorption",
+  "carbon_chemistry_wc",
+  "gas_exchange_wc(carbon,oxygen)",
+  "massbalance_wc",
+  "recom_extras"
+};
+const int NUM_WC_PROCESS_DEAD =
+  (int)(sizeof(WC_PROCESS_DEAD)/sizeof(char *));
+
+// "DEAD" epibenthos
+const char *EPI_PROCESS_DEAD[] = {
+  "tfactor_epi",
+  "values_common_epi",
+  "massbalance_epi",
+  "diffusion_epi"
+};
+const int NUM_EPI_PROCESS_DEAD =
+  (int)(sizeof(EPI_PROCESS_DEAD)/sizeof(char *));
+
+// "DEAD" sediment
+const char *SED_PROCESS_DEAD[] = {
+  "tfactor",
+  "viscosity",
+  "moldiff",
+  "values_common",
+  "remineralization",
+  "carbon_chemistry_wc",
+  "nitrification_denitrification_anammox",
+  "p_adsorption",
+  "age_sed",
+  "massbalance_sed",
+  "recom_extras"
+};
+const int NUM_SED_PROCESS_DEAD =
+  (int)(sizeof(SED_PROCESS_DEAD)/sizeof(char *));
+
+/*
+ * TASSE1p0 for nesting RECOM\.
+ */
+
+// "tasse" water column
+const char *WC_PROCESS_TASSE1p0[] = {
+  "tfactor",
+  "viscosity",
+  "moldiff",
+  "values_common",
+  "remineralization",
+  "microphytobenthos_spectral_grow_wc",
+  "phytoplankton_spectral_grow_wc(small)",
+  "phytoplankton_spectral_grow_wc(large)",
+  "dinoflagellate_spectral_grow_wc",
+  "phytoplankton_spectral_mortality_wc(small)",
+  "phytoplankton_spectral_mortality_wc(large)",
+  "dinoflagellate_spectral_mortality_wc",
+  "zooplankton_mortality_wc(small)",
+  "zooplankton_mortality_wc(large)",
+  "zooplankton_large_carnivore_spectral_grow_wc",
+  "zooplankton_small_spectral_grow_wc",
+  "nitrification_denitrification_anammox",
+  "p_adsorption",
+  "carbon_chemistry_wc",
+  "gas_exchange_wc(carbon,oxygen)",
+  "massbalance_wc",
+  "light_spectral_wc(T,HPLC)",
+  "recom_extras"
+};
+const int NUM_WC_PROCESS_TASSE1p0 =
+  (int)(sizeof(WC_PROCESS_TASSE1p0)/sizeof(char *));
+
+// "TASSE1p0" epibenthos
+const char *EPI_PROCESS_TASSE1p0[] = {
+  "tfactor_epi",
+  "values_common_epi",
+  "macroalgae_spectral_grow_epi()",
+  "seagrass_spectral_grow_epi(Zostera)",
+  "macroalgae_mortality_epi()",
+  "seagrass_spectral_mortality_proto_epi(Zostera)",
+  "massbalance_epi()",
+  "light_spectral_uq_epi()",
+  "diffusion_epi",
+  "filter_feeder_epi"
+};
+const int NUM_EPI_PROCESS_TASSE1p0 =
+  (int)(sizeof(EPI_PROCESS_TASSE1p0)/sizeof(char *));
+
+// "TASSE1p0" sediment
+const char *SED_PROCESS_TASSE1p0[] = {
+  "tfactor",
+  "viscosity",
+  "moldiff",
+  "values_common",
+  "remineralization",
+  "light_spectral_sed(HPLC)",
+  "microphytobenthos_spectral_grow_sed",
+  "carbon_chemistry_wc()",
+  "microphytobenthos_spectral_mortality_sed",
+  "phytoplankton_spectral_mortality_sed(small)",
+  "phytoplankton_spectral_mortality_sed(large)",
+  "zooplankton_mortality_sed(small)",
+  "zooplankton_mortality_sed(large)",
+  "dinoflagellate_spectral_mortality_sed",
+  "nitrification_denitrification_anammox",
+  "p_adsorption",
+  "age_sed",
+  "massbalance_sed",
+  "recom_extras"
+};
+const int NUM_SED_PROCESS_TASSE1p0 =
+  (int)(sizeof(SED_PROCESS_TASSE1p0)/sizeof(char *));
 
 
 
@@ -669,6 +815,30 @@ static void eco_processes_std(int type, const char **procs[], int *nprocs)
   default:
     e_quit("eco_processes_std: Unknown Process Type '%d'\n", type);
   }    
+}
+
+/*
+ * "porewater_age" processes
+ */
+static void eco_processes_pore(int type, const char **procs[], int *nprocs)
+{
+  /* Key off process type */
+  switch(type) {
+  case PT_WC:
+    *procs  = WC_PROCESS_PORE;
+    *nprocs = NUM_WC_PROCESS_PORE;
+    return;
+  case PT_EPI:
+    *procs  = EPI_PROCESS_PORE;
+    *nprocs = NUM_EPI_PROCESS_PORE;
+    return;
+  case PT_SED:
+    *procs  = SED_PROCESS_PORE;
+    *nprocs = NUM_SED_PROCESS_PORE;
+    return;
+  default:
+    e_quit("eco_processes_opt: Unknown Process Type '%d'\n", type);
+  }
 }
 
 /*
@@ -863,6 +1033,55 @@ static void eco_processes_bgc3p1(int type, const char **procs[], int *nprocs)
   }
 }
 
+/*
+ * "Dead_only" processes
+ */
+static void eco_processes_dead(int type, const char **procs[], int *nprocs)
+{
+
+  /* Key off process type */
+  switch(type) {
+  case PT_WC:
+    *procs  = WC_PROCESS_DEAD;
+    *nprocs = NUM_WC_PROCESS_DEAD;
+    return;
+  case PT_EPI:
+    *procs  = EPI_PROCESS_DEAD;
+    *nprocs = NUM_EPI_PROCESS_DEAD;
+    return;
+  case PT_SED:
+    *procs  = SED_PROCESS_DEAD;
+    *nprocs = NUM_SED_PROCESS_DEAD;
+    return;
+  default:
+    e_quit("eco_processes_dead_only: Unknown Process Type '%d'\n", type);
+  }
+}
+
+/*
+ * "TASSE1p0" processes
+ */
+static void eco_processes_TASSE1p0(int type, const char **procs[], int *nprocs)
+{
+
+  /* Key off process type */
+  switch(type) {
+  case PT_WC:
+    *procs  = WC_PROCESS_TASSE1p0;
+    *nprocs = NUM_WC_PROCESS_TASSE1p0;
+    return;
+  case PT_EPI:
+    *procs  = EPI_PROCESS_TASSE1p0;
+    *nprocs = NUM_EPI_PROCESS_TASSE1p0;
+    return;
+  case PT_SED:
+    *procs  = SED_PROCESS_TASSE1p0;
+    *nprocs = NUM_SED_PROCESS_TASSE1p0;
+    return;
+  default:
+    e_quit("eco_processes_TASSE1p0: Unknown Process Type '%d'\n", type);
+  }
+}
 
 /*
  * "GBR4_SMALL" processes
@@ -963,6 +1182,8 @@ int get_eco_processes(char *name, int type, const char **procs[], int *nprocs)
     char *description;
     void (*init) (int type, const char **procs[], int *nprocs);
   } param_list[] = {
+    {"dead_only","Non-lving components", eco_processes_dead},
+    {"porewater_age","Porewater age tracer", eco_processes_pore},
     {"optics_only","Optical processes only",   eco_processes_opt},
     {"gas_only","Gas exchange processes only",   eco_processes_gas},
     {"standard","Standard ecology processes",   eco_processes_std},
@@ -973,6 +1194,8 @@ int get_eco_processes(char *name, int type, const char **procs[], int *nprocs)
     {"gbr4_small", "GBR4 SMALL ecology processes", eco_processes_gbr4_small},
     {"BGC2p0", "BGC 2.0 processes", eco_processes_bgc2p0},
     {"BGC3p1", "BGC 3.1 processes", eco_processes_bgc3p1},
+    {"TASSE1p0", "TASSE 1p0 processes", eco_processes_TASSE1p0},
+
     {NULL, NULL, NULL}
   };
   void (*init) (int type, const char **procs[], int *nprocs) = NULL;

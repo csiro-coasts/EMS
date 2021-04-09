@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 6422 2019-11-22 00:23:19Z her127 $
+ *  $Id: run_setup.c 6604 2020-09-07 03:27:05Z her127 $
  *
  */
 
@@ -64,6 +64,38 @@ void write_run_setup(hd_data_t *hd_data)
   fprintf(fp, "Working directory = %s\n",bname);
   fprintf(fp, "%s\n", params->parameterheader);
   if (params->runno) fprintf(fp, "Identifier # %5.2f\n", params->runno);
+  if (strlen(params->runcode)) {
+    char *tok;
+    fprintf(fp, "Run code %s\n", params->runcode);
+    strcpy(bname, params->runcode);
+    tok = strtok(bname, "|");
+    if (tok != NULL) fprintf(fp, "  Grid name : %s\n", tok);
+    strcpy(bname, params->runcode);
+    fprintf(fp, "  Grid ID : %3.2f\n", get_idcode(bname, "G"));
+    fprintf(fp, "  Hydrodynamic model ID : %3.2f\n", get_idcode(bname, "H"));
+    fprintf(fp, "  Sediment model ID : %3.2f\n", get_idcode(bname, "S"));
+    fprintf(fp, "  Biogeochemical model ID : %3.2f\n", get_idcode(bname, "B"));
+  }
+  if (strlen(params->rev)) fprintf(fp, "Parameter file revision %s\n", params->rev);
+  if (strlen(params->trl)) fprintf(fp, "Technology_Readiness_Level %s\n", params->trl);
+  if (strcmp(params->trl, "TR1") == 0)
+    fprintf(fp, "  Basic principles observed and reported.\n");
+  if (strcmp(params->trl, "TR2") == 0)
+    fprintf(fp, "  Technology concept formulated.\n");
+  if (strcmp(params->trl, "TR3") == 0)
+    fprintf(fp, "  Experimental proof of concept.\n");
+  if (strcmp(params->trl, "TR4") == 0)
+    fprintf(fp, "  Technology validated in laboratory environment.\n");
+  if (strcmp(params->trl, "TR5") == 0)
+    fprintf(fp, "  Technology validated in relevant environment.\n");
+  if (strcmp(params->trl, "TR6") == 0)
+    fprintf(fp, "  Technology demonstrated in relevant environment (pilot model).\n");
+  if (strcmp(params->trl, "TR7") == 0)
+    fprintf(fp, "  System prototype demonstration in operational environment (prototype model).\n");
+  if (strcmp(params->trl, "TR8") == 0)
+    fprintf(fp, "  System complete and qualified (calibrated model).\n");
+  if (strcmp(params->trl, "TR9") == 0)
+    fprintf(fp, "  Actual system proven in operational environment (operational model).\n");
   if (strlen(params->sequence)) fprintf(fp, "Run # %s\n", params->sequence);
   if (strlen(params->rev)) fprintf(fp, "Parameter file revision : %s\n",
 				   params->rev);
@@ -998,6 +1030,8 @@ void write_run_setup(hd_data_t *hd_data)
         fprintf(fp, "    Tangential velocity is linear for %d interior boundary cells\n",
 		open->linear_zone_tan);
       }
+      if (strlen(open->tide_con))
+        fprintf(fp, "    Custom tidal constituents used: %s\n", open->tide_con);
       if (open->spf) {
         fprintf(fp, "    Phase speed smoothing using factor %3.1f applied to elevation\n", open->spf);
       }
@@ -1055,7 +1089,11 @@ void write_run_setup(hd_data_t *hd_data)
       if (open->options & OP_MACREADY)
 	fprintf(fp, "    Inflow salinity is modified using MacCready & Geyer, 2010, Annu. Rev. Mar. Sci.\n");
       if (open->options & OP_OWRITE)
-	  fprintf(fp, "    Open boundary location overwritten with external data using TRCONC.\n");
+	fprintf(fp, "    Open boundary location overwritten with external data using TRCONC.\n");
+      if (open->options & OP_FAS)
+	fprintf(fp, "    Open boundary relaxation time-scale scaled to minimum boundary CFL.\n");
+      if (open->options & OP_FAT)
+	fprintf(fp, "    Open boundary tidal relaxation time-scale scaled to minimum boundary CFL.\n");
       fprintf(fp, "\n");
     }
     fprintf(fp, "\n");
@@ -2495,12 +2533,12 @@ void trans_write(hd_data_t *hd_data)
     /* RECOM */
     if (params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
       /* Handle temp_clim for coral bleaching */
-      if (strlen(params->dhw)) {
+      for(n = 0; n < params->ndhw; n++) {
 	/* Need to re-jig the tracer name */
 	char buff[MAXSTRLEN];
 	char bufv[MAXSTRLEN];
-	char *dhw_fname = fv_get_filename(params->dhw, buff);
-	char *dhw_var   = fv_get_varname(params->dhw, "dhwc", bufv);
+	char *dhw_fname = fv_get_filename(params->dhw[n], buff);
+	char *dhw_var   = fv_get_varname(params->dhw[n], "dhwc", bufv);
 	fprintf(op, "# Set up temperature threshold for coral bleaching\n");
 	fprintf(op, "temp_clim.reset_file %s(temp_clim=%s)\n", dhw_fname, dhw_var);
 	fprintf(op, "temp_clim.reset_dt   1.0  days\n\n");

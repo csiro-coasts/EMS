@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: vel3d.c 6613 2020-09-07 03:29:57Z her127 $
  *
  */
 
@@ -69,7 +69,7 @@ void mode3d_step_window_p1(master_t *master,
   TIMING_DUMP(2, "   fill_3d ");
 
   clock = dp_clock();
-  
+
   /*---------------------------------------------------------------*/
   /* Calculate a heat and salt flux if required                    */
   TIMING_SET;
@@ -2238,7 +2238,7 @@ void bdry_u1_3d(geometry_t *window, /* Window geometry               */
             open[n]->cyc_e1, windat->nu1, windat->u1, 
 	    windat->u1b, open[n]->bcond_nor,
             windat->dtf, &open[n]->datau1, 
-	    open[n]->transfer_u1, open[n]->relax_zone_nor, U1GEN);
+	    open[n]->transfer_u1, open[n]->relax_zone_nor, (U1BDRY|U1GEN|NOR));
 
     /* Set open boundary velocities above the free surface equal to  */
     /* zero.                                                         */
@@ -2253,7 +2253,7 @@ void bdry_u1_3d(geometry_t *window, /* Window geometry               */
             open[n]->oi2_e1, open[n]->cyc_e1, windat->nu1,
             windat->u1, windat->u1b, open[n]->bcond_tan, 
 	    windat->dtf, &open[n]->datau1, open[n]->transfer_u1, 
-	    open[n]->relax_zone_tan, U1GEN);            
+	    open[n]->relax_zone_tan, (U1BDRY|U1GEN|TAN));            
   }
 
   /*-----------------------------------------------------------------*/
@@ -3935,7 +3935,7 @@ void bdry_u2_3d(geometry_t *window, /* Window geometry               */
             open[n]->cyc_e2, windat->nu2, windat->u2,
 	    windat->u2b, open[n]->bcond_nor,
             windat->dtf, &open[n]->datau2, 
-	    open[n]->transfer_u2, open[n]->relax_zone_nor, U2GEN);
+	    open[n]->transfer_u2, open[n]->relax_zone_nor, (U2BDRY|U2GEN|NOR));
 
     /* Set open boundary velocities above the free surface equal to  */
     /* zero.                                                         */
@@ -3950,7 +3950,7 @@ void bdry_u2_3d(geometry_t *window, /* Window geometry               */
             open[n]->oi2_e2, open[n]->cyc_e2, windat->nu2,
 	    windat->u2, windat->u2b, open[n]->bcond_tan, windat->dtf,
             &open[n]->datau2, open[n]->transfer_u2, 
-	    open[n]->relax_zone_tan, U2GEN);
+	    open[n]->relax_zone_tan, (U2BDRY|U2GEN|TAN));
   }
 
   /*-----------------------------------------------------------------*/

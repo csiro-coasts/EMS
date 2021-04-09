@@ -28,7 +28,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_grow_bleach_epi.c 6329 2019-09-13 06:49:35Z bai155 $
+ *  $Id: coral_spectral_grow_bleach_epi.c 6681 2021-01-08 02:36:02Z bai155 $
  *
  */
 
@@ -500,7 +500,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double* cv = c->cv;
     double dz_wc = c->dz_wc;
 
-    double temp_wc = y[ws->temp_wc_i];
+    // double temp_wc = y[ws->temp_wc_i]; - now used in precalc
     double CS_Chl = y[ws->CS_Chl_i];
 
     double CS_NR = y[ws->CS_NR_i];

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6465 2020-02-18 23:45:21Z her127 $
+ *  $Id: readparam_t.c 6666 2020-09-08 06:14:02Z her127 $
  *
  */
 
@@ -127,11 +127,25 @@ FILE *fp;
   prm_read_char(fp, keyword, params->sequence);
   /* ID number and revision */
   sprintf(keyword, "ID_NUMBER");
-  prm_read_double(fp, keyword, &params->runno);
+  prm_read_char(fp, keyword, params->runnoc);
+  params->runno = atof(params->runnoc);
   sprintf(keyword, "REVISION");
   prm_read_char(fp, keyword, params->rev);
 
   /* Optional parameters */
+  prm_read_char(fp, "HISTORY", buf);
+  if (contains_token(buf, "NONE") != NULL) {
+    params->history = NONE;
+  } else {
+    params->history = 0;
+    if (contains_token(buf, "LOG") != NULL)
+      params->history |= HST_LOG;
+    if (contains_token(buf, "DIFF") != NULL)
+      params->history |= HST_DIF;
+    if (contains_token(buf, "RESET") != NULL)
+      params->history |= HST_RESET;
+  }
+
   /* Bottom roughness */
   z0_init(params);
 
@@ -172,6 +186,9 @@ FILE *fp;
   sprintf(keyword, "ULTIMATE");
   if (prm_read_char(fp, keyword, buf))
     params->ultimate = is_true(buf);
+  /* Runge-Kutta stages                                              */
+  sprintf(keyword, "RUNGE-KUTTA");
+  prm_read_int(fp, keyword, &params->rkstage);
   sprintf(keyword, "ORDER_SL");
   if (prm_read_char(fp, keyword, buf)) {
     if (strcmp(buf, "LINEAR") == 0)
@@ -334,6 +351,7 @@ FILE *fp;
   }
   /* Diagnistic numbers */
   params->ntr += numbers_init(params);
+  params->ntr += import_init(params, fp);
 
   read_decorr(params, fp, 0);
   read_monotone(params, fp, 0);

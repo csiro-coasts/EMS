@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6458 2020-02-18 23:42:30Z her127 $
+ *  $Id: hd_params.h 6728 2021-03-30 00:35:39Z her127 $
  *
  */
 
@@ -105,7 +105,17 @@
 
 /* Number of auxiliary cells to include laterally */
 #define laux 2           
-       
+
+/* History log codes */
+#define HST_LOG    1
+#define HST_DIF    2
+#define HST_PRE    4
+#define HST_POST   8
+#define HST_OK     16
+#define HST_NOK    32
+#define HST_FST    64
+#define HST_RESET  128
+
 /* Grid refinement codes */                                   
 #define NOZOOM    0
 #define DOZOOM    1
@@ -208,8 +218,11 @@
 #define OP_ISPNG        0x2000
 #define OP_PARFLOW      0x4000
 #define OP_NESTBARO     0x8000
-#define OP_MACREADY     0x01000
-#define OP_OWRITE       0x02000
+#define OP_MACREADY     0x10000
+#define OP_OWRITE       0x20000
+#define OP_FAS          0x40000
+#define OP_FAT          0x80000
+#define OP_TILED        0x100000
 
 /* Tidal boundary flags */
 #define TD_ETA          0x0002
@@ -326,6 +339,7 @@
 #define A_RECOM_R2      128
 #define A_ROAM_R3       256
 #define A_ROAM_R4       512
+#define A_ROAM_R5       1028
 
 /* Advection scheme flags                                                    */
 #define ORDER1        0x000002
@@ -352,6 +366,8 @@
 #define PV_ENSCO      0x400000
 #define PV_ENSDS      0x800000
 #define PV_APVM      0x1000000
+#define PV_LUST      0x2000000
+#define PV_CLUST     0x4000000
 
 /* Lagrangian method */
 #define L_LINEAR      0x001
@@ -499,6 +515,9 @@
 #define TPXOT        0x00000008
 #define TRAN2D       0x00000010
 #define MESHUN       0x00000020
+#define VOLCONT      0x00000040
+#define CENTI        0x00000080
+#define CELLAREA     0x00000100
 
 /* Wind input */
 #define SPEED         2
@@ -529,6 +548,11 @@
 #define CUBIC          0x020000  /* Cubic viscosity scaling */
 #define AREAL          0x040000  /* Areal scaling */
 #define U1_SBC         0x080000  /* Smagorinsky, FILEIN OBCs    */
+#define VH_REG         0x100000  /* Regionalised for u1vh */
+#define KH_REG         0x200000  /* Regionalised for u1kh */
+#define H_LEN          0x400000  /* Edge length for length scale */
+#define E_LEN          0x800000  /* Edge area for length scale */
+#define C_LEN          0x1000000 /* Cell area for length scale */
 
 /* Save input forcing flags */
 #define OTEMP          1
@@ -546,6 +570,7 @@
 #define FLUX_ADJUST    32
 #define ETA_ADPT       64
 #define ETA_TPXO       128
+#define TIDE_ADJUST    256
 
 /* Horizontal diffusion/viscosity methods */
 #define LAPLACIAN      1
@@ -622,8 +647,10 @@
 #define SP_U1VM           0x20000000
 #define DO_SWR            0x40000000
 #define DO_OBC            0x80000000
+#define SP_SET            0x100000
 #define U1STRUCT          0x0100
 #define U2STRUCT          0x0200
+#define SP_SET            0x100000
 
 #define REINIT            0x0001
 #define NOINIT            0x0002
@@ -728,6 +755,7 @@
 #define DF_TRA            0x0010
 #define DF_NOR            0x0020
 #define DF_TAN            0x0040
+#define DF_TILE           0x0080
 
 /* DA flags */
 #define NO_DA             1
@@ -834,6 +862,8 @@
 # define SWR_2D     0x0001
 # define SWR_3D     0x0002
 # define SWR_SPLIT  0x0004
+# define SWR_ATTN   0x0008
+# define SWR_TRAN   0x0010
 
 /* Generic interface */
 # define GINT_OK   0x0001
@@ -867,6 +897,7 @@
 #define TS_CLOS    0x0100
 #define TS_PRED    0x0200
 #define TS_GLIDER  0x0400
+#define TS_MINMAX  0x0800
 
 /* Unstructred types */
 #define US_TRI     0x0001
@@ -917,6 +948,7 @@
 #define B_BLOCKIJ      2
 #define B_LISTC        4
 #define B_BLOCKC       8
+#define B_POLY         16
 
 /* Output longitude range */
 #define O360           2

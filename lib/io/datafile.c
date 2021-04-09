@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.c 6235 2019-05-29 03:32:20Z her127 $
+ *  $Id: datafile.c 6755 2021-04-07 00:57:40Z her127 $
  */
 
 #include <stdio.h>
@@ -253,7 +253,7 @@ void df_set_record(datafile_t *df, int varid)
      recdimid as the first dimension. Nullify the data. */
   for (i = 0; i < df->nv; ++i) {
     df_variable_t *v = &df->variables[i];
-    if (v->dimids[0] == recdimid) {
+    if (v->dimids && v->dimids[0] == recdimid) {
       int i;
 
       v->dim_as_record = 1;
@@ -399,13 +399,17 @@ int df_find_record(datafile_t *df, double r, int *before, int *after,
     mempack_read_records(df, df->ri);
     if (strcmp(mp->tunits, df->rec_units) != 0)
       quit("df_find_record: mempack units must be %s\n", df->rec_units);
-    if (r > mp->next) {
+    /*    
+    if (r < mp->next)
+      printf("using file %s @ t=%f days mp->time=%f next=%f\n", df->name, r / 86400.0, mp->time/86400, mp->next/86400);
+    */
+    if (r >= mp->next) {
       /*printf("waiting for data: file %s @ %f days\n", df->name, r / 86400.0);*/
-      /*printf("waiting for data: file %s @ %5.2f, time = %5.2f next = %5.2f\n", df->name, r, mp->time, mp->next);*/
+      /*printf("waiting for data: file %s @ %f, time = %f next = %f\n", df->name, r/86400, mp->time/86400, mp->next/86400);*/
       /*warn("waiting for data: file %s @ %f days\n", df->name, r / 86400.0);*/
       f1 = f2 = 1;
       time(&iclk);
-      while (r > mp->next) {
+      while (r >= mp->next) {
 	mempack_read_records(df, df->ri);
 	mp->next = df->records[ihigh] + mp->dt;
 	clock = time(&clk) - iclk;
@@ -420,8 +424,9 @@ int df_find_record(datafile_t *df, double r, int *before, int *after,
 	if (clock%wait_inc >= 1 && !f2) f2 = 1;
 	n++;
       }
+      /*printf("using wait file %s @ t=%f days mp->time=%f next=%f\n", df->name, r / 86400.0, mp->time/86400, mp->next/86400);*/
       /*printf("Read record from %s at %f : %f. Continue?", df->name, df->records[ihigh]/86400);
-	scanf("%d", &imid);*/
+      scanf("%d", &imid);*/
     } else {
       /*printf("File %s\n", df->name);
 	printf("Continue : model time %f <= record time %f\n",r/86400,(df->records[ihigh]+mp->dt)/86400);*/
@@ -704,7 +709,48 @@ void df_free(datafile_t *df)
         if (v->dimids != NULL)
           free(v->dimids);
 
-        
+	if (v->gs0_master_2d != NULL) {
+	  GRID_SPECS *gs = v->gs0_master_2d;
+	  grid_specs_destroy(gs);
+	}
+	if (v->gs1_master_2d != NULL) {
+	  GRID_SPECS *gs = v->gs1_master_2d;
+	  delaunay *d = gs->d;
+	  point *p = d->points;
+	  free((point *)p);
+	  delaunay_destroy(d);
+	  grid_specs_destroy(gs);
+	}
+	if (v->gs0_master_3d != NULL) {
+	  GRID_SPECS **gs = v->gs0_master_3d;
+	  int nz = v->nz, k;
+	  for (k = 0; k < nz; k++) {
+	    if (gs[k] != NULL) {
+	      gs[k]->destroy_pbathy = 0;
+	      grid_specs_destroy(gs[k]);
+	    }
+	  }
+	  free((GRID_SPECS **)gs);
+	}
+	if (v->gs1_master_3d != NULL) {
+	  GRID_SPECS **gs = v->gs1_master_3d;
+	  int nz = v->nz, k;
+	  for (k = 0; k < nz; k++) {
+	    if (gs[k] != NULL) {
+	      delaunay *d = gs[k]->d;
+	      point *p = d->points;
+	      for (i = 0; i < v->kn[k]; i++) d_free_1d(p[i].v);
+	      free_1d((point *)p);
+	      delaunay_destroy(d);
+	      gs[k]->destroy_pbathy = 0;
+	      grid_specs_destroy(gs[k]);
+	    }
+	  }
+	  free((GRID_SPECS **)gs);
+	  i_free_1d(v->kn);
+	  i_free_2d(v->kmap);
+	}
+
         if (v->data != NULL)
           free_data_records(df, v);      }
       free(df->variables);    }
@@ -753,7 +799,6 @@ void df_free(datafile_t *df)
       ht_process(df->ht_master_2d, destroy_hq_within_ht);
       ht_destroy(df->ht_master_2d);
     }
-
     emstag(LMETRIC,"lib:datafile:df_free","Destroyed datafile %s ",df->name);
     free(df);  
   }
@@ -1337,6 +1382,11 @@ void netcdf_read(int fid, datafile_t *df, int type)
 
       /* Extract the dimension information for each variable */
       nc_inq_varndims(df->ncid, v->varid, &v->nd);
+
+      if (v->nd == 0) {
+	warn("netcdf_read: 0 coords found for variable %s\n", v->name);
+	continue;
+      }
       v->dimids = (int *)malloc(v->nd * sizeof(int));
       nc_inq_vardimid(df->ncid, v->varid, v->dimids);
 
@@ -1517,8 +1567,8 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	v->type |= VT_BATHY;
       }
       /* MH : If the variable is height and no coordinates were found, assume   */
-      /* the coordinates are lon, lat and try again.                            
-      if (strcmp(v->name, "height") == 0 && v->nc == 0) {
+      /* the coordinates are lon, lat and try again.    */                         
+      if (strcmp(v->name, "height") == 0 && v->nc == 0 && df->records == NULL) {
 	int ii;
 	char buf[MAXSTRLEN];
 	for (ii = 0; ii < df->nv; ++ii) {
@@ -1537,7 +1587,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	df->nrecords = 1;
 	v->type |= VT_BATHY;
       }
-      */
+
       /* MH : Check if the coordinates can be constructed from existing variables. */
       /* Only for 2d and 3d spatial data in lat/long coordinates. */
       if (v->type & VT_DATA && v->nc == 0 && v->nd > 1) {

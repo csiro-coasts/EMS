@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 6477 2020-02-18 23:53:57Z her127 $
+ *  $Id: reset.c 6748 2021-03-30 00:45:37Z her127 $
  *
  */
 
@@ -65,9 +65,15 @@ static void open_tr_reset_tsfiles(master_t *master, char *fnames,
     reset->tsnames = (cstring *) malloc(sizeof(cstring) * nf);
     memset(reset->tsfiles, 0, sizeof(timeseries_t *) * nf);
     memset(reset->tsnames, 0, sizeof(cstring) * nf);
-    for (i = 0; i < nf; ++i) {
-      strcpy(reset->tsnames[i], fields[i]);
-      reset->tsfiles[i] = hd_ts_read(master, reset->tsnames[i], 0);
+    if (is_set_variable(fnames)) {
+      reset->in_type |= SP_SET;
+      for (i = 0; i < nf; ++i)
+	strcpy(reset->tsnames[i], fields[i]);
+    } else {
+      for (i = 0; i < nf; ++i) {
+	strcpy(reset->tsnames[i], fields[i]);
+	reset->tsfiles[i] = hd_ts_read(master, reset->tsnames[i], 0);
+      }
     }
   } else
     hd_quit("Must specify at least one reset time-series file.\n");
@@ -204,6 +210,7 @@ double tr_reset_event(sched_event_t *event, double t)
   /* Check whether the current time exceeds the next update time     */
   if ((t + reset->dt / 10.0) >= (reset->tnext - master->dt)) {
     double *trv = master->tr_wc[tid];
+
     /* Note : there is a sequence where reset updates, tracer        */
     /* transport, tracer statistics and output dumps are performed.  */
     /* If a reset is used in conjunction with tracerstats to get a   */
@@ -238,6 +245,11 @@ double tr_reset_event(sched_event_t *event, double t)
       int n = tracer_find_index("temp", master->ntr, master->trinfo_3d);
       master->trinfo_3d[n].flag = DO_SWR_INVERSE;
     }
+
+    if (strcmp(master->trinfo_3d[tid].long_name, "u1") == 0)
+      memcpy(master->u1, trv, geom->sgsiz * sizeof(double));
+    if (strcmp(master->trinfo_3d[tid].long_name, "u2") == 0)
+      memcpy(master->u2, trv, geom->sgsiz * sizeof(double));
   }
 
   return tsout;
@@ -307,6 +319,7 @@ void tracer_reset2d_init(master_t *master)
 	reset->master = master;
 	reset->tid = t;
 	reset->dt = dt;
+	reset->in_type = (XYZ_TINT|VEL2D);
 
 	/* Interpolation rule */
 	strcpy(reset->interp_type, master->trinfo_2d[t].reset_interp);
@@ -315,20 +328,23 @@ void tracer_reset2d_init(master_t *master)
 	/* tr_reset_event() for the rationale for this.              */
 	reset->tnext = schedule->start_time - master->grid_dt;
 	open_tr_reset_tsfiles(master, fname, reset);
-	hd_ts_multifile_check(reset->ntsfiles, reset->tsfiles,
-			      reset->tsnames, master->trinfo_2d[t].name,
-			      schedule->start_time,
-			      schedule->stop_time);
+	if (reset->in_type & SP_SET) {
+	  if (!strlen(reset->interp_type))
+	    hd_quit("tracer_reset2d(): Requite 'reset_interp' for %s\n", fname);
+	} else
+	  hd_ts_multifile_check(reset->ntsfiles, reset->tsfiles,
+				reset->tsnames, master->trinfo_2d[t].name,
+				schedule->start_time,
+				schedule->stop_time);
 
 	strcpy(schedName, "tracer_reset2d:");
 	strcat(schedName, master->trinfo_2d[t].name);
 
-	reset->in_type = (XYZ_TINT|VEL2D);
-	if(check_sparse_dumpfile(geom, reset->ntsfiles, 
-				 reset->tsfiles, reset->tsnames) == 0)
-	  reset->in_type = SP_TINT;
 	if (strcmp(master->trinfo_2d[t].name, "ghrsst") == 0)
 	  reset->in_type |= GHRSST;
+	if(!(reset->in_type & SP_SET) && check_sparse_dumpfile(geom, reset->ntsfiles, 
+				 reset->tsfiles, reset->tsnames) == 0)
+	  reset->in_type = SP_TINT;
 
         sched_register(schedule, schedName,
                        tr_reset_init, tr_reset2d_event, tr_reset_cleanup,
@@ -389,15 +405,23 @@ double tr_reset2d_event(sched_event_t *event, double t)
 
     /* Switch on interp type, if specified */
     if (strlen(reset->interp_type)) {
-      /* NOTE: Only reads the first file!! */
       char buf[MAXLINELEN];
-      char *vname = fv_get_varname(reset->tsnames[0], master->trinfo_2d[tid].name, buf);
 
-      /* Use the grid interp library */
-      hd_ts_grid_interp(master, reset->tsfiles[0], vname,
-			trv, tsin, geom->wsa, geom->a2_t, reset->interp_type);
+      /*-----------------------------------------------------------------*/
+      /* Check for regionalized formats                                  */
+      if (reset->in_type & SP_SET) {
+	sprintf(buf, "[var=%s] [i_rule=%s] %s", master->trinfo_2d[tid].name, reset->interp_type, 
+		master->trinfo_2d[tid].reset_file);
+	set_variable(master, buf, trv, &tsin);
+      } else {
+	/* Use the grid interp library */
+	/* NOTE: Only reads the first file!! */
+	char *vname = fv_get_varname(reset->tsnames[0], master->trinfo_2d[tid].name, buf);
+	hd_ts_grid_interp(master, reset->tsfiles[0], vname,
+			  trv, tsin, geom->wsa, geom->a2_t, reset->interp_type);
+      }
 			
-    } else{
+    } else {
       /* Standard emslib interpolation */
       hd_ts_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			   reset->tsnames, master->trinfo_2d[tid].name,
@@ -406,12 +430,24 @@ double tr_reset2d_event(sched_event_t *event, double t)
     /* Scale if required                                             */
     scale_tracer(master->trinfo_2d, geom, master->tr_wcS, tid);
 
+    if (strcmp(master->trinfo_2d[tid].long_name, "eta") == 0)
+      memcpy(master->eta, trv, geom->sgsizS * sizeof(double));
+
     /* Set the next update time                                      */
     reset->tnext += reset->dt;
     tsout = reset->tnext;
 
     /* Set the flag for increment updates                            */
     if (master->trinfo_2d[tid].increment) master->trincS[tid] = 1;
+
+    /*
+    if (strcmp(master->trinfo_2d[tid].name, "eta") == 0) 
+      memcpy(master->eta, trv, geom->szcS * sizeof(double));
+    if (strcmp(master->trinfo_2d[tid].name, "uav") == 0) 
+      memcpy(master->uav, trv, geom->szcS * sizeof(double));
+    if (strcmp(master->trinfo_2d[tid].name, "vav") == 0) 
+      memcpy(master->vav, trv, geom->szcS * sizeof(double));
+    */
   }
 
   return tsout;

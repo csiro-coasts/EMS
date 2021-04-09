@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6432 2019-11-22 00:26:10Z her127 $
+ *  $Id: windows.c 6715 2021-03-29 00:56:57Z her127 $
  *
  */
 
@@ -64,6 +64,7 @@ void get_local_obc_a(int *vec, int nvec, int nvec2D, geometry_t **window, int nw
 void set_reef_frac(master_t *master, geometry_t **window, window_t **windat, 
 		     win_priv_t **wincon);
 void window_cells_check(geometry_t *geom, int nwindows, int **ws2, int *wsizeS);
+void obc_setup(master_t *master, geometry_t **window);
 
 int zmode = 1;                /* zmode=0 : only zoom centers in zone */
                               /* zmode=1 : centers & faces in zone */
@@ -4940,7 +4941,7 @@ window_t **win_data_build(master_t *master, /* Model data structure */
     windat[n]->Q2 = windat[n]->Q2L = windat[n]->Kq = NULL;
     windat[n]->u1m = windat[n]->u2m = windat[n]->wm = windat[n]->Kzm = NULL;
     windat[n]->u1vm = windat[n]->u2vm = windat[n]->tempm = windat[n]->saltm = NULL;
-    windat[n]->tram = NULL;
+    /*if (master->means & MTRA3D) windat[n]->tram = NULL;*/
     windat[n]->u1_adv = windat[n]->u1_hdif = windat[n]->u1_vdif = NULL;
     windat[n]->u1_cor = windat[n]->u1_btp = windat[n]->u1_bcp = NULL;
     windat[n]->u2_adv = windat[n]->u2_hdif = windat[n]->u2_vdif = NULL;
@@ -4959,6 +4960,11 @@ window_t **win_data_build(master_t *master, /* Model data structure */
     windat[n]->reefe1 = windat[n]->reefe2 = windat[n]->agetr = NULL;
     windat[n]->tr_adv = windat[n]->tr_hdif = windat[n]->tr_vdif = windat[n]->tr_ncon = NULL;
     windat[n]->wave_stke1 = windat[n]->wave_stke1 = NULL;
+    if (master->ndhw) {
+      windat[n]->dhw = (double **)p_alloc_1d(master->ndhw);
+      windat[n]->dhd = (double **)p_alloc_1d(master->ndhw);
+      windat[n]->dhwc = (double **)p_alloc_1d(master->ndhw);
+    }
 
     for (tn = 0; tn < windat[n]->ntr; tn++) {
       if (strcmp("salt", master->trname[tn]) == 0) {
@@ -4991,7 +4997,7 @@ window_t **win_data_build(master_t *master, /* Model data structure */
         windat[n]->tempm = windat[n]->tr_wc[tn];
       else if (strcmp("salt_mean", master->trname[tn]) == 0)
         windat[n]->saltm = windat[n]->tr_wc[tn];
-      else if (strcmp("tracer_mean", master->trname[tn]) == 0)
+      else if (strcmp("tracer_mean", master->trname[tn]) == 0 && master->means & MTRA3D)
         windat[n]->tram = windat[n]->tr_wc[tn];
       else if (strcmp("u1vmean", master->trname[tn]) == 0)
         windat[n]->u1vm = windat[n]->tr_wc[tn];
@@ -5113,6 +5119,8 @@ window_t **win_data_build(master_t *master, /* Model data structure */
         windat[n]->agetr = windat[n]->tr_wc[tn];
       } else if (strcmp("glider", master->trname[tn]) == 0) {
         windat[n]->glider = windat[n]->tr_wc[tn];
+      } else if (strcmp("density", master->trname[tn]) == 0) {
+        windat[n]->density = windat[n]->tr_wc[tn];
       } else if (strcmp("nprof", master->trname[tn]) == 0) {
         windat[n]->nprof = windat[n]->tr_wc[tn];
       } else if (strcmp("unit", master->trname[tn]) == 0) {
@@ -5144,13 +5152,21 @@ window_t **win_data_build(master_t *master, /* Model data structure */
 	sprintf(buf, "%s_ncon", master->trinfo_3d[master->trtend].name);
 	if (strcmp(buf, master->trname[tn]) == 0)
 	  windat[n]->tr_ncon = windat[n]->tr_wc[tn];
-      } else if (master->dhwf & DHW_NOAA) {
-	if (strcmp("dhd", master->trname[tn]) == 0)
-	  windat[n]->dhd = windat[n]->tr_wc[tn];
-	else if (strcmp("dhwc", master->trname[tn]) == 0)
-	  windat[n]->dhwc = windat[n]->tr_wc[tn];
-	else if (strcmp("dhw", master->trname[tn]) == 0)
-	  windat[n]->dhw = windat[n]->tr_wc[tn];
+      } else if (master->ndhw) {
+	char buf[MAXSTRLEN];
+	for (cc = 0; cc < master->ndhw; cc++) {
+	  if (master->dhwf[cc] & DHW_NOAA) {
+	    sprintf(buf, "dhd%d", cc);
+	    if (strcmp(buf, master->trname[tn]) == 0)
+	      windat[n]->dhd[cc] = windat[n]->tr_wc[tn];
+	    sprintf(buf, "dhwc%d", cc);
+	    if (strcmp(buf, master->trname[tn]) == 0)
+	      windat[n]->dhwc[cc] = windat[n]->tr_wc[tn];
+	    sprintf(buf, "dhw%d", cc);
+	    if (strcmp(buf, master->trname[tn]) == 0)
+	      windat[n]->dhw[cc] = windat[n]->tr_wc[tn];
+	  }
+	}
       }
     }
 
@@ -5268,6 +5284,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
     windat->u1b = d_alloc_1d(winsize);
     windat->u2b = d_alloc_1d(winsize);
     windat->waterss = d_alloc_1d(winsize);
+    if (master->means & MTRA2D) windat->tram = NULL;
     if (master->velrlx & RELAX) {
       relax_info_t *relax = master->vel_rlx;
       windat->vel_rlx = relax_info_init(relax->rlxn, relax->rlxtc, 
@@ -5423,6 +5440,8 @@ window_t *win_data_init(master_t *master, /* Master data structure */
         windat->u1am = windat->tr_wcS[m];
       if (strcmp("u2av_mean", master->trinfo_2d[m].name) == 0)
         windat->u2am = windat->tr_wcS[m];
+      if (strcmp("tracer_mean", master->trinfo_2d[m].name) == 0 && master->means & MTRA2D)
+        windat->tram = windat->tr_wcS[m];
       if (strcmp("nhf", master->trinfo_2d[m].name) == 0)
         windat->nhfd = windat->tr_wcS[m];
       if (strcmp("swr", master->trinfo_2d[m].name) == 0) {
@@ -5513,7 +5532,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
         windat->avhrr = windat->tr_wcS[m];
       if (strcmp("ghrsst", master->trinfo_2d[m].name) == 0)
         windat->ghrsst = windat->tr_wcS[m];
-      if (strcmp("ghrsste", master->trinfo_2d[m].name) == 0)
+      if (strcmp("ghrsst_error", master->trinfo_2d[m].name) == 0)
         windat->ghrsste = windat->tr_wcS[m];
       if (strcmp("u1_rad", master->trinfo_2d[m].name) == 0)
         windat->u1_rad = windat->tr_wcS[m];
@@ -5746,8 +5765,11 @@ window_t *win_data_init(master_t *master, /* Master data structure */
     windat->eta_tc = master->eta_tc;
     windat->sederr = master->sederr;
     windat->ecoerr = master->ecoerr;
+    windat->sep = master->sep;
+    windat->bep = master->bep;
     if (master->etarlx & (RELAX|ALERT|BOUNDARY)) 
       windat->eta_rlx = master->eta_rlx;
+    if (master->means & (MTRA2D|MTRA3D)) windat->tram = master->tram;
 
     /* Diagnostic indicies */
     windat->precipn = master->precipn;
@@ -5805,6 +5827,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
 	windat->vd = d_alloc_1d(window->nz + 1);
     }
   }
+
   return (windat);
 }
 
@@ -6346,9 +6369,18 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->trout = master->trout;
     wincon[n]->gint_errfcn = master->gint_errfcn;
     wincon[n]->da = master->da;
+    wincon[n]->attn_tr = master->attn_tr;
+    wincon[n]->tran_tr = master->tran_tr;
     wincon[n]->swr_type = master->swr_type;
-    wincon[n]->dhwf = master->dhwf;
-    wincon[n]->dhwh = master->dhwh;
+    if (master->ndhw) {
+      wincon[n]->ndhw = master->ndhw;
+      wincon[n]->dhwf = i_alloc_1d(master->ndhw);
+      wincon[n]->dhwh = d_alloc_1d(master->ndhw);
+      for (i = 0; i < master->ndhw; i++) {
+	wincon[n]->dhwf[i] = params->dhwf[i];
+	wincon[n]->dhwh[i] = params->dhwh[i];
+      }
+    }
 
     /* FR: Strictly speaking this is not good
      *     It will obviously work for shared memory and luckily
@@ -7470,6 +7502,7 @@ void pre_run_setup(master_t *master,  /* Master data structure */
     }
   }
 
+  obc_setup(master, window);
   get_timesteps(window, windat, wincon, nwindows, master);
   timeaux(window, windat, wincon, nwindows);
   init_flushing(master, window, wincon);
@@ -7559,6 +7592,98 @@ void set_reef_frac(master_t *master,
 }
 
 /* END set_reef_frac()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initialises any OBC specific parameterisations                    */
+/*-------------------------------------------------------------------*/
+void obc_setup(master_t *master, geometry_t **window)
+{
+  geometry_t *geom = master->geom;
+  int cc, c, n, nn, c1;
+  int fam = 1;
+  int fat = 1;
+
+  /* Scaling of default flux adjustment to minimum boundary CFL      */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    if (open->options & (OP_FAS|OP_FAT)) {
+      double btws, d1, d3, h;
+      double cfl2d = HUGE;
+      double mws = HUGE;
+      double spd = 2.0;
+      
+      /* Minimum cfl for each boundary                               */
+      for(cc = 1; cc <= open->no2_t; cc++) {
+	c = open->obc_t[cc];
+
+	d1 = sqrt(1.0 / (geom->h1acell[c] * geom->h1acell[c]) +
+		  1.0 / (geom->h2acell[c] * geom->h2acell[c]));
+	btws = sqrt(-master->g * geom->botz[c]);
+	h = (open->type == U1BDRY) ? geom->h2acell[c] : geom->h1acell[c];
+	if (h / btws < mws) mws = h / btws;
+	d3 = 2.0 * btws + spd;
+	d3 = 1.0 / (d1 * d3);
+	if (d3 < cfl2d) cfl2d = d3;
+      }
+
+      /* Scaling to dt2d                                             */
+      d1 = master->grid_dt / (double)master->iratio;
+      if (open->adjust_flux < 0.0 && open->options & OP_FAS) {
+
+	if (fam == 0) {
+	  /* Fastest wave scales to (min CFL) / (h/sqrt(gD)) on the  */
+	  /* OBC.                                                    */
+	  open->adjust_flux = -d1 / cfl2d;
+	} else {
+	  /* Fastest wave scales to absolute value of adjust_flux    */
+	  open->adjust_flux /= mws;
+	}
+      }
+      if (open->adjust_flux_s < 0.0 && open->options & OP_FAT) {
+
+	if (fat == 0) {
+	  /* Fastest wave scales to (min CFL) / (h/sqrt(gD)) on the  */
+	  /* OBC.                                                    */
+	  open->adjust_flux_s = -d1 / cfl2d;
+	} else {
+	  /* Fastest wave scales to absolute value of adjust_flux    */
+	  open->adjust_flux_s /= mws;
+	}
+      }
+    }
+
+    /* Distribute to windows                                         */
+    for (nn = 1; nn <= geom->nwindows; nn++) {
+      c1 = geom->owc[n][nn];
+      if (c1 != -1) {
+	if (open->options & (OP_FAS|OP_FAT)) {
+	  window[nn]->open[c1]->adjust_flux = open->adjust_flux;;
+	  window[nn]->open[c1]->adjust_flux_s = open->adjust_flux_s;
+	}
+	/* If the 2D velocities are tidally forced and dual          */
+	/* relaxation is used, then set the ramp to TIDE_ADJUST.     */
+	/* This uses single relaxation over the ramp period so that  */
+	/* the tidal relaxation does not drive the sea level to      */
+	/* zero. The tidal velocities remain ramped so that tides    */
+	/* are not suddenly imposed.                                 */
+	if (window[nn]->open[c1]->bcond_ele & TIDALC && 
+	    window[nn]->open[c1]->bcond_nor2d & TIDALC &&
+	    window[nn]->open[c1]->bcond_tan2d & TIDALC && 
+	    window[nn]->open[c1]->adjust_flux_s != 0.0) {
+	  window[nn]->wincon->rampf |= TIDE_ADJUST;
+	}
+	/*
+	flux_adjust_init(window[nn]->open[c1]);
+	flux_adjust_copy(open, window[nn]->open[c1]);
+	*/
+      }
+    }
+  }
+}
+
+/* END obc_setup()                                                   */
 /*-------------------------------------------------------------------*/
 
 

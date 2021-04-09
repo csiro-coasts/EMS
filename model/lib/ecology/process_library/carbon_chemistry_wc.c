@@ -23,7 +23,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: carbon_chemistry_wc.c 6045 2018-12-12 00:33:37Z bai155 $
+ *  $Id: carbon_chemistry_wc.c 6542 2020-05-06 06:27:36Z bai155 $
  *
  */
 
@@ -111,22 +111,22 @@ void carbon_chemistry_wc_init(eprocess* p)
   p->workspace = ws;
   
   /*parameters*/
+  
+  ws->xco2_air = try_parameter_value(e, "xco2_in_air");   
 
-   ws->xco2_air = try_parameter_value(e, "xco2_in_air");
-
-   if (isnan(ws->xco2_air))
-	     ws->xco2_air_i = e->find_index(tracers,"xco2_in_air", e);
+  if (isnan(ws->xco2_air)){
+    eco_write_setup(e,"No parameter: xco2_in_air, so assuming a tracer instead \n");
+    ws->xco2_air_i = e->find_index(tracers,"xco2_in_air", e);
+  }
    
   /* TRACERS - necessary ones */
   
-  ws->TEMP_i = e->find_index(e->tracers, "temp", e);
-  ws->SALT_i = e->find_index(e->tracers, "salt", e);
+  ws->TEMP_i = e->find_index(tracers, "temp", e);
+  ws->SALT_i = e->find_index(tracers, "salt", e);
   ws->DIC_i = e->find_index(tracers,"DIC", e);
   ws->ALK_i = e->find_index(tracers,"alk", e);
   ws->PH_i = e->find_index(tracers,"PH", e);
  
-
-
   /* dco2star is diagnostic, but necessary since comes from ocmip2_co2calc, and must 
      be found by gas_exchange_wc.c */
 

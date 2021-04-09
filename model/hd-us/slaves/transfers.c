@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6474 2020-02-18 23:52:26Z her127 $
+ *  $Id: transfers.c 6744 2021-03-30 00:43:43Z her127 $
  *
  */
 
@@ -129,9 +129,11 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     if (!(master->decf & (NONE|DEC_ETA))) {
       windat->decv1[lc] = master->decv1[c];
     }
-    if (master->dhwf & DHW_NOAA) {
-      windat->dhw[lc] = master->dhw[c];
-      windat->dhd[lc] = master->dhd[c];
+    for (tt = 0; tt < master->ndhw; tt++) {
+      if (master->dhwf[tt] & DHW_NOAA) {
+	windat->dhw[tt][lc] = master->dhw[tt][c];
+	windat->dhd[tt][lc] = master->dhd[tt][c];
+      }
     }
   }
   for (cc = 1; cc <= window->enonS; cc++) {
@@ -174,6 +176,7 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
   for (ee = 1; ee < window->szeS; ee++) {
     e = window->wse[ee];
     windat->wind1[ee] = master->wind1[e];
+    windat->wind2[ee] = master->wind2[e];
     windat->windspeed[ee] = master->windspeed[e];
     windat->winddir[ee] = master->winddir[e];
   }
@@ -591,6 +594,7 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
     }
     /* Transfer any custom data from the master to the slaves        */
     bdry_transfer_u1(master, window, windat);
+
   }
   /* mode = VELOCITY : depth averaged adjusted velocities for the    */
   /* vertical velocity equation and 3D fluxes for the tracer         */
@@ -641,6 +645,24 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
       lc = window->m2s[cc];
       c = window->wsa[lc];
       windat->dens[lc] = master->dens[c];
+    }
+  }
+  /* Refill vertical velocity and grid thickness for FFSL. This is   */
+  /* required to project tracers onto a horizontal level (i.e. the   */
+  /* z-direction transverse terms) in ghost cells.                   */
+  if (mode & WVEL) {
+    win_priv_t *wincon = window->wincon;
+    for (cc = 1; cc <= window->nm2s; cc++) {
+      lc = window->m2s[cc];
+      c = window->wsa[lc];
+      windat->w[lc] = master->w[c];
+      wincon->dz[lc] = master->dz[c];
+    }
+    for (cc = 1; cc <= window->nm2sS; cc++) {
+      lc = window->m2s[cc];
+      c = window->wsa[lc];
+      windat->wtop[lc] = master->wtop[c];
+      windat->wbot[lc] = master->wbot[c];
     }
   }
 }
@@ -861,6 +883,15 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
       master->wtop[c] = windat->wtop[lc];
       master->wbot[c] = windat->wbot[lc];
     }
+    if (master->trasc & FFSL) {
+      win_priv_t *wincon = window->wincon;
+      for (cc = 1; cc <= window->ns2m; cc++) {
+	lc = window->s2m[cc];
+	c = window->wsa[lc];
+	master->dz[c] = wincon->dz[lc];
+      }
+    }
+
     /*
     if (master->means & TRANSPORT) {
       for (cc = 1; cc <= window->ns2m; cc++) {
@@ -941,11 +972,13 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
 	if (master->tau_diss2) master->tau_diss2[c] = windat->tau_diss2[lc];
       }
     }
-    if (master->dhwf & DHW_NOAA) {
-      for (cc = 1; cc <= window->b3_t; cc++) {
-	lc = window->w3_t[cc];
-	c = window->wsa[lc];
-	master->dhd[c] = windat->dhd[lc];
+    for (tt = 0; tt < master->ndhw; tt++) {
+      if (master->dhwf[tt] & DHW_NOAA) {
+	for (cc = 1; cc <= window->b3_t; cc++) {
+	  lc = window->w3_t[cc];
+	  c = window->wsa[lc];
+	  master->dhd[tt][c] = windat->dhd[tt][lc];
+	}
       }
     }
     if (!(master->decf & NONE)) {
@@ -1787,7 +1820,7 @@ void s2c_2d(geometry_t *geom,   /* Global geometry                   */
   /* Initialise                                                      */
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
-      ac[j][i] = NaN;
+      ac[j][i] = 0.0;
 
   /* Map the 2d sparse variable to Cartesion                         */
   for (c = 1; c <= geom->ewetS; c++) {
@@ -1820,7 +1853,7 @@ void v2c_2d(geometry_t *geom,   /* Global geometry                   */
   /* Initialise                                                      */
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
-      ac[j][i] = NaN;
+      ac[j][i] = 0.0;
 
   /* Map the 2d sparse variable to Cartesion                         */
   for (vv = 1; vv <= geom->b2_e2; vv++) {
@@ -1856,7 +1889,7 @@ void e2c_2d(geometry_t *geom,   /* Global geometry                   */
   /* Initialise                                                      */
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
-      ac[j][i] = NaN;
+      ac[j][i] = 0.0;
 
   /* Map the 2d edge variable to Cartesion centres                   */
   for (cc = 1; cc <= geom->b2_t; cc++) {
@@ -1911,7 +1944,7 @@ void s2c_3d(geometry_t *geom,   /* Global geometry                   */
     for (k = 0; k < nz; k++)
       for (i = 0; i < nx; i++)
 	for (j = 0; j < ny; j++)
-	  ac[k][j][i] = NaN;
+	  ac[k][j][i] = 0.0;
 
     /* Map the 3d sparse variable to Cartesion                       */
     for (cc = 1; cc <= geom->a3_t; cc++) {
@@ -1919,7 +1952,7 @@ void s2c_3d(geometry_t *geom,   /* Global geometry                   */
       i = geom->s2i[c];
       j = geom->s2j[c];
       k = geom->s2k[c];
-      ac[k][j][i] = NaN;
+      ac[k][j][i] = 0.0;
       if (is_ghost(geom, c)) continue; 
       if (i < nx && j < ny)
 	ac[k][j][i] = as[c];
@@ -1971,7 +2004,7 @@ void e2c_3d(geometry_t *geom,   /* Global geometry                   */
     for (k = 0; k < nz; k++)
       for (i = 0; i < nx; i++)
 	for (j = 0; j < ny; j++)
-	  ac[k][j][i] = NaN;
+	  ac[k][j][i] = 0.0;
 
     /* Map the 3d sparse variable to Cartesion                       */
     for (cc = 1; cc <= geom->b3_t; cc++) {
@@ -2612,6 +2645,7 @@ void window_reset(master_t *master,      /* Master data              */
     e = window->wse[ee];
     windat->u1av[ee] = master->u1av[e];
     windat->wind1[ee] = master->wind1[e];
+    windat->wind2[ee] = master->wind2[e];
     windat->windspeed[ee] = master->windspeed[e];
     windat->winddir[ee] = master->winddir[e];
   }

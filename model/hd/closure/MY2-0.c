@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: MY2-0.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: MY2-0.c 6527 2020-04-15 05:51:09Z her127 $
  *
  */
 
@@ -207,8 +207,8 @@ void closure_MY2(geometry_t *window,  /* Processing window */
             wincon->q[c] = pow(q3, 1.0 / 3.0);
           else {
             hd_quit
-              ("Vz: q3 must be greater than zero at %d (%d %d %d) : %f %f %f %f %f\n",
-               c, window->s2i[c], window->s2j[c], window->s2k[c], windat->Vz[c],
+              ("Vz: q3 (=%e) must be greater than zero at %d (%d %d %d) : %f %f %f %f %f\n",
+               q3, c, window->s2i[c], window->s2j[c], window->s2k[c], windat->Vz[c],
                windat->Kz[c], lscale, drhodz, GM);
           }
           windat->Vz[c] = lscale * wincon->q[c] * SM;

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_grow_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: seagrass_grow_epi.c 6699 2021-03-24 01:12:35Z wil00y $
  *
  */
 
@@ -222,8 +222,8 @@ void seagrass_grow_epi_calc(eprocess* p, void* pp)
         double Oxy_pr = growth * atk_W_O / dz_wc;
 
         y1[ws->SG_N_i] += growth;
-        y1[ws->SG_N_gr_i] += growthrate / umax;
-        y1[ws->SG_N_pr_i] += growth * SEC_PER_DAY;
+        y1[ws->SG_N_gr_i] += growthrate * SEC_PER_DAY; /* d-1 */
+        y1[ws->SG_N_pr_i] += growth * SEC_PER_DAY * atk_W_C; /* gC m-2 d-1 */;
         y1[ws->NH4_sed_i] -= growth * NH4_sed / DIN_sed / dz_sed / porosity;
         y1[ws->NO3_sed_i] -= growth * NO3_sed / DIN_sed / dz_sed / porosity;
         y1[ws->DIP_sed_i] -= growth * atk_W_P / dz_sed / porosity;

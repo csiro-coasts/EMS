@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: dumpdata.c 6527 2020-04-15 05:51:09Z her127 $
  *
  */
 
@@ -87,6 +87,9 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   dumpdata->tmode = params->tmode;
   dumpdata->togn = master->togn;
   strcpy(dumpdata->rev, params->rev);
+  strcpy(dumpdata->reference, params->reference);
+  strcpy(dumpdata->trl, params->trl);
+  strcpy(dumpdata->runcode, params->runcode);
   dumpdata->runno = params->runno;
 
   strcpy(dumpdata->lenunit, params->lenunit);
@@ -444,7 +447,7 @@ void dumpdata_fill(geometry_t *geom,  /* Sparse global geometry structure */
   if (master->mpi_rank) return;
 
   dumpdata->t = master->t;
-  dumpdata->runcode = master->crf;
+  dumpdata->crf = master->crf;
 
 #if defined(HAVE_OMP) || defined(HAVE_MPI)
 #pragma omp parallel sections 

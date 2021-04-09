@@ -26,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_sed.c 6238 2019-05-29 06:34:36Z bai155 $
+ *  $Id: light_spectral_sed.c 6554 2020-05-31 05:05:56Z bai155 $
  *
  */
 
@@ -130,7 +130,7 @@ void light_spectral_sed_init(eprocess* p)
   ws->PAR_i = e->try_index(tracers, "PAR", e);
 
   ws->PAR_z_i = -1;
-  ws->PAR_z_i = e->try_index(tracers, "Light_down", e);
+  ws->PAR_z_i = e->try_index(tracers, "PAR_z", e);
   
   ws->num_waves = get_parameter_num_values(e, "Light_lambda");
   ws->wave      = get_parameter_value_ptr(e, "Light_lambda");

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6460 2020-02-18 23:43:24Z her127 $
+ *  $Id: sparse.h 6730 2021-03-30 00:36:38Z her127 $
  *
  */
 
@@ -42,6 +42,7 @@ typedef struct ts_point ts_point_t;
 #include "debug.h"
 #include "dumpfile.h"
 #include "boundary.h"
+#include "lsqq.h"
 
 #define GLOB_BC         0
 #define TR_CK           0
@@ -244,6 +245,7 @@ struct win_priv {
   int ntre;                     /* Number of 3D edge tracers */
   int ntreS;                    /* Number of 2D edge tracers */
   int ntbdy;                    /* Number of tracers to set OBC's */
+  int ntbdys;                   /* Number of tracers to set OBC's; split transport */
   int ic;                       /* 2D loop counter */
   int *advect;                  /* Flag to advect tracers */
   int *diffuse;                 /* Flag to diffuse tracers */
@@ -251,6 +253,10 @@ struct win_priv {
   int *tdif_h;                  /* Array of tracers to horiz. diffuse */
   int ntdif_v;                  /* No. of tracers to vert. diffuse */
   int *tdif_v;                  /* Array of tracers to vert. diffuse */
+  int ntdif_hs;                 /* No. of tracers to horiz. diffuse; split transport */
+  int *tdif_hs;                 /* Array of tracers to horiz. diffuse; split transport */
+  int ntdif_vs;                 /* No. of tracers to vert. diffuse; split transport */
+  int *tdif_vs;                 /* Array of tracers to vert. diffuse; split transport */
   int ntdec;                    /* Number of tracers to decay */
   int *tdec;                    /* Array of tracers to decay */
   int ndia;                     /* Number of diagnostic tracers */
@@ -261,6 +267,7 @@ struct win_priv {
   double *dectr;                /* Tracer decay constants */
   char **trname;                /* Name of the tracer */
   int *tbdy;                    /* Array of tracers to set OBC's */
+  int *tbdys;                   /* Array of tracers to set OBC's; split transport */
   int *twin;                    /* Order to process the windows */
   int *relax;                   /* Tracers to undergo relaxing */
   int nrlx;                     /* Number of tracers to relax */
@@ -337,6 +344,7 @@ struct win_priv {
   int fcf;                      /* Flag for k-w Wilcox (1988)/(1998) models */
   int trasc;                    /* Advection scheme type flag (tracers) */
   int trasf;                    /* Flages for tracer advection */
+  int rkstage;                  /* Number of Runge-Kutta stages */
   char trasr[MAXSTRLEN];        /* Lagrange interpolation rule for tracers */
   char momsr[MAXSTRLEN];        /* Lagrange interpolation rule for momentum */
   int momsc;                    /* Advection scheme type flag (velocity) */
@@ -347,10 +355,15 @@ struct win_priv {
   int mosl;                     /* Middle elements in weight array */
   int visc_method;              /* Horizontal diffusion method */
   double smagorinsky;           /* Smagorinsky horizontal diffusion flag */
-  double sue1, sue2;            /* Momentum Smagorinsky coefficients */
+  double visc_fact;              /* Partitioning fraction for Laplacian / biharmonic mixing */
+  double sue1;                  /* Momentum Smagorinsky coefficients */
   double kue1, kue2;            /* Tracer Smagorinsky coefficients */
-  double bsue1, bsue2;          /* Base momentum mixing */
+  double bsue1;                 /* Base momentum mixing */
   double bkue1, bkue2;          /* Base tracer mixing */
+  double *basev;                /* Spatially varying base rate */
+  double *smagv;                /* Spatially varying Smag */
+  double *basek;                /* Spatially varying base rate */
+  double *smagk;                /* Spatially varying Smag */
   int smagcode;                 /* Variables using Smagorinsky */
   int diff_scale;               /* Horizontal mixing scaling */
   int stab;                     /* Stability compensation method */
@@ -434,12 +447,15 @@ struct win_priv {
   int filter;                   /* Filtering options */
   int trout;                    /* Transport file output flag */
   int swr_type;                 /* Type of attenuation */
-  int dhwf;                     /* Degree heating diagnostic */
+  int ndhw;                     /* Number of DHW diagnostics */
+  int *dhwf;                    /* Degree heating diagnostic */
+  double *dhwh;                 /* Hour for DHW temperature snapshot */
   int obcf;                     /* Open boundary flags */
-  double dhwh;                  /* Hour for DHW temperature snapshot */
   int monon;                    /* Monotinicity tracer number */
   double monomn;                /* Monotinicity minimum */
   double monomx;                /* Monotinicity maximum */
+  int attn_tr;
+  int tran_tr;
 
   double albedo;                /* Albedo for swr */
   int nswreg;                   /* Number of swr estimation regions */
@@ -565,6 +581,8 @@ struct win_priv {
   double *one;                  /* 2D work array set to 1.0 */
   double *tendency;             /* Buffer array for tendency diagnostics */
   double **wgt;                 /* Semi-Lagrange weights */
+  double **tr_rk;               /* Runge-Kutta stage tracer values */
+  double **tr_gr;               /* Runge-Kutta stage time tendencies */
   int *suro;                    /* Old surface for TRANSPORT FFSL */
   double *dzo;                  /* Old thickness for TRANSPORT FFSL */
   double *etao;                 /* Old elevation for TRANSPORT FFSL */
@@ -648,6 +666,10 @@ struct win_priv {
   double *tr_mod_x, **tr_modn_x;   /* Modified tracer concentrations */
   double *tr_mod_y, **tr_modn_y;   /* Modified tracer concentrations */
   double *tr_mod_z, **tr_modn_z;   /* Modified tracer concentrations */
+  void (*build_weights) (geometry_t *, window_t *, win_priv_t *);
+  void (*get_limit) (geometry_t *, window_t *, win_priv_t *, double *);
+  double (*get_value) (geometry_t *, window_t *, win_priv_t *, double *,
+		       int, double, double, double);
 
   /* Function to calculate Vz and Kz.  */
   void (*calc_closure) (geometry_t *, window_t *, win_priv_t *);
@@ -1061,6 +1083,7 @@ struct geometry {
 /*------------------------------------------------------------------*/
 typedef struct {
   FILE *prmfd;                  /* Parameter file pointer */
+  FILE *hstfd;                  /* History log file pointer         */
 
   /* Grid data */
   int nce1;                     /* Grid dimension in the e1 direction */
@@ -1080,6 +1103,8 @@ typedef struct {
   char opath[MAXSTRLEN];        /* Output path for files */
   char trkey[MAXSTRLEN];        /* Transport keyname */
   double runno;                 /* Unique run identification number */
+  char runnoc[MAXSTRLEN];       /* Unique run identification number */
+  char runcode[MAXSTRLEN];      /* Unique run identification code */
   char rev[MAXSTRLEN];          /* Version number for parameter file */
   int gridcode;                 /* Code to specify grid type */
   grid_rect_t *rg;              /* Rectangular grid information */
@@ -1119,6 +1144,7 @@ typedef struct {
   delaunay *d;                  /* Delaunay data structure */
   char i_rule[MAXSTRLEN];       /* Unstructured interpolation method */
   char cookiecut[MAXSTRLEN];    /* Mesh cookie cut */
+  char testcase[MAXSTRLEN];     /* Test case configuration */
   point *pin;                   /* Points for triangulation */
   int np;                       /* Number of triangulation points */
   int *sin;                     /* Triangulation segments */
@@ -1133,6 +1159,7 @@ typedef struct {
 
   /* Flags */
   int runmode;                  /* Operation mode */
+  int history;                  /* History log flag */
   int nwindows;                 /* Number of windows */
   double *win_size;             /* Window partition */
   int win_reset;                /* Number of steps to reset window loads */
@@ -1147,6 +1174,7 @@ typedef struct {
   int momsc2d;                  /* Advection scheme type flag (velocity) */
   int otras;                    /* Order of the advection scheme */
   int osl;                      /* Order of semi-Lagrange */
+  int rkstage;                  /* Number of Runge-Kutta stages */
   int ultimate;                 /* ULTIMATE filter flag */
   char smag[MAXSTRLEN];         /* Smagorisnky input */
   double smagorinsky;           /* Smagorinsky horizontal diffusion flag */
@@ -1154,6 +1182,7 @@ typedef struct {
   double kue1, kue2;            /* Tracer Smagorinsky coefficients */
   double bsue1, bsue2;          /* Base momentum mixing */
   double bkue1, bkue2;          /* Base tracer mixing */
+  double visc_fact;             /* Partitioning fraction for Laplacian / biharmonic mixing */
   int diff_scale;               /* Horizontal diffusion scaling method */
   int visc_method;              /* Horizontal diffusion method */
   int stab;                     /* Stability compensation method */
@@ -1177,11 +1206,13 @@ typedef struct {
   char trpercr[MAXSTRLEN];      /* Region name for percentile calc. */
   int trflsh;                   /* Flushing tracer flag */
   char trage[MAXSTRLEN];        /* Age tracer flag */
-  char dhw[MAXSTRLEN];          /* Degree heating day diagnostic */
-  char dhdf[MAXSTRLEN];         /* Degree heating day file */
-  double dhw_dt;                /* DHW update increment */
-  int dhwf;                     /* Degree heating diagnostic flag */
-  double dhwh;                  /* Hour for DHW temperature snapshot */
+  int ndhw;                     /* Number of DHW diagnostics */
+  char **dhw;                   /* Degree heating week diagnostic */
+  char **dhdf;                  /* Degree heating day file */
+  char **dhwt;                  /* Degree heating week text */
+  double *dhw_dt;               /* DHW update increment */
+  int *dhwf;                    /* Degree heating diagnostic flag */
+  double *dhwh;                 /* Hour for DHW temperature snapshot */
   int tendf;                    /* Momentum tendency flag */
   char trtend[MAXSTRLEN];       /* Tracer tendency flag */
   int means;                    /* Mean velocity diagnostic */
@@ -1297,14 +1328,25 @@ typedef struct {
   int nland;                    /* Number of cells to redefine as land */
   int *lande1;                  /* e1 list of defined land cells */
   int *lande2;                  /* e2 list of defined land cells */
+  char **polyland;              /* Polygon for land masking */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   char particles[MAXSTRLEN];    /* Auto particle sources */
   char addquad[MAXSTRLEN];      /* Add quad grid to a mesh */
+  char imp2df[MAXSTRLEN];       /* Auto 2D file import */
+  char imp2dn[MAXSTRLEN];       /* 2D file import name */
+  char imp2du[MAXSTRLEN];       /* 2D file import units */
+  char imp2dt[MAXSTRLEN];       /* 2D file import time */
+  char imp3df[MAXSTRLEN];       /* Auto 3D file import */
+  char imp3dn[MAXSTRLEN];       /* 3D file import name */
+  char imp3du[MAXSTRLEN];       /* 3D file import units */
+  char imp3dt[MAXSTRLEN];       /* 3D file import time */
+  char import3d[MAXSTRLEN];     /* Auto 3D file import */
   int data_infill;              /* Use cascade search on input file data */
   char *da_anom_file;           /* File name for the anomaly fields */
   char *da_anom_states;         /* State names to read from the anomaly fields */
   double da_ls;                 /* DA localisation spread */
   int da_nobs;                  /* Number of Data assimilating observations */
+  int meshinfo;                 /* Print meshing information */
   char **da_obs_names;
   char **da_obs_files;
   char **da_obs_types;
@@ -1318,6 +1360,8 @@ typedef struct {
   char lenunit[MAXSTRLEN];      /* Length units */
   char codeheader[MAXSTRLEN];
   char parameterheader[MAXSTRLEN];
+  char reference[MAXSTRLEN];
+  char trl[MAXSTRLEN];
   char projection[MAXSTRLEN];
   char grid_desc[MAXSTRLEN];
   char grid_name[MAXSTRLEN];
@@ -1331,9 +1375,11 @@ typedef struct {
   double rampstart;             /* Start time of ramp period */
   double rampend;               /* End time of ramp period */
   double rampval;               /* Ramp value for forcing */
-  double u1vh;                  /* Horizontal viscosity, e1 direction */
+  char u1vhc[MAXSTRLEN];        /* Horizontal viscosity, e1 direction */
+  double u1vh;                  /* Horizontal viscosity, e2 direction */
   double u2vh;                  /* Horizontal viscosity, e2 direction */
-  double u1kh;                  /* Horizontal diffusivity, e1 direction */
+  char u1khc[MAXSTRLEN];        /* Horizontal diffusivity, e1 direction */
+  double u1kh;                  /* Horizontal diffusivity, e2 direction */
   double u2kh;                  /* Horizontal diffusivity, e2 direction */
   double z0;                    /* Bottom roughness */
   double eqt_alpha;             /* Constant for tidal self attraction / loading */
@@ -1391,6 +1437,10 @@ typedef struct {
   int *tdif_h;                  /* Array of tracers to horiz. diffuse */
   int ntdif_v;                  /* Number of tracers to vert. diffuse */
   int *tdif_v;                  /* Array of tracers to vert. diffuse */
+  int ntdif_hs;                 /* No. of tracers to horiz. diffuse; split transport */
+  int *tdif_hs;                 /* Array of tracers to horiz. diffuse; split transport */
+  int ntdif_vs;                 /* No. of tracers to vert. diffuse; split transport */
+  int *tdif_vs;                 /* Array of tracers to vert. diffuse; split transport */
   double *mintr;                /* Minimum tracer values */
   double *maxtr;                /* Maximum tracer values */
   char **trname;                /* Name of the tracer */
@@ -1431,6 +1481,9 @@ typedef struct {
   double roms_z2s;              /* ROMS Z coord to Sigma num layers factor */
   int doroms;                   /* Create ROMS grid structure */
   int roms_grid_opts;           /* ROMS grid options */
+
+  /* SWAN conversion */
+  int doswan;
 
   /* Open boundary structures */
   int nobc;                     /* Number of open boundaries */
@@ -1608,6 +1661,7 @@ struct master {
   int momsc2d;                  /* Advection scheme type flag (velocity) */
   int otras;                    /* Order of the advection scheme */
   int osl;                      /* Order of semi-Lagrange */
+  int rkstage;                  /* Number of Runge-Kutta stages */
   int ultimate;                 /* ULTIMATE filter flag */
   int diff_scale;               /* Horizontal diffusion scaling method */
   int visc_method;              /* Horizontal diffusion method */
@@ -1673,8 +1727,9 @@ struct master {
   char reef_frac[MAXSTRLEN];    /* Cell area blocked by reef */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
-  int dhwf;                     /* Degree heating diagnostic */
-  double dhwh;                  /* Hour for DHW temperature snapshot */
+  int ndhw;                     /* Number of DHW diagnostics */
+  int *dhwf;                    /* Degree heating diagnostic */
+  double *dhwh;                 /* Hour for DHW temperature snapshot */
   int dbc;                      /* Sparse coordinate to debug */
   int dbj;                      /* Edge direction to debug */
   int dbgf;                     /* Debug flag */
@@ -1873,16 +1928,22 @@ struct master {
   double *unit;                 /* Unit tracer */
   double *glider;               /* Glider density */
   double *u1vhc;                /* Cell centered horizontal viscosity */
+  double *volcont;              /* Volume continuity */
+  double *centi;                /* Cell centre index */
   double *regionid;             /* Region ids */
   double *regres;               /* Region residence time */
   double *sederr;               /* Error percentage map for sediments */
   double *ecoerr;               /* Error percentage map for ecology */
   double *decv;                 /* Decorrelation length scale variable */
   double *decv1;                /* Decorrelation length scale */
-  double *dhd;                  /* Degree heating day */
-  double *dhwc;                 /* Degree heating week climatology */
-  double *dhw;                  /* Degree heating week */
+  double **dhd;                 /* Degree heating day */
+  double **dhwc;                /* Degree heating week climatology */
+  double **dhw;                 /* Degree heating week */
   double *cellres;              /* Mean cell resolution */
+  double *carea;                /* Cell area */
+  double *sarea;                /* sqrt(area) */
+  double *searea;               /* sqrt(edge_area) */
+  double *earea;                /* Mean edge area */
   double *meshun;               /* Mesh uniformity indicator */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   double *bathy_range_max;
@@ -1985,6 +2046,10 @@ struct master {
   int *tdif_h;                  /* Array of tracers to horiz. diffuse */
   int ntdif_v;                  /* Number of tracers to vert. diffuse */
   int *tdif_v;                  /* Array of tracers to vert. diffuse */
+  int ntdif_hs;                 /* No. of tracers to horiz. diffuse; split transport */
+  int *tdif_hs;                 /* Array of tracers to horiz. diffuse; split transport */
+  int ntdif_vs;                 /* No. of tracers to vert. diffuse; split transport */
+  int *tdif_vs;                 /* Array of tracers to vert. diffuse; split transport */
   int ntm_2d;                   /* Number of 2D mean tracers */
   int *tm_2d;                   /* Array of 2D mean tracers */
   int ntm_3d;                   /* Number of 2D mean tracers */
@@ -2087,6 +2152,8 @@ struct master {
   double *swrms;                /* RMS error from swr estimation */
   double *attn_mean;            /* Mean swr attenuation */
   double *tran_mean;            /* Mean swr transmission */
+  int attn_tr;
+  int tran_tr;
 
   /* Heat flux variables */
   int heatflux;                 /* Type of heatflux specification */
@@ -2128,10 +2195,15 @@ struct master {
   double *t22;                  /* Horizontal stress tensor, (y,y) */
   int smagcode;                 /* Variables using Smagorinsky */
   double smagorinsky;           /* Smagorinsky horizontal diffusion flag */
-  double sue1, sue2;            /* Momentum Smagorinsky coefficients */
+  double visc_fact;             /* Partitioning fraction for Laplacian / biharmonic mixing */
+  double sue1;                  /* Momentum Smagorinsky coefficients */
   double kue1, kue2;            /* Tracer Smagorinsky coefficients */
-  double bsue1, bsue2;          /* Base momentum mixing */
+  double bsue1;                 /* Base momentum mixing */
   double bkue1, bkue2;          /* Base tracer mixing */
+  double *basev;                /* Spatially varying base rate */
+  double *smagv;                /* Spatially varying Smag */
+  double *basek;                /* Spatially varying base rate */
+  double *smagk;                /* Spatially varying Smag */
 
   /* Relaxation */
   int etarlx;                   /* Eta relaxation flag */
@@ -2743,6 +2815,8 @@ struct window {
   double *unit;                 /* Unit tracer */
   double *glider;               /* Glider density */
   double *u1vhc;                /* Cell centered horizontal viscosity */
+  double *volcont;              /* Volume continuity */
+  double *centi;                /* Cell centre index */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
   int *totid;                   /* Tracer numbers for 3D totals */
@@ -2751,9 +2825,9 @@ struct window {
   double *sederr;               /* Error percentage map for sediments */
   double *ecoerr;               /* Error percentage map for ecology */
   double *decv1;                /* Decorrelation length scale */
-  double *dhd;                  /* Degree heating day */
-  double *dhwc;                 /* Offset degree heating day */
-  double *dhw;                  /* Degree heating day */
+  double **dhd;                 /* Degree heating day */
+  double **dhwc;                /* Offset degree heating day */
+  double **dhw;                 /* Degree heating day */
   double *mono;                 /* Monotinicity diagnostic */
   double sederrstep;            /* Sediment error step */
   double ecoerrstep;            /* Ecology error step */

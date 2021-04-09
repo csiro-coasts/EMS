@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6367 2019-10-10 02:33:02Z her127 $
+ *  $Id: readparam_t.c 6660 2020-09-08 06:08:47Z her127 $
  *
  */
 
@@ -325,6 +325,7 @@ FILE *fp;
   }
   /* Diagnistic numbers */
   params->ntr += numbers_init(params);
+  params->ntr += import_init(params, fp);
   read_decorr(params, fp, 0);
   params->ntr += read_dhw(params, fp);
   /* Means */

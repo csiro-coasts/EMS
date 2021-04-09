@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sourcesink.c 5996 2018-10-17 04:57:10Z her127 $
+ *  $Id: sourcesink.c 6494 2020-03-26 01:18:52Z her127 $
  *
  */
 
@@ -940,7 +940,7 @@ void hd_pss_read(char *name,        /* File name                      */
       }
       sprintf(key, "pss%d.ncells", i);
       if (prm_skip_to_end_of_key(fpp, key)) {
-	read_blocks(fpp, key, &p[j].vc, &p[j].iloc, &p[j].jloc);
+	read_blocks(fpp, key, &p[j].vc, &p[j].iloc, &p[j].jloc, NULL);
 	if (!((*pss_vec) (model_data, &p[j])))
 	  continue;
       }

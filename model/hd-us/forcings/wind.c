@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: wind.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: wind.c 6674 2020-10-05 03:17:34Z riz008 $
  *
  */
 
@@ -204,7 +204,7 @@ double wind_event(sched_event_t *event, double t)
 	}
       }
       /*-------------------------------------------------------------*/
-      /* Wind speed at cell centres                                  */
+      /* Wind speed at cell edges                                    */
       for (ee = 1; ee <= geom->b2_e1; ++ee) {
 	i = geom->w2_e1[ee];
 	windx = data->wind_scale
@@ -298,6 +298,18 @@ double wind_event(sched_event_t *event, double t)
 	  tau_diss = vel_c2e(geom, master->tau_diss1, master->tau_diss2, i);
 	  master->wind1[i] -= (tau_w + tau_diss);
 	}
+      }
+    }
+    /* Get the tangential component of the wind                      */
+    for (ee = 1; ee <= geom->b2_e1; ee++) {
+      double fs;
+      e = geom->w2_e1[ee];
+      master->wind2[e] = 0.0;
+      for (i = 1; i <= geom->nee[e]; i++) {
+	ii = geom->eSe[i][e];
+	fs = geom->h1au1[ii] / geom->h2au1[e];
+	if (!ii) continue;
+	master->wind2[e] += fs * geom->wAe[i][e] * master->wind1[ii];
       }
     }
   }

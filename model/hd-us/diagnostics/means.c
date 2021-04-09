@@ -107,6 +107,7 @@ void init_means(master_t *master, parameters_t *params)
   }
   if (master->means & TRANSPORT) {
     master->means_dt = master->tratio * master->dt;
+    sprintf(params->means_dt, "%f seconds", master->means_dt);
     mean->tnext = master->tratio;
     mean->tstep = 0;
   }
@@ -256,7 +257,7 @@ double means_event(sched_event_t *event, double t)
   means_data_t *mean = (means_data_t *)schedGetPublicData(event);
   master_t *master = mean->master;
 
-  if (master->means & NONE) return;
+  if (master->means & NONE) return(0.0);
 
   if (t >= (event->next_event - SEPS)) {
     reset_means_m(master);
@@ -403,17 +404,18 @@ void reset_means(geometry_t *window,  /* Window geometry             */
     if (windat->tram) {
       int vs = (wincon->means & MTRA3D) ? window->b3_t : window->b2_t;
       int *vec = (wincon->means & MTRA3D) ? window->w3_t : window->w2_t;
+      double **tr = (wincon->means & MTRA3D) ? windat->tr_wc : windat->tr_wcS;
       if (wincon->means & MMM) {
 	for (cc = 1; cc <= vs; cc++) {
 	  c = vec[cc];
-	  windat->tram[c] = max(windat->tram[c], windat->tr_wc[wincon->means_tra][c]);
+	  windat->tram[c] = max(windat->tram[c], tr[wincon->means_tra][c]);
 	}
       } else {
 	for (cc = 1; cc <= vs; cc++) {
 	  c = vec[cc];
 	  cs = window->m2d[c];
 	  windat->tram[c] = (windat->tram[c] * windat->meanc[cs] + 
-			      windat->tr_wc[wincon->means_tra][c] * ns) / 
+			     tr[wincon->means_tra][c] * ns) / 
 	    (windat->meanc[cs] + ns);
 	}
       }

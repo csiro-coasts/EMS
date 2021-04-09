@@ -16,10 +16,11 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 6242 2019-06-12 06:24:07Z riz008 $
+ *  $Id: dumpfile.c 6682 2021-01-27 00:32:13Z riz008 $
  *
  */
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <netcdf.h>
 #include <string.h>
@@ -906,8 +907,12 @@ int count_dumpfiles(FILE *fp, int *type)
       fclose(ip);
       return(nf);
     } else {
-      *type = 0;
-      return(atoi(buf));
+      /* Make sure it's a number */
+      if (isdigit(buf[0])) {
+	*type = 0;
+	return(atoi(buf));
+      } else
+	hd_quit("Cannot read output specification dumpfile '%s'\n", buf);
     }
   } else
     hd_warn("No output files specified\n");
@@ -1376,6 +1381,9 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
 
   /* Set up each file list entry */
   strcpy(dumpdata->rev, params->rev);
+  strcpy(dumpdata->reference, params->reference);
+  strcpy(dumpdata->runcode, params->runcode);
+  strcpy(dumpdata->trl, params->trl);
   sprintf(dumpdata->grid_name, "%s", params->grid_name);
   sprintf(dumpdata->grid_desc, "%s", params->grid_desc);
   if (params->runno > 0) dumpdata->runno = params->runno;
@@ -2952,6 +2960,14 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
+  if (strlen(dumpdata->rev))
+    write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
 
   nc_enddef(cdfid);
 
@@ -3226,6 +3242,14 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CF-1.0");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
+  if (strlen(dumpdata->rev))
+    write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
 
   nc_enddef(cdfid);
 
@@ -3424,7 +3448,7 @@ static int df_simple_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
     var->v = (void **)&dumpdata->eta;
     var->units = dumpdata->lenunit;
     var->long_name = "Surface elevation";
-    var->std_name = "sea_surface_height_above_sea_level";
+    var->std_name = "sea_surface_height_above_geoid";
     var->valid_range[0] = -master->etamax;
     var->valid_range[1] = master->etamax;
   }
@@ -4806,8 +4830,14 @@ void *df_parray_create(dump_data_t *dumpdata, dump_file_t *df)
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
  
   nc_enddef(cdfid);
 
@@ -5759,7 +5789,7 @@ void *df_memory_create(dump_data_t *dumpdata, dump_file_t *df)
   mem = (df_memory_data_t *)df->private_data;
   mem->data = (df_mempack_t *)malloc(sizeof(df_mempack_t));
   data = mem->data;
-  data->runcode =  (dumpdata->runcode == RS_FAIL) ? DF_FAIL : DF_RUN;
+  data->runcode =  (dumpdata->crf == RS_FAIL) ? DF_FAIL : DF_RUN;
 
   /* Get the number of variables and populate the headers */
   n2d = n3d = 0;    /* x and y */
@@ -5854,7 +5884,7 @@ void df_memory_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   tm_change_time_units(dumpdata->timeunit, df->tunit, &newt, 1);
   */
   data->time = newt;
-  data->runcode =  (dumpdata->runcode == RS_FAIL) ? DF_FAIL : DF_RUN;
+  data->runcode =  (dumpdata->crf == RS_FAIL) ? DF_FAIL : DF_RUN;
 
   /* Loop over each variable */
   v2d = data->v2d;

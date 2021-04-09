@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_spectral_grow_sed.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: microphytobenthos_spectral_grow_sed.c 6690 2021-03-24 00:57:04Z wil00y $
  *
  */
 
@@ -338,11 +338,11 @@ void microphytobenthos_spectral_grow_sed_calc(eprocess* p, void* pp)
     /* UPDATE DIAGNOSTICS */
 
     if (ws->MPB_N_pr_i > -1)
-      y1[ws->MPB_N_pr_i] += growth * SEC_PER_DAY * red_W_C;
+      y1[ws->MPB_N_pr_i] += growth * SEC_PER_DAY * red_W_C * c->dz_sed;
     if (ws->MPB_N_gr_i > -1)
       y1[ws->MPB_N_gr_i] = growthrate * SEC_PER_DAY;
     if (ws->Oxy_pr_i > -1)
-      y1[ws->Oxy_pr_i] += growth * red_W_O * SEC_PER_DAY;
+      y1[ws->Oxy_pr_i] += growth * red_W_O * SEC_PER_DAY * c->dz_sed / porosity ;
     }
 }
 

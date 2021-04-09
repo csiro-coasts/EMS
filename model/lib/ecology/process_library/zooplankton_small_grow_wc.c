@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_small_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: zooplankton_small_grow_wc.c 6706 2021-03-24 01:18:49Z wil00y $
  *
  */
 
@@ -213,15 +213,9 @@ void zooplankton_small_grow_wc_calc(eprocess* p, void* pp)
     y1[ws->Oxygen_i] += Oxy_pr;
     y1[ws->Oxy_pr_i] += Oxy_pr * SEC_PER_DAY;
     y1[ws->DetPL_N_i] += graze * (1.0 - ws->E) * ws->FDG;
-    y1[ws->ZooS_N_rm_i] += graze * SEC_PER_DAY;
+    y1[ws->ZooS_N_rm_i] += graze * red_W_C * SEC_PER_DAY;
 
-    /*UR 29/3/2005 changed to provide absolute growth rate
-     * as advised by JP*/
     y1[ws->ZooS_N_gr_i] += growth * SEC_PER_DAY;
-
-    /* proportional growth rate
-    y1[ws->ZooS_N_gr_i] += growth / umax;
-    */
 }
 
 void zooplankton_small_grow_wc_postcalc(eprocess* p, void* pp)

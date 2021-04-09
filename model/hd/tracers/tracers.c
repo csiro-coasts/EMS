@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 6435 2019-11-22 00:27:11Z her127 $
+ *  $Id: tracers.c 6719 2021-03-29 00:59:00Z her127 $
  *
  */
 
@@ -251,7 +251,7 @@ void tracer_step_3d(geometry_t *window, /* Processing window */
 
   /*-----------------------------------------------------------------*/
   /* Increment the mean counter if required                          */
-  reset_means(window, windat, wincon, RESET | WIND);
+  reset_means(window, windat, wincon, WIND);
 
   /*-----------------------------------------------------------------*/
   /* Do the advection and horizontal diffusion */
@@ -300,8 +300,9 @@ void tracer_step_3d(geometry_t *window, /* Processing window */
     density_w(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
-  /* Calculate the means for temperature and salinity                */
-  reset_means(window, windat, wincon, TS);
+  /* Calculate the means for temperature and salinity and update the */
+  /* mean counter.                                                   */
+  reset_means(window, windat, wincon, RESET|TS);
 
   /*-----------------------------------------------------------------*/
   /* Calculate the means for tracers other than velocity */
@@ -4357,8 +4358,12 @@ void auxiliary_routines(geometry_t *window,  /* Processing window */
 
   /*-----------------------------------------------------------------*/
   /* Get the DHW if required                                         */
-  if (wincon->dhwf & DHW_NOAA)
-    calc_dhd(window, windat, wincon);
+  if (wincon->ndhw) {
+    for (nn = 0; nn < wincon->ndhw; nn++) {
+      if (wincon->dhwf[nn] & DHW_NOAA)
+	calc_dhd(window, windat, wincon, nn);
+    }
+  }
 
 #if defined(HAVE_TRACERSTATS_MODULE)
   tracerstats_prestep(window,1);
@@ -5780,7 +5785,6 @@ void set_dz(geometry_t *window, /* Processing window */
       top = wincon->oldeta[cs];
       top = min(windat->eta[cs], wincon->oldeta[cs]);
       bot = DRY_FRAC * wincon->hmin + window->botz[cs];
-
       if (top > bot && c != window->zm1[c]) {
         wincon->s1[vc] = c;
 	wincon->i1[vc] = window->bot_t[cc];
@@ -7058,9 +7062,11 @@ void init_trperc(master_t *master,    /* Master data structure */
 	hd_quit("tr_perc: No points specified for percentile region.\n");
       d_free_1d(regionid);
     }
+  }
+  if (master->trperc >= 0) {
     if (n == 1) {
       for (n = 1; n <= master->nwindows; n++) {
-	wincon[n]->percmsk = s_alloc_1d(window[n]->sgsiz);
+        wincon[n]->percmsk = s_alloc_1d(window[n]->sgsiz);
 	memset(wincon[n]->percmsk, 0, window[n]->sgsiz * sizeof(short));
 	for (cc = 1; cc <= window[n]->b3_t; cc++) {
 	  c = window[n]->w3_t[cc];
@@ -7070,6 +7076,7 @@ void init_trperc(master_t *master,    /* Master data structure */
 	}
 	if (surff)wincon[n]->percmsk[0] = 1;
       }
+      if (percmsk) s_free_1d(percmsk);
     } else {
       for (n = 1; n <= master->nwindows; n++) {
 	wincon[n]->percmsk = s_alloc_1d(window[n]->sgsiz);
@@ -7081,7 +7088,6 @@ void init_trperc(master_t *master,    /* Master data structure */
 	if (surff)wincon[n]->percmsk[0] = 1;
       }
     }
-    s_free_1d(percmsk);
   }
 }
 
@@ -7693,8 +7699,8 @@ void swr_params_init(master_t *master, geometry_t **window)
       }
       if (!found)
 	hd_quit("SWR estimation must have 3D tracer %s in the tracer list.\n", fields[0]);
-    }
     depth = atof(fields[1]);
+    }
   }
   for (wn = 1; wn <= master->nwindows; wn++) {
     wincon = window[wn]->wincon;
@@ -7716,8 +7722,23 @@ void swr_params_init(master_t *master, geometry_t **window)
       wincon->swC = d_alloc_1d(window[wn]->sgsiz);
       for (cc = 1; cc <= window[wn]->b2_t; cc++) {
 	c = window[wn]->w2_t[cc];
+	lc = window[wn]->wsa[c];
 	windat->swreg[c] = cc;
 	wincon->swmap[c] = cc-1;
+	if (windat->swr_attn[c] <= 0.0) {
+	  windat->attn_mean[c] = windat->swr_attn[c] = 0.0;
+	  master->attn_mean[lc] = master->swr_attn[lc] = 0.0;
+	} else {
+	  windat->attn_mean[c] = -windat->swr_attn[c];
+	  master->attn_mean[lc] = -master->swr_attn[lc];
+	}
+	if (windat->swr_tran[c] <= 0.0) {
+	  windat->tran_mean[c] = windat->swr_tran[c] = 0.0;
+	  master->tran_mean[c] = master->swr_tran[c] = 0.0;
+	} else {
+	  windat->tran_mean[c] = -windat->swr_tran[c];
+	  master->tran_mean[c] = master->swr_tran[c] = 0.0;
+	}
       }
     }
     return;
@@ -7838,9 +7859,15 @@ double swr_params_event(geometry_t *window,
   double tmax = 35.0;           /* Maximum allowable temperature     */
   double attn0 = 0.02;          /* Start attenuation for ensemble    */
   double attni = 0.05;          /* Atten increment for ensemble      */
+  double attns = 10.0;          /* Attn scaling for ensemble         */
+  double tran0 = 0.6;
+  double trani = 0.1;
+  double trans = 10.0;
+  int i1s, i1e, i1i;
+  int i2s, i2e, i2i;
 
   /* Return if next swr event isn't scheduled                        */
-  if (windat->t < wincon->swr_next) return;
+  if (windat->t < wincon->swr_next) return(wincon->swr_next);
   wincon->swr_next = windat->t + wincon->swr_dt;
 
   /*-----------------------------------------------------------------*/
@@ -7936,7 +7963,38 @@ double swr_params_event(geometry_t *window,
   }
 
   /*-----------------------------------------------------------------*/
+  /* Repopulate the mean parameters with input values for            */
+  /* regionalised estimation with resets for the fixed regional      */
+  /* values.                                                         */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    if (wincon->swr_type & SWR_ATTN && windat->attn_mean[c] < 0.0)
+      windat->attn_mean[c] = -windat->tr_wcS[wincon->attn_tr][c];
+    if (wincon->swr_type & SWR_TRAN && windat->tran_mean[c] < 0.0) 
+      windat->tran_mean[c] = -windat->tr_wcS[wincon->tran_tr][c];
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Do the vertical diffusion over the ensemble                     */
+  i1s = i2s = 0;
+  i1e = i2e = 10;
+  i1i = i2i = 1;
+  /*
+  if (wincon->swr_type & SWR_ATTN) {
+    i2s = i2e = 0;
+    i1e = 100;
+    i1i = 1;
+    trani = 0.01;
+    trans = 1.0;
+  }
+  if (wincon->swr_type & SWR_TRAN) {
+    i1s = i1e = 0;
+    i2e = 100;
+    i2i = 1;
+    attni = 0.005;
+    attns = 1.0;
+  }
+  */
   memset(windat->swrms, 0, window->sgsizS * sizeof(double));
   memset(Splus, 0, window->sgsiz * sizeof(double));
   memcpy(heatf, windat->heatf, window->sgsizS * sizeof(double));
@@ -7948,9 +8006,13 @@ double swr_params_event(geometry_t *window,
     c2 = window->m2d[cs];
     ks = window->s2k[cs];
     kb = window->s2k[cb];
-    windat->swrms[c2] = HUGE;
     swr = windat->swr[c2];
+    if (wincon->swr_type & SWR_ATTN && windat->attn_mean[c2] < 0.0) 
+      mattn[m] = fabs(windat->attn_mean[c2]);
+    if (wincon->swr_type & SWR_TRAN && windat->tran_mean[c2] < 0.0) 
+      mtran[m] = fabs(windat->tran_mean[c2]);
     if (swr == 0.0) continue;
+    windat->swrms[c2] = HUGE;
 
     /* Get the coordinate of the data                                */
     if (wincon->swr_depth != 0.0) {
@@ -7963,12 +8025,21 @@ double swr_params_event(geometry_t *window,
     tempt = data[cd];
     if (tempt < tmin || tempt > tmax) tempt = sstm[m];
 
-    for (i1 = 0; i1 <= 10; i1 += 1) {   /* Transmission range        */
-      for (i2 = 0; i2 <= 10; i2 += 1) { /* Attenuation range         */
+    for (i1 = i1s; i1 <= i1e; i1 += i1i) {   /* Transmission range        */
+      for (i2 = i2s; i2 <= i2e; i2 += i2i) { /* Attenuation range         */
 	/* Set swr parameters                                        */
-	attn = attn0 + (double)i2 * attni;
-	tran = (double)i1 / 10.0;
+	attn = attn0 + (double)i2 * attni / attns;
+	tran = tran0 + (double)i1 * trani / trans;
+	if (tran > 1.0) tran -= 1.0;
+	/*tran = (double)i1 / 10.0;*/
 	babs = windat->swr_babs[c2];
+	/* Note: for regionalized estimation the negative values are */
+	/* not subject to estimation. These are set in               */
+	/* swr_params_init().                                        */
+	if (wincon->swr_type & SWR_ATTN && windat->attn_mean[c2] < 0.0) 
+	  attn = fabs(windat->attn_mean[c2]);
+	if (wincon->swr_type & SWR_TRAN && windat->tran_mean[c2] < 0.0)
+	  tran = fabs(windat->tran_mean[c2]);
 	windat->swr_attn[c2] = attn;
 	windat->swr_tran[c2] = tran;
 
@@ -7990,16 +8061,14 @@ double swr_params_event(geometry_t *window,
 
 	/* Save the swr parameters if the SST is improved            */
 	rms = sqrt((data[cd] - temp[ks]) * (data[cd] - temp[ks]));
-	/*if(m==0)printf("%f %f : %f %f : %f\n",attn,tran,temp[ks],data[cd],rms);*/
+
 	if (rms < windat->swrms[c2]) {
 	  mattn[m] = attn;
 	  mtran[m] = tran;
 	  windat->swrms[c2] = rms;
 	}
-	/*if(m==2)printf("%f %d %d(%d %d) : %d %d : %f %f : %f %f %f\n",windat->days,m,c,window->s2i[c],window->s2j[c],i1,i2,attn,tran,data[cd],temp[ks],rms);*/
       }
     }
-    /*if(m==1)printf("%f %d %f %f : %f\n",windat->days,m,mattn[m],mtran[m],windat->swrms[c2]);*/
   }
 
   /*-----------------------------------------------------------------*/
@@ -8007,23 +8076,26 @@ double swr_params_event(geometry_t *window,
   k = 0;
   for (cc = 1; cc <= window->b2_t; cc++) {
     c = window->w2_t[cc];
-    if (windat->swr[c2]) {
+    if (windat->swr[c]) {
       k = 1;
       m = wincon->swmap[c];
-      windat->swr_attn[c] = mattn[m];
-      windat->swr_tran[c] = mtran[m];
-      windat->attn_mean[c] = (windat->attn_mean[c] * windat->swrc + 
-			      windat->swr_attn[c] * wincon->swr_dt) / 
-	(windat->swrc + wincon->swr_dt);
-      windat->tran_mean[c] = (windat->tran_mean[c] * windat->swrc + 
-			      windat->swr_tran[c] * wincon->swr_dt) / 
-	(windat->swrc + wincon->swr_dt);
+      if (windat->attn_mean[c] >= 0)
+	windat->attn_mean[c] = (windat->attn_mean[c] * windat->swrc + 
+				mattn[m] * wincon->swr_dt) / 
+	  (windat->swrc + wincon->swr_dt);
+      if (windat->tran_mean[c] >= 0)
+	windat->tran_mean[c] = (windat->tran_mean[c] * windat->swrc + 
+				mtran[m] * wincon->swr_dt) / 
+	  (windat->swrc + wincon->swr_dt);
+      /*
+      if (!(wincon->swr_type & SWR_ATTN)) windat->swr_attn[c] = windat->attn_mean[c];
+      if (!(wincon->swr_type & SWR_TRAN)) windat->swr_tran[c] = windat->tran_mean[c];
+      */
+      windat->swr_attn[c] = fabs(windat->attn_mean[c]);
+      windat->swr_tran[c] = fabs(windat->tran_mean[c]);
     }
   }
   if (k) windat->swrc += wincon->swr_dt;
-  memcpy(windat->swr_attn, windat->attn_mean, window->sgsizS * sizeof(double));
-  memcpy(windat->swr_tran, windat->tran_mean, window->sgsizS * sizeof(double));
-
   d_free_1d(tm);
   d_free_1d(sstm);
   d_free_1d(nreg);

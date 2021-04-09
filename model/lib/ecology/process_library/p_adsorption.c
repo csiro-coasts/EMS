@@ -78,17 +78,51 @@ void p_adsorption_init(eprocess* p)
     /*
      * parameters
      */
+
+    ws->Pads_r_t0 = try_parameter_value(e,"Pads_r");
+    if (isnan(ws->Pads_r_t0)){
+      ws->Pads_r_t0 = 4.000000e-02/86400.0;
+      eco_write_setup(e,"Code default of Pads_r = %e \n",ws->Pads_r_t0);
+    }
     
-    ws->Pads_r_t0 = get_parameter_value(e, "Pads_r");
-    ws->Pads_KO = get_parameter_value(e, "Pads_KO");
-    ws->Pads_exp = get_parameter_value(e, "Pads_exp");
-    ws->r_immob_PIP_t0 = get_parameter_value(e, "r_immob_PIP");
+    ws->Pads_KO = try_parameter_value(e,"Pads_KO");
+    if (isnan(ws->Pads_KO)){
+      ws->Pads_KO = 2000.0;
+      eco_write_setup(e,"Code default of Pads_KO = %e \n",ws->Pads_KO);
+    }
+    
+    ws->Pads_exp = try_parameter_value(e,"Pads_exp");
+    if (isnan(ws->Pads_exp)){
+      ws->Pads_exp = 1.0;
+      eco_write_setup(e,"Code default of Pads_exp = %e \n",ws->Pads_exp);
+    }
+
+    // ws->Pads_r_t0 = get_parameter_value(e, "Pads_r");
+    // ws->Pads_KO = get_parameter_value(e, "Pads_KO");
+    // ws->Pads_exp = get_parameter_value(e, "Pads_exp");
+    // ws->r_immob_PIP_t0 = get_parameter_value(e, "r_immob_PIP");
 
     if (p->type == PT_SED){
-      ws->Pads_K = get_parameter_value(e, "Pads_Ksed");
-      ws->r_immob_PIP_t0 = get_parameter_value(e, "r_immob_PIP");
+      //ws->Pads_K = get_parameter_value(e, "Pads_Ksed");
+      ws->Pads_K = try_parameter_value(e,"Pads_Ksed");
+      if (isnan(ws->Pads_K)){
+	ws->Pads_K = 74.0;
+	eco_write_setup(e,"Code default of Pads_Ksed = %e \n",ws->Pads_K);
+      }
+
+      ws->r_immob_PIP_t0 = try_parameter_value(e,"r_immob_PIP");
+      if (isnan(ws->r_immob_PIP_t0)){
+	ws->r_immob_PIP_t0 = 0.0;
+	eco_write_setup(e,"Code default of r_immob_PIP_t0 = %e \n",ws->r_immob_PIP_t0);
+      }
+      
     }else{
-      ws->Pads_K = get_parameter_value(e, "Pads_Kwc");
+      // ws->Pads_K = get_parameter_value(e, "Pads_Kwc");
+      ws->Pads_K = try_parameter_value(e,"Pads_Kwc");
+      if (isnan(ws->Pads_K)){
+	ws->Pads_K = 30.0;
+	eco_write_setup(e,"Code default of Pads_Kwc = %e \n",ws->Pads_K);
+      }
       ws->r_immob_PIP_t0 = 0.0;
     }
     /*

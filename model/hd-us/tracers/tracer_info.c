@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracer_info.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: tracer_info.c 6654 2020-09-08 01:46:00Z her127 $
  *
  */
 
@@ -27,6 +27,7 @@
 
 errfn keyprm_errfn;
 int get_type(char *buf, int type);
+int is_type(int type, char *stype);
 
 /** Creates a `tracer_info' array from a PRM file.
  * @param fp parameter file
@@ -305,15 +306,18 @@ void tracer_read(FILE * fpp, char *prefix, int type, errfn quitfn,
     /* Scaling */
     if (tracer_read_attribute
         (fpt, prefix, keyname, tr->name, m, "scale_s", emptyfn, buf)) {
-      int id;
+      int id, idt = 0;
+      char buf1[MAXSTRLEN];
       for (id = 0; id < intr; ++id) {
 	tracer_read_attribute(fpt, prefix, keyname, NULL, id, "name", emptyfn, key);
+	tracer_read_attribute(fpt, prefix, keyname, NULL, id, "type", emptyfn, buf1);
 	if (strcmp(buf, key) == 0) {
-	  tracer_info_t *trinfo = &(*tracers)[id+ns];
+	  tracer_info_t *trinfo = &(*tracers)[idt+ns];
 	  trinfo->scale = (double)n;
 	  trinfo->flag |= SC_ST;
 	  break;
 	}
+	if (is_type(type, buf1)) idt++;
       }
     }
     if (tracer_read_attribute
@@ -540,7 +544,6 @@ void tracer_read(FILE * fpp, char *prefix, int type, errfn quitfn,
   
   if(fpt != fpp)
 		fclose(fpt);
-
 }
 
 int get_inc(char *buf)
@@ -825,6 +828,24 @@ void tracer_write_2d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
   fprintf(op, "TRACER%1.1d.type           %s\n", n, trtypename(tracer->type, key));
   fprintf(op, "\n");
   
+}
+
+int is_type(int type, char *stype)
+{
+  int ret = WATER;
+
+  if((contains_token(stype, "WATER") != NULL) ||
+     (contains_token(stype, "WC3D") != NULL) ||
+     (contains_token(stype, "WC") != NULL)) ret = WATER;
+  if((contains_token(stype, "BENTHIC") != NULL) ||
+     (contains_token(stype, "INTER") != NULL) ||
+     (contains_token(stype, "WC2D") != NULL)) ret = INTER;
+  if((contains_token(stype, "SEDIMENT") != NULL) ||
+     (contains_token(stype, "SED") != NULL)) ret = SEDIM;
+  if (ret == type) 
+    return(1);
+  else
+    return(0);
 }
 
 int get_type(char *buf, int type)

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 6062 2019-02-08 04:06:54Z her127 $
+ *  $Id: ecology.c 6541 2020-05-06 06:24:09Z bai155 $
  *
  */
 
@@ -50,7 +50,7 @@ const char *ECONAME3D[][2] = {
   {"PhyS_PR",      "Small Phytoplankton P reserve"},
   {"PhyS_I",      "Small Phytoplankton I reserve"},
   {"PhyS_Chl",      "Small Phytoplankton chlorophyll"},
-  {"PhyL_sv",      "diatoms settling velocity"},
+  {"PhyL_sv",      "Diatoms settling velocity"},
   {"MPB_N",       "Microphytobenthos N"},
   {"MPB_NR",       "Microphytobenthos N reserve"},
   {"MPB_PR",       "Microphytobenthos P reserve"},
@@ -69,7 +69,7 @@ const char *ECONAME3D[][2] = {
   {"Tricho_sv",       "Trichodesmium settling velocity"},
   {"ZooL_sv",       "Large Zooplankton settling velocity"},
   {"Phy_L_N2",    "Lyngbya"},
-  {"NH4",         "Ammonia"},
+  {"NH4",         "Ammonium"},
   {"NO3",         "Nitrate"},
   {"DIP",         "Dissolved Inorganic Phosphorus"},
   {"DIC",         "Dissolved Inorganic Carbon"},
@@ -77,6 +77,7 @@ const char *ECONAME3D[][2] = {
   {"DOR_N",       "Dissolved Organic Nitrogen"},
   {"DOR_P",       "Dissolved Organic Phosphorus"},
   {"PIP",         "Particulate Inorganic Phosphorus"},
+  {"PIP_Dust",    "Particulate Inorganic Phosphorus Dust"},
   {"PIPI",        "Immobilised Particulate Inorganic Phosphorus"},
   {"PIPF",        "Flocculated Particulate Inorganic Phosphorus"},
   {"DetR_C",      "Refractory Detrital Carbon"},
@@ -121,6 +122,7 @@ const char *ECONAME3D[][2] = {
   {"dens",        "Density"},
   {"alk",         "Total alkalinity"},
   {"Nfix",        "N2 fixation"},
+  {"Amm_fl",      "Anammox flux"},
   {"PH",          "PH"},
   {"CO32",        "Carbonate"},
   {"HCO3",        "Bicarbonate"},
@@ -137,9 +139,11 @@ const char *ECONAME3D[][2] = {
   {"bt_550",      "Scattering at 550 nm"},  
   {"Kd_490",      "Vertical attenuation at 490 nm"},
   {"Turbidity",   "Simulated turbidity vs. bp_590 relationship"},
-  {"Fluorescence","Simulated Fluorescence"},
+  {"Fluorescence","Simulated fluorescence"},
   {"ap_670",      "Absorption at 670 nm minus clear water"},
-  {"Phy_L_N2_fix","N2 fix rate Lyngbya"}, // {"xco2_in_air","Atmospheric pCO2"},
+  {"Phy_L_N2_fix","N2 fix rate Lyngbya"},
+  {"xco2_in_air", "Atmospheric pCO2"},
+  {"passive",     "Passive tracer"},
 };
 
 const int NUM_ECO_VARS_3D = ((int)(sizeof(ECONAME3D)/(2*sizeof(char*))));
@@ -224,7 +228,9 @@ const char *ECONAME2D[][2] = {
   {"R_665","Remote-sensing reflectance @ 665 nm"},
   {"R_681","Remote-sensing reflectance @ 681 nm"},
   {"R_710","Remote-sensing reflectance @ 710 nm"},
+  {"R_709","Remote-sensing reflectance @ 709 nm"},
   {"R_753","Remote-sensing reflectance @ 753 nm"},
+  {"R_754","Remote-sensing reflectance @ 754 nm"},
   {"R_482","Remote-sensing reflectance @ 482 nm"},
   {"R_655","Remote-sensing reflectance @ 655 nm"},
   {"nFLH","normalised Fluorescence Line Height"},
@@ -232,6 +238,15 @@ const char *ECONAME2D[][2] = {
   {"Zenith2D","Solar zenith"},
   {"SWR_bot_abs","SWR bottom abs. (PAR)"},
   {"Oxygen_sedflux","Sediment-water oxygen flux"},
+  {"DIC_sedflux","Sediment-water DIC flux"},
+  {"NH4_sedflux","Sediment-water NH4 flux"},
+  {"NO3_sedflux","Sediment-water NO3 flux"},
+  {"DIP_sedflux","Sediment-water DIP flux"},
+  {"Hue","Hue angle"},
+  {"Moonlight","Moonlight (PAR-integrated)"},
+  {"Lunar_zenith","Moon zenith"},
+  {"Lunar_phase","Moon phase"},
+  {"Moon_fulldisk","Moonlight brightness (PAR-integrated)"},
 };
 const int NUM_ECO_VARS_2D = ((int)(sizeof(ECONAME2D)/(2*sizeof(char*))));
 

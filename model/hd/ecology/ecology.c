@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 6376 2019-11-06 04:09:47Z bai155 $
+ *  $Id: ecology.c 6721 2021-03-29 04:38:30Z bai155 $
  *
  */
 
@@ -50,7 +50,7 @@ const char *ECONAME3D[][2] = {
   {"PhyS_PR",      "Small Phytoplankton P reserve"},
   {"PhyS_I",      "Small Phytoplankton I reserve"},
   {"PhyS_Chl",      "Small Phytoplankton chlorophyll"},
-  {"PhyL_sv",      "diatoms settling velocity"},
+  {"PhyL_sv",      "Diatoms settling velocity"},
   {"MPB_N",       "Microphytobenthos N"},
   {"MPB_NR",       "Microphytobenthos N reserve"},
   {"MPB_PR",       "Microphytobenthos P reserve"},
@@ -61,15 +61,19 @@ const char *ECONAME3D[][2] = {
   {"ZooS_N",      "Small Zooplankton N"},
   {"PhyD_N",      "Dinoflagellate N"},
   {"PhyD_C",      "Dinoflagellate C"},
-  {"Tricho_N",       "Trichodesmium Nitrogen"},
-  {"Tricho_NR",       "Trichodesmium N reserve"},
-  {"Tricho_PR",       "Trichodesmium P reserve"},
-  {"Tricho_I",       "Trichodesmium I reserve"},
-  {"Tricho_Chl",       "Trichodesmium chlorophyll"},
-  {"Tricho_sv",       "Trichodesmium settling velocity"},
+  {"PhyD_NR",       "Dinoflagellate N reserve"},
+  {"PhyD_PR",       "Dinoflagellate P reserve"},
+  {"PhyD_I",       "Dinoflagellate I reserve"},
+  {"PhyD_Chl",       "Dinoflagellate chlorophyll"},
+  {"Tricho_N",      "Trichodesmium N"},
+  {"Tricho_NR",     "Trichodesmium N reserve"},
+  {"Tricho_PR",     "Trichodesmium P reserve"},
+  {"Tricho_I",      "Trichodesmium I reserve"},
+  {"Tricho_Chl",    "Trichodesmium chlorophyll"},
+  {"Tricho_sv",     "Trichodesmium settling velocity"},
   {"ZooL_sv",       "Large Zooplankton settling velocity"},
   {"Phy_L_N2",    "Lyngbya"},
-  {"NH4",         "Ammonia"},
+  {"NH4",         "Ammonium"},
   {"NO3",         "Nitrate"},
   {"DIP",         "Dissolved Inorganic Phosphorus"},
   {"DIC",         "Dissolved Inorganic Carbon"},
@@ -139,10 +143,15 @@ const char *ECONAME3D[][2] = {
   {"bt_550",      "Scattering at 550 nm"},  
   {"Kd_490",      "Vertical attenuation at 490 nm"},
   {"Turbidity",   "Simulated turbidity vs. bp_590 relationship"},
-  {"Fluorescence","Simulated Fluorescence"},
+  {"Fluorescence","Simulated fluorescence"},
   {"ap_670",      "Absorption at 670 nm minus clear water"},
   {"Phy_L_N2_fix","N2 fix rate Lyngbya"},
-  {"xco2_in_air","Atmospheric pCO2"},
+  {"xco2_in_air", "Atmospheric pCO2"},
+  {"passive",     "Passive tracer"},
+  {"cdom_pale",   "CDOM tracer (pale)"},
+  {"cdom_amber",  "CDOM tracer (amber)"},
+  {"cdom_dark",   "CDOM tracer (dark)"},  
+  {"cdom_gbr",    "CDOM tracer (gbr)"},
 };
 
 const int NUM_ECO_VARS_3D = ((int)(sizeof(ECONAME3D)/(2*sizeof(char*))));
@@ -174,13 +183,17 @@ const char *ECONAME2D[][2] = {
   {"CS_Qi",       "Coral symbiont in. RC"},
   {"CS_RO",       "Coral symbiont reactive oxygen"},
   {"CH_N",        "Coral host N"},
-  {"MA_N",        "Macroalgae N"},
+  {"MA_N",        "Macroalgae N (brown)"},
+  {"MAG_N",       "Macroalgae N (green)"},
+  {"MAR_N",       "Macroalgae N (red)"},
   {"EpiTN",       "Total N in epibenthos"},
   {"EpiTP",       "Total P in epibenthos"},
   {"EpiTC",       "Total C in epibenthos"},
   {"SG_N_pr",     "Seagrass net production"},
   {"SGH_N_pr",    "Halophila net production"},
-  {"MA_N_pr",     "Macroalgae net production"},
+  {"MA_N_pr",     "Macroalgae (brown) net production"},
+  {"MAG_N_pr",    "Macroalgae (green) net production"},
+  {"MAR_N_pr",    "Macroalgae (red) net production"},
   {"SG_N_gr",     "Seagrass growth rate"},
   {"SGH_N_gr",    "Halophila growth rate"},
   {"MA_N_gr",     "Macroalgae growth rate"},
@@ -202,7 +215,8 @@ const char *ECONAME2D[][2] = {
   {"OC3V","VIIRS-OC3V"},
   {"TSSM","TSS from 645 nm (Petus et al., 2014)"},
   {"KD490M","Modis-KD490"},
-  {"R_412","Remote-sensing reflectance @ 412 nm"},
+  {"R_412","Remote-sensing reflectance @ 412 nm"}, 
+  {"R_490","Remote-sensing reflectance @ 490 nm"},
   {"R_443","Remote-sensing reflectance @ 443 nm"},
   {"R_488","Remote-sensing reflectance @ 488 nm"},
   {"R_531","Remote-sensing reflectance @ 531 nm"},
@@ -246,6 +260,10 @@ const char *ECONAME2D[][2] = {
   {"Lunar_zenith","Moon zenith"},
   {"Lunar_phase","Moon phase"},
   {"Moon_fulldisk","Moonlight brightness (PAR-integrated)"},
+  {"FF_N","Filter feeder N"},
+  {"nFF","Filter feeder abundance"},
+  {"FF_N_pr","Filter feeder production"},
+  {"FF_N_rm","Filter feeder consumption"},
 };
 const int NUM_ECO_VARS_2D = ((int)(sizeof(ECONAME2D)/(2*sizeof(char*))));
 

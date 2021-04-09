@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: choosedump.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: choosedump.c 6731 2021-03-30 00:37:20Z her127 $
  *
  */
 
@@ -181,7 +181,7 @@ int dump_choose_by_time_m(master_t *master, int fid, double t)
       return i;
   }
 
-  hd_quit
+  hd_warn
     ("dump_choose_by_time: Input file does not contain the time '%.2f %s'.\n",
      t, master->timeunit);
 

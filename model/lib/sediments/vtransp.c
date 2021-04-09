@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vtransp.c 6197 2019-04-11 04:19:10Z mar644 $
+ *  $Id: vtransp.c 6575 2020-07-06 06:17:49Z mar644 $
  *
  */
 
@@ -689,18 +689,21 @@ static void update_sed_levels(sediment_t *sediment, sed_column_t *sm)
   for (k = bk_sed; k <= tk_sed + 1; k++)
     sm->tmp_sed[k] = sm->gridz_sed[k];
 
-  if (sm->gridvel_sed[tk_sed + 1] < 0.) {
+  if (sm->gridvel_sed[tk_sed + 1] < 0.) { //resuspension
     for (k = tk_sed; k > bk_sed; k--) {
       if ((sm->tmp_sed[k] - sm->tmp_sed[k - 1]) < param->minseddz)
         sm->tmp_sed[k - 1] = sm->tmp_sed[k] - param->minseddz;
     }
-  } else {
+  } else {                               //deposition
     for (k = tk_sed; k > bk_sed; k--)
       sm->gridvel_sed[k - 1] = 0.;
   }
 
+
+// June 2020 for cycle extended to include the bottom layer
+// so that the bottom layer now can go below 0 level
   dhinter = (sm->gridz_sed[tk_sed] - sm->gridz_sed[bk_sed]);
-  for (k = tk_sed - 1; k > bk_sed; k--) {
+  for (k = tk_sed - 1; k >= bk_sed; k--) {
     sigmagridz = sm->gridz_sed[tk_sed] + sm->sigma_sed[k] * dhinter;
     newgridz = sm->tmp_sed[k] + gscale * (sigmagridz - sm->tmp_sed[k]);
     sm->gridvel_sed[k] = (newgridz - sm->gridz_sed[k]) / param->dt;

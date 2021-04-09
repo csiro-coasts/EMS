@@ -4,17 +4,24 @@
  *  
  *  File: model/lib/ecology/process_library/macroalgae_mortality_epi.c
  *  
- *  Description: Macroalgae mortality (can be used for spectral / non-spectral model.
+ *  Description: Macroalgae mortality (can be used for spectral / non-spectral model).
  *  
  *  Linear mortality rate.
+ *
+ *  25/06/2020 MEB - Added multiple seaweed types and shear stress mortality.  
  *  
+ *  Options: macroalgae_spectral_grow_epi(b|g|r)
+ *
+ *  First argument:   b - brown algae (default).
+ *                    g - green algae.
+ *                    r - red algae.
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_mortality_epi.c 5977 2018-09-27 03:28:41Z riz008 $
+ *  $Id: macroalgae_mortality_epi.c 6580 2020-07-29 03:58:50Z bai155 $
  *
  */
 
@@ -33,15 +40,20 @@
 #define EPS_DIP 1.0e-20
 
 typedef struct {
+  
+    char species;
     /*
      * parameters
      */
     double mL_t0;
+    double MA_tau_critical;
+    double MA_tau_efold;
 
     /*
      * epis
      */
     int MA_N_i;
+    int ustrcw_skin_i;
 
     /*
      * tracers
@@ -67,24 +79,98 @@ void macroalgae_mortality_epi_init(eprocess* p)
     stringtable* tracers = e->tracers;
     stringtable* epis = e->epis;
 
+    char* prm = NULL;
+
     int OFFSET_EPI = tracers->n * 2;
 
     p->workspace = ws;
 
-    /*
-     * parameters
-     */
-    ws->mL_t0 = get_parameter_value(e, "MA_mL");
+    if (p->prms->n){
+      prm = p->prms->se[0]->s;
+      ws->species = prm[0];
+    }else{
+       ws->species = 'b';
+    }
 
-    /*
-     * epis
-     */
-    ws->MA_N_i = e->find_index(epis, "MA_N", e) + OFFSET_EPI;
+    switch (ws->species){
 
+    case 'r':
+      eco_write_setup(e,"Choosen red macroalgae \n");
+
+      ws->mL_t0 = try_parameter_value(e, "MAR_mL");
+      if (isnan(ws->mL_t0)){
+	ws->mL_t0 = 0.01/86400;
+	eco_write_setup(e,"Code default: MAR_mL  = %e \n",ws->mL_t0);
+      }
+
+      ws->MA_N_i = e->find_index(epis, "MAR_N", e) + OFFSET_EPI;
+
+      ws->MA_tau_critical = try_parameter_value(e, "MAR_tau_critical");
+      if (isnan(ws->MA_tau_critical)){
+	ws->MA_tau_critical = 10000000.0;  // no loss
+	eco_write_setup(e,"Code default:  MAR_tau_critical = %e \n",ws->MA_tau_critical);
+      }
+
+      ws->MA_tau_efold = try_parameter_value(e, "MAR_tau_efold");
+      if (isnan(ws->MA_tau_efold)){
+	ws->MA_tau_efold = 0.5 * 24.0 * 3600.0;
+	eco_write_setup(e,"Code default: MAR_tau_efold = %e \n",ws->MA_tau_efold);
+      }
+      
+      break;
+
+    case 'g':
+
+      eco_write_setup(e,"Choosen green macroalgae \n");
+
+      ws->mL_t0 = try_parameter_value(e, "MAG_mL");
+      if (isnan(ws->mL_t0)){
+	ws->mL_t0 = 0.01/86400;
+	eco_write_setup(e,"Code default: MAG_mL  = %e \n",ws->mL_t0);
+      }
+     
+      ws->MA_N_i = e->find_index(epis, "MAG_N", e) + OFFSET_EPI;
+
+      ws->MA_tau_critical = try_parameter_value(e, "MAG_tau_critical");
+      if (isnan(ws->MA_tau_critical)){
+	ws->MA_tau_critical = 10000000.0;  // no loss
+	eco_write_setup(e,"Code default:  MAG_tau_critical = %e \n",ws->MA_tau_critical);
+      }
+
+      ws->MA_tau_efold = try_parameter_value(e, "MAG_tau_efold");
+      if (isnan(ws->MA_tau_efold)){
+	ws->MA_tau_efold = 0.5 * 24.0 * 3600.0;
+	eco_write_setup(e,"Code default: MAG_tau_efold = %e \n",ws->MA_tau_efold);
+      }
+
+      break;
+
+    case 'b':
+
+      eco_write_setup(e,"Choosen (or default) brown macroalgae \n");
+      ws->mL_t0 = get_parameter_value(e, "MA_mL");
+      ws->MA_N_i = e->find_index(epis, "MA_N", e) + OFFSET_EPI;
+
+      ws->MA_tau_critical = try_parameter_value(e, "MA_tau_critical");
+      if (isnan(ws->MA_tau_critical)){
+	ws->MA_tau_critical = 10000000.0;  // no loss;
+	eco_write_setup(e,"Code default:  MA_tau_critical = %e \n",ws->MA_tau_critical);
+      }
+
+      ws->MA_tau_efold = try_parameter_value(e, "MA_tau_efold");
+      if (isnan(ws->MA_tau_efold)){
+	ws->MA_tau_efold = 0.5 * 24.0 * 3600.0;
+	eco_write_setup(e,"Code default: MA_tau_efold = %e \n",ws->MA_tau_efold);
+      }
+      
+      break;
+    }
+    
     /*
      * tracers
      */
     ws->DetBL_N_wc_i = e->find_index(tracers, "DetBL_N", e);
+    ws->ustrcw_skin_i = e->find_index(epis, "ustrcw_skin", e) + OFFSET_EPI;
 
     /*
      * common variables
@@ -136,6 +222,11 @@ void macroalgae_mortality_epi_calc(eprocess* p, void* pp)
     double MA_N = y[ws->MA_N_i];
     double mortality = c->cv[ws->mL_i] * MA_N;
 
+    /* add shear stress mortality */
+
+    double tau = y[ws->ustrcw_skin_i]*y[ws->ustrcw_skin_i];
+    mortality += min(2.0/86400,max((tau - ws->MA_tau_critical)/ws->MA_tau_critical, 0.0) * (1.0 / ws->MA_tau_efold)) * MA_N ;
+    
     y1[ws->MA_N_i] -= mortality;
     y1[ws->DetBL_N_wc_i] += ws->unitch * mortality / c->dz_wc;
 }

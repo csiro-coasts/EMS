@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_proto_epi.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: seagrass_spectral_grow_proto_epi.c 6700 2021-03-24 01:13:46Z wil00y $
  *
  */
 
@@ -67,6 +67,8 @@ typedef struct {
   int EpiTC_i;
   int EpiBOD_i;
   
+  int EpiOxy_pr_i;
+
   int KI_SG_i;
   int SGROOT_N_i;
   
@@ -312,6 +314,9 @@ void seagrass_spectral_grow_proto_epi_init(eprocess* p)
     /*non essential diagnostic tracer*/
 
     ws->Oxy_pr_wc_i = e->try_index(tracers, "Oxy_pr", e);
+    ws->EpiOxy_pr_i = e->try_index(epis, "EpiOxy_pr", e);
+      if (ws->EpiOxy_pr_i > -1) 
+	ws->EpiOxy_pr_i  += OFFSET_EPI;
 
     /*
      * common variables
@@ -610,11 +615,13 @@ void seagrass_spectral_grow_proto_epi_calc(eprocess* p, void* pp)
     y1[ws->Oxygen_wc_i] += Oxy_pr;
     
     if (ws-> SG_N_gr_i > -1)
-      y1[ws->SG_N_gr_i] += growthrate;
+      y1[ws->SG_N_gr_i] += growthrate * SEC_PER_DAY; /* d-1 */
     if (ws-> SG_N_pr_i > -1)
-      y1[ws->SG_N_pr_i] += growth * SEC_PER_DAY;
+      y1[ws->SG_N_pr_i] += growth * SEC_PER_DAY * atk_W_C; /* gC m-2 d-1 */
     if (ws->Oxy_pr_wc_i > -1)
-      y1[ws->Oxy_pr_wc_i] += Oxy_pr * SEC_PER_DAY;
+      y1[ws->Oxy_pr_wc_i] += Oxy_pr * SEC_PER_DAY;  /*mgO m-3 d-1 */
+    if (ws->EpiOxy_pr_i > -1)
+	  y1[ws->EpiOxy_pr_i] += Oxy_pr * SEC_PER_DAY * dz_wc;  /*mgO m-2 d-1 */
     
     /* Translocation of N between root and leaf - simplfy */ 
     

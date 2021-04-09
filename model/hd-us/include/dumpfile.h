@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 6440 2019-12-04 03:00:23Z riz008 $
+ *  $Id: dumpfile.h 6628 2020-09-08 01:35:37Z her127 $
  *
  */
 
@@ -315,7 +315,11 @@ struct dump_data {
   int nedge3;
   int nvertex3;
   double runno;
+  char runnoc[MAXSTRLEN];
   char rev[MAXSTRLEN];          /* Version number for parameter file */
+  char reference[MAXSTRLEN];
+  char runcode[MAXSTRLEN];
+  char trl[MAXSTRLEN];
   char grid_name[MAXSTRLEN];
 
   double t;
@@ -337,7 +341,7 @@ struct dump_data {
   grid_polar_t *pg;             /* Polar grid information */
   double start_time;            /* Start time of simulation */
   double stop_time;             /* End time of simulation */
-  int runcode;                  /* Run code */
+  int crf;                      /* Crash recovery flag */
   unsigned long ***flag;
   double *gridz;
   double *cellz;

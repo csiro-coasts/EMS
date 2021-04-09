@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dinoflagellate_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: dinoflagellate_grow_wc.c 6685 2021-03-24 00:28:42Z wil00y $
  *
  */
 
@@ -235,8 +235,8 @@ void dinoflagellate_grow_wc_calc(eprocess* p, void* pp)
         y1[ws->Phy_C_i] += growth_C;
         y1[ws->DIC_i] -= growth_C;
         y1[ws->Oxygen_i] += growth_C * red_W_O / red_W_C;
-        y1[ws->Phy_N_pr_i] += growth * SEC_PER_DAY * c->dz_wc;
-        y1[ws->Phy_N_gr_i] = growthrate / umax;
+        y1[ws->Phy_N_pr_i] += growth * SEC_PER_DAY * red_W_C;
+        y1[ws->Phy_N_gr_i] = growthrate * SEC_PER_DAY;
         y1[ws->Oxy_pr_i] += growth_C * red_W_O / red_W_C * SEC_PER_DAY;
     }
 }

@@ -7,25 +7,32 @@
  *  Description:
  *  Contains data related to the spectrally-resolved optical model
  *
- *  Thanks to: Nagur Cherekuru, Kadija Oubelkheir, Lesley Clementson, Dariusz Stramski Janet Anstee and 
+ *  Thanks to: Nagur Cherekuru, Kadija Oubelkheir, Lesley Clementson, Dariusz Stramski, Janet Anstee and 
  *             Katherina Petrou for data that appears below.
  *  
  * 
- * Babcock RC, Baird ME, Pillans R, Patterson T, Haywood ME, Rochester W, Morello E, Fry G, Kelly, N, 
+ *  Babcock RC, Baird ME, Pillans R, Patterson T, Haywood ME, Rochester W, Morello E, Fry G, Kelly, N, 
  *   Kenyon R, Carlin G, Oubelkheir K, Dunbabin M, Perkins S, Forcey K, Donovan A, Limpus, C. 2015. 
  *   Towards an integrated study of the Gladstone marine system. CSIRO Oceans and Atmosphere Flagship, Brisbane.
  * 
- * Clementson, L. A. and B. Wojtasiewicz (2019) Absorption characteristics of 
- *       phytoplankton pigments. Data in Brief doi:10.1016/j.dib.2019.103875
+ *  Clementson, L. A. and B. Wojtasiewicz (2019) Absorption characteristics of 
+ *   phytoplankton pigments. Data in Brief doi:10.1016/j.dib.2019.103875
  *
- * Soja-Wozniak, M., M. E.  Baird, T. Schroeder, Y. Qin, L. Clementson, B. Baker, D. Boadle, V. Brando 
- *      and A. Steven (2019) Particulate backscattering ratio as an 
- *      indicator of changing particle composition in coastal waters: observations from Great Barrier Reef 
- *      waters. J. Geophys. Res. (Oceans) 124 https://doi.org/10.1029/2019JC014998.
+ *  Soja-Wozniak, M., M. E.  Baird, T. Schroeder, Y. Qin, L. Clementson, B. Baker, D. Boadle, V. Brando 
+ *   and A. Steven (2019) Particulate backscattering ratio as an 
+ *   indicator of changing particle composition in coastal waters: observations from Great Barrier Reef 
+ *   waters. J. Geophys. Res. (Oceans) 124 https://doi.org/10.1029/2019JC014998.
  *
- * Kieffer, H. H and T. C. Stone (2005) The spectral irradiance of the moon. The Ast. J. 129: 2887-2901.
+ *  Roelfsema, C. M and S. R. Phinn (2012) Spectral reflectance library of selected biotic and abiotic coral 
+ *  reef features in Heron Reef. Centre for Remote Sensing and Spatial Information Science, School of Geography, 
+ *  Planning and Environmental Management, University of Queensland, Brisbane, Australia. doi:10.1594/PANGAEA.804589.
+ * 
+ *  Petrou, K. I. Jimenez-Denness, K. Chartrand, C. McCormack, M. Rasheed and P. J. Ralph (2013). Seasonal heterogeneity in the 
+ *  photophysiological response to air exposure to air. Mar. Ecol. Prog. Ser. 482: 93-106.
  *
- * LJCO - Lucinda Jetty Coastal Laboratory, just south of Herbert River mouth.
+ *  Kieffer, H. H and T. C. Stone (2005) The spectral irradiance of the moon. The Ast. J. 129: 2887-2901.
+ *
+ *  LJCO - Lucinda Jetty Coastal Laboratory, just south of Herbert River mouth.
  *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -33,7 +40,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bio_opt.c 6382 2019-11-13 02:40:31Z bai155 $
+ *  $Id: bio_opt.c 6680 2021-01-08 00:48:53Z bai155 $
  *
  */
 
@@ -44,6 +51,8 @@
 #include "utils.h"
 #include "bio_opt.h"
 #include "ecofunct.h"
+#include "netcdf.h"
+#include "ncw.h"
 
 /*
  * Initialises the bio-optical properties
@@ -64,6 +73,131 @@ bio_opt_prop *bio_opt_init(ecology* e)
   bio_opt_prop *b = (bio_opt_prop *)malloc(sizeof(bio_opt_prop));
   memset(b, 0, sizeof(bio_opt_prop));
 
+  /*
+   * Read an external spectral library
+   */
+
+  int ncid,ret,varid;
+  FILE *fp = NULL;
+  char *file_name = "roam_biovis_data.nc";
+  char units[10];
+  char description[100];
+  char symbol[10];
+  double nc_gone,nc_gtwo,nc_bphy;
+
+  fp = fopen(file_name, "r");
+  if (fp != NULL){
+    fclose(fp);
+    eco_write_setup(e,"Opening spectral library: %s \n",file_name);
+    ncw_open("roam_biovis_data.nc", NC_NOWRITE, &ncid);
+
+    /* Spectrally-independent variables */
+    
+    varid = ncw_var_id(ncid,"gone");
+    if (varid > -1){
+      ncw_get_var_double("roam_biovis_data.nc",ncid, varid, &nc_gone);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Units",units);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Symbol",symbol);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Description",description);
+      eco_write_setup(e,"Read %s: %s = %e %s\n",description,symbol,nc_gone,units);
+      // memcpy(units,'\0',10);memcpy(description,'\0',100);memcpy(symbol,'\0',10);
+    }
+    
+    varid = ncw_var_id(ncid,"gtwo");
+    if (varid > -1){
+      ncw_get_var_double("roam_biovis_data.nc",ncid, varid, &nc_gtwo);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Units",units);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Symbol",symbol);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Description",description);
+      eco_write_setup(e,"Read %s: %s = %e %s\n",description,symbol,nc_gtwo,units);
+      // memcpy(units,'\0',10);memcpy(description,'\0',100);memcpy(symbol,'\0',10);
+    }
+
+    varid = ncw_var_id(ncid,"bphy");
+    if (varid > -1){
+      ncw_get_var_double("roam_biovis_data.nc",ncid, varid, &nc_bphy);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Units",units);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Symbol",symbol);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Description",description);
+      eco_write_setup(e,"Read %s: %s = %e %s\n",description,symbol,nc_bphy,units);
+      // memcpy(units,'\0',10);memcpy(description,'\0',100);memcpy(symbol,'\0',10);
+    }
+    
+    /* Spectrally-dependent variables */
+
+    int dimid;
+    size_t len;
+    size_t ncstart[2] = {0,0}; size_t nccount[2] = {2,1};
+    
+    varid = ncw_var_id(ncid,"aw");
+    if (varid > -1){
+      dimid = ncw_dim_id(ncid, "aw_wavelengths");
+      ncw_inq_dimlen("roam_biovis_data.nc",ncid,dimid,&len);
+      double nc_aw[2*len];
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Units",units);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Symbol",symbol);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Description",description);
+      
+      nccount[1] = len;
+      ncw_get_vara_double("roam_biovis_data.nc",ncid, varid, ncstart,nccount,nc_aw);
+      
+      eco_write_setup(e,"Read %s: %s [%s]\n",description,symbol,units);
+      eco_write_setup(e,"wave [nm] aw \n");
+      
+      for (w=0; w<len; w++){
+	eco_write_setup(e,"w %d, %4.2f \t %e \n",w,nc_aw[w],nc_aw[w+len]);
+      }
+      // memcpy(units,'\0',10);memcpy(description,'\0',100);memcpy(symbol,'\0',10);
+    }
+    // Total scattering.
+
+    varid = ncw_var_id(ncid,"btw");
+    if (varid > -1){
+      dimid = ncw_dim_id(ncid, "btw_wavelengths");
+      ncw_inq_dimlen("roam_biovis_data.nc",ncid,dimid,&len);
+      double nc_btw[2*len];
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Units",units);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Symbol",symbol);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Description",description);
+      
+      nccount[1] = len;
+      ncw_get_vara_double("roam_biovis_data.nc",ncid, varid, ncstart,nccount,nc_btw);
+      
+      eco_write_setup(e,"Read %s: %s [%s]\n",description,symbol,units);
+      eco_write_setup(e,"wave [nm] btw \n");
+      
+      for (w=0; w<len; w++){
+	eco_write_setup(e,"w %d, %4.2f \t %e \n",w,nc_btw[w],nc_btw[w+len]);
+      }
+      // memcpy(units,'\0',10);memcpy(description,'\0',100);memcpy(symbol,'\0',10);
+    }
+// Benthic reflectance
+
+    varid = ncw_var_id(ncid,"rho");
+    if (varid > -1){
+      dimid = ncw_dim_id(ncid, "rho_wavelengths");
+      ncw_inq_dimlen("roam_biovis_data.nc",ncid,dimid,&len);
+      double nc_rho[2*len];
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Units",units);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Symbol",symbol);
+      ncw_get_att_text("roam_biovis_data.nc",ncid,varid,"Description",description);
+      
+      nccount[1] = len;
+      ncw_get_vara_double("roam_biovis_data.nc",ncid, varid, ncstart,nccount,nc_rho);
+      
+      eco_write_setup(e,"Read %s: %s [%s]\n",description,symbol,units);
+      eco_write_setup(e,"wave [nm] rho \n");
+      
+      for (w=0; w<len; w++){
+	eco_write_setup(e,"w %d, %4.2f \t %e \n",w,nc_rho[w],nc_rho[w+len]);
+      }
+      // memcpy(units,'\0',10);memcpy(description,'\0',100);memcpy(symbol,'\0',10);
+    }
+    ncw_close("roam_biovis_data.nc",ncid);
+  } else {
+    eco_write_setup(e,"No spectral library file read \n");
+  }
+  
   /* 
    * clear-sky irradiance at a particular wave-band W/m2/nm 
    */
@@ -256,6 +390,8 @@ bio_opt_prop *bio_opt_init(ecology* e)
 
   /* initialise spectrally-resolved clear water absorption (Smith and Baker, 1981) */
 
+    // this should be aw, not kw!
+    
   double kwavei[66] = {280.,290.,300.,310.,320.,366.,
        380.00,390.00,400.00,410.00,420.00,430.00,440.00,450.00,460.00,
        470.00,480.00,490.00,500.00,510.00,520.00,530.00,540.00,550.00,
@@ -1303,10 +1439,14 @@ for (ww=0; ww<551; ww++){
   }
 
   b->MA_aAwave = d_alloc_1d(num_wave);
+  b->MAR_aAwave = d_alloc_1d(num_wave);
+  b->MAG_aAwave = d_alloc_1d(num_wave);
   b->SG_aAwave = d_alloc_1d(num_wave);
   b->SGH_aAwave = d_alloc_1d(num_wave);
   if (num_rsr_waves) {
     b->MA_aAwave2  = d_alloc_1d(num_rsr_waves);
+    b->MAR_aAwave2  = d_alloc_1d(num_rsr_waves);
+    b->MAG_aAwave2  = d_alloc_1d(num_rsr_waves);
     b->SG_aAwave2  = d_alloc_1d(num_rsr_waves);
     b->SGH_aAwave2 = d_alloc_1d(num_rsr_waves);
   }
@@ -1345,11 +1485,19 @@ double SGHabsorbance[1467] = {0.73083931, 0.719744441, 0.718474962, 0.715785638,
  if (num_rsr_waves)
    interp1d(SGHwave, SGHabsorbance, 1467, rsr_waves, b->SGH_aAwave2, num_rsr_waves);
    
- /* assume Macroalgae is the same as halophila */
+ /* assume Brown, Green and Red macroalgae are the same as halophila */
 
  interp1d(SGHwave, SGHabsorbance, 1467, wave, b->MA_aAwave, num_wave);
  if (num_rsr_waves)
    interp1d(SGHwave, SGHabsorbance, 1467, rsr_waves, b->MA_aAwave2, num_rsr_waves);
+
+ interp1d(SGHwave, SGHabsorbance, 1467, wave, b->MAR_aAwave, num_wave);
+ if (num_rsr_waves)
+   interp1d(SGHwave, SGHabsorbance, 1467, rsr_waves, b->MAR_aAwave2, num_rsr_waves);
+
+ interp1d(SGHwave, SGHabsorbance, 1467, wave, b->MAG_aAwave, num_wave);
+ if (num_rsr_waves)
+   interp1d(SGHwave, SGHabsorbance, 1467, rsr_waves, b->MAG_aAwave2, num_rsr_waves);
 
 
 /* scattering coefficients - eventually these will be in bio.prm */
@@ -1362,11 +1510,13 @@ double SGHabsorbance[1467] = {0.73083931, 0.719744441, 0.718474962, 0.715785638,
   b->gone = 0.4058;
   b->gtwo = 0.1798;  /* using av. cosine of scattering from mobely 94. */
 
-  b->acdom443star = get_parameter_value(e, "acdom443star"); /* calibration to Feb 2011 */
-
+  b->acdom443star = try_parameter_value(e, "acdom443star"); /* calibration to Feb 2011 */
+  if (isnan(b->acdom443star))
+    b->acdom443star =  1.300000e-04;
+  
   /*
    * Cache reflectances of benthic features
-   */
+   */ 
   double h_waves[] = {
     400.340000, 400.710000, 401.080000, 401.460000, 401.830000, 402.200000, 402.570000, 402.940000, 403.310000, 403.680000, 404.050000, 404.430000, 404.800000, 405.170000, 405.540000, 405.910000, 406.280000, 406.650000, 407.020000, 407.390000, 407.760000, 408.130000, 408.500000, 408.880000, 409.250000, 409.620000, 409.990000, 410.360000, 410.730000, 411.100000, 411.470000, 411.840000, 412.210000, 412.580000, 412.950000, 413.320000, 413.690000, 414.060000, 414.430000, 414.800000, 415.170000, 415.540000, 415.910000, 416.280000, 416.650000, 417.020000, 417.390000, 417.760000, 418.130000, 418.500000, 418.870000, 419.240000, 419.610000, 419.980000, 420.350000, 420.720000, 421.090000, 421.460000, 421.830000, 422.190000, 422.560000, 422.930000, 423.300000, 423.670000, 424.040000, 424.410000, 424.780000, 425.150000, 425.520000, 425.890000, 426.260000, 426.630000, 426.990000, 427.360000, 427.730000, 428.100000, 428.470000, 428.840000, 429.210000, 429.580000, 429.940000, 430.310000, 430.680000, 431.050000, 431.420000, 431.790000, 432.160000, 432.520000, 432.890000, 433.260000, 433.630000, 434.000000, 434.370000, 434.730000, 435.100000, 435.470000, 435.840000, 436.210000, 436.570000, 436.940000, 437.310000, 437.680000, 438.050000, 438.410000, 438.780000, 439.150000, 439.520000, 439.890000, 440.250000, 440.620000, 440.990000, 441.360000, 441.720000, 442.090000, 442.460000, 442.830000, 443.190000, 443.560000, 443.930000, 444.300000, 444.660000, 445.030000, 445.400000, 445.760000, 446.130000, 446.500000, 446.870000, 447.230000, 447.600000, 447.970000, 448.330000, 448.700000, 449.070000, 449.430000, 449.800000, 450.170000, 450.530000, 450.900000, 451.270000, 451.630000, 452.000000, 452.370000, 452.730000, 453.100000, 453.470000, 453.830000, 454.200000, 454.570000, 454.930000, 455.300000, 455.670000, 456.030000, 456.400000, 456.760000, 457.130000, 457.500000, 457.860000, 458.230000, 458.590000, 458.960000, 459.330000, 459.690000, 460.060000, 460.420000, 460.790000, 461.150000, 461.520000, 461.890000, 462.250000, 462.620000, 462.980000, 463.350000, 463.710000, 464.080000, 464.440000, 464.810000, 465.170000, 465.540000, 465.910000, 466.270000, 466.640000, 467.000000, 467.370000, 467.730000, 468.100000, 468.460000, 468.830000, 469.190000, 469.560000, 469.920000, 470.290000, 470.650000, 471.010000, 471.380000, 471.740000, 472.110000, 472.470000, 472.840000, 473.200000, 473.570000, 473.930000, 474.300000, 474.660000, 475.020000, 475.390000, 475.750000, 476.120000, 476.480000, 476.850000, 477.210000, 477.570000, 477.940000, 478.300000, 478.670000, 479.030000, 479.390000, 479.760000, 480.120000, 480.490000, 480.850000, 481.210000, 481.580000, 481.940000, 482.300000, 482.670000, 483.030000, 483.390000, 483.760000, 484.120000, 484.480000, 484.850000, 485.210000, 485.570000, 485.940000, 486.300000, 486.660000, 487.030000, 487.390000, 487.750000, 488.120000, 488.480000, 488.840000, 489.210000, 489.570000, 489.930000, 490.290000, 490.660000, 491.020000, 491.380000, 491.740000, 492.110000, 492.470000, 492.830000, 493.190000, 493.560000, 493.920000, 494.280000, 494.640000, 495.010000, 495.370000, 495.730000, 496.090000, 496.460000, 496.820000, 497.180000, 497.540000, 497.900000, 498.270000, 498.630000, 498.990000, 499.350000, 499.710000, 500.080000, 500.440000, 500.800000, 501.160000, 501.520000, 501.880000, 502.250000, 502.610000, 502.970000, 503.330000, 503.690000, 504.050000, 504.410000, 504.780000, 505.140000, 505.500000, 505.860000, 506.220000, 506.580000, 506.940000, 507.300000, 507.660000, 508.030000, 508.390000, 508.750000, 509.110000, 509.470000, 509.830000, 510.190000, 510.550000, 510.910000, 511.270000, 511.630000, 511.990000, 512.350000, 512.720000, 513.080000, 513.440000, 513.800000, 514.160000, 514.520000, 514.880000, 515.240000, 515.600000, 515.960000, 516.320000, 516.680000, 517.040000, 517.400000, 517.760000, 518.120000, 518.480000, 518.840000, 519.200000, 519.560000, 519.920000, 520.280000, 520.640000, 521.000000, 521.360000, 521.720000, 522.080000, 522.430000, 522.790000, 523.150000, 523.510000, 523.870000, 524.230000, 524.590000, 524.950000, 525.310000, 525.670000, 526.030000, 526.390000, 526.750000, 527.100000, 527.460000, 527.820000, 528.180000, 528.540000, 528.900000, 529.260000, 529.620000, 529.970000, 530.330000, 530.690000, 531.050000, 531.410000, 531.770000, 532.130000, 532.480000, 532.840000, 533.200000, 533.560000, 533.920000, 534.280000, 534.630000, 534.990000, 535.350000, 535.710000, 536.070000, 536.420000, 536.780000, 537.140000, 537.500000, 537.860000, 538.210000, 538.570000, 538.930000, 539.290000, 539.640000, 540.000000, 540.360000, 540.720000, 541.080000, 541.430000, 541.790000, 542.150000, 542.500000, 542.860000, 543.220000, 543.580000, 543.930000, 544.290000, 544.650000, 545.010000, 545.360000, 545.720000, 546.080000, 546.430000, 546.790000, 547.150000, 547.500000, 547.860000, 548.220000, 548.570000, 548.930000, 549.290000, 549.640000, 550.000000, 550.360000, 550.710000, 551.070000, 551.430000, 551.780000, 552.140000, 552.490000, 552.850000, 553.210000, 553.560000, 553.920000, 554.280000, 554.630000, 554.990000, 555.340000, 555.700000, 556.050000, 556.410000, 556.770000, 557.120000, 557.480000, 557.830000, 558.190000, 558.540000, 558.900000, 559.260000, 559.610000, 559.970000, 560.320000, 560.680000, 561.030000, 561.390000, 561.740000, 562.100000, 562.450000, 562.810000, 563.160000, 563.520000, 563.870000, 564.230000, 564.580000, 564.940000, 565.290000, 565.650000, 566.000000, 566.360000, 566.710000, 567.070000, 567.420000, 567.780000, 568.130000, 568.490000, 568.840000, 569.190000, 569.550000, 569.900000, 570.260000, 570.610000, 570.970000, 571.320000, 571.670000, 572.030000, 572.380000, 572.740000, 573.090000, 573.440000, 573.800000, 574.150000, 574.510000, 574.860000, 575.210000, 575.570000, 575.920000, 576.270000, 576.630000, 576.980000, 577.330000, 577.690000, 578.040000, 578.390000, 578.750000, 579.100000, 579.450000, 579.810000, 580.160000, 580.510000, 580.870000, 581.220000, 581.570000, 581.930000, 582.280000, 582.630000, 582.980000, 583.340000, 583.690000, 584.040000, 584.400000, 584.750000, 585.100000, 585.450000, 585.810000, 586.160000, 586.510000, 586.860000, 587.220000, 587.570000, 587.920000, 588.270000, 588.620000, 588.980000, 589.330000, 589.680000, 590.030000, 590.390000, 590.740000, 591.090000, 591.440000, 591.790000, 592.140000, 592.500000, 592.850000, 593.200000, 593.550000, 593.900000, 594.250000, 594.610000, 594.960000, 595.310000, 595.660000, 596.010000, 596.360000, 596.710000, 597.070000, 597.420000, 597.770000, 598.120000, 598.470000, 598.820000, 599.170000, 599.520000, 599.870000, 600.220000, 600.580000, 600.930000, 601.280000, 601.630000, 601.980000, 602.330000, 602.680000, 603.030000, 603.380000, 603.730000, 604.080000, 604.430000, 604.780000, 605.130000, 605.480000, 605.830000, 606.180000, 606.530000, 606.880000, 607.230000, 607.580000, 607.930000, 608.280000, 608.630000, 608.980000, 609.330000, 609.680000, 610.030000, 610.380000, 610.730000, 611.080000, 611.430000, 611.780000, 612.130000, 612.480000, 612.830000, 613.180000, 613.530000, 613.880000, 614.230000, 614.570000, 614.920000, 615.270000, 615.620000, 615.970000, 616.320000, 616.670000, 617.020000, 617.370000, 617.720000, 618.060000, 618.410000, 618.760000, 619.110000, 619.460000, 619.810000, 620.160000, 620.500000, 620.850000, 621.200000, 621.550000, 621.900000, 622.250000, 622.590000, 622.940000, 623.290000, 623.640000, 623.990000, 624.330000, 624.680000, 625.030000, 625.380000, 625.730000, 626.070000, 626.420000, 626.770000, 627.120000, 627.460000, 627.810000, 628.160000, 628.510000, 628.850000, 629.200000, 629.550000, 629.900000, 630.240000, 630.590000, 630.940000, 631.290000, 631.630000, 631.980000, 632.330000, 632.670000, 633.020000, 633.370000, 633.720000, 634.060000, 634.410000, 634.760000, 635.100000, 635.450000, 635.800000, 636.140000, 636.490000, 636.840000, 637.180000, 637.530000, 637.870000, 638.220000, 638.570000, 638.910000, 639.260000, 639.610000, 639.950000, 640.300000, 640.640000, 640.990000, 641.340000, 641.680000, 642.030000, 642.370000, 642.720000, 643.060000, 643.410000, 643.760000, 644.100000, 644.450000, 644.790000, 645.140000, 645.480000, 645.830000, 646.170000, 646.520000, 646.870000, 647.210000, 647.560000, 647.900000, 648.250000, 648.590000, 648.940000, 649.280000, 649.630000, 649.970000, 650.320000, 650.660000, 651.000000, 651.350000, 651.690000, 652.040000, 652.380000, 652.730000, 653.070000, 653.420000, 653.760000, 654.110000, 654.450000, 654.790000, 655.140000, 655.480000, 655.830000, 656.170000, 656.520000, 656.860000, 657.200000, 657.550000, 657.890000, 658.230000, 658.580000, 658.920000, 659.270000, 659.610000, 659.950000, 660.300000, 660.640000, 660.980000, 661.330000, 661.670000, 662.010000, 662.360000, 662.700000, 663.040000, 663.390000, 663.730000, 664.070000, 664.420000, 664.760000, 665.100000, 665.450000, 665.790000, 666.130000, 666.470000, 666.820000, 667.160000, 667.500000, 667.850000, 668.190000, 668.530000, 668.870000, 669.220000, 669.560000, 669.900000, 670.240000, 670.580000, 670.930000, 671.270000, 671.610000, 671.950000, 672.300000, 672.640000, 672.980000, 673.320000, 673.660000, 674.010000, 674.350000, 674.690000, 675.030000, 675.370000, 675.710000, 676.060000, 676.400000, 676.740000, 677.080000, 677.420000, 677.760000, 678.100000, 678.450000, 678.790000, 679.130000, 679.470000, 679.810000, 680.150000, 680.490000, 680.830000, 681.170000, 681.520000, 681.860000, 682.200000, 682.540000, 682.880000, 683.220000, 683.560000, 683.900000, 684.240000, 684.580000, 684.920000, 685.260000, 685.600000, 685.940000, 686.280000, 686.620000, 686.960000, 687.300000, 687.640000, 687.980000, 688.320000, 688.660000, 689.000000, 689.340000, 689.680000, 690.020000, 690.360000, 690.700000, 691.040000, 691.380000, 691.720000, 692.060000, 692.400000, 692.740000, 693.080000, 693.420000, 693.760000, 694.100000, 694.440000, 694.780000, 695.110000, 695.450000, 695.790000, 696.130000, 696.470000, 696.810000, 697.150000, 697.490000, 697.830000, 698.170000, 698.500000, 698.840000, 699.180000, 699.520000, 699.860000, 700.200000, 700.530000, 700.870000, 701.210000, 701.550000, 701.890000, 702.230000, 702.560000, 702.900000, 703.240000, 703.580000, 703.920000, 704.250000, 704.590000, 704.930000, 705.270000, 705.610000, 705.940000, 706.280000, 706.620000, 706.960000, 707.290000, 707.630000, 707.970000, 708.310000, 708.640000, 708.980000, 709.320000, 709.660000, 709.990000, 710.330000, 710.670000, 711.000000, 711.340000, 711.680000, 712.010000, 712.350000, 712.690000, 713.020000, 713.360000, 713.700000, 714.030000, 714.370000, 714.710000, 715.040000, 715.380000, 715.720000, 716.050000, 716.390000, 716.730000, 717.060000, 717.400000, 717.730000, 718.070000, 718.410000, 718.740000, 719.080000, 719.410000, 719.750000, 720.090000, 720.420000, 720.760000, 721.090000, 721.430000, 721.760000, 722.100000, 722.440000, 722.770000, 723.110000, 723.440000, 723.780000, 724.110000, 724.450000, 724.780000, 725.120000, 725.450000, 725.790000, 726.120000, 726.460000, 726.790000, 727.130000, 727.460000, 727.800000, 728.130000, 728.470000, 728.800000, 729.140000, 729.470000, 729.800000, 730.140000, 730.470000, 730.810000, 731.140000, 731.480000, 731.810000, 732.140000, 732.480000, 732.810000, 733.150000, 733.480000, 733.810000, 734.150000, 734.480000, 734.820000, 735.150000, 735.480000, 735.820000, 736.150000, 736.480000, 736.820000, 737.150000, 737.480000, 737.820000, 738.150000, 738.480000, 738.820000, 739.150000, 739.480000, 739.820000, 740.150000, 740.480000, 740.820000, 741.150000, 741.480000, 741.810000, 742.150000, 742.480000, 742.810000, 743.150000, 743.480000, 743.810000, 744.140000, 744.480000, 744.810000, 745.140000, 745.470000, 745.800000, 746.140000, 746.470000, 746.800000, 747.130000, 747.470000, 747.800000, 748.130000, 748.460000, 748.790000, 749.120000, 749.460000, 749.790000, 750.120000, 750.450000, 750.780000, 751.110000, 751.450000, 751.780000, 752.110000, 752.440000, 752.770000, 753.100000, 753.430000, 753.760000, 754.100000, 754.430000, 754.760000, 755.090000, 755.420000, 755.750000, 756.080000, 756.410000, 756.740000, 757.070000, 757.400000, 757.730000, 758.070000, 758.400000, 758.730000, 759.060000, 759.390000, 759.720000, 760.050000, 760.380000, 760.710000, 761.040000, 761.370000, 761.700000, 762.030000, 762.360000, 762.690000, 763.020000, 763.350000, 763.680000, 764.010000, 764.340000, 764.670000, 765.000000, 765.320000, 765.650000, 765.980000, 766.310000, 766.640000, 766.970000, 767.300000, 767.630000, 767.960000, 768.290000, 768.620000, 768.950000, 769.270000, 769.600000, 769.930000, 770.260000, 770.590000, 770.920000, 771.250000, 771.580000, 771.900000, 772.230000, 772.560000, 772.890000, 773.220000, 773.550000, 773.870000, 774.200000, 774.530000, 774.860000, 775.190000, 775.520000, 775.840000, 776.170000, 776.500000, 776.830000, 777.150000, 777.480000, 777.810000, 778.140000, 778.470000, 778.790000, 779.120000, 779.450000, 779.770000, 780.100000, 780.430000, 780.760000, 781.080000, 781.410000, 781.740000, 782.070000, 782.390000, 782.720000, 783.050000, 783.370000, 783.700000, 784.030000, 784.350000, 784.680000, 785.010000, 785.330000, 785.660000, 785.990000, 786.310000, 786.640000, 786.970000, 787.290000, 787.620000, 787.940000, 788.270000, 788.600000, 788.920000, 789.250000, 789.570000, 789.900000, 790.230000, 790.550000, 790.880000, 791.200000, 791.530000, 791.850000, 792.180000, 792.510000, 792.830000, 793.160000, 793.480000, 793.810000, 794.130000, 794.460000, 794.780000, 795.110000, 795.430000, 795.760000, 796.080000, 796.410000, 796.730000, 797.060000, 797.380000, 797.710000, 798.030000, 798.360000, 798.680000, 799.010000, 799.330000, 799.650000, 799.980000, 800.300000
   };
@@ -1648,126 +1798,130 @@ void bio_opt_free(bio_opt_prop *b)
   d_free_1d(b->yC_myxoxanthophyll);  
   d_free_1d(b->yC_PE);
   d_free_1d(b->yC_PC);
-  d_free_1d(b->yC_diadinoxanthin_rsr);
-  d_free_1d(b->yC_diatoxanthin_rsr);
-  d_free_1d(b->yC_chlorophylla_rsr);
-  d_free_1d(b->yC_chlorophyllc2_rsr);
-  d_free_1d(b->yC_peridinin_rsr);
-  d_free_1d(b->yC_betacarotene_rsr);
-  d_free_1d(b->yC_echinenone_rsr); 
-  d_free_1d(b->yC_myxoxanthophyll_rsr);   
-  d_free_1d(b->yC_PE_rsr);
-  d_free_1d(b->yC_PC_rsr);
-  
-  d_free_1d(b->aC_AUS1);
-  d_free_1d(b->aC_AUS2);
-  d_free_1d(b->aC_ICE1);
-  d_free_1d(b->aC_ICE2);
-  d_free_1d(b->aC_ICE3);
-  d_free_1d(b->aC_KUW1);
-  d_free_1d(b->aC_KUW2);
-  d_free_1d(b->aC_NIG1);
-  d_free_1d(b->aC_SAH1);
-  d_free_1d(b->aC_SAH2);
-  d_free_1d(b->aC_OAH1);
-  d_free_1d(b->aC_OAH2);
-  d_free_1d(b->aC_CAL1);
-  d_free_1d(b->aC_CAL2);
-  d_free_1d(b->aC_QUA1);
-  d_free_1d(b->aC_ILL1);
-  d_free_1d(b->aC_ILL2);
-  d_free_1d(b->aC_KAO1);
-  d_free_1d(b->aC_KAO2);
-  d_free_1d(b->aC_KAO3);
-  d_free_1d(b->aC_MON1);
-  d_free_1d(b->aC_MON2);
-  d_free_1d(b->aC_SAN1);
-  d_free_1d(b->LJCO_aNAP);
-  d_free_1d(b->LJCOc_aNAP);
-  
-  d_free_1d(b->bC_AUS1);
-  d_free_1d(b->bC_AUS2);
-  d_free_1d(b->bC_ICE1);
-  d_free_1d(b->bC_ICE2);
-  d_free_1d(b->bC_ICE3);
-  d_free_1d(b->bC_KUW1);
-  d_free_1d(b->bC_KUW2);
-  d_free_1d(b->bC_NIG1);
-  d_free_1d(b->bC_SAH1);
-  d_free_1d(b->bC_SAH2);
-  d_free_1d(b->bC_OAH1);
-  d_free_1d(b->bC_OAH2);
-  d_free_1d(b->bC_CAL1);
-  d_free_1d(b->bC_CAL2);
-  d_free_1d(b->bC_QUA1);
-  d_free_1d(b->bC_ILL1);
-  d_free_1d(b->bC_ILL2);
-  d_free_1d(b->bC_KAO1);
-  d_free_1d(b->bC_KAO2);
-  d_free_1d(b->bC_KAO3);
-  d_free_1d(b->bC_MON1);
-  d_free_1d(b->bC_MON2);
-  d_free_1d(b->bC_SAN1);
-  d_free_1d(b->LJCO_bNAP);
-  d_free_1d(b->LJCOc_bNAP);
-  
-  d_free_1d(b->aC_AUS1_rsr);
-  d_free_1d(b->aC_AUS2_rsr);
-  d_free_1d(b->aC_ICE1_rsr);
-  d_free_1d(b->aC_ICE2_rsr);
-  d_free_1d(b->aC_ICE3_rsr);
-  d_free_1d(b->aC_KUW1_rsr);
-  d_free_1d(b->aC_KUW2_rsr);
-  d_free_1d(b->aC_NIG1_rsr);
-  d_free_1d(b->aC_SAH1_rsr);
-  d_free_1d(b->aC_SAH2_rsr);
-  d_free_1d(b->aC_OAH1_rsr);
-  d_free_1d(b->aC_OAH2_rsr);
-  d_free_1d(b->aC_CAL1_rsr);
-  d_free_1d(b->aC_CAL2_rsr);
-  d_free_1d(b->aC_QUA1_rsr);
-  d_free_1d(b->aC_ILL1_rsr);
-  d_free_1d(b->aC_ILL2_rsr);
-  d_free_1d(b->aC_KAO1_rsr);
-  d_free_1d(b->aC_KAO2_rsr);
-  d_free_1d(b->aC_KAO3_rsr);
-  d_free_1d(b->aC_MON1_rsr);
-  d_free_1d(b->aC_MON2_rsr);
-  d_free_1d(b->aC_SAN1_rsr);
-  d_free_1d(b->LJCO_aNAP_rsr);
-  d_free_1d(b->LJCOc_aNAP_rsr);
 
-  d_free_1d(b->bC_AUS1_rsr);
-  d_free_1d(b->bC_AUS2_rsr);
-  d_free_1d(b->bC_ICE1_rsr);
-  d_free_1d(b->bC_ICE2_rsr);
-  d_free_1d(b->bC_ICE3_rsr);
-  d_free_1d(b->bC_KUW1_rsr);
-  d_free_1d(b->bC_KUW2_rsr);
-  d_free_1d(b->bC_NIG1_rsr);
-  d_free_1d(b->bC_SAH1_rsr);
-  d_free_1d(b->bC_SAH2_rsr);
-  d_free_1d(b->bC_OAH1_rsr);
-  d_free_1d(b->bC_OAH2_rsr);
-  d_free_1d(b->bC_CAL1_rsr);
-  d_free_1d(b->bC_CAL2_rsr);
-  d_free_1d(b->bC_QUA1_rsr);
-  d_free_1d(b->bC_ILL1_rsr);
-  d_free_1d(b->bC_ILL2_rsr);
-  d_free_1d(b->bC_KAO1_rsr);
-  d_free_1d(b->bC_KAO2_rsr);
-  d_free_1d(b->bC_KAO3_rsr);
-  d_free_1d(b->bC_MON1_rsr);
-  d_free_1d(b->bC_MON2_rsr);
-  d_free_1d(b->bC_SAN1_rsr);
-  d_free_1d(b->LJCO_bNAP_rsr);
-  d_free_1d(b->LJCOc_bNAP_rsr);
+   if (b->yC_diadinoxanthin_rsr) {
+     d_free_1d(b->yC_diadinoxanthin_rsr);
+     d_free_1d(b->yC_diatoxanthin_rsr);
+     d_free_1d(b->yC_chlorophylla_rsr);
+     d_free_1d(b->yC_chlorophyllc2_rsr);
+     d_free_1d(b->yC_peridinin_rsr);
+     d_free_1d(b->yC_betacarotene_rsr);
+     d_free_1d(b->yC_echinenone_rsr); 
+     d_free_1d(b->yC_myxoxanthophyll_rsr);   
+     d_free_1d(b->yC_PE_rsr);
+     d_free_1d(b->yC_PC_rsr);
+   }
+   d_free_1d(b->aC_AUS1);
+   d_free_1d(b->aC_AUS2);
+   d_free_1d(b->aC_ICE1);
+   d_free_1d(b->aC_ICE2);
+   d_free_1d(b->aC_ICE3);
+   d_free_1d(b->aC_KUW1);
+   d_free_1d(b->aC_KUW2);
+   d_free_1d(b->aC_NIG1);
+   d_free_1d(b->aC_SAH1);
+   d_free_1d(b->aC_SAH2);
+   d_free_1d(b->aC_OAH1);
+   d_free_1d(b->aC_OAH2);
+   d_free_1d(b->aC_CAL1);
+   d_free_1d(b->aC_CAL2);
+   d_free_1d(b->aC_QUA1);
+   d_free_1d(b->aC_ILL1);
+   d_free_1d(b->aC_ILL2);
+   d_free_1d(b->aC_KAO1);
+   d_free_1d(b->aC_KAO2);
+   d_free_1d(b->aC_KAO3);
+   d_free_1d(b->aC_MON1);
+   d_free_1d(b->aC_MON2);
+   d_free_1d(b->aC_SAN1);
+   d_free_1d(b->LJCO_aNAP);
+   d_free_1d(b->LJCOc_aNAP);
+   
+   d_free_1d(b->bC_AUS1);
+   d_free_1d(b->bC_AUS2);
+   d_free_1d(b->bC_ICE1);
+   d_free_1d(b->bC_ICE2);
+   d_free_1d(b->bC_ICE3);
+   d_free_1d(b->bC_KUW1);
+   d_free_1d(b->bC_KUW2);
+   d_free_1d(b->bC_NIG1);
+   d_free_1d(b->bC_SAH1);
+   d_free_1d(b->bC_SAH2);
+   d_free_1d(b->bC_OAH1);
+   d_free_1d(b->bC_OAH2);
+   d_free_1d(b->bC_CAL1);
+   d_free_1d(b->bC_CAL2);
+   d_free_1d(b->bC_QUA1);
+   d_free_1d(b->bC_ILL1);
+   d_free_1d(b->bC_ILL2);
+   d_free_1d(b->bC_KAO1);
+   d_free_1d(b->bC_KAO2);
+   d_free_1d(b->bC_KAO3);
+   d_free_1d(b->bC_MON1);
+   d_free_1d(b->bC_MON2);
+   d_free_1d(b->bC_SAN1);
+   d_free_1d(b->LJCO_bNAP);
+   d_free_1d(b->LJCOc_bNAP);
+  
+   if (b->aC_AUS1_rsr) {
 
-  d_free_1d(b->B_carb_rsr);
-  d_free_1d(b->B_terr_rsr);
-
-  if (b->kw_s2)
-    d_free_1d(b->kw_s2);
+     d_free_1d(b->aC_AUS1_rsr);
+     d_free_1d(b->aC_AUS2_rsr);
+     d_free_1d(b->aC_ICE1_rsr);
+     d_free_1d(b->aC_ICE2_rsr);
+     d_free_1d(b->aC_ICE3_rsr);
+     d_free_1d(b->aC_KUW1_rsr);
+     d_free_1d(b->aC_KUW2_rsr);
+     d_free_1d(b->aC_NIG1_rsr);
+     d_free_1d(b->aC_SAH1_rsr);
+     d_free_1d(b->aC_SAH2_rsr);
+     d_free_1d(b->aC_OAH1_rsr);
+     d_free_1d(b->aC_OAH2_rsr);
+     d_free_1d(b->aC_CAL1_rsr);
+     d_free_1d(b->aC_CAL2_rsr);
+     d_free_1d(b->aC_QUA1_rsr);
+     d_free_1d(b->aC_ILL1_rsr);
+     d_free_1d(b->aC_ILL2_rsr);
+     d_free_1d(b->aC_KAO1_rsr);
+     d_free_1d(b->aC_KAO2_rsr);
+     d_free_1d(b->aC_KAO3_rsr);
+     d_free_1d(b->aC_MON1_rsr);
+     d_free_1d(b->aC_MON2_rsr);
+     d_free_1d(b->aC_SAN1_rsr);
+     d_free_1d(b->LJCO_aNAP_rsr);
+     d_free_1d(b->LJCOc_aNAP_rsr);
+     
+     d_free_1d(b->bC_AUS1_rsr);
+     d_free_1d(b->bC_AUS2_rsr);
+     d_free_1d(b->bC_ICE1_rsr);
+     d_free_1d(b->bC_ICE2_rsr);
+     d_free_1d(b->bC_ICE3_rsr);
+     d_free_1d(b->bC_KUW1_rsr);
+     d_free_1d(b->bC_KUW2_rsr);
+     d_free_1d(b->bC_NIG1_rsr);
+     d_free_1d(b->bC_SAH1_rsr);
+     d_free_1d(b->bC_SAH2_rsr);
+     d_free_1d(b->bC_OAH1_rsr);
+     d_free_1d(b->bC_OAH2_rsr);
+     d_free_1d(b->bC_CAL1_rsr);
+     d_free_1d(b->bC_CAL2_rsr);
+     d_free_1d(b->bC_QUA1_rsr);
+     d_free_1d(b->bC_ILL1_rsr);
+     d_free_1d(b->bC_ILL2_rsr);
+     d_free_1d(b->bC_KAO1_rsr);
+     d_free_1d(b->bC_KAO2_rsr);
+     d_free_1d(b->bC_KAO3_rsr);
+     d_free_1d(b->bC_MON1_rsr);
+     d_free_1d(b->bC_MON2_rsr);
+     d_free_1d(b->bC_SAN1_rsr);
+     d_free_1d(b->LJCO_bNAP_rsr);
+     d_free_1d(b->LJCOc_bNAP_rsr);
+     
+     d_free_1d(b->B_carb_rsr);
+     d_free_1d(b->B_terr_rsr);
+   }
+   if (b->kw_s2)
+     d_free_1d(b->kw_s2);
   if (b->bw_s2)
     d_free_1d(b->bw_s2);
   if (b->ay_A2)

@@ -17,5 +17,6 @@ This library is essential to build any of EMS applications
 * XY to IJ tree and associated routines
 * Equation parser
 * Abstract data types (queues, hash, stack ...)
+* Varirous interpolation routines, Linear, Cubic splines, Natural Neighbours (Sibson and Non-Sibson), Averaging, Least Squares, Least Squares Quadratic and Baycentric
 
 For more details point your browser to the full Doxygen documentation at **doc/html/index.html** on your local system

@@ -19,7 +19,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ncw.c 6297 2019-08-28 02:28:37Z riz008 $
+ *  $Id: ncw.c 6583 2020-08-17 05:00:05Z riz008 $
  */
 
 #include <stdlib.h>
@@ -684,6 +684,9 @@ void ncw_get_att_text(const char fname[], int ncid, int varid, const char attnam
         _ncw_inq_varname(fname, ncid, varid, varname);
         quit("\"%s\": nc_get_att_text(): failed for varid = %d (varname = \"%s\"), attname = \"%s\": %s\n", (fname != NULL?fname:EMPTY), varid, varname, attname, nc_strerror(status));
     }
+
+    /* Close off string */
+    v[len] = '\0';
 }
 
 void ncw_get_att_int(const char fname[], int ncid, int varid, const char attname[], int v[])

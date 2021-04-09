@@ -1,7 +1,7 @@
 #
 # makefile.in - Input makefile for the configure script.
 #
-# $Id: makefile.in 6466 2020-02-18 23:45:54Z her127 $
+# $Id: makefile.in 6597 2020-09-03 05:29:26Z riz008 $
 #
 
 SHELL=/bin/sh
@@ -61,8 +61,6 @@ TSLIB=@TRACERSTATSLIB@
 MLIB= -lm
 WAVELIB=@WAVELIB@
 WAVEINC=@WAVEINC@
-GRIDLIB=@GRIDLIB@
-GRIDINC=@GRIDINC@
 DALIB=@DALIB@
 DAINC=@DAINC@
 GSLLIB=@GSLLIB@
@@ -168,10 +166,10 @@ tests/test5/1layer \
 tests/test5/20layer  
 
 .c.o:;
-	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(GRIDINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC) $*.c -o $*.o
+	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC) $*.c -o $*.o
 
 .cpp.o:
-	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC)  $(GRIDINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC)  $*.cpp -o $*.o
+	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC)  $*.cpp -o $*.o
 
 all: $(PROGRAMS)
 
@@ -202,7 +200,7 @@ installdocs: docs
 	chmod -R o+rX /home/software/WWW/models/meco
 
 compas:    $(ALLINCS) $(MODELOBJS)
-	$(CXX) $(CFLAGS) -o $@ $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GRIDLIB) $(GSLLIB) $(DALIB) $(JIGSAWLIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(METIS_LIB) $(MLIB)  
+	$(CXX) $(CFLAGS) -o $@ $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GSLLIB) $(DALIB) $(JIGSAWLIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(METIS_LIB) $(MLIB)  
 
 # Clean-up target
 clean: cleantests

@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: remineralization.c 6450 2020-01-22 04:15:06Z wil00y $
+ *  $Id: remineralization.c 6549 2020-05-10 23:12:28Z bai155 $
  *
  */
 
@@ -96,18 +96,70 @@ void remineralization_init(eprocess* p)
     /*
      * parameters
      */
-    ws->r_DetPL_t0 = get_parameter_value(e, "r_DetPL");
-    ws->r_DetBL_t0 = get_parameter_value(e, "r_DetBL");
-    ws->r_RD_t0 = get_parameter_value(e, "r_RD");
-    ws->r_DOM_t0 = get_parameter_value(e, "r_DOM");
-    ws->F_LD_RD = get_parameter_value(e, "F_LD_RD");
-    ws->F_LD_DOM = get_parameter_value(e, "F_LD_DOM");
+
+    ws->r_DetPL_t0 = try_parameter_value(e,"r_DetPL");
+    if (isnan(ws->r_DetPL_t0)){
+      ws->r_DetPL_t0 = 4.000000e-02/86400.0;
+      eco_write_setup(e,"Code default of r_DetPL = %e \n",ws->r_DetPL_t0);
+    }
+
+    ws->r_DetBL_t0 = try_parameter_value(e,"r_DetBL");
+    if (isnan(ws->r_DetBL_t0)){
+      ws->r_DetBL_t0 = 1.0e-3/86400.0;
+      eco_write_setup(e,"Code default of r_DetBL = %e \n",ws->r_DetBL_t0);
+    }
+
+    ws->r_RD_t0 = try_parameter_value(e,"r_RD");
+    if (isnan(ws->r_RD_t0)){
+      ws->r_RD_t0 = 1.0e-3/86400.0;
+      eco_write_setup(e,"Code default of r_RD_t0 = %e \n",ws->r_RD_t0);
+    }
+
+    ws->r_DOM_t0 = try_parameter_value(e,"r_DOM");
+    if (isnan(ws->r_DOM_t0)){
+      ws->r_DOM_t0 = 1.0e-4/86400.0;
+      eco_write_setup(e,"Code default of r_DOM_t0 = %e \n",ws->r_DOM_t0);
+    }
+
+    ws->F_LD_RD = try_parameter_value(e,"F_LD_RD");
+    if (isnan(ws->F_LD_RD)){
+      ws->F_LD_RD = 0.19;
+      eco_write_setup(e,"Code default of F_LD_RD = %e \n",ws->F_LD_RD);
+    }
+    
+    ws->F_LD_DOM = try_parameter_value(e,"F_LD_DOM");
+    if (isnan(ws->F_LD_DOM)){
+      ws->F_LD_DOM = 0.1;
+      eco_write_setup(e,"Code default of F_LD_DOM = %e \n",ws->F_LD_DOM);
+    }
+
+    ws->F_RD_DOM = try_parameter_value(e,"F_RD_DOM");
+    if (isnan(ws->F_RD_DOM)){
+      ws->F_RD_DOM = 0.05;
+      eco_write_setup(e,"Code default of F_RD_DOM = %e \n",ws->F_RD_DOM);
+    }
+    
+    // ws->r_DetPL_t0 = get_parameter_value(e, "r_DetPL");
+    // ws->r_DetBL_t0 = get_parameter_value(e, "r_DetBL");
+    // ws->r_RD_t0 = get_parameter_value(e, "r_RD");
+    // ws->r_DOM_t0 = get_parameter_value(e, "r_DOM");
+    // ws->F_LD_RD = get_parameter_value(e, "F_LD_RD");
+    // ws->F_LD_DOM = get_parameter_value(e, "F_LD_DOM");
+    
     if (ws->F_LD_RD + ws->F_LD_DOM > 1.0)
         e->quitfn("ecology: error: F_LD_RD + F_LD_DOM > 1\n");
-    ws->F_RD_DOM = get_parameter_value(e, "F_RD_DOM");
+    
+    // ws->F_RD_DOM = get_parameter_value(e, "F_RD_DOM");
     if (ws->F_RD_DOM > 1.0)
         e->quitfn("ecology: error: F_RD_DOM > 1\n");
-    ws->KO_aer = get_parameter_value(e, "KO_aer");
+
+    ws->KO_aer = try_parameter_value(e,"KO_aer");
+    if (isnan(ws->KO_aer)){
+      ws->KO_aer = 256.0;
+      eco_write_setup(e,"Code default of KO_aer = %e \n",ws->KO_aer);
+    }
+
+    // ws->KO_aer = get_parameter_value(e, "KO_aer");
 
     ws->r_RD_NtoP = try_parameter_value(e, "r_RD_NtoP");
     if (isnan(ws->r_RD_NtoP)){

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 6080 2019-02-08 04:13:27Z her127 $
+ *  $Id: dumpdata.c 6646 2020-09-08 01:43:32Z her127 $
  *
  */
 
@@ -99,7 +99,11 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   dumpdata->tmode = params->tmode;
   dumpdata->togn = master->togn;
   strcpy(dumpdata->rev, params->rev);
+  strcpy(dumpdata->reference, params->reference);
+  strcpy(dumpdata->trl, params->trl);
+  strcpy(dumpdata->runcode, params->runcode);
   dumpdata->runno = params->runno;
+  strcpy(dumpdata->runnoc, params->runnoc);
   dumpdata->vars = NULL;
   dumpdata->nvars = 0;
 
@@ -350,7 +354,7 @@ void dumpdata_init(dump_data_t *dumpdata, /* Dump data structure */
   neighbour_none(dumpdata);
   dumpdata_init_geom(master->params, geom, dumpdata);
 
-  for (cc = 1; cc <= geom->n2_t; cc++) {
+  for (cc = 1; cc <= geom->b2_t; cc++) {
     c = geom->w2_t[cc];
     i = geom->s2i[c];
     j = geom->s2j[c];
@@ -562,7 +566,7 @@ void dumpdata_fill(geometry_t *geom,  /* Sparse global geometry structure */
   int sednz = geom->sednz;
 
   dumpdata->t = master->t;
-  dumpdata->runcode = master->crf;
+  dumpdata->crf = master->crf;
 
   if (!(geom->us_type & US_IJ)) return;
 

@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_large_carnivore_spectral_grow_wc.c 5974 2018-09-25 22:18:15Z bai155 $
+ *  $Id: zooplankton_large_carnivore_spectral_grow_wc.c 6693 2021-03-24 01:06:11Z wil00y $
  *
  */
 
@@ -197,12 +197,15 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
     ws->with_mpb = 0;
 
   ws->ZLdvmrate = try_parameter_value(e, "ZLdvmrate");
-  if (isnan(ws->ZLdvmrate))
+  if (isnan(ws->ZLdvmrate)){
     ws->ZLdvmrate = 0.0;
-
+    eco_write_setup(e,"Code default of ZLdvmrate = %e \n",ws->ZLdvmrate);
+  }
   ws->ZLpar = try_parameter_value(e, "ZLpar");
-  if (isnan(ws->ZLpar))
+  if (isnan(ws->ZLpar)){
     ws->ZLpar = 1e-10;
+    eco_write_setup(e,"Code default of ZLpar = %e \n",ws->ZLpar);
+  }
 
   ws->Tricho_pref = try_parameter_value(e, "Tricho_pref");
   if (isnan(ws->Tricho_pref))
@@ -219,7 +222,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   ws->PLrad = get_parameter_value(e, "PLrad");
   ws->ZSrad = get_parameter_value(e, "ZSrad");
   
-  eco_write_setup(e,"\nDiet for Large Zoos: PhyL");
+  eco_write_setup(e,"\nDiet for Large Zoos: ZooS PhyL");
 
   if (ws->with_mpb){
     eco_write_setup(e," MPB");
@@ -245,7 +248,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   ws->m = try_parameter_value(e, "ZLm");  /* mol P cell-1 */
   if (isnan(ws->m)){
     ws->m = ZooCellMass(ws->rad);
-    eco_write_setup(e,"Code default of ZLm %e \n",ws->m);
+    eco_write_setup(e,"ZLm calculated from ZLrad %e mol P cell-1 \n",ws->m);
   }
   ws->E = get_parameter_value(e, "ZL_E");
   ws->FDG = get_parameter_value(e, "ZL_FDG");
@@ -525,10 +528,6 @@ void zooplankton_large_carnivore_spectral_grow_wc_calc(eprocess* p, void* pp)
   y1[ws->Oxy_pr_i] += Oxy_pr * SEC_PER_DAY;
 
 
-  /*UR 29/3/2005 changed to provide absolute growth rate
-   * as advised by JP
-   y1[ws->ZooL_N_gr_i] += growth / umax;
-  */
 }
 
 void zooplankton_large_carnivore_spectral_grow_wc_postcalc(eprocess* p, void* pp)

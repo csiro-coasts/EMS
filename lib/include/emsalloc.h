@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: emsalloc.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: emsalloc.h 6597 2020-09-03 05:29:26Z riz008 $
  */
 
 
@@ -24,8 +24,8 @@ extern "C" {
 # include <alloca.h>
 #elif defined _MSC_VER || defined __BORLANDC__ || defined __MINGW32__
 # include <malloc.h>
-#elif defined __GNUC__
-# define alloca __builtin_alloca
+  // #elif defined __GNUC__
+  //# define alloca __builtin_alloca
 #elif defined _AIX
 # define alloca __alloca
 #else

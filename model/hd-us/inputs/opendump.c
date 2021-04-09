@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: opendump.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: opendump.c 6633 2020-09-08 01:39:20Z her127 $
  *
  */
 
@@ -40,6 +40,7 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
   char chead[MAXSTRLEN];
   char phead[MAXSTRLEN];
   char prmname[MAXSTRLEN];
+  char rcode[MAXSTRLEN];
   char buf[MAXSTRLEN];
   size_t kcentresize;
   size_t kgridsize;
@@ -56,6 +57,7 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
     vers[i] = 0;
     chead[i] = 0;
     phead[i] = 0;
+    rcode[i] = 0;
     buf[i] = 0;
   }
 
@@ -123,6 +125,7 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
     nc_get_att_text(fid, NC_GLOBAL, "paramhead", phead);
     nc_get_att_text(fid, NC_GLOBAL, "paramfile", prmname);
     nc_get_att_text(fid, NC_GLOBAL, "version", vers);
+    nc_get_att_text(fid, NC_GLOBAL, "Run_code", rcode);
 
     /* check compatibility */
     if (strcmp(version, vers) != 0)
@@ -144,9 +147,11 @@ int dump_open_us(parameters_t *params, char *name, int in_model)
     nc_get_att_text(fid, NC_GLOBAL, "paramhead", parameterheader);
     nc_get_att_text(fid, NC_GLOBAL, "paramfile", prmname);
     nc_get_att_text(fid, NC_GLOBAL, "version", vers);
+    nc_get_att_text(fid, NC_GLOBAL, "Run_code", rcode);
     if (strcmp(version, vers) != 0)
       hd_warn("Input dump file version doesn't match program version\n");
   }
+  strcpy(params->runcode, rcode);
 
   if (strlen(params->timeunit) == 0)
     nc_get_att_text(fid, ncw_var_id(fid, "t"), "units", params->timeunit);

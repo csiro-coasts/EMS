@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommisc.c 6322 2019-09-13 04:35:22Z her127 $
+ *  $Id: mommisc.c 6738 2021-03-30 00:40:45Z her127 $
  *
  */
 
@@ -97,8 +97,8 @@ void set_sponge_e(geometry_t *window, /* Window geometry             */
 	  else
 	    vb = vm;
 
+	  /* v = swc * (v(perimeter) - v(boundary))  + v(boundary)   */
 	  AH[e] = min(vm, open->swe1[ee] * (vp - vb) + vb);
-
 	  e = window->zm1e[e];
 	  eb = window->zm1e[eb];
 	  if (eb == window->zm1e[eb]) eb = window->zp1e[eb];

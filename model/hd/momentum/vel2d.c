@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: vel2d.c 6612 2020-09-07 03:29:38Z her127 $
  *
  */
 
@@ -143,7 +143,7 @@ void mode2d_step_window_p2(master_t *master,
 			       NVELOCITY);
 
   clock = dp_clock();
-  
+
   /*-----------------------------------------------------------------*/
   /* Apply the Asselin filter to remove the computational mode       */
   asselin(window, windat, wincon);
@@ -1022,7 +1022,7 @@ void bdry_u1_2d(geometry_t *window, /* Processing window */
               open[n]->cyc_e1, windat->nu1av, windat->u1av, 
 	      windat->u1avb, open[n]->bcond_nor2d,
               windat->dtf2, &open[n]->datau1av, 
-	      open[n]->transfer_u1av, open[n]->relax_zone_nor, U1BDRY);    
+	      open[n]->transfer_u1av, open[n]->relax_zone_nor, (U1BDRY|U1GEN|NOR));    
     }
   }
 
@@ -1034,7 +1034,7 @@ void bdry_u1_2d(geometry_t *window, /* Processing window */
 	    open[n]->oi2_e1, open[n]->cyc_e1, windat->nu1av,
 	    windat->u1av, windat->u1avb, open[n]->bcond_tan2d, 
 	    windat->dtf2, &open[n]->datau1av, open[n]->transfer_u1av, 
-	    open[n]->relax_zone_tan, U1BDRY);	    
+	    open[n]->relax_zone_tan, (U1BDRY|U1GEN|TAN));	    
   }
 
   /*-----------------------------------------------------------------*/
@@ -1279,7 +1279,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
     /*UR-TODO  - nu1 and nu2 seem to be un-initialised under pthread*/
     /* Set the pointers and initialise                               */
     memset(sum, 0, window->sgsizS * sizeof(double));
-    if (code == U1BDRY) {
+    if (code & U1BDRY) {
      /* vel = wincon->w9; */
       vel = windat->nu1; 
       dz = windat->dzu1;
@@ -1287,7 +1287,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       depth = windat->depth_e1;
       md = wincon->mdx;
       m1 = window->xm1;
-    } else if (code == U2BDRY) {
+    } else if (code & U2BDRY) {
 /*      vel = wincon->w10; */
       vel = windat->nu2; 
       dz = windat->dzu2; 
@@ -1370,20 +1370,28 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       }
     } else if (code & U1BDRY) {
       double fvx, fvy;
+      tidal_consts_t *tu = (code & NOR) ? &open->t1u : &open->t2u;
+      tidal_consts_t *tv = (code & NOR) ? &open->t1v : &open->t2v;
       for (cc = sb; cc <= eb; cc++) {
 	c = obc[cc];
 	c2 = window->m2d[c];
-	fvx = (ramp * csr_tide_eval(&open->t1u, cc, gmt));
-	fvy = (ramp * csr_tide_eval(&open->t1v, cc, gmt));
+	fvx = (ramp * csr_tide_eval(tu, cc, gmt));
+	fvy = (ramp * csr_tide_eval(tv, cc, gmt));
 	fval[c] += (fvx * window->costhu1[c2] + fvy * window->sinthu1[c2]);
       }
     } else {
       double fvx, fvy;
+      tidal_consts_t *tu = (code & NOR) ? &open->t1u : &open->t2u;
+      tidal_consts_t *tv = (code & NOR) ? &open->t1v : &open->t2v;
+      /*
+      tidal_consts_t *tu = (code & U1GEN) ? &open->t2u : &open->t1u;
+      tidal_consts_t *tv = (code & U1GEN) ? &open->t2v : &open->t1v;
+      */
       for (cc = sb; cc <= eb; cc++) {
 	c = obc[cc];
 	c2 = window->m2d[c];
-	fvx = (ramp * csr_tide_eval(&open->t2u, cc, gmt));
-	fvy = (ramp * csr_tide_eval(&open->t2v, cc, gmt));
+	fvx = (ramp * csr_tide_eval(tu, cc, gmt));
+	fvy = (ramp * csr_tide_eval(tv, cc, gmt));
 	fval[c] += (fvx * window->costhu2[c2] + fvy * window->sinthu2[c2]);
       }
     }
@@ -1631,12 +1639,13 @@ void set_OBC(geometry_t *window,   /* Processing window              */
   if (bcond == FILEIN || bcond == TIDEBC || 
       bcond == TIDALH || bcond == TIDALC ||
       bcond == CUSTOM || bcond == (FILEIN|TIDALH) || 
-      bcond == (FILEIN|TIDALC) || bcond & FLATHR) {
+      bcond == (FILEIN|TIDALC) || bcond == (CUSTOM|TIDALC) || bcond & FLATHR) {
     /* Active conditions - set directly to supplied data.            */
     for (cc = sb; cc <= eb; cc++) {
       c = obc[cc];
       vel[c] = fval[c];
     }
+
   } else if (bcond & (FILEIN | CUSTOM | TIDEBC | TIDALH | TIDALC | 
 		      LINEAR | NOTHIN)) {
     /* Partially passive conditions - relax with specified radiation */
@@ -1680,6 +1689,11 @@ void set_OBC(geometry_t *window,   /* Processing window              */
 	rts = (cs[cc] > 0.0) ? open->relax_time : open->relax_timei;
         vel[c] = newval[c] + dt * (fval[c] - vel_t[c]) /
 	                          (rts * (1.0 + cs[cc]));
+      }
+    } else if (bcond & VERTIN) {
+      for (cc = sb; cc <= eb; cc++) {
+        c = obc[cc];
+        vel[c] = newval[c] + fval[c];
       }
     }
   } else {
@@ -2591,7 +2605,7 @@ void bdry_u2_2d(geometry_t *window, /* Processing window */
               open[n]->cyc_e2, windat->nu2av, windat->u2av, 
 	      windat->u2avb, open[n]->bcond_nor2d,
               windat->dtf2, &open[n]->datau2av, 
-	      open[n]->transfer_u2av, open[n]->relax_zone_nor, U2BDRY);
+	      open[n]->transfer_u2av, open[n]->relax_zone_nor, (U2BDRY|U2GEN|NOR));
     }
   }
 
@@ -2603,7 +2617,7 @@ void bdry_u2_2d(geometry_t *window, /* Processing window */
 	    open[n]->oi2_e2, open[n]->cyc_e2, windat->nu2av,
 	    windat->u2av, windat->u2avb, open[n]->bcond_tan2d, 
 	    windat->dtf2, &open[n]->datau2av, open[n]->transfer_u2av, 
-	    open[n]->relax_zone_tan, U2BDRY);	    
+	    open[n]->relax_zone_tan, (U2BDRY|U2GEN|TAN));
   }
 
   /*-----------------------------------------------------------------*/
@@ -3278,6 +3292,7 @@ void asselin(geometry_t *window,  /* Processing window */
       /*--------------------------------------------------------------*/
       /* U1 boundaries                                                */
       if (open->type == U1BDRY) {
+
 	if (!(open->bcond_nor2d & FLATHR)) {
 	  for (cc = 1; cc <= open->no2_e1; cc++) {
 	    c = open->obc_e1[cc];
@@ -3286,17 +3301,24 @@ void asselin(geometry_t *window,  /* Processing window */
 	      windat->u1av[c] = u1av[c];
 	  }
 	}
+
         /*------------------------------------------------------------*/
 	/* Adjust the boundary velocity if required                   */
 	if (open->adjust_flux) {
-	  double adjust_flux;
+	  double adjust_flux, adjust_flux_s;
 	  if (wincon->rampf & FLUX_ADJUST && windat->rampval < 1.0) {
 	    double dtr = wincon->rampend - wincon->rampstart;
 	    adjust_flux = (windat->t - wincon->rampstart) * 
 	      (open->adjust_flux - yr) / dtr + yr;
-	  } else
+	    adjust_flux_s = 0.0;
+	  } else {
 	    adjust_flux = open->adjust_flux;
+	    adjust_flux_s = open->adjust_flux_s;
+	  }
 	  rts = windat->dtb2 / adjust_flux;
+
+	  if (wincon->rampf & TIDE_ADJUST && windat->rampval < 1.0)
+	    adjust_flux_s = 0.0;
 
 	  /* Loop through the U1 boundary cells                       */
 	  for (cc = 1; cc <= open->no2_e1; cc++) {
@@ -3313,12 +3335,17 @@ void asselin(geometry_t *window,  /* Processing window */
 	      adjust_flux = window->h1acell[ci] / sqrt(wincon->g * 
 						       windat->depth_e1[c] * wincon->Ds[c]);
 	      rts = windat->dtb2 / adjust_flux;
+
+	      if (open->options & OP_FAS)
+		rts /= fabs(open->adjust_flux);
 	    }
+
 	    /* Hard relaxation on corners with overlap                */
-	    if ((open->options & OP_OBCCM) && open->olap[cc]) {
+	    if ((open->options & OP_OBCCM) && open->olap[cc] > 0) {
 	      adjust_flux = rtsh * windat->dtb2;
 	      rts = windat->dtb2 / adjust_flux;
 	    }
+
 	    /* Save the flux adjustment diagnostic if required        */
 	    if (windat->obc_phase) {
 	      if (open->adjust_flux_s)
@@ -3381,20 +3408,35 @@ void asselin(geometry_t *window,  /* Processing window */
 	    */
 
 	    /* Dual relaxation: Relax hard to the tidal signal */
-	    if (open->adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
+	    if (adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
 	      double depth, etat, df, etadiff;
-	      double rtst = (open->adjust_flux_s < 0.0) ? rts : windat->dtb2 / open->adjust_flux_s;
+	      double rtst = windat->dtb2 / open->adjust_flux_s;
+	      if(open->adjust_flux_s < 0.0) {
+		adjust_flux_s = window->h1acell[ci] / sqrt(wincon->g * 
+							   windat->depth_e1[c] * wincon->Ds[c]);
+		rtst = windat->dtb2 / adjust_flux_s;
+	      
+		if (open->options & OP_FAT)
+		  rtst /= fabs(open->adjust_flux_s);
+	      }
+
+	      /*
+	      fa_info_t *fas = open->fas;
+	      rtst = fas->slope * (windat->depth_e1[c] - fas->dv0) + fas->tc0;
+	      */
 	      f2 *= 0.5; fp2 *= 0.5; fp1 *= 0.5;
 	      df = fp1 + sgn * (fp2 - f2);
 
 	      /* Get the tidal flux                                     */
 	      f1 = sgn * ((tide - windat->etab[ci]) * 
 			  window->cellarea[ci]) + df;
+
 	      /* Convert this flux to a 2D velocity                     */
 	      nvel = v1 = f1 / (windat->depth_e1[c] * window->h2au1[c] * 
 				wincon->mdx[c] * windat->dt2d);
 	      /* Relax the boundary velocity to this value              */
 	      windat->u1av[c] -= rtst * (windat->u1av[c] - nvel);
+
 	      /* Get the flux due to this velocity                      */
 	      f1 = windat->u1av[c] * windat->depth_e1[c] * 
 		window->h2au1[c] * wincon->mdx[c] * windat->dt2d;
@@ -3425,9 +3467,11 @@ void asselin(geometry_t *window,  /* Processing window */
 	    /*windat->dum1[ci] = -rts * (windat->u1av[c] - nvel);*/
 
 	    /* Save the flux adjustment diagnostic if required        */
-	    if (windat->obc_phase && open->adjust_flux_s)
+	    if (windat->obc_phase && open->adjust_flux_s) {
 	      windat->obc_phase[ci] = -windat->dtb2 * (windat->obc_phase[ci] - v1 - v2) /
 		(windat->u1av[c] - windat->obc_phase[ci]);
+	      /*windat->obc_phase[ci] = 1.0 / rts;*/
+	    }
 	  }
 	}
       }
@@ -3446,16 +3490,21 @@ void asselin(geometry_t *window,  /* Processing window */
         /*------------------------------------------------------------*/
 	/* Adjust the boundary velocity if required                   */
 	if (open->adjust_flux) {
-	  double adjust_flux;
+	  double adjust_flux, adjust_flux_s;
 	  if (wincon->rampf & FLUX_ADJUST && windat->rampval < 1.0) {
 	    double dtr = wincon->rampend - wincon->rampstart;
 	    adjust_flux = (windat->t - master->rampstart) * 
 	      (open->adjust_flux - yr) / dtr + yr;
-	  } else
+	    adjust_flux_s = 0.0;
+	  } else {
 	    adjust_flux = open->adjust_flux;
+	    adjust_flux_s = open->adjust_flux_s;
+	  }
 	  rts = windat->dtb2 / adjust_flux;
+	  if (wincon->rampf & TIDE_ADJUST && windat->rampval < 1.0) 
+	    adjust_flux_s = 0.0;
 
-	  /* Loop through the U1 boundary cells                       */
+	  /* Loop through the U2 boundary cells                       */
 	  for (cc = 1; cc <= open->no2_e2; cc++) {
 	    c = open->obc_e2[cc];
 	    yp1 = open->nmap[c];
@@ -3468,9 +3517,12 @@ void asselin(geometry_t *window,  /* Processing window */
 	      adjust_flux = window->h2acell[ci] / sqrt(wincon->g * 
 						       windat->depth_e2[c] * wincon->Ds[c]);
 	      rts = windat->dtb2 / adjust_flux;
+
+	      if (open->options & OP_FAS)
+		rts /= fabs(open->adjust_flux);
 	    }
 	    /* Hard relaxation on corners with overlap                */
-	    if ((open->options & OP_OBCCM) && open->olap[cc]) {
+	    if ((open->options & OP_OBCCM) && open->olap[cc] > 0) {
 	      adjust_flux = rtsh * windat->dtb2;
 	      rts = windat->dtb2 / adjust_flux;
 	    }
@@ -3532,9 +3584,22 @@ void asselin(geometry_t *window,  /* Processing window */
 	    }
 
 	    /* Dual relaxation: Relax hard to the tidal signal */
-	    if (open->adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
+	    if (adjust_flux_s && open->bcond_ele & (TIDALH|TIDALC|TIDEBC)) {
 	      double depth, etat, df;
-	      double rtst = (open->adjust_flux_s < 0.0) ? rts : windat->dtb2 / open->adjust_flux_s;
+	      double rtst = windat->dtb2 / open->adjust_flux_s;
+	      if(open->adjust_flux_s < 0.0) {
+		adjust_flux_s = window->h2acell[ci] / sqrt(wincon->g * 
+							 windat->depth_e2[c] * wincon->Ds[c]);
+		rtst = windat->dtb2 / adjust_flux_s;
+	      
+		if (open->options & OP_FAT)
+		  rtst /= fabs(open->adjust_flux_s);
+	      }
+
+	      /*
+	      fa_info_t *fas = open->fas;
+	      rtst = fas->slope * (windat->depth_e2[c] - fas->dv0) + fas->tc0;
+	      */
 	      f1 *= 0.5; fp1 *= 0.5; fp2 *= 0.5;
 	      df = fp2 + sgn * (fp1 - f1);
 
@@ -3551,7 +3616,9 @@ void asselin(geometry_t *window,  /* Processing window */
 		window->h1au2[c] * wincon->mdy[c] * windat->dt2d;
 	      /* Get the elevation due to this flux                     */
 	      etat = windat->etab[ci]  + (f1 - fp1 + (f2 - fp2)/sgn) / window->cellarea[ci];
-
+	      /*
+	      printf("%s %f %d(%d %d) %f %f\n",open->name,windat->days,ci,window->s2i[ci],window->s2j[ci],tide,etat);
+	      */
 	      /* Get the low frequency flux                             */
 	      f2 = sgn * ((eta + tide - etat) * window->cellarea[ci]) + df;
 	      depth = etat - window->botzu2[c];
@@ -3574,9 +3641,11 @@ void asselin(geometry_t *window,  /* Processing window */
 	    /*windat->dum1[ci] = -rts * (windat->u1av[c] - nvel);*/
 
 	    /* Save the flux adjustment diagnostic if required        */
-	    if (windat->obc_phase && open->adjust_flux_s)
+	    if (windat->obc_phase && open->adjust_flux_s) {
 	      windat->obc_phase[ci] = -windat->dtb2 * (windat->obc_phase[ci] - v1 - v2) /
 		(windat->u2av[c] - windat->obc_phase[ci]);
+	      /*windat->obc_phase[ci] = 1.0 / rts;*/
+	    }
 	  }
 	}
       }

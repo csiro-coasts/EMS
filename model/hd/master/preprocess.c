@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: preprocess.c 5901 2018-08-28 02:10:22Z riz008 $
+ *  $Id: preprocess.c 6514 2020-04-07 02:04:45Z her127 $
  *
  */
 
@@ -3038,6 +3038,9 @@ void set_OBC_cells(geometry_t *geom,   /* Window geometry            */
       open->trm[tn] = open->ntt;
       if (open->bcond_tra[tn] & (TRCONC|TRCONF)) i = open->bgz;
       open->ntt++;
+    }
+    if (open->bcond_tra[tn] & NOTHIN) {
+      if (open->bcond_tra[tn] & (TRCONC|TRCONF)) i = open->bgz;
     }
   }
 

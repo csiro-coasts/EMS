@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tide.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: tide.c 6602 2020-09-07 03:26:27Z her127 $
  *
  */
 
@@ -62,6 +62,7 @@ void tide_vec_init(master_t *master, tidal_consts_t *tc, double *cellx,
 int time_to_yr(double t, char *u);
 void set_tmaps_3d(geometry_t *window, int bcond, int cs, int vs, int *map, 
 		  int is, int ie, int *ivec);
+int check_tidefile_type(char *name, char *fname, int mode);
 
 double c_b13 = -999.0;
 double c_b129 = 360.0;
@@ -111,12 +112,17 @@ void custom_tide_init(master_t *master,
   double stime = master->t;
   double tzi = 0.0, tz = tm_tz_offset(master->timeunit);
   double d1, d2 = 0.0;
-  int bcond;
-  char units[MAXSTRLEN];
+  int bcond = 0;
+  char units[MAXSTRLEN], ampunits[MAXSTRLEN], type[MAXSTRLEN];
   int vs;
-  int bs, be, *bec;
-  double *xloc, *yloc;
+  int bs, be, *bec, be3;
+  int botzf, fw;
+  double *xloc, *yloc, *botz;
   char files[MAXNUMTSFILES][MAXSTRLEN];
+
+  datafile_t *df;
+  df_variable_t *v;
+  df_attribute_t *a;
 
   char *tname[MAXCONSTIT + 1] = {
     /* long period */
@@ -166,6 +172,7 @@ void custom_tide_init(master_t *master,
     tzi = tm_tz_offset(tsp->t_units);
     ts_free(tsp);
     free(tsp);
+    tsa = hd_ts_read(master, master->tide_con_file, 0);
   }
 
   /*-----------------------------------------------------------------*/
@@ -175,6 +182,7 @@ void custom_tide_init(master_t *master,
     /*---------------------------------------------------------------*/
     /* Count the cells for the tidal structures                      */
     ncmax = 0;
+    fw = 0;
     for (nn = 0; nn < window[n]->nobc; nn++) {
       open = window[n]->open[nn];
       vs = 0;
@@ -182,18 +190,23 @@ void custom_tide_init(master_t *master,
       if (mode == TD_NU) {
 	tc = &open->t1u;
 	tc->type = TD_NU;
+	strcpy(type, "normal u");
       } else if (mode == TD_NV) {
 	tc = &open->t1v;
 	tc->type = TD_NV;
+	strcpy(type, "normal v");
       } else if (mode == TD_TU) {
 	tc = &open->t2u;
 	tc->type = TD_TU;
+	strcpy(type, "tangential u");
       } else if (mode == TD_TV) {
 	tc = &open->t2v;
 	tc->type = TD_TV;
+	strcpy(type, "tangential v");
       } else {
 	tc = &open->tc;
 	tc->type = TD_ETA;
+	strcpy(type, "elevation");
       }
 
       /* Get the cells to prescribe tidal harmonics for              */
@@ -203,44 +216,56 @@ void custom_tide_init(master_t *master,
 	  vs = open->no2_e1;
 	  bs = 1;
 	  be = open->no2_e1;
+	  be3 = open->no3_e1;
 	  bec = open->obc_e1;
-	  size = open->to3_e1;
+	  size = open->to3_e1 + 1;
 	  bcond = open->bcond_nor;
+	  xloc = window[n]->u1x;
+	  yloc = window[n]->u1y;
+	  botz = window[n]->botzu1;
 	}
-	if (open->type & U2BDRY && 
-	    (open->bcond_tan & TIDALC || open->bcond_tan2d & TIDALC)) {
-	  vs = open->to2_e1 - open->no3_e1;
-	  bs = open->no3_e1 + 1;
-	  be = open->to2_e1;
-	  bec = open->obc_e1;
-	  size = open->to3_e1;
-	  bcond = open->bcond_tan;
-	}
-	strcpy(units, "ms-1");
-	xloc = window[n]->u1x;
-	yloc = window[n]->u1y;
-      } else if (mode & (TD_TU|TD_TV)) {
 	if (open->type & U2BDRY && 
 	    (open->bcond_nor & TIDALC || open->bcond_nor2d & TIDALC)) {
 	  vs = open->no2_e2;
 	  bs = 1;
 	  be = open->no2_e2;
+	  be3 = open->no3_e2;
 	  bec = open->obc_e2;
-	  size = open->to3_e2;
+	  size = open->to3_e2 + 1;
 	  bcond = open->bcond_nor;
+	  xloc = window[n]->u2x;
+	  yloc = window[n]->u2y;
+	  botz = window[n]->botzu2;
+	}
+	strcpy(units, "ms-1");
+      } else if (mode & (TD_TU|TD_TV)) {
+	if (open->type & U2BDRY && 
+	    (open->bcond_tan & TIDALC || open->bcond_tan2d & TIDALC)) {
+	  vs = open->to2_e1 - open->no3_e1;
+	  bs = open->no3_e1 + 1;
+	  be = open->to2_e1;
+	  be3 = open->to3_e1;
+	  bec = open->obc_e1;
+	  size = open->to3_e1 + 1;
+	  bcond = open->bcond_tan;
+	  xloc = window[n]->u1x;
+	  yloc = window[n]->u1y;
+	  botz = window[n]->botzu1;
 	}
 	if (open->type & U1BDRY && 
 	    (open->bcond_tan & TIDALC || open->bcond_tan2d & TIDALC)) {
 	  vs = open->to2_e2 - open->no3_e2;
 	  bs = open->no3_e2 + 1;
 	  be = open->to2_e2;
+	  be3 = open->to3_e2;
 	  bec = open->obc_e2;
-	  size = open->to3_e2;
+	  size = open->to3_e2 + 1;
 	  bcond = open->bcond_tan;
+	  xloc = window[n]->u2x;
+	  yloc = window[n]->u2y;
+	  botz = window[n]->botzu2;
 	}
 	strcpy(units, "ms-1");
-	xloc = window[n]->u2x;
-	yloc = window[n]->u2y;
       } else {
 	if (open->bcond_ele & TIDALC) {
 	  vs = open->no2_t;
@@ -254,6 +279,7 @@ void custom_tide_init(master_t *master,
 	xloc = window[n]->cellx;
 	yloc = window[n]->celly;
       }
+
       strcpy(buf, open->tide_con);
       nc = parseline(buf, (char **)files, MAXNUMTSFILES);
       ncmax = max(ncmax, nc);
@@ -298,6 +324,10 @@ void custom_tide_init(master_t *master,
 	  }
 	  if (mask[tc->nt] == -1)
 	    hd_warn("custom_tide_init: Can't recognize tidal constituent %s. Ignoring this constituent.\n", con_name[t]);
+	}
+	if (!tc->nt && !fw) {
+	  hd_warn("custom_tide_init: No tide constitudents specified for %s OBC%d %s\n",type, nn, open->name);
+	  fw = 1;
 	}
 
 	/* Allocate memory                                           */
@@ -402,37 +432,66 @@ void custom_tide_init(master_t *master,
 	  size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
 	  strncpy(name, tc->tname[i], size);
 	  name[size] = '\0';
-	  if (mode &  (TD_NU|TD_TU))
-	    sprintf(buf,"%s_amp_u",name);
-	  else if (mode &  (TD_NV|TD_TV))
-	    sprintf(buf,"%s_amp_v",name);
-	  else
+	  if (mode &  (TD_NU|TD_TU)) {
 	    sprintf(buf,"%s_amp",name);
-	  tsa = frc_read_cell_ts(master, master->tide_con_file, stime,
-				 buf, units, &d2, &tsa_id, NULL);
+	    botzf = check_tidefile_type(buf, master->tide_con_file, mode);
+	    if (params->tidef & TD_VEL) botzf = 0;
+	    if (params->tidef & TD_TRAN) botzf = 1;
+	    if (botzf == -1) 
+	      hd_quit("Can't find units ms-1 or m2s-1 for %s in %s\n", buf, master->tide_con_file);
+	  } else if (mode &  (TD_NV|TD_TV)) {
+	    sprintf(buf,"%s_amp",name);
+	    botzf = check_tidefile_type(buf, master->tide_con_file, mode);
+	    if (params->tidef & TD_VEL) botzf = 0;
+	    if (params->tidef & TD_TRAN) botzf = 1;
+	    if (botzf == -1) 
+	      hd_quit("Can't find units ms-1 or m2s-1 for %s in %s\n", buf, master->tide_con_file);
+	  } else {
+	    sprintf(buf,"%s_amp",name);
+	    botzf = 0;
+	  }
+	  if (botzf) {
+	    master->tidef |= TD_TRAN;
+	  } else {
+	    master->tidef |= TD_VEL;
+	  }
 
-	  if (mode &  (TD_NU|TD_TU))
-	    sprintf(buf,"%s_phase_u",name);
-	  else if (mode &  (TD_NV|TD_TV))
-	    sprintf(buf,"%s_phase_v",name);
-	  else
+	  if ((tsa_id = ts_get_index(tsa, buf)) < 0)
+	    hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+
+	  if (mode &  (TD_NU|TD_TU)) {
+	    if (botzf)
+	      sprintf(buf,"%s_phase_U",name);
+	    else
+	      sprintf(buf,"%s_phase_u",name);
+	  } else if (mode &  (TD_NV|TD_TV)) {
+	    if (botzf)
+	      sprintf(buf,"%s_phase_V",name);
+	    else
+	      sprintf(buf,"%s_phase_v",name);
+	  } else
 	    sprintf(buf,"%s_phase",name);	  
-	  tsp = frc_read_cell_ts(master, master->tide_con_file, stime,
-				 buf, "degrees", &d2, &tsp_id, NULL);
 
+	  if ((tsp_id = ts_get_index(tsa, buf)) < 0)
+	    hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
 	  /* Get the tidal harmonics for each cell on the boundary   */
 	  vs = 1;
 	  for (cc = bs; cc <= be; cc++) {
 	    c = bec[cc];
 	    tc->amp[vs][i] = ts_eval_xy(tsa, tsa_id, stime, xloc[c], yloc[c]);
-	    tc->pha[vs][i] = ts_eval_xy(tsp, tsp_id, stime, xloc[c], yloc[c]);
+	    tc->pha[vs][i] = ts_eval_xy(tsa, tsp_id, stime, xloc[c], yloc[c]);
 	    tc->pha[vs][i] = zoneshift(name, tc->pha[vs][i], (int)(tzi/3600), 0);
 	    tc->map[cc] = vs;
-	    set_tmaps_3d(window[n], bcond, c, vs, tc->map, bs, be, bec);
+	    set_tmaps_3d(window[n], bcond, c, vs, tc->map, bs, be3, bec);
+
+	    /* Velocoty amplitudes from file are transports; divide  */
+	    /* by model depth to get velocity.                       */
+	    if (botzf) {
+	      double depth = fabs(botz[c]);
+	      tc->amp[vs][i] /= depth;
+	    }
 	    vs++;
 	  }
-	  hd_ts_free(master, tsa);
-	  hd_ts_free(master, tsp);
 	}
 	if (DEBUG("init_m")) {
 	  cc = 1;
@@ -454,10 +513,64 @@ void custom_tide_init(master_t *master,
     }
   }
   hd_ts_free(master, tsa);
-  hd_ts_free(master, tsp);
+  /*hd_ts_free(master, tsp);*/
 }
 
 /* END custom_tide_init()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to check if a tide file contains transports (with units   */
+/* m2s-1) for the amplitute of velocity constituents, or speed (with */
+/* units ms-1). Returns 1 for the former and 0 for the latter.       */
+/*-------------------------------------------------------------------*/
+int check_tidefile_type(char *name, char *fname, int mode)
+{
+  char buf[MAXSTRLEN];
+  char buf1[MAXSTRLEN];
+  char buf2[MAXSTRLEN];
+  char units[MAXSTRLEN];
+  char units1[MAXSTRLEN];
+  int fid;
+
+  nc_open(fname, NC_NOWRITE, &fid);
+
+  /* Check for velocity amplitudes in the file */
+  if (mode & (TD_NU|TD_TU))
+    sprintf(buf, "%s_u",name);
+  else if (mode &  (TD_NV|TD_TV))
+    sprintf(buf, "%s_v",name);
+  else
+    sprintf(buf, "%s", name);
+  sprintf(units, "%c", '\0');
+  if (nc_get_att_text(fid, ncw_var_id(fid, buf), "units", units) >= 0) {
+    strcpy(buf1, units);
+    if (strcmp(buf1, "ms-1") == 0) {
+      strcpy(name, buf);
+      nc_close(fid);
+      return(0);
+    }
+  }
+  if (mode &  (TD_NU|TD_TU))
+    sprintf(buf, "%s_U",name);
+  else if (mode &  (TD_NV|TD_TV))
+    sprintf(buf, "%s_V",name);
+  else
+    sprintf(buf, "%s",name);
+  sprintf(units1, "%c", '\0');
+  nc_get_att_text(fid, ncw_var_id(fid, buf), "units", units1);
+  strcpy(buf2, units1);
+  if (strcmp(buf2, "m2s-1") == 0) {
+    strcpy(name, buf);
+    nc_close(fid);
+    return(1);
+  }
+  nc_close(fid);
+  return(-1);
+}
+
+/* END check_tidefile_type()                                         */
 /*-------------------------------------------------------------------*/
 
 
@@ -479,8 +592,9 @@ void set_tmaps_3d(geometry_t *window,
   if (bcond & TIDALC) {
     for (cc = is; cc <= ie; cc++) {
       c = ivec[cc];
-      if (window->m2d[c] == cs)
+      if (window->m2d[c] == cs) {
 	map[cc] = vs;
+      }
     }
   }
 }

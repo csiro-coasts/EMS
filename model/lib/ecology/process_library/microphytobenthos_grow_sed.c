@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_grow_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: microphytobenthos_grow_sed.c 6696 2021-03-24 01:10:14Z wil00y $
  *
  */
 
@@ -222,8 +222,8 @@ void microphytobenthos_grow_sed_calc(eprocess* p, void* pp)
         double growth = MPB_N * growthrate;
 
         y1[ws->MPB_N_i] += growth;
-        y1[ws->MPB_N_pr_i] += growth * SEC_PER_DAY * c->dz_sed;
-        y1[ws->MPB_N_gr_i] = growthrate / umax;
+        y1[ws->MPB_N_pr_i] += growth * SEC_PER_DAY * red_W_C * c->dz_sed;
+        y1[ws->MPB_N_gr_i] = growthrate * SEC_PER_DAY;
         y1[ws->NH4_i] -= growth * NH4 / DIN / porosity;
         y1[ws->NO3_i] -= growth * NO3 / DIN / porosity;
         y1[ws->DIP_i] -= growth * red_W_P / porosity;

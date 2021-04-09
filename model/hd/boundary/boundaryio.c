@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 6421 2019-11-22 00:23:02Z her127 $
+ *  $Id: boundaryio.c 6601 2020-09-07 03:25:50Z her127 $
  *
  */
 
@@ -716,6 +716,10 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 	open->options |= OP_MACREADY;
       if (contains_token(buf, "OVERWRITE") != NULL)
 	open->options |= OP_OWRITE;
+      if (contains_token(buf, "SCALE_FA") != NULL)
+	open->options |= OP_FAS;
+      if (contains_token(buf, "SCALE_FAT") != NULL)
+	open->options |= OP_FAT;
     }
   }
 
@@ -2638,6 +2642,26 @@ void get_flux_adjust(FILE *fp, open_bdrys_t *open, int n) {
 /* END get_flux_adjust()                                             */
 /*-------------------------------------------------------------------*/
 
+void flux_adjust_init(open_bdrys_t *open)
+{
+  open->fas = (fa_info_t *)malloc(sizeof(relax_info_t));
+  memset(open->fas, 0, sizeof(relax_info_t));
+}
+
+void flux_adjust_copy(open_bdrys_t *open, open_bdrys_t *copy)
+{
+  fa_info_t *in =  open->fas;
+  fa_info_t *out =  copy->fas;
+  out->rlx = in->rlx;
+  out->tctype = in->tctype;
+  out->rate = in->rate;
+  out->dv0 = in->dv0;
+  out->dv1 = in->dv1;
+  out->tc0 = in->tc0;
+  out->tc1 = in->tc1;
+  out->slope = in->slope;
+}
+
 tidal_memory_t **tide_alloc_2d(long n1, long n2)
 {
   tidal_memory_t *p;
@@ -2770,6 +2794,8 @@ void std_bdry(open_bdrys_t *open,
     for (i = 0; i < open->ntr; i++) {
       if (open->bcond_tra[i] == NOGRAD)
 	open->bcond_tra[i] = TRCONC|NOTHIN;
+      if (strcmp(tracers[i].name, "u1vmean") == 0) open->bcond_tra[i] = NOTHIN;
+      if (strcmp(tracers[i].name, "u2vmean") == 0) open->bcond_tra[i] = NOTHIN;
     }
     return;
   }

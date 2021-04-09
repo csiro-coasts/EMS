@@ -14,13 +14,36 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dbgfuncs.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: dbgfuncs.c 6484 2020-03-26 01:14:36Z her127 $
  *
  */
 
 #include <math.h>
 #include <stdio.h>
 #include "hd.h"
+
+/*-------------------------------------------------------------------*/
+/* Returns 1 if the sparse coordinate corresponds to the mesh index  */
+/*-------------------------------------------------------------------*/
+int is_index(geometry_t *geom,     /* Window or global geometry      */
+	     int cc,               /* Mesh index                     */
+	     int c                 /* Sparse cell centre coordinate  */
+	     )
+{
+  geometry_t *ggeom = master->geom;
+  int ret = 0;
+
+  if (geom == ggeom) {
+    if (c == ggeom->cc2s[cc]) ret = 1;
+  } else {
+    if (geom->wsa[c] == ggeom->cc2s[cc]) ret = 1;
+  }
+  return(ret);
+}
+
+/* END is_index()                                                    */
+/*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Routine to print the i,j,k location given a global sparse         */
@@ -259,6 +282,149 @@ double check_continuity(geometry_t *window, int c)
 
 /* END check_cont()                                                  */
 /*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Checks the continuity (volume) balance for correct volume fluxes  */
+/* and sea levels. Should be ~1e-10.                                 */
+/*-------------------------------------------------------------------*/
+void check_volcons(geometry_t *window,       /* Window geometry      */
+		   window_t *windat,         /* Window data          */
+		   win_priv_t *wincon,       /* Window constants     */
+		   double *oeta,             /* eta at t-1           */
+		   double *eta,              /* eta at t             */
+		   double dt                 /* Timestep             */
+		)
+{
+  double colflux;               /* Flux divergence                   */
+  int c, ci, cc, c2, ee, e, es; /* Sparse coodinate / counter        */
+  int co, cs, cb, zp1;
+  double *u1, *w, *u1flux;
+  double volo, vol, d1, flux, cin, cout;
+
+  if (wincon->means & TRANSPORT) {
+    u1 = windat->ume;
+    w = windat->wm;
+    u1flux = windat->u1vm;
+  } else {
+    u1 = windat->u1;
+    w = windat->w;
+    u1flux = windat->u1flux3d;
+  }
+
+  /* Loop over surface layers                                        */
+  for (cc = 1; cc <= wincon->vcs; cc++) {
+    c = wincon->s1[cc];
+    co = wincon->i3[cc];
+    cs = wincon->i2[cc];
+    cb = wincon->i1[cc];
+    c2 = window->m2d[c];
+    while (c != window->zm1[c]) {
+      cin = cout = volo = 0.0;
+      if (c == cs) {
+	double watertop;
+	double waterbot = (c == cb) ? window->botz[c2] : window->gridz[c];
+	double dz = eta[c2] - waterbot;
+	ci = c;
+	vol = dz * window->cellarea[c2];
+	/* First increment the old volume from the current layer to  */
+	/* the layer below that containing the old surface. If       */
+	/* elevation has risen this loop is skipped.                 */
+	while (ci != co) {
+	  zp1 = window->zp1[ci];
+
+	  /* Horizontal fluxes                                       */
+	  for (ee = 1; ee <= window->npe[c2]; ee++) {
+	    e = window->c2e[ee][ci];
+	    es = window->m2de[e];
+	    flux = window->eSc[ee][c2] * u1flux[e] * dt;
+	    if (flux > 0.0) {
+	      cout += flux;
+	    } else if (flux < 0.0) {
+	      cin -= flux;
+	    }
+	  }
+
+	  /* Old volume                                              */
+	  watertop = window->gridz[zp1];
+	  d1 = window->cellarea[c2] * (watertop - waterbot);
+	  volo += d1;
+
+	  ci = zp1;
+	  waterbot = window->gridz[ci];
+	}
+	/* Now increment the old volume for the layer containing the */
+	/* old surface.                                              */
+	waterbot = (ci == cb) ? window->botz[c2] : window->gridz[ci];
+	d1 = (oeta[c2] - waterbot) * window->cellarea[c2];
+	volo += d1;
+
+	/* Horizontal fluxes                                         */
+	for (ee = 1; ee <= window->npe[c2]; ee++) {
+	  e = window->c2e[ee][ci];
+	  es = window->m2de[e];
+	  flux = window->eSc[ee][c2] * u1flux[e] * dt;
+	  if (flux > 0.0)
+	    cout += flux;
+	  else if (flux < 0.0)
+	    cin -= flux;
+	}
+
+	/* Increment the fluxes from above the old surface elevation */
+	/* to the top of the vertical grid. If the surface has risen */
+	/* then these cells now contain water and horizontal         */
+	/* divergence may alter the total amount of tracer. If       */
+	/* elevation has dropped then there is no water (and hence   */
+	/* no divergence) in these cells.                            */
+	if (ci != c2) {
+	  do {
+	    ci = window->zp1[ci];
+	    for (ee = 1; ee <= window->npe[c2]; ee++) {
+	      e = window->c2e[ee][ci];
+	      es = window->m2de[e];
+	      flux = window->eSc[ee][c2] * u1flux[e] * dt;
+	      if (flux > 0.0)
+		cout += flux;
+	      else if (flux < 0.0)
+		cin -= flux;
+	    }
+	  } while (ci != c2);
+	}
+      } else {
+	vol = volo = window->cellarea[c2] * wincon->dz[c];
+	/* Horizontal fluxes                                         */
+	for (ee = 1; ee <= window->npe[c2]; ee++) {
+	  e = window->c2e[ee][c];
+	  es = window->m2de[e];
+	  flux = window->eSc[ee][c2] * u1flux[e] * dt;
+	  if (flux > 0.0)
+	    cout += flux;
+	  else if (flux < 0.0)
+	    cin -= flux;
+	}
+	/* Vertical fluxes in the upper layer                        */
+	zp1 = window->zp1[c];
+	flux = w[zp1] * window->cellarea[c2] * dt;
+	if (flux < 0.0)
+	  cin -= flux;
+	else if (flux > 0.0)
+	  cout += flux;
+      }
+      /* Vertical fluxes in the lower layer                          */
+      flux = w[c] * window->cellarea[c2] * dt;
+      if (flux > 0.0)
+	cin += flux;
+      else if (flux < 0.0)
+	cout -= flux;
+      if (windat->volcont) windat->volcont[c] = (volo - vol) - ((cout-cin));
+      c = window->zm1[c];
+    }
+  }
+}
+
+/* END check_volcons()                                               */
+/*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/

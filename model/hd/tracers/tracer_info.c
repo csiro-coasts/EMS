@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracer_info.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: tracer_info.c 6662 2020-09-08 06:09:29Z her127 $
  *
  */
 
@@ -433,6 +433,13 @@ void tracer_read(FILE * fpp, char *prefix, int type, errfn quitfn,
     else
       sprintf(tr->tracerstat, "%c", '\0');
     /*memcpy(tr->tracerstat, 0, sizeof(tr->tracerstat));*/
+
+    /* Read the tracer interpolation rule */
+    if (tracer_read_attribute
+	(fpt, prefix, keyname, tr->name, m, "interp_type", emptyfn, buf))
+      strcpy(tr->i_rule, buf);
+    else
+      sprintf(tr->i_rule, "%c", '\0');
 
     /* Read the relaxation data file. */
     if (tracer_read_attribute

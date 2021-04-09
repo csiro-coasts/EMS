@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfcoords.c 6242 2019-06-12 06:24:07Z riz008 $
+ *  $Id: dfcoords.c 6590 2020-09-03 00:56:55Z her127 $
  */
 
 #include <stdlib.h>
@@ -632,11 +632,19 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
     else if (df_is_ugrid(df)) {
       /* Only one method supported */
       int *coordtypes = df_get_coord_types(df, v);
+      /*
       if (df_get_num_coords(df, v) == 2 &&
 	  (coordtypes[0]|coordtypes[1]) == (VT_LONGITUDE|VT_LATITUDE) ) {
-	    v->interp = interp_nearest_within_eps;
+	v->interp = interp_nearest_within_eps;
+      */
+      if (df_get_num_coords(df, v) == 2 ) {
+	    v->gs0_master_2d = v->gs1_master_2d = NULL;
+	    v->interp = interp_us_2d;
+      } else if (df_get_num_coords(df, v) == 3 ) {
+	    v->gs0_master_3d = v->gs1_master_3d = NULL;
+	    v->interp = interp_us_3d;
       } else
-	quit("df_infer_coord_system: Only 2D geographical coordinates supported for %s in %s\n", v->name, df->name);
+	quit("df_infer_coord_system: Can't infer coordinates for %s in UGRID file %s\n", v->name, df->name);
     }
     else {
       if (nd == 1)

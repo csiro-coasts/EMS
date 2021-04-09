@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 6433 2019-11-22 00:26:36Z her127 $
+ *  $Id: load_tracer.c 6716 2021-03-29 00:57:22Z her127 $
  *
  */
 
@@ -38,6 +38,7 @@ void calc_scaling(parameters_t *params, master_t *master, char *mapname);
 int face_dist(double *layers, int nz, double depth);
 void tr_dataset(char *data, tracer_info_t *tr, double def);
 void trn_dataset(char *data, tracer_info_t *trinfo, int tn, int ntr, int atr, double **tr, double def);
+void trf_dataset(char *data, tracer_info_t *trinfo, int tn, int ntr, int atr, double **tr, double def);
 void dens_profile(master_t *master, geometry_t *geom, double *ret, double v1, double v2);
 void dens_grad(master_t *master, geometry_t *geom, double *ret, double v1, double v2);
 void dens_scale(master_t *master, geometry_t *geom, double *ret, double v1, double v2, char *sgn);
@@ -50,6 +51,18 @@ void dens_scale_mid(master_t *master, geometry_t *geom, double *ret,
 void tracer_fill(master_t *master, timeseries_t *ts, char *fname, double *ret, int sz, int *vec, int vc, 
 		 tracer_info_t *tr, double fill);
 void filter_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n);
+void glider_scaling(parameters_t *params, master_t *master, char *mapname, int tm);
+void interp_data_us(master_t *master, char *fname, char *vname, double *ret, int mode,
+		    char *i_rule, int *mask, double t);
+void interp_data_s(master_t *master, char *fname, char *vname, double *ret, int mode,
+		   int *mask, double t);
+int value_init_sparse2d(master_t *master, double *ret, char *fname, char *vname,
+			char *in_rule, double t, int *rask);
+int value_init_sparse3d(master_t *master, double *ret, char *fname, char *vname,
+			char *in_rule, double t, int *rask);
+void decode_indata(char *in, char *fname, char *iname, double *t);
+poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts);
+
 
 /*------------------------------------------------------------------*/
 /* Loads 3D tracer values                                           */
@@ -113,9 +126,12 @@ void load_wc_tracer_step_3d(parameters_t *params, master_t *master,
     /* Only initialize explicit tracers. Exception is swr_attn.     */
     if (t < master->atr && !strlen(master->trinfo_3d[t].data)) continue;
     prm_set_errfn(hd_silent_warn);
+    /*
     sprintf(tag, "TRACER%1.1d.interp_type", tm);
     if (!(prm_read_char(fp, tag, buf2)))
       buf2[0] = '\0';
+    */
+    strcpy(buf2, master->trinfo_3d[t].i_rule);
     sprintf(tag, "TRACER%1.1d.data", tm);
     value_init_3d(master, master->tr_wc[t], fp, master->trinfo_3d[t].data, 
 		  master->trinfo_3d[t].name, tag, 
@@ -125,9 +141,18 @@ void load_wc_tracer_step_3d(parameters_t *params, master_t *master,
   /* Load temp and salt for ROAM */
   temp_salt_init(params, master);
 
+  /* Glider scaling */
+  for (t = master->atr; t < master->ntr; ++t) {
+    int tm = master->trinfo_3d[t].m;
+    sprintf(tag, "TRACER%1.1d.glider_scale", tm);
+    if (prm_read_char(fp, tag, buf))
+      glider_scaling(params, master, buf, t);
+  }
+
   /* Scaling */
-  for (t = master->atr; t < master->ntr; ++t)
+  for (t = master->atr; t < master->ntr; ++t) {
     scale_tracer(master->trinfo_3d, geom, master->tr_wc, t);
+  }
 
   /* Filtering */
   for (t = master->atr; t < master->ntr; ++t)
@@ -373,19 +398,20 @@ void load_wc_tracer_step_2d(parameters_t *params, master_t *master,
   for (t = 0; t < master->ntrS; ++t) {
     int tm = master->trinfo_2d[t].m;
 
+    /*
     sprintf(tag, "TRACER%1.1d.interp_type", tm);
     if (!(prm_read_char(fp, tag, buf2)))
       buf2[0] = '\0';
+    */
+    strcpy(buf2, master->trinfo_2d[t].i_rule);
     sprintf(tag, "TRACER%1.1d.data", tm);
 
     value_init_2d(master, master->tr_wcS[t], fp, master->trinfo_2d[t].data, 
 		  master->trinfo_2d[t].name, tag, 
 		  master->trinfo_2d[t].fill_value_wc, buf2);
-
     /* Scaling */
     scale_tracer(master->trinfo_2d, geom, master->tr_wcS, t);
   }
-
   prm_set_errfn(hd_quit);
 }
 
@@ -487,16 +513,21 @@ void load_wc_tracer_name(master_t *master, FILE * fp, char *trname, int dim)
 
   if (dim == WATER) {
     fill = master->trinfo_3d[trn].fill_value_wc;
+    strcpy(i_rule, master->trinfo_3d[trn].i_rule);
   } else if (dim == INTER) {
     fill = master->trinfo_2d[trn].fill_value_wc;
+    strcpy(i_rule, master->trinfo_2d[trn].i_rule);
   } else if (dim == SEDIM) {
     fill = master->trinfo_sed[trn].fill_value_sed;
+    strcpy(i_rule, master->trinfo_sed[trn].i_rule);
   }
 
   /* Search for a data file for this variable in the prm file     */
+  /*
   sprintf(tag, "TRACER%1.1d.interp_type", tm);
   if (!(prm_read_char(fp, tag, i_rule)))
     i_rule[0] = '\0';
+  */
 
   if (dim == SEDIM)
     sprintf(tag, "TRACER%1.1d.data_sed", tm);
@@ -930,10 +961,11 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     tn++;
   }
   if (params->means & MTRA2D) {
+    char key[MAXSTRLEN];
     master->tram = master->tr_wcS[tn];
     strcpy(master->trinfo_2d[tn].name, "tracer_mean");
-    sprintf(buf, "Mean %s", params->means_tra);
-    strcpy(master->trinfo_2d[tn].long_name, buf);
+    sprintf(key, "Mean %s", params->means_tra);
+    strcpy(master->trinfo_2d[tn].long_name, key);
     strcpy(master->trinfo_2d[tn].units, "");
     master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
     tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
@@ -1622,10 +1654,11 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     strcpy(master->trinfo_2d[tn].units, "m-1");
     master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
     /*tr_dataset(params->swr_attn, &master->trinfo_2d[tn], 0.073);*/
-    trn_dataset(params->swr_attn, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.073);
+    trf_dataset(params->swr_attn, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.073);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 10;
     master->trinfo_2d[tn].n = tn;
+
     tn++;
   }
   if (strlen(params->swr_attn1)) {
@@ -1647,7 +1680,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     strcpy(master->trinfo_2d[tn].units, "");
     master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
     /*tr_dataset(params->swr_tran, &master->trinfo_2d[tn], 0.26);*/
-    trn_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
+    trf_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1;
     master->trinfo_2d[tn].n = tn;
@@ -1739,6 +1772,23 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
     master->trinfo_2d[tn].n = tn;
+    tn++;
+  }
+  if (strlen(params->imp2df)) {
+    strcpy(master->trinfo_2d[tn].name, params->imp2dn);
+    strcpy(master->trinfo_2d[tn].long_name, params->imp2dn);
+    strcpy(master->trinfo_2d[tn].units, params->imp2du);
+    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
+    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_2d[tn].n = tn;
+    strcpy(master->trinfo_2d[tn].i_rule, "nn_sibson");
+    if (strlen(params->imp2dt))
+      sprintf(master->trinfo_2d[tn].data, "[data=%s(t=%s)]", params->imp2df, 
+	      params->imp2dt);
+    else
+      sprintf(master->trinfo_2d[tn].data, "[data=%s]", params->imp2df);
     tn++;
   }
   if (params->etarlx & ETA_ADPT) {
@@ -1854,7 +1904,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
                     master_t *master      /* Master data             */
   )
 {
-  int tn;
+  int n, tn;
   geometry_t *geom = master->geom;
   char buf[MAXSTRLEN];
 
@@ -1876,7 +1926,17 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
   master->u1vm = master->u2vm = master->temp_tc = master->salt_tc = master->unit = NULL;
   master->wave_stke1 = master->wave_stke2 = NULL;
   if (params->swr_type & SWR_3D) master->swr_attn = NULL;
-  master->dhw = master->dhd = master->dhwc = master->glider = master->nprof = NULL;
+  master->glider = master->nprof = master->density = NULL;
+  if (params->ndhw) {
+    master->dhw = (double **)p_alloc_1d(params->ndhw);
+    master->dhd = (double **)p_alloc_1d(params->ndhw);
+    master->dhwc = (double **)p_alloc_1d(params->ndhw);
+    for (n = 0; n < params->ndhw; n++) {
+      master->dhw[n] = NULL;
+      master->dhd[n] = NULL;
+      master->dhwc[n] = NULL;
+    }
+  }
 
   /*-----------------------------------------------------------------*/
   /* Assign the water column tracer pointers to any tracers defined */
@@ -2029,20 +2089,28 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->wave_stke1 = master->tr_wc[tn];
     else if (strcmp("wave_stke2", master->trinfo_3d[tn].name) == 0)
       master->wave_stke2 = master->tr_wc[tn];
-    else if (strcmp("dhw", master->trinfo_3d[tn].name) == 0)
-      master->dhw = master->tr_wc[tn];
-    else if (strcmp("dhd", master->trinfo_3d[tn].name) == 0)
-      master->dhd = master->tr_wc[tn];
-    else if (strcmp("dhwc", master->trinfo_3d[tn].name) == 0)
-      master->dhwc = master->tr_wc[tn];
     else if (strcmp("glider", master->trinfo_3d[tn].name) == 0)
       master->glider = master->tr_wc[tn];
+    else if (strcmp("density", master->trinfo_3d[tn].name) == 0)
+      master->density = master->tr_wc[tn];
     else if (strcmp("nprof", master->trinfo_3d[tn].name) == 0)
       master->nprof = master->tr_wc[tn];
     else if (params->swr_type & SWR_3D && strcmp("swr_attenuation", master->trinfo_3d[tn].name) == 0)
       master->swr_attn = master->tr_wc[tn];
+    else if (params->ndhw) {
+      for (n = 0; n < params->ndhw; n++) {
+	sprintf(buf, "dhw%d", n);
+	if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+	  master->dhw[n] = master->tr_wc[tn];
+	sprintf(buf, "dhd%d", n);
+	if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+	  master->dhd[n] = master->tr_wc[tn];
+	sprintf(buf, "dhwc%d", n);
+	if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+	  master->dhwc[n] = master->tr_wc[tn];
+      }
+    }
   }
-
   sprintf(buf, "percentile_%s", params->trperc);
   for (tn = 0; tn < master->ntr; tn++) {
     if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
@@ -3565,6 +3633,23 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       tn++;
     }
   }
+  if (strlen(params->imp3df)) {
+    strcpy(master->trinfo_3d[tn].name, params->imp3dn);
+    strcpy(master->trinfo_3d[tn].long_name, params->imp3dn);
+    strcpy(master->trinfo_3d[tn].units, params->imp3du);
+    master->trinfo_3d[tn].type = INTER|HYDRO|DIAGNOSTIC;
+    tr_dataset(buf, &master->trinfo_3d[tn], 0.0);
+    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
+    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+    master->trinfo_3d[tn].n = tn;
+    strcpy(master->trinfo_3d[tn].i_rule, "nn_sibson");
+    if (strlen(params->imp3dt))
+      sprintf(master->trinfo_3d[tn].data, "[data=%s(t=%s)]", params->imp3df, 
+	      params->imp3dt);
+    else
+      sprintf(master->trinfo_3d[tn].data, "[data=%s]", params->imp3df);
+    tn++;
+  }
   if (params->numbers & DUMMIES) {
     if (tracer_find_index("tracer1", master->ntr, master->trinfo_3d) == -1) {
       master->dum1 = master->tr_wc[tn];
@@ -3680,6 +3765,26 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       tn++;
     }
   }
+  if (params->numbers & DENSITY) {
+    if (tracer_find_index("density", master->ntr, master->trinfo_3d) == -1) {
+      master->density = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, "density");
+      strcpy(master->trinfo_3d[tn].long_name, "Potential density");
+      strcpy(master->trinfo_3d[tn].units, "kgm-3");
+      master->trinfo_3d[tn].fill_value_wc = 0.0;
+      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      master->trinfo_3d[tn].diagn = 0;
+      master->trinfo_3d[tn].advect = 0;
+      master->trinfo_3d[tn].diffuse = 0;
+      master->trinfo_3d[tn].inwc = 1;
+      master->trinfo_3d[tn].insed = 0;
+      master->trinfo_3d[tn].valid_range_wc[0] = 0;
+      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
+      master->trinfo_3d[tn].m = -1;
+      master->trinfo_3d[tn].n = tn;
+      tn++;
+    }
+  }
   if (strlen(params->nprof)) {
     if (tracer_find_index("nprof", master->ntr, master->trinfo_3d) == -1) {
       master->nprof = master->tr_wc[tn];
@@ -3700,11 +3805,16 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       tn++;
     }
   }
-  if (params->dhwf) {
-    if (tracer_find_index("dhw", master->ntr, master->trinfo_3d) == -1) {
-      master->dhw = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "dhw");
-      strcpy(master->trinfo_3d[tn].long_name, "Degree heating week");
+  for (n = 0; n < params->ndhw; n++) {
+    sprintf(buf, "dhw%d", n);    
+    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
+      master->dhw[n] = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, buf);
+      if (strlen(params->dhwt[n]))
+	sprintf(buf, "Degree heating week #%d %s", n, params->dhwt[n]);
+      else
+	sprintf(buf, "Degree heating week #%d", n);
+      strcpy(master->trinfo_3d[tn].long_name, buf);
       strcpy(master->trinfo_3d[tn].units, "DegC-week");
       master->trinfo_3d[tn].fill_value_wc = 0.0;
       master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
@@ -3713,32 +3823,33 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].diffuse = 0;
       master->trinfo_3d[tn].inwc = 1;
       master->trinfo_3d[tn].insed = 0;
+      strcpy(master->trinfo_3d[tn].tag, "DA_");
       master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
       master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      if (params->dhwf & DHW_RT)
-	strcpy(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc:dhwt)");
+      if (params->dhwf[n] & DHW_RT)
+	sprintf(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc%d:dhwt%d)",n,n);
       master->trinfo_3d[tn].m = -1;
       master->trinfo_3d[tn].n = tn;
       tn++;
     }
-    if (params->dhwf & DHW_RT)
-      strcpy(buf, "dhwt");
-    if (params->dhwf & DHW_NOAA)
-      strcpy(buf, "dhd");
+    if (params->dhwf[n] & DHW_RT)
+      sprintf(buf, "dhwt%d", n);
+    if (params->dhwf[n] & DHW_NOAA)
+      sprintf(buf, "dhd%d", n);
     if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
 
-      master->dhd = master->tr_wc[tn];
+      master->dhd[n] = master->tr_wc[tn];
       strcpy(master->trinfo_3d[tn].name, buf);
 
-      if (params->dhwf & DHW_RT)
-	strcpy(buf, "Degree heating exposure time");
-      if (params->dhwf & DHW_NOAA)
-	strcpy(buf, "Degree heating day");
+      if (params->dhwf[n] & DHW_RT)
+	sprintf(buf, "Degree heating exposure time #%d", n);
+      if (params->dhwf[n] & DHW_NOAA)
+	sprintf(buf, "Degree heating day #%d",n);
       strcpy(master->trinfo_3d[tn].long_name, buf);
 
-      if (params->dhwf & DHW_RT)
+      if (params->dhwf[n] & DHW_RT)
 	strcpy(buf, "week");
-      if (params->dhwf & DHW_NOAA)
+      if (params->dhwf[n] & DHW_NOAA)
 	strcpy(buf, "DegCday");
       strcpy(master->trinfo_3d[tn].units, buf);
 
@@ -3755,10 +3866,12 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].n = tn;
       tn++;
     }
-    if (tracer_find_index("dhwc", master->ntr, master->trinfo_3d) == -1) {
-      master->dhwc = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "dhwc");
-      strcpy(master->trinfo_3d[tn].long_name, "Degree heating threshold");
+    sprintf(buf, "dhwc%d", n);    
+    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
+      master->dhwc[n] = master->tr_wc[tn];
+      strcpy(master->trinfo_3d[tn].name, buf);
+      sprintf(buf, "Degree heating threshold #%d", n);
+      strcpy(master->trinfo_3d[tn].long_name, buf);
       strcpy(master->trinfo_3d[tn].units, "Degrees C");
       master->trinfo_3d[tn].fill_value_wc = 0.0;
       master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
@@ -3771,7 +3884,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
       master->trinfo_3d[tn].m = -1;
       master->trinfo_3d[tn].n = tn;
-      strcpy(master->trinfo_3d[tn].reset_file, params->dhw);
+      strcpy(master->trinfo_3d[tn].reset_file, params->dhw[n]);
       strcpy(master->trinfo_3d[tn].reset_dt, "1 day");
       tn++;
     }
@@ -3960,9 +4073,13 @@ void load_sed_tracer_step_3d(master_t *master, FILE * fp)
   for (t = 0; t < master->nsed; ++t) {
     int tm = master->trinfo_sed[t].m;
 
+    /*
     sprintf(tag, "TRACER%1.1d.interp_type", tm);
     if (!(prm_read_char(fp, tag, buf2)))
       buf2[0] = '\0';
+    */
+    strcpy(buf2, master->trinfo_sed[t].i_rule);
+
     sprintf(tag, "TRACER%1.1d.data_sed", tm);
     strcpy(buf, master->trinfo_sed[t].name);
     strcat(buf, "_sed");
@@ -4041,7 +4158,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
 {
   tracer_info_t *trinfo = params->trinfo_3d;
   char buf[MAXSTRLEN];
-  int tn = 0;
+  int n, tn = 0;
 
   /* Set up the tracer_info structure with mandatory and optional   */
   /* tracers.                                                       */
@@ -5448,6 +5565,27 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     /*tr_dataset(params->reef_frac, &params->trinfo_3d[tn], 0.0);*/
     tn++;
   }
+  if (strlen(params->imp3df)) {
+    strcpy(trinfo[tn].name, params->imp3dn);
+    strcpy(trinfo[tn].long_name, params->imp3dn);
+    strcpy(trinfo[tn].units, params->imp3du);
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = -1e10;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    if (strlen(params->imp3dt))
+      sprintf(trinfo[tn].data, "[data=%s(t=%s)]", params->imp3df, 
+	      params->imp3dt);
+    else
+      sprintf(trinfo[tn].data, "[data=%s]", params->imp3df);
+    trinfo[tn].m = tn;
+    tn++;
+  }
   if (params->numbers & DUMMIES) {
     strcpy(trinfo[tn].name, "tracer1");
     strcpy(trinfo[tn].long_name, "Dummy tracer 1");
@@ -5540,6 +5678,22 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].m = tn;
     tn++;
   }
+  if (params->numbers & DENSITY) {
+    strcpy(trinfo[tn].name, "density");
+    strcpy(trinfo[tn].long_name, "Potential density");
+    strcpy(trinfo[tn].units, "kgm-3");
+    trinfo[tn].fill_value_wc = 0.0;
+    trinfo[tn].type = WATER;
+    trinfo[tn].diagn = 0;
+    trinfo[tn].advect = 0;
+    trinfo[tn].diffuse = 0;
+    trinfo[tn].inwc = 1;
+    trinfo[tn].insed = 0;
+    trinfo[tn].valid_range_wc[0] = 0;
+    trinfo[tn].valid_range_wc[1] = 1e10;
+    trinfo[tn].m = tn;
+    tn++;
+  }
   if (strlen(params->nprof)) {
     strcpy(trinfo[tn].name, "nprof");
     sprintf(trinfo[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
@@ -5556,9 +5710,14 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].m = tn;
     tn++;
   }
-  if (params->dhwf) {
-    strcpy(trinfo[tn].name, "dhw");
-    strcpy(trinfo[tn].long_name, "Degree heating week");
+  for (n = 0; n < params->ndhw; n++) {
+    sprintf(buf, "dhw%d", n);
+    strcpy(trinfo[tn].name, buf);
+    if (strlen(params->dhwt[n]))
+      sprintf(buf, "Degree heating week #%d %s", n, params->dhwt[n]);
+    else
+      sprintf(buf, "Degree heating week #%d", n);
+    strcpy(trinfo[tn].long_name, buf);
     strcpy(trinfo[tn].units, "DegC-week");
     trinfo[tn].fill_value_wc = 0.0;
     trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
@@ -5569,25 +5728,26 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].insed = 0;
     trinfo[tn].valid_range_wc[0] = -1e10;
     trinfo[tn].valid_range_wc[1] = 1e10;
-    if (params->dhwf & DHW_RT)
-      strcpy(trinfo[tn].tracerstat, "exposure(temp:dhwc:dhwt)");
+    strcpy(trinfo[tn].tag, "DA_");
+    if (params->dhwf[n] & DHW_RT)
+      sprintf(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc%d:dhwt%d)",n,n);
     trinfo[tn].m = -1;
     trinfo[tn].n = tn;
     tn++;
 
-    if (params->dhwf & DHW_RT)
-      strcpy(buf, "dhwt");
-    if (params->dhwf & DHW_NOAA)
-      strcpy(buf, "dhd");
+    if (params->dhwf[n] & DHW_RT)
+      sprintf(buf, "dhwt%d", n);
+    if (params->dhwf[n] & DHW_NOAA)
+      sprintf(buf, "dhd%d", n);
     strcpy(trinfo[tn].name, buf);
-    if (params->dhwf & DHW_RT)
-      strcpy(buf, "Degree heating exposure time");
-    if (params->dhwf & DHW_NOAA)
-      strcpy(buf, "Degree heating day");
+    if (params->dhwf[n] & DHW_RT)
+      sprintf(buf, "Degree heating exposure time #%d", n);
+    if (params->dhwf[n] & DHW_NOAA)
+      sprintf(buf, "Degree heating day #%d", n);
     strcpy(trinfo[tn].long_name, buf);
-    if (params->dhwf & DHW_RT)
+    if (params->dhwf[n] & DHW_RT)
       strcpy(buf, "week");
-    if (params->dhwf & DHW_NOAA)
+    if (params->dhwf[n] & DHW_NOAA)
       strcpy(buf, "DegCday");
     strcpy(trinfo[tn].units, buf);
     trinfo[tn].fill_value_wc = 0.0;
@@ -5603,8 +5763,10 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].n = tn;
     tn++;
 
-    strcpy(trinfo[tn].name, "dhwc");
-    strcpy(trinfo[tn].long_name, "Degree heating threshold");
+    sprintf(buf, "dhwc%d", n);
+    strcpy(trinfo[tn].name, buf);
+    sprintf(buf, "Degree heating threshold #%d", n);
+    strcpy(trinfo[tn].long_name, buf);
     strcpy(trinfo[tn].units, "Degrees C");
     trinfo[tn].fill_value_wc = 0.0;
     trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
@@ -5617,7 +5779,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     trinfo[tn].valid_range_wc[1] = 1e10;
     trinfo[tn].m = -1;
     trinfo[tn].n = tn;
-    strcpy(trinfo[tn].reset_file, params->dhw);
+    strcpy(trinfo[tn].reset_file, params->dhw[n]);
     strcpy(trinfo[tn].reset_dt, "1 day");
     tn++;
   }
@@ -6373,6 +6535,356 @@ void calc_scaling(parameters_t *params, /* Input parameters data     */
 
 
 /*-------------------------------------------------------------------*/
+/* Routine to create a scaing tracer from glider data.               */
+/* scale(x,y,z,t) = time series(x,y,z,t) - forcing(x,y,z,t)          */
+/* The scaling can be done for individual glider missions, applied   */
+/* to different forcing data. The spatial distribution can be        */
+/* uniform from a mean scaling profile, or interpolated using        */
+/* grid_specs interpolation. A cascade search may also be applied.   */
+/*-------------------------------------------------------------------*/
+void glider_scaling(parameters_t *params, /* Input parameters data   */
+		    master_t *master,     /* Master data             */
+		    char *mapname,        /* Name of input data file */
+		    int tm                /* Tracer number           */
+		    )
+{
+  geometry_t *geom = master->geom;
+  FILE *ip = NULL;           /* Input data file pointer              */
+  int i, m, j, jj, k, nf;    /* Counters                             */
+  int c, cc, cs, cb, dj, c2; /* Counters                             */
+  int **ck, *nck;            /* Layer maps                           */
+  char i_rule[MAXSTRLEN];    /* Interpolation rule                   */
+  char key[MAXSTRLEN];       /* Dummy buffer                         */
+  char buf[MAXSTRLEN];       /* Dummy buffer                         */
+  char t_units[MAXSTRLEN];   /* Time units                           */
+  char v_units[MAXSTRLEN];   /* Units for scaling variable           */
+  char v_name[MAXSTRLEN];    /* Scaling variable name                */
+  int ntsfiles;              /* Number of time series files          */
+  timeseries_t *tsfiles;     /* Time series files                    */
+  int nffiles;               /* Number of forcing files              */
+  timeseries_t **tsforce;    /* Forcing files                        */
+  int varids[MAXNUMTSFILES]; /* Forcing files variable id's          */
+  int dot[MAXNUMTSFILES];    /* Forcing files time flag              */
+  double fstart[MAXNUMTSFILES]; /* Forcing files start time          */
+  double fstop[MAXNUMTSFILES]; /* Forcing files stop time            */
+  cstring *tsvars;           /* Timeseries files scaling name        */
+  cstring *xname;            /* x coordinate name                    */
+  cstring *yname;            /* y coordinate name                    */
+  cstring *zname;            /* z coordinate name                    */
+  cstring *fname;            /* z coordinate name                    */
+  double start;              /* Start time of output file            */
+  double stop;               /* Stop time of output file             */
+  double step;               /* Data interval of output file         */
+  double t;                  /* Time counter                         */
+  int npoints;               /* Number of timeseries (x,y) locations */
+  int  *points;              /* Points in each layer                 */
+  double **lat, **lon;       /* Latitude / longitude of (x,y) locs   */
+  double x, y, z;            /* Geographic location                  */
+  double fv, val, **sc;      /* Forcing value, scaled value          */
+  int intf = 0;              /* Interpolation method flag            */
+  GRID_SPECS **gs;           /* Interpolation data structure         */
+  int nz = geom->nz;         /* Vertical dimension                   */
+  double vprof[nz];          /* Mean vertical profile                */
+  tracer_info_t *tr = &master->trinfo_3d[tm]; /* Tracer info         */
+  int verbose = 0;
+
+  /*-----------------------------------------------------------------*/
+  /* Open the input scaling data file                                */
+  if( (ip=fopen(mapname,"r")) == NULL ) {
+    hd_warn("glider_scaling: Can't open input scaling data file '%s'\n",mapname);
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Read the scaling variable and units                             */
+  sprintf(t_units, "%s", params->timeunit);
+  prm_read_char(ip, "VAR_NAME", v_name);
+  prm_read_char(ip, "VAR_UNITS", v_units);
+  prm_get_time_in_secs(ip, "START", &start);
+  prm_get_time_in_secs(ip, "STOP", &stop);
+  prm_get_time_in_secs(ip, "STEP", &step);
+  if (prm_read_char(ip, "METHOD", i_rule)) {
+    if (strcmp(i_rule, "profile") == 0) 
+      intf = 0;
+    else if (strcmp(i_rule, "cascade") == 0) 
+      intf = 1;
+    else
+      intf = 2;
+  }
+
+  /*-----------------------------------------------------------------*/	
+  /* Get the number of files inputs and allocate memory              */
+  prm_read_int(ip,"nfiles",&ntsfiles);
+  if (ntsfiles <= 0)
+    hd_quit("calc_scaling: No files specified in parameter file.\n");
+  tsfiles = (timeseries_t *)malloc(sizeof(timeseries_t) * ntsfiles);
+  tsforce = (timeseries_t **)malloc(sizeof(timeseries_t) * ntsfiles);
+  tsvars = (cstring *)malloc(sizeof(cstring) * ntsfiles);
+  xname = (cstring *)malloc(sizeof(cstring) * ntsfiles);
+  yname = (cstring *)malloc(sizeof(cstring) * ntsfiles);
+  zname = (cstring *)malloc(sizeof(cstring) * ntsfiles);
+  fname = (cstring *)malloc(sizeof(cstring) * ntsfiles);
+  memset(tsfiles, 0, sizeof(timeseries_t) * ntsfiles);
+  memset(tsforce, 0, sizeof(timeseries_t) * ntsfiles);
+  memset(tsvars, 0, sizeof(cstring) * ntsfiles);
+  memset(xname, 0, sizeof(cstring) * ntsfiles);
+  memset(yname, 0, sizeof(cstring) * ntsfiles);
+  memset(zname, 0, sizeof(cstring) * ntsfiles);
+  memset(fname, 0, sizeof(cstring) * ntsfiles);
+  memset(vprof, 0, nz * sizeof(double));
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    c = geom->w3_t[cc];
+    master->tr_wc[tm][c] = NOTVALID;
+  }
+
+  /*-----------------------------------------------------------------*/	
+  /* Read the time-series and forcing files                          */
+  for (i=0; i<ntsfiles; ++i) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    sprintf(key, "file%d", i);
+    prm_read_char(ip, key, buf);
+    nf = parseline(buf, fields, MAXNUMARGS);
+    if (nf < 7) hd_quit("File %d must include : filename xloc yloc depth var_name forcing_file forcing_name.\n", i);
+    read_tsfile(&tsfiles[i], strdup(fields[0]), t_units);
+    strcpy(xname[i], fields[1]);
+    strcpy(yname[i], fields[2]);
+    strcpy(zname[i], fields[3]);
+    if (nf > 1)
+      strcpy(tsvars[i], fields[4]);
+    else
+      strcpy(tsvars[i], v_name);
+    strcpy(fname[i], fields[5]);
+    tsforce[i] = hd_ts_read(master, fname[i], 0);
+    strcpy(v_name, fields[6]);
+    if ((varids[i] = ts_get_index(tsforce[i], v_name)) < 0) {
+      hd_warn("glider_scaling: Can't find variable '%s' in timeseries file %s.\n", 
+	      v_name, fname[i]);
+    }
+    dot[i] = 0;
+    fstart[i] = start;
+    fstop[i] = stop;
+    if (nf == 10) {
+      sprintf(buf, "%s %s", fields[7], fields[9]);
+      tm_scale_to_secs(buf, &fstart[i]);
+      sprintf(buf, "%s %s", fields[8], fields[9]);
+      tm_scale_to_secs(buf, &fstop[i]);
+      dot[i] = 1;
+    }
+    if (verbose) {
+      printf("file%d data: %s\n", i, fields[0]);
+      printf("file%d forcing: %s\n", i, fname[i]);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/	
+  /* Count the number of points (i.e. (x,y) locations)               */
+  npoints  = ntsfiles * ((stop - start) / step + 1);
+  points = i_alloc_1d(nz + 1);
+  memset(points, 0, (nz+1) * sizeof(int));
+  lon = d_alloc_2d(npoints, nz);
+  lat = d_alloc_2d(npoints, nz);
+  sc = d_alloc_2d(npoints, nz);
+
+  /*-----------------------------------------------------------------*/	
+  /* Step through all time, evaluate and write the output value      */
+  t = start;
+  while (t <= stop) {
+    int varid, id;
+
+    for (i = 0; i < ntsfiles; i++) {
+      timeseries_t *ts = &tsfiles[i];
+      timeseries_t *tsf = tsforce[i];
+      double t_g = t;
+      double t_f = t;
+
+      /* Continue if time is out of range                            */
+      tm_change_time_units(master->timeunit, ts->t_units, &t_g, 1);
+      if (!ts_has_time(ts, t_g)) continue;
+      tm_change_time_units(master->timeunit, tsf->t_units, &t_f, 1);
+      if (!ts_has_time(tsf, t_f)) continue;
+      if (dot[i] && t < fstart[i]) continue;
+      if (dot[i] && t > fstop[i]) continue;
+
+      varid = ts_get_index(&tsfiles[i], zname[i]);
+      z = ts_eval(&tsfiles[i], varid, t);
+      for (k = nz - 1; k >= 0; k--) {
+	if (params->layers[k] < z) break;
+      }
+      if (k < 0) continue;
+      varid = ts_get_index(&tsfiles[i], xname[i]);
+      x = ts_eval(&tsfiles[i], varid, t);
+      varid = ts_get_index(&tsfiles[i], yname[i]);
+      y = ts_eval(&tsfiles[i], varid, t);
+      varid = ts_get_index(&tsfiles[i], tsvars[i]);
+      fv = ts_eval(&tsfiles[i], varid, t_g);
+      val = ts_eval_xyz(tsforce[i], varids[i], t_f, x, y, z);
+      if (isnan(fv) || isnan(val)) continue;
+
+      /* Clip                                                        */
+      fv = min(max(tr->valid_range_wc[0], fv), tr->valid_range_wc[1]);
+      val = min(max(tr->valid_range_wc[0], val), tr->valid_range_wc[1]);
+
+      /* Use all glider data to make a 1D mean profile               */
+      if (intf == 0) {
+	if (vprof[k] == 0.0)
+	  vprof[k] = fv -  val;
+	else
+	  vprof[k] = 0.5 * (sc[k][dj] + (fv -  val));
+	continue;
+      }
+
+      /* Check for duplicates                                        */
+      dj = -1;
+      for (jj = 0; jj < points[k]; jj++) {
+	if (x == lon[k][jj] && y == lat[k][jj]) {
+	  dj = jj;
+	  break;
+	}
+      }
+
+      /* Save position and scaling for interpolation                 */
+      if (dj >= 0) {
+	j = dj;
+	sc[k][dj] = 0.5 * (sc[k][dj] + (fv -  val));
+	if (verbose) printf("file%d %f : %f %f %f (%d) : %f %f %f dup\n",i, t, x, y, z, k,
+			    fv,val,sc[k][dj]);
+
+      } else {
+	j = points[k];
+	lon[k][j] = x;
+	lat[k][j] = y;
+	sc[k][j] = fv -  val;
+	points[k] += 1;
+	if (verbose) printf("file%d %f : %f %f %f (%d) : %f %f %f\n",i, t, x, y, z, k,
+			    fv,val,sc[k][j]);
+      }
+
+      /* Nearest neighbour spatial interpolation                     */
+      if (intf == 1) {
+	if (xyztoindex_m_o(master, lon[k][j], lat[k][j], z,  &c, &cs, &cb) == 1)
+	  master->tr_wc[tm][c] = sc[k][j];
+      }
+    }
+    t += step;
+  }
+
+  /* Interpolate onto the scaling tracer                             */
+  if (intf == 0) {
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      k = geom->s2k[c];
+      master->tr_wc[tm][c] = vprof[k];
+    }
+  }
+  if (intf == 1) {
+    int *mask = i_alloc_1d(geom->sgsiz);
+    nck = i_alloc_1d(geom->nz);
+    ck = i_alloc_2d(geom->sgsizS, geom->nz);
+    memset(nck, 0, geom->nz * sizeof(int));
+    memset(mask, 0, geom->sgsiz * sizeof(int));
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      k = geom->s2k[c];
+      ck[k][nck[k]++] = c;
+      if ( master->tr_wc[tm][c] != NOTVALID) mask[c] = 1;
+    }
+
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      c2 = geom->m2d[c];
+      k = geom->s2k[c];
+      if (master->tr_wc[tm][c] == NOTVALID) {
+	x = geom->cellx[c2];
+	y = geom->celly[c2];
+	if (points[k]) {
+	  double dist, x1, y1;
+	  double dm = HUGE;
+	  for (i = 0; i < nck[k]; i++) {
+	    cs = ck[k][i];
+	    if (cs != c && mask[cs]) {
+	      x1 = geom->cellx[geom->m2d[cs]] - x;
+	      y1 = geom->celly[geom->m2d[cs]] - y;
+	      dist = sqrt(x1 * x1 + y1 * y1);
+	      if (dist < dm) {
+		master->tr_wc[tm][c] = master->tr_wc[tm][cs];
+		dm = dist;
+	      }
+	    }
+	  }
+	}
+      }
+    }
+    i_free_1d(nck);
+    i_free_2d(ck);
+    i_free_1d(mask);
+  }
+  if (intf == 2) {
+    gs = (GRID_SPECS **)calloc(nz+1, sizeof(GRID_SPECS *));
+    for (k = nz - 1; k >= 0; k--) {
+      gs[k] = NULL;
+      if (points[k] > 2)
+	gs[k] = grid_interp_init(lon[k], lat[k], sc[k], points[k], i_rule);
+    }
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      cs = geom->m2d[c];
+      master->tr_wc[tm][c] = NOTVALID;
+      
+      x = geom->cellx[cs];
+      y = geom->celly[cs];
+      k = geom->s2k[c];
+
+      if (gs[k])
+	master->tr_wc[tm][c] = grid_interp_on_point(gs[k], x, y);
+    }
+
+    for (k = nz - 1; k >= 0; k--) {
+      if (gs[k])
+	grid_specs_destroy(gs[k]);
+    }
+  }
+
+  /* Fill any not valid layers                                       */
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    double v1, v2;
+    int i1 = 0, i2 = 0;
+    val = 0.0;
+    c = cs = geom->w3_t[cc];
+    if (master->tr_wc[tm][c] == NOTVALID) {
+      while ((v1 = master->tr_wc[tm][c]) == NOTVALID)
+	c = geom->zp1[c];
+      if (c == geom->zp1[c] && master->tr_wc[tm][c] == NOTVALID) i1 = 1;
+      c = cs;
+      while ((v2 = master->tr_wc[tm][c]) == NOTVALID)
+	c = geom->zm1[c];
+      if (c == geom->zm1[c]) i2 = 1;
+      if (!i1) val += v1;
+      if (!i2) val += v2;
+      if (!i1 && !i2) val *= 0.5;
+      master->tr_wc[tm][cs] = val;
+    }
+  }
+
+  /*
+  for (i=0; i<nffiles; ++i)
+    hd_ts_free(master, tsforce[i]);
+  */
+  for (i = 0; i < ntsfiles; ++i) {
+    ts_free(&tsfiles[i]);
+    hd_ts_free(master, tsforce[i]);
+  }
+
+  d_free_2d(lon);
+  d_free_2d(lat);
+  d_free_2d(sc);
+
+}
+
+/* END glider_scaling()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Populates an array with values by region.                         */
 /*-------------------------------------------------------------------*/
 int value_init_regions(master_t *master, char *dname, double *tr, int mode)
@@ -6484,6 +6996,16 @@ void value_init_3d(master_t *master,     /* Master data              */
 
   if (!strlen(fname)) {
     hd_warn("value_init_3d: No 3D information provided to populate array %s; using defaults\n", vname);
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Check for regionalized formats                                  */
+  if (i_rule && strlen(i_rule))
+    sprintf(buf, "[var=%s] [i_rule=%s] %s", vname, i_rule, fname);
+  else
+    sprintf(buf, "[var=%s] %s\n", vname, fname);
+  if ((n = set_variable(master, buf, ret, NULL))) {
     return;
   }
 
@@ -7441,6 +7963,16 @@ void value_init_2d(master_t *master,     /* Master data              */
   }
 
   /*-----------------------------------------------------------------*/
+  /* Check for regionalized formats                                  */
+  if (i_rule && strlen(i_rule))
+    sprintf(buf, "[var=%s] [i_rule=%s] %s", vname, i_rule, fname);
+  else
+    sprintf(buf, "[var=%s] %s\n", vname, fname);
+  if ((n = set_variable(master, buf, ret, NULL))) {
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Check if it is a region file                                    */
   if (value_init_regions(master, fname, ret, 2))
     return;
@@ -7817,19 +8349,1184 @@ void trn_dataset(char *data, tracer_info_t *trinfo, int tn, int ntr, int atr, do
     trinfo[tn].fill_value_wc = def;            /* Default value */
     sprintf(trinfo[tn].data, "%c", '\0');
   }
+  return;
+}
+
+void trf_dataset(char *data, tracer_info_t *trinfo, int tn, int ntr, int atr, double **tr, double def)
+{
+  double val;
+  int n;
+
+  if (strlen(data)) {
+    trinfo[tn].flag = -1;
+    for (n = atr; n < ntr; n++) {              /* data is a tracer */
+      if (strcmp(data, trinfo[n].name) == 0) {
+	trinfo[tn].flag = n;
+	return;
+      }
+    }
+    if (sscanf(data, "%lf", &val) == 1) {      /* data is a value */
+      trinfo[tn].fill_value_wc = atof(data);
+      sprintf(trinfo[tn].data, "%c", '\0');
+    } else
+      strcpy(trinfo[tn].data, data);           /* data is a file */
+  } else {
+    trinfo[tn].fill_value_wc = def;            /* Default value */
+    sprintf(trinfo[tn].data, "%c", '\0');
+  }
+  return;
 }
 
 void tr_dataset(char *data, tracer_info_t *tr, double def)
 {
   double val;
   if (strlen(data)) {
-    if (sscanf(data, "%lf", &val) == 1)
+    if (sscanf(data, "%lf", &val) == 1) {
       tr->fill_value_wc = atof(data);
-    else
+      sprintf(tr->data, "%c", '\0');
+    } else
       strcpy(tr->data, data);
   } else {
     tr->fill_value_wc = def;
     sprintf(tr->data, "%c", '\0');
   }
 }
+
+/*-------------------------------------------------------------------*/
+/* Sets vales of a tracer. Usage:                                    */
+/* (var=temp) (i_rule=linear) (region=region.bnc) (0:data0) (1:val1) */
+/*-------------------------------------------------------------------*/
+int set_variable(master_t *master, char *tag, double *ret, double *tin)
+{
+  geometry_t *geom = master->geom;
+  FILE *fp = master->prmfd;
+  char sname[MAXSTRLEN];
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
+  char vname[MAXSTRLEN];
+  char rfile[MAXSTRLEN];
+  char dfile[MAXSTRLEN];
+  char i_rule[MAXSTRLEN];
+  char buf1[MAXSTRLEN], key1[MAXSTRLEN], iname[MAXSTRLEN];
+  char *files[MAXSTRLEN * MAXNUMARGS];
+  int n, m, nf, nr, rgn, cc, c, tn, mode;
+  int rf = 0;
+  int nv, *vec;
+  double *regionid, rgv;
+  double *tr;
+  double t, fill;
+
+  /* Read the variable specification                                 */
+  nf = parseline(tag, files, MAXNUMARGS);
+
+  /* Find the variable                                        */
+  sprintf(vname, "%c", '\0');
+  for (n = 0; n < nf; n++) {
+    strcpy(key1, "var=");
+    if (find_token(files[n], key1, buf, ']')) {
+      strcpy(vname, buf);
+      break;
+    }
+  }
+  if (strlen(vname) == 0) return(0);
+  if (ret != NULL)
+    tr = ret;
+  else
+    tr = NULL;
+  if ((tn = tracer_find_index(vname, master->ntr, master->trinfo_3d)) >= 0) {
+    mode = 3;
+    nv = geom->b3_t;
+    vec = geom->w3_t;
+    if (tr == NULL) tr = master->tr_wc[tn];
+  }
+  if ((tn = tracer_find_index(vname, master->ntrS, master->trinfo_2d)) >= 0) {
+    mode = 2;
+    nv = geom->b2_t;
+    vec = geom->w2_t;
+    if (tr == NULL) tr = master->tr_wcS[tn];
+  }
+  if (tr == NULL) return(0);
+
+
+  /* Get the interpolation rule                               */
+  sprintf(i_rule, "%c", '\0');
+  for (n = 0; n < nf; n++) {
+    if (find_token(files[n], "i_rule=", buf, ']')) {
+      strcpy(i_rule, buf);
+      break;
+    }
+  }
+
+  /* Check for data                                           */
+  for (n = 0; n < nf; n++) {
+    if (find_token(files[n], "data=", buf, ']')) {
+      strcpy(dfile, buf);
+      rf = 0;
+      sscanf(dfile, "%lf", &fill);
+      strcpy(iname, vname);
+      if (tin == NULL)  {
+	t = NOTVALID;
+	t = schedule->start_time;
+      } else {
+	t =  *tin;
+      }
+      decode_indata(buf, buf1, iname, &t);
+      /* Check for variable substitution                      
+      sprintf(buf1, "(%s%s)", key, buf);
+      sprintf(key1, "(%s=", vname);
+      if (find_token(buf1, key1, iname, ')')) {
+	find_token(buf1, key, buf, '(');
+      }*/
+      if (strlen(i_rule)) {
+	/*interp_data_us(master, buf1, iname, tr, mode, i_rule, NULL, t);*/
+	if (mode == 2)
+	  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, NULL);
+	if (mode == 3)
+	  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, NULL);
+      } else
+	interp_data_s(master, buf1, iname, tr, mode, NULL, t);
+      return(1);
+    }
+  }
+
+  /* Check for regionalization                                */
+  for (n = 0; n < nf; n++) {
+    if (find_token(files[n], "region=", buf, ']')) {
+      int nr, nn;
+      double *regionid = d_alloc_1d(geom->sgsiz);
+      int *mask = i_alloc_1d(geom->sgsiz);
+      double t;
+      strcpy(rfile, buf);
+      rf = 1;
+      nr = read_regioni(master, rfile, regionid);
+      /* Loop through regions                                 */
+      for (m = 0; m < nr; m++) {
+	sprintf(key,"%d:", m);
+	/* Find the specification for this region             */
+	for (nn = 0; nn < nf; nn++) {
+	  if (find_token(files[nn], key, buf, ']')) {
+	    /* Region value is a number                       */
+	    if (sscanf(buf, "%lf", &fill) == 1) {
+	      fill = atof(buf);
+	      for (cc = 1; cc <= nv; cc++) {
+		c = vec[cc];
+		if (m == (int)regionid[c])
+		  tr[c] = fill;
+	      }
+	      continue;
+	    } else {
+	      memset(mask, 0, geom->sgsiz * sizeof(int));
+	      for (cc = 1; cc <= nv; cc++) {
+		c = vec[cc];
+		if (m == (int)regionid[c]) mask[c] = 1;
+	      }
+	      strcpy(iname, vname);
+	      if (tin == NULL)
+		t = NOTVALID;
+	      else
+		t =  *tin;
+	      decode_indata(buf, buf1, iname, &t);
+	      /* Check for variable substitution              */
+	      /*
+	      sprintf(buf1, "(%s%s)", key, buf);
+	      sprintf(key1, "(%s=", vname);
+	      if (find_token(buf1, key1, iname, ')')) {
+		find_token(buf1, key, buf, '(');
+	      }
+	      */
+	      if (strlen(i_rule)) {
+		/*interp_data_us(master, buf1, iname, tr, mode, i_rule, mask, t);*/
+		if (mode == 2)
+		  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, mask);
+		if (mode == 3)
+		  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, mask);
+	      } else
+		interp_data_s(master, buf1, iname, tr, mode, mask, t);
+	      continue;
+	    }
+	  }
+	}
+      }
+      return(1);
+    }
+  }
+  return(0);
+}
+
+/* END set_variable()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Valid bathymetry netCDF dimension names                           */
+static char *in_dims[5][8] = {
+  {"botz", "i_centre", "j_centre", "k_centre", "x_centre", "y_centre", "z_centre", "t"},
+  {"height", "longitude", "latitude", "zc", "lon", "lat", "zc", "time"},
+  {"height", "ni", "nj", "nk", "x", "y", "z", "t"},
+  {"height", "xt_ocean", "yt_ocean", "zt_ocean", "xt_ocean", "yt_ocean", "zt_ocean", "Time"},
+  {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
+};
+
+
+/*-------------------------------------------------------------------*/
+/* Interpolates bathymetry using bilinear methods via timeseries     */
+/* libraries.                                                        */
+/*-------------------------------------------------------------------*/
+void interp_data_s(master_t *master,  /* Master data                 */
+		   char *fname,       /* File name containing data   */
+		   char *vname,       /* Variable name               */
+		   double *ret,       /* Variable to interpolate     */
+		   int mode,          /* 2D or 3D                    */
+		   int *mask,         /* Mask for vec (optional)     */
+		   double t           /* Time for temporal data      */
+		   )
+{
+  char buf[MAXSTRLEN];
+  int n, m, i, j, cc, c, cs;
+  int nvec;          /* Size of vec                 */ 
+  int *vec;          /* Indices to interpolate onto */
+  int intype = -1;
+  int fid;
+  int ncerr;
+  int idb;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  timeseries_t *ts = NULL;
+  int bverbose = 0;
+  double tin = (t == NOTVALID) ? 0.0 : t;
+  poly_t *pl;
+
+  if (mode == 3) {
+    nvec = geom->b3_t;
+    vec = geom->w3_t;
+  }
+  if (mode == 2) {
+    nvec = geom->b2_t;
+    vec = geom->w2_t;
+  }
+  /* Open the file and get dimensions                                */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    printf("Can't find input file %s\n", fname);
+    hd_quit((char *)nc_strerror(ncerr));
+  }
+  if (ncw_var_id(fid, vname) < 0)
+    hd_quit("Can't find variable %s in file %s\n", vname, fname);
+  i = 0;
+  while (in_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][1]), &nce1) == 0) {
+      intype = i;
+      break;
+    }
+    i++;
+  }
+  if (intype < 0)      
+    hd_quit("interp_data_s: Can't find attributes in file %s for variable %s.\n", fname, vname);
+
+  /* Initialize the timeseries file                                  */
+  ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+  if (ts == NULL)
+    hd_quit("interp_data_s: No memory available.\n");
+  memset(ts, 0, sizeof(timeseries_t));
+    
+  /* Read the time series                                            */
+  ts_read(fname, ts);
+  if ((idb = ts_get_index(ts, fv_get_varname(fname, vname, buf))) == -1)
+    hd_quit("interp_data_s: Can't find variable %s in file %s\n", vname, fname);
+
+  /* Get a polgon of the perimeter of the bathy file                 */
+  pl = nc2poly(fid, nce1, nce2, in_dims[intype][4], in_dims[intype][5], fname, ts);
+
+  /* Read the values                                                 */
+  for (cc = 1; cc <= nvec; cc++) {
+    c = vec[cc];
+    cs = geom->m2d[c];
+    if (mask != NULL && !mask[c]) continue;
+    /* Note: ts_eval_xy() for bathymetry files (idb = 'botz'     */
+    /* or 'height') will return NaN if the xytoij() mapping does */
+    /* not return valid indices (i.e. (x,y) lies outside the     */
+    /* (i,j) bounds of the file).                                */
+    /* This seems not entirely reliable though, so we use a      */
+    /* bounding polygon for the perimeter.                       */
+    /* Check if the location lies within the file's bounding     */
+    /* perimeter.                                                */
+    /*if (!poly_contains_point(pl, geom->cellx[cs], geom->celly[cs])) continue;*/
+    if (mode == 2)
+      ret[c] = ts_eval_xy(ts, idb, tin, geom->cellx[cs], geom->celly[cs]);
+    if (mode == 3)
+      ret[c] = ts_eval_xyz(ts, idb, tin, geom->cellx[cs], geom->celly[cs], geom->cellz[c]);
+  }
+  ts_free((timeseries_t*)ts);
+  free(ts);
+  poly_destroy(pl);
+}
+
+/* END interp_data_s()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Creates a polygon of ther perimeter of data within a netCDF file  */
+/*-------------------------------------------------------------------*/
+poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts)
+{ 
+  int i, j;                                     /* Cartesian couters */
+  size_t start[4];
+  size_t count[4];
+  double **lon, **lat;
+  poly_t *pl;
+  int n;
+  df_variable_t *vlon, *vlat;
+  pl = poly_create();
+  datafile_t *df = ts->df;
+
+  /* Get variables                                                   */
+  if ((vlon = df_get_variable_by_name(df, xname)) == NULL)
+    hd_quit("nc2poly: Can't find variable %s in file %s\n", xname, bname);
+  if ((vlat = df_get_variable_by_name(df, yname)) == NULL)
+    hd_quit("nc2poly: Can't find variable %s in file %s\n", yname, bname);
+
+  /* Allocate                                                        */
+  lon = d_alloc_2d(nce1, nce2);
+  lat = d_alloc_2d(nce1, nce2);
+
+  /* Read in the coordinate information                              */
+  if (vlon->nd == 1) {
+    double *x = d_alloc_1d(nce1);
+    start[0] = 0;
+    count[0] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, xname), start, count, x);
+    for (j = 0; j < nce2; j++)
+      for (i = 0; i < nce1; i++)
+	lon[j][i] = x[i];
+    d_free_1d(x);
+  } else if (vlon->nd == 2) {
+    start[0] = 0;
+    start[1] = 0;
+    count[0] = nce2;
+    count[0] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, xname), start, count, lon[0]);
+  }
+  if (vlat->nd == 1) {
+    double *y = d_alloc_1d(nce2);
+    start[0] = 0;
+    count[0] = nce2;
+    nc_get_vara_double(fid, ncw_var_id(fid, yname), start, count, y);
+    for (j = 0; j < nce2; j++)
+      for (i = 0; i < nce1; i++)
+	lat[j][i] = y[j];
+    d_free_1d(y);
+  } else if (vlon->nd == 2) {
+    start[0] = 0;
+    start[1] = 0;
+    count[0] = nce2;
+    count[0] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, xname), start, count, lat[0]);
+  }
+
+  /* Create the polygon from the perimeter                           */
+  i = 0;
+  for (j = 0; j < nce2; j++) {
+    poly_add_point(pl, lon[j][0], lat[j][0]);
+    poly_add_point(pl, lon[j][nce1-1], lat[j][nce1-1]);
+  }
+  for (i = 0; i < nce1; i++) {
+    poly_add_point(pl, lon[0][i], lat[0][i]);
+    poly_add_point(pl, lon[nce2-1][i], lat[nce2-1][i]);
+  }
+  poly_add_point(pl, lon[0][0], lat[0][0]);
+  d_free_2d(lon);
+  d_free_2d(lat);
+  return(pl);
+}
+
+/* END nc2poly()                                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Checks if a set_variable() specification is set.                  */
+/*-------------------------------------------------------------------*/
+int is_set_variable(char *fnames)
+{
+  char buf[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int nf = parseline(fnames, fields, MAXNUMARGS);
+  int n;
+
+  for (n = 0; n < nf; n++) {
+    if (find_token(fields[n], "data=", buf, ']'))
+      return(1);
+    if (find_token(fields[n], "region=", buf, ']'))
+      return(1);
+  }
+  return(0);
+}
+
+/* END is_set_variable()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Decodes a string for tracer data interpolation                    */
+/*-------------------------------------------------------------------*/
+void decode_indata(char *in, char *fname, char *iname, double *t)
+{
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
+  char inbuf[MAXSTRLEN], infile[MAXSTRLEN];
+  int found = 0;
+
+  sprintf(infile, "[%s]", in);
+
+  /* Get the data name                                               */
+  sprintf(inbuf, "[%s]", in);
+  sprintf(key, "[");
+  find_token(inbuf, key, fname, ']');
+
+  /* Check for variable substitution              */
+  strcpy(inbuf, in);
+  sprintf(key, "(%s=", iname);
+  if (find_token(inbuf, key, buf, ')')) {
+    strcpy(iname, buf);
+    sprintf(key, "[");
+    find_token(infile, key, fname, '(');
+    found = 1;
+  }
+
+  /* Check for a time input                                          */
+  strcpy(inbuf, in);
+  sprintf(key, "(t=");
+  if (find_token(inbuf, key, buf, ')')) {
+    if (!found) {
+      sprintf(key, "[");
+      find_token(infile, key, fname, '(');
+    }
+    tm_scale_to_secs(buf, t);
+  }
+}
+
+/* END decode_indata()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Reads structured 2D tracer values from a netCDF file, packs into  */
+/* a vector and interpolates onto an unstructured mesh.              */
+/*-------------------------------------------------------------------*/
+int value_init_sparse2d(master_t *master, /* Master data             */
+			double *ret,      /* 2D array                */
+			char *fname,      /* File name               */
+			char *vname,      /* Variable name           */
+			char *in_rule,    /* Interpolation type      */
+			double t,         /* Time for temporal data  */
+			int *rask         /* Mask for vec (optional) */
+			)
+{
+  geometry_t *geom = master->geom;
+  char i_rule[MAXSTRLEN];
+  char buf[MAXSTRLEN];
+  GRID_SPECS *gs = NULL;
+  int nvar;
+  double *x, *y, *v, **botz, **cellx, **celly, *celx, *cely, **var;
+  double vmean, mv;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  int ti;
+  int n, i, j, c, cc;
+  int bverbose = 0;
+  int intype = -1;    /* 0 = EMS, > 0 = OFAM                         */
+  int intime = 0;
+  int baf = 1;
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation method. Options:                                  */
+  /* linear, cubic, nn_sibson, nn_non_sibson, average                */
+  if (strlen(in_rule) == 0) return(1);
+  if (in_rule == NULL) {
+    strcpy(i_rule, "nn_non_sibson");
+  } else
+    strcpy(i_rule, in_rule);
+
+  /* Open the dump file for reading                                  */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    hd_warn("value_init_sparse_2d: Can't find input file %s\n", fname);
+    return(1);
+  }
+
+  /* Get dimensions                                                  */
+  i = 0;
+  while (in_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][1]), &nce1) == 0) {
+      intype = i;
+      if (strcmp(in_dims[i][7], "time") == 0) intime = 1;
+      break;
+    }
+    i++;
+  }
+
+  if (intype < 0) {
+    hd_warn("value_init_sparse2d: Can't find %s attributes in file %s. Using gridded interpolation.\n", vname, fname);
+    return(1);
+  }
+  if (ncw_var_id(fid, in_dims[intype][0]) < 0)
+    baf = 0;
+
+  /* Get the time index                                              */
+  if (t != NOTVALID) {
+    /*ti = dump_choose_by_time_m(master, fid, t);*/
+    ti = dump_choose_by_time_ts(master, fname, t);
+    if (ti == -1) return(1);
+  }
+
+  varid = ncw_var_id(fid, in_dims[intype][4]);
+  nc_inq_varndims(fid, varid, &lond);
+  varid = ncw_var_id(fid, in_dims[intype][5]);
+  nc_inq_varndims(fid, varid, &latd);
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation from unstructured input using a triangulation.    */
+  /* The input bathymetry is structured, but is triangulated then    */
+  /* interpolated using i_rule.                                      */
+  /* Allocate and read.                                              */
+  if (lond == 1)
+    celx = d_alloc_1d(nce1);
+  else if (lond == 2)
+    cellx = d_alloc_2d(nce1, nce2);
+  if (latd == 1)
+    cely = d_alloc_1d(nce2);
+  else if (latd == 2)
+    celly = d_alloc_2d(nce1, nce2);
+  botz = d_alloc_2d(nce1, nce2);
+  var = d_alloc_2d(nce1, nce2);
+
+  start[0] = 0L;
+  start[1] = 0L;
+  start[2] = 0L;
+  start[3] = 0L;
+  count[0] = nce2;
+  count[1] = nce1;
+  count[2] = 0;
+  count[3] = 0;
+  if (lond == 1) {
+    count[0] = nce1;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][4]), start, count, celx);
+  } else if (lond == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][4]), start, count, cellx[0]);
+  }
+  if (latd == 1) {
+    count[0] = nce2;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][5]), start, count, cely);
+  } else if (latd == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][5]), start, count, celly[0]);
+  }
+  count[0] = nce2;
+  count[1] = nce1;
+  if (baf)
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][0]), start, count, botz[0]);
+  if (t != NOTVALID) {
+    start[0] = ti;
+    start[1] = 0L;
+    start[2] = 0L;
+    start[3] = 0L;
+    count[0] = 1L;
+    count[1] = nce2;
+    count[2] = nce1;
+    count[3] = 0;
+
+  }
+  nc_get_vara_double(fid, ncw_var_id(fid, vname), start, count, var[0]);
+
+  /*-----------------------------------------------------------------*/
+  /* Set the wet tracer vector (to interpolate from)                 */
+  nvar = n = 0;
+  c = nc_get_att_double(fid, ncw_var_id(fid, vname), "missing_value", &mv);
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (c >= 0 && var[j][i] == mv) continue;
+      if (isnan(var[j][i])) continue;
+      if (baf && isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (baf && (botz[j][i] == LANDCELL || fabs(botz[j][i]) == fabs(NOTVALID))) continue;
+      nvar++;
+    }
+  }
+  if (nvar) {
+    x = d_alloc_1d(nvar);
+    y = d_alloc_1d(nvar);
+    v = d_alloc_1d(nvar);
+  } else
+    hd_quit("value_init_sparse2d: Can't find valid %s values in file %s.\n", vname, fname);
+
+  vmean = 0.0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (c >= 0 && var[j][i] == mv) continue;
+      if (isnan(var[j][i])) continue;
+      if (baf && isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (baf && (botz[j][i] == LANDCELL || fabs(botz[j][i]) == fabs(NOTVALID))) continue;
+      if (lond == 1)
+	x[n] = celx[i];
+      else if (lond == 2)
+	x[n] = cellx[j][i];
+      if (latd == 1)
+	y[n] = cely[j]; 
+      else if (latd == 2)
+	y[n] = celly[j][i]; 
+      v[n] = var[j][i];
+      vmean += v[n];
+      n++;
+    }
+  }
+
+  if (n) vmean /= (double)n;
+  if (lond == 1)
+    d_free_1d(celx);
+  else if (lond == 2)
+    d_free_2d(cellx);
+  if (latd == 1)
+    d_free_1d(cely);
+  else if (latd == 2)
+    d_free_2d(celly);
+  d_free_2d(botz);
+  d_free_2d(var);
+  nc_close(fid);
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolate the tracer value                                    */
+  gs = grid_interp_init(x, y, v, nvar, i_rule);
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    if (rask != NULL && !rask[c]) continue;
+    ret[c] = grid_interp_on_point(gs, geom->cellx[c], geom->celly[c]);
+    /*printf("%d %f : %f %f\n",c, ret[c], geom->cellx[c], geom->celly[c]);*/
+    if (isnan(ret[c])) ret[c] = vmean;
+    if (bverbose) printf("%d %f : %f %f\n",c, ret[c], geom->cellx[c], geom->celly[c]);
+  }
+
+  grid_specs_destroy(gs);
+  hd_warn("2D Variable %s interpolated from file %s using %s.\n", vname, fname, i_rule);
+  d_free_1d(x);
+  d_free_1d(y);
+  d_free_1d(v);
+  return(0);
+}
+
+/* END value_init_sparse2d()                                         */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Reads structured 3D tracer values from a netCDF file, packs into  */
+/* a vector and interpolates onto an unstructured mesh.              */
+/*-------------------------------------------------------------------*/
+int value_init_sparse3d(master_t *master, /* Master data             */
+			double *ret,      /* 3D array                */
+			char *fname,      /* File name               */
+			char *vname,      /* Variable name           */
+			char *in_rule,    /* Interpolation type      */
+			double t,         /* Time for temporal data  */
+			int *rask         /* Mask for vec (optional) */
+			)
+{
+  geometry_t *geom = master->geom;
+  char i_rule[MAXSTRLEN];
+  GRID_SPECS *gs = NULL;
+  int nvar;
+  double *x, *y, *v, **botz, **cellx, **celly, *celx, *cely;
+  double ***var, **var2, *layers;
+  int **mask;
+  double *vmean, mv;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  size_t nz;
+  int ti;
+  int n, i, j, k, c, cs, cc;
+  int bverbose = 0;
+  int intype = -1;    /* 0 = EMS, > 0 = OFAM                         */
+  int intime = 0;
+  int baf = 1;
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation method. Options:                                  */
+  /* linear, cubic, nn_sibson, nn_non_sibson, average                */
+  if (strlen(in_rule) == 0) return(1);
+  if (in_rule == NULL) {
+    strcpy(i_rule, "nn_non_sibson");
+  } else
+    strcpy(i_rule, in_rule);
+
+  /* Open the dump file for reading                                  */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    hd_warn("value_init_sparse3d: Can't find input file %s\n", fname);
+    return(1);
+  }
+
+  /* Get dimensions                                                  */
+  i = 0;
+  while (in_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][1]), &nce1) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, in_dims[i][3]), &nz) == 0
+	) {
+      intype = i;
+      if (strcmp(in_dims[i][7], "time") == 0) intime = 1;
+      break;
+    }
+    i++;
+  }
+  if (intype < 0) {
+    hd_warn("value_init_sparse3d: Can't find %s attributes in file %s. Using gridded interpolation.\n", vname, fname);
+    return(1);
+  }
+  if (ncw_var_id(fid, in_dims[intype][0]) < 0)
+    baf = 0;
+
+  /* Get the time index                                              */
+  if (t != NOTVALID) {
+    if (intime == 0)
+      ti = dump_choose_by_time_m(master, fid, t);
+    else
+      ti = dump_choose_by_time_mom(master, fid, t);
+    if (ti == -1) return(1);
+  }
+
+  varid = ncw_var_id(fid, in_dims[intype][4]);
+  nc_inq_varndims(fid, varid, &lond);
+  varid = ncw_var_id(fid, in_dims[intype][5]);
+  nc_inq_varndims(fid, varid, &latd);
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation from unstructured input using a triangulation.    */
+  /* The input bathymetry is structured, but is triangulated then    */
+  /* interpolated using i_rule.                                      */
+  /* Allocate and read.                                              */
+  if (lond == 1)
+    celx = d_alloc_1d(nce1);
+  else if (lond == 2)
+    cellx = d_alloc_2d(nce1, nce2);
+  if (latd == 1)
+    cely = d_alloc_1d(nce2);
+  else if (latd == 2)
+    celly = d_alloc_2d(nce1, nce2);
+  layers = d_alloc_1d(nz);
+  botz = d_alloc_2d(nce1, nce2);
+  mask = i_alloc_2d(nce1, nce2);
+  var = d_alloc_3d(nce1, nce2, nz);
+  start[0] = 0L;
+  start[1] = 0L;
+  start[2] = 0L;
+  start[3] = 0L;
+  count[0] = nz;
+  count[1] = 0;
+  count[2] = 0;
+  count[3] = 0;
+  nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][6]), start, count, layers);
+  count[0] = nce2;
+  count[1] = nce1;
+  if (lond == 1) {
+    count[0] = nce1;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][4]), start, count, celx);
+  } else if (lond == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][4]), start, count, cellx[0]);
+  }
+  if (latd == 1) {
+    count[0] = nce2;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][5]), start, count, cely);
+  } else if (latd == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][5]), start, count, celly[0]);
+  }
+  count[0] = nce2;
+  count[1] = nce1;
+  if (baf)
+    nc_get_vara_double(fid, ncw_var_id(fid, in_dims[intype][0]), start, count, botz[0]);
+  if (t != NOTVALID) {
+    start[0] = ti;
+    start[1] = 0L;
+    start[2] = 0L;
+    start[3] = 0L;
+    count[0] = 1L;
+    count[1] = nz;
+    count[2] = nce2;
+    count[3] = nce1;
+  }
+  nc_get_vara_double(fid, ncw_var_id(fid, vname), start, count, var[0][0]);
+
+  /*-----------------------------------------------------------------*/
+  /* Set the wet tracer vector (to interpolate from)                 */
+  nvar = n = 0;
+  c = nc_get_att_double(fid, ncw_var_id(fid, vname), "missing_value", &mv);
+  for (k = 0; k < nz; k++) {
+    for (j = 0; j < nce2; j++) {
+      for (i = 0; i < nce1; i++) {
+	if (c >= 0 && var[nz-1][j][i] == mv) continue;
+	if (isnan(var[nz-1][j][i])) continue;
+	if (baf && isnan(botz[j][i])) continue;
+	if (lond == 1 && isnan(celx[i])) continue;
+	if (lond == 2 && isnan(cellx[j][i])) continue;
+	if (latd == 1 && isnan(cely[j])) continue;
+	if (latd == 2 && isnan(celly[j][i])) continue;
+	if (baf && (botz[j][i] == LANDCELL || fabs(botz[j][i]) == fabs(NOTVALID))) continue;
+	nvar++;
+      }
+    }
+  }
+
+  if (nvar) {
+    x = d_alloc_1d(nvar);
+    y = d_alloc_1d(nvar);
+    v = d_alloc_1d(nvar);
+  } else
+    hd_quit("value_init_sparse2d: Can't find valid %s values in file %s.\n", vname, fname);
+
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      mask[j][i] = -1;
+      if (var[nz-1][j][i] == mv) continue;
+      if (isnan(var[nz-1][j][i])) continue;
+      if (baf && isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (baf && (botz[j][i] == LANDCELL || fabs(botz[j][i]) == fabs(NOTVALID))) continue;
+      if (lond == 1)
+	x[n] = celx[i];
+      else if (lond == 2)
+	x[n] = cellx[j][i];
+      if (latd == 1)
+	y[n] = cely[j]; 
+      else if (latd == 2)
+	y[n] = celly[j][i]; 
+      n++;
+      mask[j][i] = 0;
+      if (baf) {
+	for (k = nz-1; k >= 0; k--) {
+	  if (layers[k] > botz[j][i])
+	    mask[j][i] = k;
+	}
+      }
+    }
+  }
+  if (lond == 1)
+    d_free_1d(celx);
+  else if (lond == 2)
+    d_free_2d(cellx);
+  if (latd == 1)
+    d_free_1d(cely);
+  else if (latd == 2)
+    d_free_2d(celly);
+  d_free_2d(botz);
+  nc_close(fid);
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolate the tracer value                                    */
+  var2 = d_alloc_2d(geom->sgsizS, nz);
+  vmean = d_alloc_1d(nz);
+  for (k = 0; k < nz; k++) {
+    n = 0;
+    vmean[k] = 0.0;
+    for (j = 0; j < nce2; j++) {
+      for (i = 0; i < nce1; i++) {
+	if (mask[j][i] >= 0) {
+	  v[n] = var[k][j][i];
+	  /* Set a no-gradient below the bottom                     */
+	  if (k < mask[j][i]) v[n] = var[mask[j][i]][j][i];
+	  /* Get the mean                                           */
+	  vmean[k] += v[n];
+	  n++;
+	}
+      }
+    }
+    /* Interpolate horizontally                                    */
+    if (n) vmean[k] /= (double)n;
+    gs = grid_interp_init(x, y, v, nvar, i_rule);
+    for (cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->w2_t[cc];
+      var2[k][c] = grid_interp_on_point(gs, geom->cellx[c], geom->celly[c]);
+      if (isnan(var2[k][c])) var2[k][c] = vmean[k];
+      if (bverbose) printf("%d %d %f : %f %f : %f\n",c, k, var2[k][c], geom->cellx[c], geom->celly[c], vmean[k]);
+    }
+    grid_specs_destroy(gs);
+  }
+  /* Interpolate vertically                                          */
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    c = geom->w3_t[cc];
+    cs = geom->m2d[c];
+    if (rask != NULL && !rask[cs]) continue;
+    if (geom->cellz[c] >= layers[nz-1]) 
+      ret[c] = var2[nz-1][cs];
+    else if (geom->cellz[c] <= layers[0]) 
+      ret[c] = var2[0][cs];
+    else {
+      k = nz-1;
+      while(layers[k] > geom->cellz[c])
+	k--;
+      ret[c] = (var2[k][cs] - var2[k+1][cs]) * (geom->cellz[c] - layers[k]) /
+	(layers[k] - layers[k+1]) + var2[k][cs];
+    }
+  }
+
+  d_free_3d(var);
+  d_free_2d(var2);
+  d_free_1d(v);
+  d_free_1d(vmean);
+  i_free_2d(mask);
+  nc_close(fid);
+  hd_warn("3D Variable %s interpolated from file %s using %s.\n", vname, fname, i_rule);
+  return(0);
+}
+
+/* END value_init_sparse3d()                                         */
+/*-------------------------------------------------------------------*/
+
+
+static char *ifile_dims[4][6] = {
+  {"botz", "i_centre", "j_centre", "x_centre", "y_centre", "standard"},
+  {"height", "lon", "lat", "lon", "lat", "nc_bathy"},
+  {"height", "nlon", "nlat", "lon", "lat", "nc_bathy"},
+  {NULL, NULL, NULL, NULL, NULL, NULL}
+};
+
+
+/*-------------------------------------------------------------------*/
+/* Interpolates data for variable vname in file fname onto the       */
+/* locations in vec[] and put the result in ret[]. Interpolation is  */
+/* done using i_rule.                                                */
+/*-------------------------------------------------------------------*/
+void interp_data_us(master_t *master, /* Master data                 */
+		    char *fname,      /* File name containing data   */
+		    char *vname,      /* Variable name               */
+		    double *ret,      /* Variable to interpolate     */
+		    int mode,         /* 2D or 3D                    */
+		    char *i_rule,     /* Interpolation rule          */
+		    int *mask,        /* Mask for vec (optional)     */
+		    double t          /* Time for temporal data      */
+		    )
+{
+  geometry_t *geom = master->geom;
+  int n, m, i, j, cc, c, cs;
+  int nvec;          /* Size of vec                 */ 
+  int *vec;          /* Indices to interpolate onto */
+  int intype = -1;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  int nbath;
+  int timeindex;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  double *x, *y, *b, **var, **botz, **cellx, **celly, *celx, *cely;
+  double bmean;
+  GRID_SPECS *gs = NULL;
+  int bverbose = 0;
+  int baf = 1;
+
+  if (mode == 3) {
+    nvec = geom->b3_t;
+    vec = geom->w3_t;
+  }
+  if (mode == 2) {
+    nvec = geom->b2_t;
+    vec = geom->w2_t;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Open the file and get dimensions                              */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    printf("Can't find input file %s\n", fname);
+    hd_quit((char *)nc_strerror(ncerr));
+  }
+  if (ncw_var_id(fid, vname) < 0)
+    hd_quit("Can't find variable %s in file %s\n", vname, fname);
+
+  /* Get dimensions                                                  */
+  i = 0;
+  while (ifile_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, ifile_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, ifile_dims[i][1]), &nce1) == 0) {
+      intype = i;
+      break;
+    }
+    i++;
+  }
+  if (intype < 0)      
+    hd_quit("interp_data: Can't find attributes in file %s for variable %s.\n", fname, vname);
+  if (ncw_var_id(fid, ifile_dims[intype][0]) < 0)
+    baf = 0;
+  /*
+    hd_quit("Can't find bathymetry variable %s in file %s\n", ifile_dims[intype][0], fname);
+  */
+  varid = ncw_var_id(fid, ifile_dims[intype][3]);
+  nc_inq_varndims(fid, varid, &lond);
+  varid = ncw_var_id(fid, ifile_dims[intype][4]);
+  nc_inq_varndims(fid, varid, &latd);
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation from unstructured input using a triangulation.    */
+  /* The input bathymetry is structured, but is triangulated then    */
+  /* interpolated using i_rule.                                      */
+  /* Allocate and read.                                              */
+  if (lond == 1)
+    celx = d_alloc_1d(nce1);
+  else if (lond == 2)
+    cellx = d_alloc_2d(nce1, nce2);
+  if (latd == 1)
+    cely = d_alloc_1d(nce2);
+  else if (latd == 2)
+    celly = d_alloc_2d(nce1, nce2);
+  var = d_alloc_2d(nce1, nce2);
+  botz = d_alloc_2d(nce1, nce2);
+  start[0] = 0L;
+  start[1] = 0L;
+  start[2] = 0L;
+  start[3] = 0L;
+  count[0] = nce2;
+  count[1] = nce1;
+  count[2] = 0;
+  count[3] = 0;
+  if (lond == 1) {
+    count[0] = nce1;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, ifile_dims[intype][3]), start, count, celx);
+  } else if (lond == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, ifile_dims[intype][3]), start, count, cellx[0]);
+  }
+  if (latd == 1) {
+    count[0] = nce2;
+    count[1] = 0;
+    nc_get_vara_double(fid, ncw_var_id(fid, ifile_dims[intype][4]), start, count, cely);
+  } else if (latd == 2) {
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, ifile_dims[intype][4]), start, count, celly[0]);
+  }
+  count[0] = nce2;
+  count[1] = nce1;
+  if (baf)
+    nc_get_vara_double(fid, ncw_var_id(fid, ifile_dims[intype][0]), start, count, botz[0]);
+  if (t != NOTVALID) {
+    timeindex = dump_choose_by_time_s(fid, t);
+    start[0] = timeindex;
+    start[1] = 0L;
+    start[2] = 0L;
+    start[3] = 0L;
+    count[0] = 1L;
+    count[1] = nce2;
+    count[2] = nce1;
+    count[3] = 0;
+
+  }
+  nc_get_vara_double(fid, ncw_var_id(fid, vname), start, count, var[0]);
+  nc_close(fid);
+
+  /*-----------------------------------------------------------------*/
+  /* Set the wet bathymetry vector (to interpolate from)             */
+  nbath = n = 0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (baf && isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (baf && (botz[j][i] == LANDCELL || fabs(botz[j][i]) == fabs(NOTVALID))) continue;
+      nbath++;
+    }
+  }
+
+  x = d_alloc_1d(nbath);
+  y = d_alloc_1d(nbath);
+  b = d_alloc_1d(nbath);
+  bmean = 0.0;
+  for (j = 0; j < nce2; j++) {
+    for (i = 0; i < nce1; i++) {
+      if (baf && isnan(botz[j][i])) continue;
+      if (lond == 1 && isnan(celx[i])) continue;
+      if (lond == 2 && isnan(cellx[j][i])) continue;
+      if (latd == 1 && isnan(cely[j])) continue;
+      if (latd == 2 && isnan(celly[j][i])) continue;
+      if (baf && (botz[j][i] == LANDCELL || fabs(botz[j][i]) == fabs(NOTVALID))) continue;
+      if (lond == 1)
+	x[n] = celx[i];
+      else if (lond == 2)
+	x[n] = cellx[j][i];
+      if (latd == 1)
+	y[n] = cely[j]; 
+      else if (latd == 2)
+	y[n] = celly[j][i]; 
+      b[n] = var[j][i];
+      bmean += b[n];
+      n++;
+    }
+  }
+  if (n) bmean /= (double)n;
+  if (lond == 1)
+    d_free_1d(celx);
+  else if (lond == 2)
+    d_free_2d(cellx);
+  if (latd == 1)
+    d_free_1d(cely);
+  else if (latd == 2)
+    d_free_2d(celly);
+  d_free_2d(botz);
+  d_free_2d(var);
+
+  /* Interpolate from a triangulation                                */
+  gs = grid_interp_init(x, y, b, nbath, i_rule);
+  
+  /* Interpolate                                                     */
+  for (cc = 1; cc <= nvec; cc++) {
+    c = vec[cc];
+    cs = geom->m2d[c];
+    if (mask != NULL && !mask[c]) continue;
+    ret[c] = grid_interp_on_point(gs, geom->cellx[cs], geom->celly[cs]);
+    if (isnan(ret[c])) ret[c] = bmean;
+    if (bverbose) printf("%d %f : %f %f\n",c, ret[c], geom->cellx[cs], geom->celly[cs]);
+  }
+  grid_specs_destroy(gs);
+  d_free_1d(x);
+  d_free_1d(y);
+  d_free_1d(b);
+}
+
+/* END interp_data_us()                                              */
+/*-------------------------------------------------------------------*/
 

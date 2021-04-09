@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 6360 2019-10-10 02:30:22Z her127 $
+ *  $Id: monitor.c 6709 2021-03-29 00:53:28Z her127 $
  *
  */
 
@@ -2945,6 +2945,9 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
   if (windat->sound)
     sound_channel(window, windat, wincon);
 
+  if (windat->density) {
+    memcpy(windat->density, windat->dens_0, window->sgsiz * sizeof(double));
+  }
 }
 
 /* END diag_numbers()                                                */
@@ -3943,20 +3946,22 @@ void reset_means(geometry_t *window,  /* Window geometry             */
 	}
       }
     }
+
     if (windat->tram) {
       int vs = (wincon->means & MTRA3D) ? window->b3_t : window->b2_t;
       int *vec = (wincon->means & MTRA3D) ? window->w3_t : window->w2_t;
+      double **tr = (wincon->means & MTRA3D) ? windat->tr_wc : windat->tr_wcS;
       if (wincon->means & MMM) {
 	for (cc = 1; cc <= vs; cc++) {
 	  c = vec[cc];
-	  windat->tram[c] = max(windat->tram[c], windat->tr_wc[wincon->means_tra][c]);
+	  windat->tram[c] = max(windat->tram[c], tr[wincon->means_tra][c]);
 	}
       } else {
 	for (cc = 1; cc <= vs; cc++) {
 	  c = vec[cc];
 	  cs = window->m2d[c];
 	  windat->tram[c] = (windat->tram[c] * windat->meanc[cs] + 
-			      windat->tr_wc[wincon->means_tra][c] * ns) / 
+			      tr[wincon->means_tra][c] * ns) / 
 	    (windat->meanc[cs] + ns);
 	}
       }
@@ -4913,7 +4918,8 @@ void calc_perc(FILE *fp)
   int ntsfiles;
   int nvars = 0;
   int outfid;
-  int i, j, k, kk, c, v, n, m, mm;
+  int i, j, ii, jj, k, kk, c, v, n, m, mm;
+  int jend, jjend;
   int vids[Ns];
   int ndims;
   int *sdump;
@@ -4930,7 +4936,7 @@ void calc_perc(FILE *fp)
   int ad;
   int inc;
   int *s2i, *s2j, *s2k, ***map;
-  double *data, results[Ns];
+  double *data, **indata, results[Ns];
   double stime, etime;
   double rfrac;
   double **botz, *bots;
@@ -4941,6 +4947,7 @@ void calc_perc(FILE *fp)
   long t;
   struct timeval tm1;
   int *layers, nl;
+  int verbose = 0;
 
   params = params_alloc();
   master = master_alloc();
@@ -5113,6 +5120,7 @@ void calc_perc(FILE *fp)
 	  if (edump[m] > 1) d2 = df->records[1];
 	  dtf = d2 - d1;
 	  inc = (dtf && dt > dtf) ? (int)(dt / dtf) : 1;
+	  if (verbose) hd_warn("Input file sampling increment = %d\n", inc);
 	} else
 	  hd_quit("Can't open 'multi-netcdf file%d %s\n",m, f->filename);
       }
@@ -5122,9 +5130,584 @@ void calc_perc(FILE *fp)
       df_find_record(df, etime, &edump[n], &r1, &rfrac);
       ndumps = df->nrecords;
       if (edump[n] >= ndumps)
-				edump[n] = ndumps-1;
+	edump[n] = ndumps-1;
       if (sdump[n] < 0)
-				sdump[n] = 0;  
+	sdump[n] = 0;  
+      dsize += edump[n]-sdump[n]+1;
+
+      /* Get the computation interval */
+      d1 = d2 = df->records[0];
+      if (edump[n] > 1) d2 = df->records[1];
+      dtf = d2 - d1;
+      inc = (dtf && dt > dtf) ? (int)(dt / dtf) : 1;
+    }
+    if (inc > 1)
+      hd_warn("File dt=%.0f, computation dt=%.0f : every %d data used.\n",
+	      dtf, dt, inc);
+
+    /*---------------------------------------------------------------*/
+    /* Create the output file when the first input file is read      */
+    if (first) {
+      if (sparse) {
+	s2i = i_alloc_1d(params->ns3);
+	s2j = i_alloc_1d(params->ns3);
+	s2k = i_alloc_1d(params->ns3);
+	outfid = create_output(params, df, outfile, vars, nvars, 
+				 s2i, s2j, s2k);
+      } else {
+	outfid = create_output(params, df, outfile, vars, nvars, 
+				 NULL, NULL, NULL);
+      }
+      if (sparse) {
+	bots = d_alloc_1d(params->ns2);
+	botz = d_alloc_2d(params->nce1, params->nce2);
+	start[0] = 0;
+	start[1] = 0;
+	start[2] = 0;
+	start[3] = 0;
+	count[0] = params->ns2;
+	count[1] = 0;
+	count[2] = 0;
+	count[3] = 0;
+	nc_get_vara_double(df->ncid, ncw_var_id(df->ncid, "botz"), 
+			   start, count, bots);
+      } else {
+	botz = d_alloc_2d(params->nce1, params->nce2);
+	start[0] = 0;
+	start[1] = 0;
+	start[2] = 0;
+	start[3] = 0;
+	count[0] = params->nce2;
+	count[1] = params->nce1;
+	count[2] = 0;
+	count[3] = 0;
+	nc_get_vara_double(df->ncid, ncw_var_id(df->ncid, "botz"), 
+			   start, count, botz[0]);
+      }
+      first = 0;
+    }
+  }
+  if (sparse) {
+    jend = params->nce2;
+    jjend = 1;
+  } else {
+    jend = 1;
+    jjend = params->nce2;
+  }
+  data = d_alloc_1d(dsize);
+  indata = d_alloc_2d(params->nce2, dsize);
+
+  /*-----------------------------------------------------------------*/
+  /* Get the sparse maps and set up botz for sparse input files      */
+  if (sparse) {
+    prm_read_int(fp, "LAYERFACES", &k);
+    if (k-1 != params->nz)
+      hd_quit("Sparse input files must have 'k_centre = %d'\n",k-1);
+    map = i_alloc_3d(params->nce1, params->nce2, params->nz);
+    for (j=0; j<params->nce2; ++j) {
+      for (i=0; i<params->nce1; ++i) {
+				botz[j][i] = LANDCELL;
+				for (k=0; k<params->nz; ++k)
+					map[k][j][i] = 0;
+      }
+    }
+    for (c=0; c<params->ns2; ++c) {
+      i = s2i[c];
+      j = s2j[c];      
+      botz[j][i] = bots[c];
+    }
+    d_free_1d(bots);
+    for (c=0; c<params->ns3; ++c) {
+      i = s2i[c];
+      j = s2j[c];
+      k = s2k[c];
+      if (botz[j][i] == LANDCELL || botz[j][i] == NOTVALID ||
+					isnan(botz[j][i]))
+				map[k][j][i] = 0;
+      else
+				map[k][j][i] = c;
+    }
+  }
+  vid = ncw_var_id(outfid, "botz");
+  count[0] = params->nce2;
+  count[1] = params->nce1;
+  count[2] = 0;
+  count[3] = 0;
+  nc_put_vara_double(outfid,vid,start,count,botz[0]);
+  hd_warn("percentiles: Processing data.\n");
+ 
+  /*-----------------------------------------------------------------*/
+  /* Read the layers to process                                      */
+  if (prm_read_char(fp, "P_LAYERS", buf)) {
+    nl = parseline(buf, arg, MAXNUMARGS);
+    layers = i_alloc_1d(nl);
+    if (nl == 1 && strcmp(buf, "surf") == 0) {
+      layers[0] = params->nz - 1;
+    } else {
+      for (i=0; i<nl; ++i)
+	layers[i] = atoi(arg[i]);
+    }
+  } else {
+    nl = params->nz;
+    layers = i_alloc_1d(nl);
+    for (i=0; i<nl; ++i)
+      layers[i] = i;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Process the data                                                */ 
+  nn = mclck = 0.0;
+  ntot = (double)(nl * params->nce1 * params->nce2 * nvars);
+  ntot = (double)(nl * params->nce1 * nvars);
+  for (v=0; v<nvars; ++v) {
+    /* Build variable percentile netCDF file id's */
+    for (n=0; n<Ns; ++n) {
+      sprintf(buf, "%s_%3.3d", vars[v], (int)(percentiles[n]*100));
+      vids[n] = ncw_var_id(outfid, buf);
+    }
+    mean = nm = 0.0;
+    for (kk=0; kk<nl; ++kk) {
+      k = layers[kk];
+      hd_warn("Percentiles: processing %s layer %d\n", vars[v], k);
+      for (j=0; j<jend; ++j) {
+	for (i=0; i<params->nce1; ++i) {
+	  nn += 1.0;
+	  gettimeofday(&tm1, NULL);
+	  clck = tm1.tv_sec + tm1.tv_usec * 1e-6;
+	  /*
+	  c = (sparse) ? map[k][j][i] : 1;
+	  if (verbose) printf("reading %d(%d %d)\n", c, i, j);
+	  */
+	  /* Non-valid cells get a NaN                             */
+	  /*
+	  if (c && (botz[j][i] == LANDCELL || botz[j][i] == NOTVALID ||
+		    isnan(botz[j][i]))) {
+	    start[0] = k;
+	    start[1] = j;
+	    start[2] = i;
+	    count[0] = 1;
+	    count[1] = 1;
+	    count[2] = 1;
+	    for (n=0; n<Ns; ++n) {
+	      results[n] = NaN;
+	      nc_put_vara_double(outfid, vids[n],
+				 start, count, &results[n]);
+	    }
+	    continue;
+	  }
+	  */
+          /*---------------------------------------------------------*/
+	  /* Read data                                               */
+	  if (sparse) {   /* Sparse file input                       */
+	    ad = 0;
+	    for (m = 0; m < ntsfiles; m++) {
+	      df = tsfiles[m]->df;
+	      if (mnc) { /* multi-netcdf-version */
+		df_multi_t *fd = (df_multi_t *)df->private_data;
+		for (mm=0; mm<fd->nfiles; ++mm) {
+		  vid = ncw_var_id(mncid[mm], vars[v]);
+		  start[0] = sdump[mm];
+		  start[1] = c;
+		  count[0] = edump[mm]-sdump[mm]+1;
+		  count[1] = 1;
+		  nc_get_vara_double(mncid[mm], vid, start, count, &data[ad]);
+		  ad += count[0];
+		}
+	      } else { 
+		vid = ncw_var_id(df->ncid, vars[v]);
+		start[0] = sdump[m];
+		start[1] = c;
+		count[0] = edump[m]-sdump[m]+1;
+		count[1] = 1;
+		nc_get_vara_double(df->ncid, vid, start, count, &data[ad]);
+		ad += count[0];
+	      }
+	    }
+	  } else {   /* Cartesian file input                         */
+	    ad = 0;
+	    for (m = 0; m < ntsfiles; m++) {
+	      df = tsfiles[m]->df;
+	      if (mnc) { /* multi-netcdf-version */
+		df_multi_t *fd = (df_multi_t *)df->private_data;
+		for (mm=0; mm<fd->nfiles; ++mm) {
+		  vid = ncw_var_id(mncid[mm], vars[v]);
+		  nc_inq_varndims(mncid[mm], vid, &ndims);
+		  start[0] = sdump[mm];
+		  count[0] = edump[mm]-sdump[mm]+1;
+		  if (ndims == 3) {
+		    start[1] = 0;
+		    start[2] = i;
+		    start[3] = 0;
+		    count[1] = params->nce2;
+		    count[2] = 1;
+		    count[3] = 0;
+		    nc_get_vara_double(mncid[mm], vid, start, count, &indata[ad][0]);
+		    ad += count[0];
+		  } else {
+		    start[1] = k;
+		    start[2] = 0;
+		    start[3] = i;
+		    count[1] = 1;
+		    count[2] = params->nce2;
+		    count[3] = 1;
+		    nc_get_vara_double(mncid[mm], vid, start, count, &indata[ad][0]);
+		    for (jj=0; jj<jjend; ++jj) {
+		      if (!isnan(indata[ad][jj]) && indata[ad][jj] > 0.0) {
+			mean += indata[ad][jj];
+			nm += 1.0;
+		      }
+		    }
+		    ad += count[0];
+		  }
+		}
+	      } else { 
+		vid = ncw_var_id(df->ncid, vars[v]);
+		nc_inq_varndims(df->ncid, vid, &ndims);
+		start[0] = sdump[m];
+		count[0] = edump[m]-sdump[m]+1;
+		if (ndims == 3) {
+		  start[1] = 0;
+		  start[2] = i;
+		  count[1] = params->nce2;
+		  count[2] = 1;
+		  nc_get_vara_double(df->ncid, vid, start, count, indata[0]);
+		  ad += count[0];
+		} else {
+		  start[1] = k;
+		  start[2] = 0L;
+		  start[3] = i;
+		  count[1] = 1;
+		  count[2] = params->nce2;
+		  count[3] = 1;
+		  nc_get_vara_double(df->ncid, vid, start, count, indata[0]);
+		  ad += count[0];
+		}
+	      }
+	    }
+	  }
+	  /* Resort the data into inc steps */
+	  for (jj=0; jj<jjend; ++jj) {
+	    asize = 0;
+	    if (verbose) printf("Resorting\n");
+	    for (m = 0; m < dsize; m++) {
+	      if (m%inc == 0) {
+		data[asize] = indata[m][jj];
+		asize++;
+	      }
+	    }
+	    /* Compute statistics */
+	    if (verbose) printf("Computing statistics\n");
+	    c = (sparse) ? map[k][jj][i] : 1;
+	    if (c && (botz[jj][i] == LANDCELL || botz[jj][i] == NOTVALID ||
+		    isnan(botz[jj][i]))) {
+	      for (n=0; n<Ns; ++n) {
+		results[n] = NaN;
+	      }
+	    } else {
+	      stats(data, asize, results);
+	    }
+	    /* Write data */
+	    start[0] = k;
+	    start[1] = jj;
+	    start[2] = i;
+	    count[0] = 1;
+	    count[1] = 1;
+	    count[2] = 1;
+	    for (n=0; n<Ns; ++n) {
+	      nc_put_vara_double(outfid, vids[n],
+				 start, count, &results[n]);
+	    }
+	    if (verbose) printf("Writing to file\n");
+	  }
+	  gettimeofday(&tm1, NULL);
+	  clck = tm1.tv_sec + tm1.tv_usec * 1e-6 - clck;
+	  mclck += clck;
+	  dfp = fopen(diag_logfile, "w");
+	  if (dfp != NULL) {
+	    fprintf(dfp, "\n\nStart time :  %s\n", ctime(&t));
+	    fprintf(dfp, "CPU time / iteration = %4.3f (%4.3f)\n", clck, mclck / nn);
+	    elapsed = difftime(time(NULL), start_time) / 3600.0;
+	    fprintf(dfp, "Elapsed time = %d day(s) %2.2d:%2.2d:%2.2d\n",
+		    (int)(elapsed/24.0), (int)fmod(elapsed, 24.0), (int)fmod(elapsed*60, 60.0),
+		    (int)fmod(elapsed*3600, 60.0));
+	    elapsed = ((ntot - nn) * (mclck / nn)) / 3600.0;
+	    fprintf(dfp, "Time remaining = %d day(s) %2.2d:%2.2d:%2.2d\n",
+		    (int)(elapsed/24.0), (int)fmod(elapsed, 24.0), (int)fmod(elapsed*60, 60.0),
+		    (int)fmod(elapsed*3600, 60.0));
+	    fprintf(dfp, "(%d %d %d) of (%d %d %d) : %s(%d/%d) : %% complete = %5.2f\n", i, j, k, 
+		    params->nce1, params->nce2, params->nz, vars[v], v+1, nvars, 100.0 * nn / ntot);
+	    fclose(dfp);
+	  }
+	}
+      }
+      if (!isnan(mean / nm)) hd_warn("  Domain mean of %s = %f\n", vars[v], mean / nm);
+    }
+  }
+  
+  nc_close(outfid);
+  if (mnc) {
+    for (m = 0; m < ntsfiles; m++) {
+      df = tsfiles[m]->df;
+      df_multi_t *fd = (df_multi_t *)df->private_data;
+      for (mm=0; mm<fd->nfiles; ++mm) {
+				nc_close(mncid[mm]);
+      }
+    }
+    i_free_1d(mncid);
+  }
+  if (sparse) {
+    i_free_1d(s2i);
+    i_free_1d(s2j);
+    i_free_1d(s2k);
+  }
+  d_free_2d(botz);
+  d_free_1d(data);
+  d_free_2d(indata);
+  free(filenames);
+  free(tsfiles);
+  free(params);
+  master_free(master);
+  exit(0);
+}
+
+
+void calc_perc_s(FILE *fp) 
+{
+  FILE *dfp, *fopen();
+  parameters_t *params;
+  master_t *master;
+  char pfile[MAXSTRLEN];
+  char files[MAXNUMTSFILES][MAXSTRLEN];
+  char *arg[MAXSTRLEN * MAXNUMARGS];
+  char outfile[MAXSTRLEN];
+  char vlist[MAXSTRLEN];
+  char buf[MAXSTRLEN];
+  char timeunit[MAXSTRLEN];
+  char iunits[MAXSTRLEN];
+  cstring *filenames;
+  timeseries_t **tsfiles;
+  datafile_t *df;
+  size_t ndumps = 0;
+  size_t start[4];
+  size_t count[4];
+  char **vars = NULL;
+  int ntsfiles;
+  int nvars = 0;
+  int outfid;
+  int i, j, k, kk, c, v, n, m, mm;
+  int vids[Ns];
+  int ndims;
+  int *sdump;
+  int *edump;
+  int nargs;
+  int sparse, spf;
+  int first = 1;
+  int mnc = 0;
+  int *mncid;
+  int r0, r1;
+  int dsize = 0, asize;
+  int varids[MAXNUMTSFILES];
+  int vid;
+  int ad;
+  int inc;
+  int *s2i, *s2j, *s2k, ***map;
+  double *data, results[Ns];
+  double stime, etime;
+  double rfrac;
+  double **botz, *bots;
+  double d1, d2, dtf, dt = 0.0;
+  double mean, nm;
+  double nn, ntot, clck, mclck;
+  double elapsed = 0.0, start_time;
+  long t;
+  struct timeval tm1;
+  int *layers, nl;
+  int verbose = 0;
+
+  params = params_alloc();
+  master = master_alloc();
+  master->tsfile_caching = 0;
+  master->lyear = 0;
+  start_time = time(NULL);
+  time(&t);
+
+  /*-----------------------------------------------------------------*/
+  /* Set the time unit                                               */
+  prm_set_errfn(hd_silent_warn);
+  prm_read_char(fp, "TIMEUNIT", params->timeunit);
+  strcpy(master->timeunit, params->timeunit);
+  if (!prm_read_char(fp, "OUTPUT_TIMEUNIT", params->output_tunit))
+    strcpy(params->output_tunit, params->timeunit);
+  if (prm_read_char(fp, "P_DT", buf))
+    tm_scale_to_secs(buf, &dt);
+  if (prm_read_char(fp, "PROJECTION", params->projection)) {
+    strcpy(projection, params->projection);
+    ts_set_default_proj_type(projection);
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Read the input files                                            */
+  if (!prm_read_char(fp, "P_IFILE", pfile)) return;
+  ntsfiles = parseline(pfile, (char **)files, MAXNUMTSFILES);
+  filenames = (cstring *)malloc(sizeof(cstring) * ntsfiles);
+  for (n = 0; n < ntsfiles; ++n)
+    strcpy(filenames[n], ((char **)files)[n]);
+  tsfiles = hd_ts_multifile_read(master, ntsfiles, filenames);
+  if (tsfiles == NULL) {
+    free(filenames);
+    free(tsfiles);
+    return;
+  }
+  hd_warn("percentiles: Input file %s read OK.\n", pfile);
+
+  /*-----------------------------------------------------------------*/
+  /* Read the output files                                           */
+  if (!prm_read_char(fp, "P_OFILE", buf)) {
+    free(filenames);
+    free(tsfiles);
+    hd_warn("percentiles: Output file name P_OFILE required.\n");
+    return;
+  }
+  if (prm_read_char(fp, "OutputPath", pfile))
+    sprintf(outfile,"%s%s", pfile, buf);
+  else
+    strcpy(outfile, buf);
+  hd_warn("percentiles: Output file %s created OK.\n", outfile);
+
+  /*-----------------------------------------------------------------*/
+  /* Read the time limits for the percentile computations            */
+  if (prm_read_char(fp, "P_STIME", buf)) {
+    tm_scale_to_secs(buf, &stime);
+    params->t = stime;
+  } else {
+    hd_warn("percentiles: Varible start time P_STIME required.\n");
+    free(filenames);
+    free(tsfiles);
+    return;
+  }
+  if (prm_read_char(fp, "P_ETIME", buf)) {
+    tm_scale_to_secs(buf, &etime);
+  } else {
+    hd_warn("percentiles: Varible start time P_ETIME required.\n");
+    free(filenames);
+    free(tsfiles);
+    return;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Read the variables to get percentiles for                       */
+  if (!prm_read_char(fp, "P_VARS", vlist)) {
+    hd_warn("percentiles: Varible names P_VARS required.\n");
+    free(filenames);
+    free(tsfiles);
+    return;
+  }
+  nvars = parseline(vlist, arg, MAXNUMARGS);
+  vars = (char **)malloc(sizeof(char *)*nvars);
+  j = 0;
+  for (i=0; i<nvars; ++i) {
+    if (hd_ts_multifile_get_index(ntsfiles, tsfiles,
+				  filenames, arg[i], &n) <= 0)
+      hd_warn("Can't find variable %s in files.\n", arg[i]);
+    else {
+      vars[j] = arg[i];
+      j++;
+    }
+  }
+  nvars = j;
+  hd_warn("percentiles: variables %s read OK.\n", vlist);
+
+  /*-----------------------------------------------------------------*/
+  /* Get the dump numbers for each input file                        */
+  sparse = 0;
+  params->ns2 = params->ns3 = params->nce1 = params->nce2 = 0;
+  for (n = 0; n < ntsfiles; n++) {
+    int nfiles;
+    df_variable_t *var;
+    df_multi_t *fd;
+    spf = 0;
+    df = tsfiles[n]->df;
+    fd = (df_multi_t *)df->private_data;
+    if (fd != NULL) { /* multi-netcdf-version */
+      mnc = 1; 
+      if (ntsfiles > 1) hd_quit("Can't process multiple 'multi-netcdf-version' files.\n");
+    }
+    if (n == 0) {
+      nfiles = (mnc) ? fd->nfiles : ntsfiles;
+      sdump = i_alloc_1d(nfiles);
+      edump = i_alloc_1d(nfiles);
+      memset(sdump, 0, nfiles * sizeof(int));
+      memset(edump, 0, nfiles * sizeof(int));
+    }
+    /*---------------------------------------------------------------*/
+    /* Read the input file dimensions                                */
+    for (m=0; m<df->nd;m++) {
+      if (strcmp(df->dimensions[m].name, "ns2") == 0) {
+	params->ns2 = df->dimensions[m].size;
+	sparse = spf = 1;
+      }
+      if (strcmp(df->dimensions[m].name, "ns3") == 0) 
+	params->ns3 = df->dimensions[m].size;
+      if (strcmp(df->dimensions[m].name, "i_centre") == 0) 
+	params->nce1 = df->dimensions[m].size;
+      if (strcmp(df->dimensions[m].name, "j_centre") == 0) 
+	params->nce2 = df->dimensions[m].size;
+      if (strcmp(df->dimensions[m].name, "k_centre") == 0) 
+	params->nz = df->dimensions[m].size;
+    }
+    if (sparse && !spf) hd_quit("Can't mix sparse and Cartesian input files.\n");
+    if (sparse) {
+      hd_warn("Input files are sparse with size %d\n", params->ns3);
+      hd_warn("Output files are Cartesian with size %dx%dx%d\n", params->nce1,
+	      params->nce2, params->nz);
+    }
+    else
+      hd_warn("Input/output files are Cartesian with size %dx%dx%d\n", params->nce1,
+	      params->nce2, params->nz);
+
+    /*---------------------------------------------------------------*/
+    /* Get the dump numbers for each file                            */
+    if (mnc) { /* Dump numbers for multi-netcdf-version files        */
+      mncid = i_alloc_1d(fd->nfiles);
+      for (m=0; m<fd->nfiles; ++m) {
+	df_multi_file_t *f = &fd->files[m];
+	/* Open the netcdf file                                      */
+	if (nc_open(f->filename, NC_NOWRITE, &mncid[m]) == NC_NOERR) {
+	  /* Copy the records to the df structure (adjusting for the */
+	  /* timeunit and reset df->nrecords = f->nrecords.          */
+	  memset(buf, 0, MAXSTRLEN);
+	  nc_get_att_text(mncid[m], ncw_var_id(mncid[m], "t"), "units", buf);
+	  ndumps = df->nrecords = f->nrecords;
+	  for (j = 0; j < f->nrecords; j++) {
+	    df->records[j] = f->records[j];
+	    tm_change_time_units(buf, params->timeunit, &df->records[j], 1);
+	  }
+	  /* Find the record closest to t                            */
+	  df_find_record(df, stime, &sdump[m], &r1, &rfrac);
+	  df_find_record(df, etime, &edump[m], &r1, &rfrac);
+	  if (edump[m] >= ndumps)
+	    edump[m] = ndumps-1;
+	  if (sdump[m] < 0)
+	    sdump[m] = 0;  
+	  dsize += edump[m]-sdump[m]+1;
+	  /* Get the computation interval */
+	  d1 = d2 = df->records[0];
+	  if (edump[m] > 1) d2 = df->records[1];
+	  dtf = d2 - d1;
+	  inc = (dtf && dt > dtf) ? (int)(dt / dtf) : 1;
+	  if (verbose) hd_warn("Input file sampling increment = %d\n", inc);
+	} else
+	  hd_quit("Can't open 'multi-netcdf file%d %s\n",m, f->filename);
+      }
+      df->ncid = mncid[0];
+    } else {  /* Dump numbers for regular files                      */
+      df_find_record(df, stime, &sdump[n], &r1, &rfrac);
+      df_find_record(df, etime, &edump[n], &r1, &rfrac);
+      ndumps = df->nrecords;
+      if (edump[n] >= ndumps)
+	edump[n] = ndumps-1;
+      if (sdump[n] < 0)
+	sdump[n] = 0;  
       dsize += edump[n]-sdump[n]+1;
 
       /* Get the computation interval */
@@ -5258,6 +5841,7 @@ void calc_perc(FILE *fp)
 	  gettimeofday(&tm1, NULL);
 	  clck = tm1.tv_sec + tm1.tv_usec * 1e-6;
 	  c = (sparse) ? map[k][j][i] : 1;
+	  if (verbose) printf("reading %d(%d %d)\n", c, i, j);
 	  /* Non-valid cells get a NaN                             */
 	  if (c && (botz[j][i] == LANDCELL || botz[j][i] == NOTVALID ||
 		    isnan(botz[j][i]))) {
@@ -5363,12 +5947,14 @@ void calc_perc(FILE *fp)
 	  }
 	  /* Resort the data into inc steps */
 	  asize = 0;
+	  if (verbose) printf("Resorting\n");
 	  for (m = 0; m < dsize; m++) {
 	    if (m%inc == 0) {
 	      data[asize] = data[m];
 	      asize++;
 	    }
 	  }
+	  if (verbose) printf("Computing statistics\n");
 	  /* Compute statistics */
 	  stats(data, asize, results);
 	  /* Write data */
@@ -5382,6 +5968,7 @@ void calc_perc(FILE *fp)
 	    nc_put_vara_double(outfid, vids[n],
 			       start, count, &results[n]);
 	  }
+	  if (verbose) printf("Writing to file\n");
 	  gettimeofday(&tm1, NULL);
 	  clck = tm1.tv_sec + tm1.tv_usec * 1e-6 - clck;
 	  mclck += clck;

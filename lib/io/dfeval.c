@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfeval.c 6237 2019-05-29 03:32:55Z her127 $
+ *  $Id: dfeval.c 6756 2021-04-07 00:58:06Z her127 $
  */
 
 #include <stdio.h>
@@ -238,6 +238,7 @@ double df_eval_coords(datafile_t *df, df_variable_t *v, double r,
     for (i = r0; i <= r1; ++i) {
       int j = i - r0;
       recvals[j] = 0.0;
+      v->rid = j;
 
       /*
        * The interpolation function should've already been defined in
@@ -245,7 +246,7 @@ double df_eval_coords(datafile_t *df, df_variable_t *v, double r,
        * that used to be here
        */
       if (nc >= nd) {
-	if (v->interp != NULL) 
+	if (v->interp != NULL)
 	  recvals[j] = v->interp(df, v, i, coords);
 	else
           quit("df_eval_coords: Unable to interpolate data with %d coordinate and %d dimensions. v->interp not defined.\n", nc, nd);
@@ -255,7 +256,6 @@ double df_eval_coords(datafile_t *df, df_variable_t *v, double r,
 
     /* Interpolate the record in time */
     val = recvals[0] * (1.0 - rfrac) + recvals[1] * rfrac;
-
   }
 
   return val;
@@ -700,6 +700,250 @@ double interp_2d_inv_weight_hashed(datafile_t *df, df_variable_t *v, int record,
   return val;
 }
 
+
+/* Unstructured interpolation using Grid Spec libraries
+
+ */
+double interp_us_2d(datafile_t *df, df_variable_t *v, int record,
+		    double coords[])
+{
+  int dsize = df->dimensions[v->dimids[0]].size;
+  int nc = df_get_num_coords(df, v);
+  int *coordids = df_get_coord_ids(df, v);
+  double *vd = VAR_1D(v)[record - v->start_record];
+  df_variable_t *vars = df->variables;
+  GRID_SPECS *gs0 = NULL;
+  GRID_SPECS *gs1 = NULL;
+  int i, j;
+  point *p;
+  delaunay *d;
+  double val;
+  int rid = v->rid;
+  GRID_SPECS *gs;
+  char *i_rule = "linear";
+
+  /* Create the grid spec function if required */
+  if ( v->gs0_master_2d == NULL && v->gs1_master_2d == NULL ) {
+    /*
+     * All this hash mechanism relies on the fact that we're dealing
+     * with 3D data, so I'm putting in an explicit check just to make
+     * sure
+     */
+    if (nc != 2)
+      quit("df_eval_coords : interp_us_2d : nc is not 2 but %d!\n", nc);
+
+    /* Allocate and set the points structure */
+    p = (point *)alloc_1d(dsize, sizeof(point));
+    for (i = 0; i < dsize; ++i) {
+      p[i].x = VAR_1D(&vars[coordids[0]])[0][i];
+      p[i].y = VAR_1D(&vars[coordids[1]])[0][i];
+    }
+
+    /* Allocate and initialize the Delaunay structure */
+    d = delaunay_build(dsize, p, 0, NULL, 0, NULL);
+    for (i = 0; i < dsize; ++i) {
+      d->points[i].v = d_alloc_1d(1);
+      d->points[i].z = d->points[i].v[0] = vd[i];
+    }
+
+    /* Allocate and set the grid spec structure. Note there are */
+    /* two grid_spec structures for the two time levels that */
+    /* bracket the target time. These both point to the same */
+    /* Delaunay structure, but contain different weights due to */
+    /* the different data at the time levels. */
+    gs0 = grid_spec_create();
+    gs1 = grid_spec_create();
+    grid_interp_init_t(gs0, d, i_rule, 0);
+    gs0->d = d;
+    v->gs0_master_2d = gs0;
+    grid_interp_init_t(gs1, d, i_rule, 0);
+    gs1->d = d;
+    v->gs1_master_2d = gs1;
+    v->rv[0] = v->rv[1] = -9999;
+  }
+
+ /* Reinitialize the weights if the data has changed */
+  gs = (rid == 0) ? v->gs0_master_2d : v->gs1_master_2d;
+  if (record != v->rv[rid]) {
+    delaunay *d = gs->d;
+    v->rv[rid] = record;
+    for (i = 0; i < dsize; ++i)
+      d->points[i].z = vd[i];
+    if (strcmp(i_rule, "nn_sibson") == 0)
+      for (i = 0; i < dsize; i++)
+	gs->rebuild(gs->interpolator, &d->points[i]);
+    else
+      gs->rebuild(gs->interpolator, d->points);
+  }
+  val = grid_interp_on_point(gs, coords[0], coords[1]);
+
+  return(val);
+}
+
+double interp_us_3d(datafile_t *df, df_variable_t *v, int record,
+		    double coords[])
+{
+  int nz = df->dimensions[v->dimids[0]].size;
+  int ni = df->dimensions[v->dimids[1]].size;
+  int nc = df_get_num_coords(df, v);
+  int *coordids = df_get_coord_ids(df, v);
+  double **vd = VAR_2D(v)[record - v->start_record];
+  df_variable_t *vars = df->variables;
+  GRID_SPECS **gs0 = NULL;
+  GRID_SPECS **gs1 = NULL;
+  int i, j, k;
+  point **p;
+  delaunay **d;
+  double val;
+  double *zgrid = VAR_1D(&vars[coordids[nc - 1]])[0];
+  double z = coords[nc - 1];
+  double kindex   = 0.0;
+  double  tdata[2] = {NaN, NaN};
+  int ks, kt;
+  char *i_rule = "linear";
+  int rid = v->rid;
+  GRID_SPECS **gs;
+  int hasmis = (v->missing) ? 1 : 0;
+
+  /* Create the grid spec function if required */
+  if (v->gs0_master_3d == NULL && v->gs1_master_3d == NULL ) {
+    /*
+     * All this hash mechanism relies on the fact that we're dealing
+     * with 3D data, so I'm putting in an explicit check just to make
+     * sure
+     */
+    if (nc != 3)
+      quit("df_eval_coords : interp_us_2d : nc is not 2 but %d!\n", nc);
+
+    /* Allocate the private data */
+    v->nz = nz;
+    v->kn = i_alloc_1d(nz);
+    v->kmap = i_alloc_2d(ni, nz);
+    v->kflag = i_alloc_2d(2, nz);
+    memset(v->kn, 0, nz * sizeof(int));
+
+    /* Allocate and set the points */
+    p = (point **)calloc(nz, sizeof(point *));
+    for (k = 0; k < nz; k++) {
+      for (i = 0; i < ni; ++i) {
+	if ((hasmis && vd[k][i] == v->missing)) continue;
+	if (isnan(vd[k][i])) continue;
+	  if (p[k] == NULL)
+	    p[k] = (point *)alloc_1d(ni, sizeof(point));
+	  v->kmap[k][v->kn[k]] = i;
+	  p[k][v->kn[k]].x = VAR_1D(&vars[coordids[0]])[0][i];
+	  p[k][v->kn[k]++].y = VAR_1D(&vars[coordids[1]])[0][i];
+
+      }
+    }
+
+    /* Allocate and set the Delaunay triangulation */
+    d = (delaunay **)calloc(nz+1, sizeof(delaunay *));
+    for (k = 0; k < nz; k++) {
+      d[k] = NULL;
+      if (v->kn[k] == 0) continue;
+      d[k] = delaunay_build(v->kn[k], p[k], 0, NULL, 0, NULL);
+      d[k]->vid = 0;
+      d[k]->ptf = 1;
+
+      for (i = 0; i < v->kn[k]; i++) {
+	j = v->kmap[k][i];
+	d[k]->points[i].v = d_alloc_1d(1);
+	d[k]->points[i].z = d[k]->points[i].v[0] = vd[k][j];
+      }
+    }
+
+    /* Finished with temp array */
+    free(p);
+
+    /* Allocate and set the grid spec structure. Note there are */
+    /* two grid_spec structures for the two time levels that */
+    /* bracket the target time. These both point to the same */
+    /* Delaunay structure, but contain different weights due to */
+    /* the different data at the time levels. */
+    gs0 = (GRID_SPECS **)calloc(nz, sizeof(GRID_SPECS *));
+    v->gs0_master_3d = (GRID_SPECS **)calloc(nz, sizeof(GRID_SPECS *));
+    gs1 = (GRID_SPECS **)calloc(nz, sizeof(GRID_SPECS *));
+    v->gs1_master_3d = (GRID_SPECS **)calloc(nz, sizeof(GRID_SPECS *));
+    for (k = 0; k < nz; k++) {
+
+      v->gs0_master_3d[k] = v->gs1_master_3d[k] = NULL;
+      if (d[k] == NULL) continue;
+
+      gs0[k] = grid_spec_create();
+      gs1[k] = grid_spec_create();
+
+      grid_interp_init_t(gs0[k], d[k], i_rule, 0);
+      gs0[k]->d = d[k];
+      v->gs0_master_3d[k] = gs0[k];
+
+      grid_interp_init_t(gs1[k], d[k], i_rule, 0);
+      gs1[k]->d = d[k];
+      v->gs1_master_3d[k] = gs1[k];
+    }
+    v->rv[0] = v->rv[1] = -9999;
+  }
+
+  /* Find the k layer */      
+  if (z < zgrid[0]) {
+    kindex = 0.0;
+  } else if (z >= zgrid[nz - 1]) {
+    kindex = nz - 1;
+  } else {
+    for (k = 0; k < nz - 1; ++k) {
+      if ((z >= zgrid[k]) && (z < zgrid[k + 1])) {
+	kindex = k + (z - zgrid[k]) / (zgrid[k + 1] - zgrid[k]);
+	break;
+      }
+    }
+  }
+  ks = (int)kindex;
+  kt = min(ks + 1, nz - 1);
+  /* No-gradient below bottom layer */
+  if (!v->kn[ks]) ks = kt;
+  kindex = kindex - ks;
+
+  /* Reinitialize the weights if the data has changed */
+  if (record != v->rv[rid]) {
+    for (k = 0; k < nz; k++) v->kflag[rid][k] = 0;
+    v->rv[rid] = record;
+  }
+
+  /* Rebuild the weights for the required layers */
+  gs = (rid == 0) ? v->gs0_master_3d : v->gs1_master_3d;
+  for (k = ks; k <= kt; ++k) {
+    if (!v->kflag[rid][k]) {
+      delaunay *d = gs[k]->d;
+      for (i = 0; i < v->kn[k]; ++i) {
+	j = v->kmap[k][i];
+	d->points[i].z = vd[k][j];
+      }
+      v->kflag[rid][k] = 1;
+
+      if (strcmp(i_rule, "nn_sibson") == 0)
+	for (i = 0; i < ni; i++)
+	  gs[k]->rebuild(gs[k]->interpolator, &d->points[i]);
+      else
+	gs[k]->rebuild(gs[k]->interpolator, d->points);
+    }
+  }
+
+  /* Do the horizontal interpolation on layers bracketing the depth */
+  for (k = ks; k <= kt; ++k) {
+    tdata[k - ks] = grid_interp_on_point(gs[k], coords[0], coords[1]);
+  }
+
+  /* Do the vertical interpolation */
+  if (isnan(tdata[0]))
+    val = tdata[1];
+  else if (isnan(tdata[1]))
+    val = tdata[0];
+  else 
+    val = (1 - kindex) * tdata[0] + (kindex) * tdata[1];
+
+  return(val);
+}
+
 /*
  * Nearest neighbour interpolation within limits
  *
@@ -754,7 +998,7 @@ double interp_linear(datafile_t *df, df_variable_t *v, int record,
   double indices[MAXNUMDIMS];
   int nd = df_get_num_dims(df, v);
   int *dimids = df_get_dim_ids(df, v);
-  
+
   if (df_ctoi(df, v, coords, indices) == nd) {
     double findices[MAXNUMDIMS];
     int iindices[MAXNUMDIMS];

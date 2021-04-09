@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 6224 2019-05-28 06:10:38Z riz008 $
+ *  $Id: ecology.c 6534 2020-05-01 01:21:36Z bai155 $
  *
  */
 
@@ -168,7 +168,7 @@ static stringtable* read_process_group_from_defaults(char* fname, int type)
 
     /* Call out to the gateway function in process_defaults.c */
     if (get_eco_processes(fname, type, &procs, &nprocs))
-      e_quit("ecology: Unknown default proceeses type '%s' specified\n", fname);
+      e_quit("ecology: Unknown default processes type '%s' specified\n", fname);
     
     for (i=0; i<nprocs; i++) {
       /* Create stringtable on the first iteration */

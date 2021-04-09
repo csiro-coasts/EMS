@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 6455 2020-02-18 23:41:22Z her127 $
+ *  $Id: run_setup.c 6727 2021-03-30 00:34:28Z her127 $
  *
  */
 
@@ -44,7 +44,7 @@ void write_run_setup(hd_data_t *hd_data)
   double d1, d2, d3, d4;
   double maxvel = 1.0;
   double int_wave_speed = 2.0;
-  char bname[MAXSTRLEN];
+  char bname[MAXSTRLEN], buf[MAXSTRLEN];
   FILE *fp;
 
   if (!setup_log)
@@ -59,14 +59,50 @@ void write_run_setup(hd_data_t *hd_data)
   getcwd(bname, MAXSTRLEN);
   fprintf(fp, "Working directory = %s\n",bname);
   fprintf(fp, "%s\n", params->parameterheader);
-  if (params->runno) fprintf(fp, "Identifier # %5.2f\n", params->runno);
+  if (params->runno) fprintf(fp, "Identifier # %s\n", params->runnoc);
+  if (strlen(params->runcode)) {
+    char *tok;
+    fprintf(fp, "Run code %s\n", params->runcode);
+    strcpy(bname, params->runcode);
+    tok = strtok(bname, "|");
+    if (tok != NULL) fprintf(fp, "  Grid name : %s\n", tok);
+    strcpy(bname, params->runcode);
+    get_idcodec(bname, "G", buf);
+    fprintf(fp, "  Grid ID : %s\n", buf);
+    get_idcodec(bname, "H", buf);
+    fprintf(fp, "  Hydrodynamic model ID : %s\n", buf);
+    get_idcodec(bname, "S", buf);
+    fprintf(fp, "  Sediment model ID : %s\n", buf);
+    get_idcodec(bname, "B", buf);
+    fprintf(fp, "  Biogeochemical model ID : %s\n", buf);
+  }
+  if (strlen(params->rev)) fprintf(fp, "Parameter file revision %s\n", params->rev);
+  if (strlen(params->trl)) fprintf(fp, "Technology_Readiness_Level %s\n", params->trl);
+  if (strcmp(params->trl, "TR1") == 0)
+    fprintf(fp, "  Basic principles observed and reported.\n");
+  if (strcmp(params->trl, "TR2") == 0)
+    fprintf(fp, "  Technology concept formulated.\n");
+  if (strcmp(params->trl, "TR3") == 0)
+    fprintf(fp, "  Experimental proof of concept.\n");
+  if (strcmp(params->trl, "TR4") == 0)
+    fprintf(fp, "  Technology validated in laboratory environment.\n");
+  if (strcmp(params->trl, "TR5") == 0)
+    fprintf(fp, "  Technology validated in relevant environment.\n");
+  if (strcmp(params->trl, "TR6") == 0)
+    fprintf(fp, "  Technology demonstrated in relevant environment (pilot model).\n");
+  if (strcmp(params->trl, "TR7") == 0)
+    fprintf(fp, "  System prototype demonstration in operational environment (prototype model).\n");
+  if (strcmp(params->trl, "TR8") == 0)
+    fprintf(fp, "  System complete and qualified (calibrated model).\n");
+  if (strcmp(params->trl, "TR9") == 0)
+    fprintf(fp, "  Actual system proven in operational environment (operational model).\n");
   if (strlen(params->sequence)) fprintf(fp, "Run # %s\n", params->sequence);
   if (strlen(params->rev)) fprintf(fp, "Parameter file revision : %s\n",
 				   params->rev);
-  fprintf(fp, "Grid name : %s\n\n", params->grid_name);
   fprintf(fp, "Grid description : %s\n\n", params->grid_desc);
   time(&t);
   fprintf(fp, "Simulation start time :  %s\n", ctime(&t));
+
 
   /*-----------------------------------------------------------------*/
   /* Transport mode                                                  */
@@ -527,6 +563,10 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "  Vorticity computed using enstrophy dissipating formulation.\n");
     if (params->momsc & PV_APVM)
       fprintf(fp, "  Vorticity computed using Anticipated Potential Vorticity Method (APVM).\n");
+    if (params->momsc & PV_LUST)
+      fprintf(fp, "  Vorticity computed using Linear-Upwind Stabilized Transport (LUST).\n");
+    if (params->momsc & PV_CLUST)
+      fprintf(fp, "  Vorticity computed using Continuous Linear-Upwind Stabilized Transport (CLUST).\n");
   }
   if (params->momsc & WIMPLICIT)
     fprintf(fp, "  Implicit vertical momentum advection.\n");
@@ -568,8 +608,11 @@ void write_run_setup(hd_data_t *hd_data)
     if (params->trasc& ORDER4US)
       fprintf(fp, "  High order scheme = 4th order unstructured.\n");
   }
+  fprintf(fp, "Runge-Kutta time integration = %d stages.\n", params->rkstage);
   if (params->trasc == FFSL) {
+    win_priv_t *wincon = hd_data->wincon[1];
     fprintf(fp, "Flux-form semi-lagrangian tracer advection scheme.\n");
+    fprintf(fp, "Velocity interpolation uses %s scheme.\n", wincon->momsr);
     if (params->fillf & CLIP) 
       fprintf(fp, "Clipping invoked to ensure monotonicity.\n");
     if (params->fillf & MONOTONIC)
@@ -605,11 +648,14 @@ void write_run_setup(hd_data_t *hd_data)
   }
   if (params->trasc == (LAGRANGE|VANLEER))
     fprintf(fp, "Split Semi-Lagrangian/Van Leer tracer advection scheme.\n");
+  if (params->trasc & FFSL && params->trasc & VANLEER)
+    fprintf(fp, "Split FFSL/Van Leer tracer advection scheme.\n");
   if (params->ultimate) {
     if (params->trasc == FFSL)
       fprintf(fp, "Universal flux limiter invoked.\n");
     else
       fprintf(fp, "Ultimate filter invoked.\n");
+
   }
   fprintf(fp, "\n");
 
@@ -621,14 +667,24 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Half slip condition.\n");
   if (params->slipprm == -1.0)
     fprintf(fp, "No slip condition.\n");
+
+  if (params->diff_scale & KH_REG) {
+    fprintf(fp, "Regionalized horizontal diffusivity\n");
+    fprintf(fp, "  %s\n", params->u1khc);
+  }
   if (params->u1kh < 0.0 && params->smagorinsky != 0.0) {
     double smag = (params->smagorinsky == 1 && params->kue1 != 1) ? params->kue1 : params->smagorinsky;
     fprintf(fp,
             "Smagorinsky horizontal diffusion; constant = %5.3f\n", smag);
-    if (params->bkue1) fprintf(fp,"  base rate applied = %5.3f\n", params->bkue1);
-  } else if (params->u1kh >= 0.0 && params->diff_scale & AUTO)
-    fprintf(fp,"Grid-optimized horizontal diffusion\n");
-  else {
+    if (params->diff_scale & KH_REG)
+      fprintf(fp,"  regionalized base rate applied\n");
+    else if (params->bkue1) {
+      double kh = 0.0;
+      for (cc = 1; cc <= geom->b2_t; cc++)
+	kh += (master->basek[geom->w2_t[cc]] / (double)geom->b2_t);
+      fprintf(fp,"  mean base rate applied = %5.3f\n", kh);
+    }
+  } else {
     if (params->diff_scale & LINEAR)
       fprintf(fp, "Horizontal diffusion = %5.3f : linearly scaled\n",
             params->u1kh);
@@ -638,18 +694,37 @@ void write_run_setup(hd_data_t *hd_data)
     else if (params->diff_scale & AREAL)
       fprintf(fp, "Horizontal diffusion = %5.3f : areal scaling\n",
             params->u1kh);
-    else if (params->diff_scale & NONE)
+    else if (params->diff_scale & NONE && !(params->diff_scale & AUTO))
       fprintf(fp, "Horizontal diffusion = %5.3f : un-scaled\n",
             params->u1kh);
+  }
+  if ((params->u1kh >= 0.0 || params->bkue1 >= 0.0 || params->diff_scale & KH_REG) && 
+      params->diff_scale & AUTO) {
+    double kh = -1.0;
+    if (params->u1kh >= 0.0) kh = floor(params->u1kh);
+    if (params->bkue1 > 0.0) kh = floor(params->bkue1);
+    if (kh >= 0.0)
+      fprintf(fp,"Grid-optimized horizontal diffusion (%5.1f%%)\n", kh);
+    else
+      fprintf(fp,"Grid-optimized horizontal diffusion\n");
+  }
+  if (params->diff_scale & VH_REG) {
+    fprintf(fp, "Regionalized horizontal viscosity\n");
+    fprintf(fp, "  %s\n", params->u1vhc);
   }
   if (params->u1vh < 0.0 && params->smagorinsky != 0.0) {
     double smag = (params->smagorinsky == 1 && params->sue1 != 1) ? params->sue1 : params->smagorinsky;
     fprintf(fp,
             "Smagorinsky horizontal viscosity; constant = %5.3f\n", smag);
-    if (params->bsue1) fprintf(fp,"  base rate applied = %5.3f\n", params->bsue1);
-  } else if (params->u1vh >= 0.0 && params->diff_scale & AUTO)
-    fprintf(fp,"Grid-optimized horizontal viscosity\n");
-  else {
+    if (params->diff_scale & VH_REG)
+      fprintf(fp,"  regionalized base rate applied\n");
+    else if (params->bsue1) {
+      double vh = 0.0;
+      for (cc = 1; cc <= geom->b2_t; cc++)
+	vh += (master->basev[geom->w2_t[cc]] / (double)geom->b2_t);
+      fprintf(fp,"  mean base rate applied = %5.3f\n", vh);
+    }
+  } else {
     double ah = params->u1vh;
     if (params->visc_method & US_BIHARMONIC) {
       double ahl;
@@ -665,7 +740,7 @@ void write_run_setup(hd_data_t *hd_data)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : areal scaling\n", ah, ahl);
       else if (params->diff_scale & CUBIC)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : cubic scaling\n", ah, ahl);
-      else if (params->diff_scale & NONE)
+      else if (params->diff_scale & NONE && !(params->diff_scale & AUTO))
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) ~ %5.3f (m4s-1) : un-scaled\n", ah, ahl);
       if (params->diff_scale & SCALE2D)
 	fprintf(fp, "2D horizontal viscosity scaled by IRATIO = %d\n", params->iratio);
@@ -678,11 +753,21 @@ void write_run_setup(hd_data_t *hd_data)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : areal scaling\n", ah);
       else if (params->diff_scale & CUBIC)
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : cubic scaling\n", ah);
-      else if (params->diff_scale & NONE)
+      else if (params->diff_scale & NONE && !(params->diff_scale & AUTO))
 	fprintf(fp, "Horizontal viscosity = %5.3f (m2s-1) : un-scaled\n", ah);
       if (params->diff_scale & SCALE2D)
 	fprintf(fp, "2D horizontal viscosity scaled by IRATIO = %d\n", params->iratio);
     }
+  }
+  if ((params->u1vh >= 0.0 || params->bsue1 >= 0.0 || params->diff_scale & VH_REG) && 
+      params->diff_scale & AUTO) {
+    double vh = -1.0;
+    if (params->u1vh >= 0.0) vh = floor(params->u1vh);
+    if (params->bsue1 > 0.0) vh = floor(params->bsue1);
+    if (vh >= 0.0)
+      fprintf(fp,"Grid-optimized horizontal viscosity (%5.1f%%)\n", vh);
+    else
+      fprintf(fp, "Grid-optimized horizontal viscosity\n");
   }
   if (params->visc_method & PRE794)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (full form - pre v794)\n");
@@ -690,6 +775,9 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (full form)\n");
   else if (params->visc_method & SIMPLE)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (simple form)\n");
+  else if (params->visc_fact)
+    fprintf(fp, "Horizontal viscosity using unstructured f * Laplacian scheme + (1-f) * biharmonic scheme: f = %f\n",
+	    master->visc_fact);
   else if (params->visc_method & US_LAPLACIAN)
     fprintf(fp, "Horizontal viscosity using unstructured Laplacian scheme\n");
   else if (params->visc_method & US_BIHARMONIC)
@@ -1049,6 +1137,11 @@ void write_run_setup(hd_data_t *hd_data)
 	fprintf(fp, "    Inflow salinity is modified using MacCready & Geyer, 2010, Annu. Rev. Mar. Sci.\n");
       if (open->options & OP_OWRITE)
 	fprintf(fp, "    Open boundary location overwritten with external data using TRCONC.\n");
+      if (open->options & OP_TILED) {
+	fprintf(fp, "    Open boundary data exchange configured for 2-way tiled nesting.\n");
+	if (master->obcf & DF_BARO)
+	  fprintf(fp, "      Coupled at the barotropic level.\n");
+      }
       fprintf(fp, "\n");
     }
     fprintf(fp, "\n");
@@ -2334,7 +2427,7 @@ void trans_write(hd_data_t *hd_data)
 
   if(params->ndf && params->runmode & (AUTO|DUMP)) {
     if (strlen(params->opath))
-      fprintf(op,"OutputPath             %s\n", params->opath);       
+      fprintf(op,"OutputPath             %s\n", params->opath);
     fprintf(op,"# Output files\n");
     if (params->runmode & PRE_MARVL) {
       /* Special handling for PRE_MARVL */
@@ -2516,4 +2609,155 @@ void trans_write(hd_data_t *hd_data)
 }
 
 /* END trans_write()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Maintains the history log                                         */
+/*-------------------------------------------------------------------*/
+void history_log(master_t *master, int mode)
+{
+  parameters_t *params = master->params;
+  FILE *dp;
+  char buf[MAXSTRLEN], key[MAXSTRLEN], pname[MAXSTRLEN];
+  int i, j, n;
+  long t;
+  int maxdiff = 100;
+
+  if (params->history & NONE) return;
+
+  /* Get the name of the parameter file                              */
+  if (endswith(params->prmname, ".tran")) {
+    j = 5;
+    strcpy(buf, params->prmname);
+  } else if (endswith(params->prmname, ".prm")) {
+    j = 4;
+    strcpy(buf, params->prmname);
+  } else
+    return;
+  n = strlen(buf);
+  for (i = 0; i < n-j; i++)
+    pname[i] = buf[i];
+  pname[i] = '\0';
+
+  /* Open or create the history log                                  */
+  if (mode == HST_PRE) {
+
+    if (params->history & HST_LOG) {
+      sprintf(buf, "%s.hist", pname);
+      params->hstfd = NULL;
+
+      if (params->history & HST_RESET) {
+	sprintf(key, "rm %s", buf); 
+	if (params->history & HST_DIF) params->history &= ~HST_DIF;
+	system(key);
+      }
+      if ((params->hstfd = fopen(buf, "r")) == NULL) {
+	params->hstfd = fopen(buf, "a");
+	hd_warn("Creating history log file %s\n", buf);
+	fprintf(params->hstfd, "\nHISTORY LOG for parameter file %s\n", params->prmname);
+	if (j == 4) fprintf(params->hstfd, "Hydrodynamic model\n");
+	if (j == 5) fprintf(params->hstfd, "Transport model\n");
+	params->history |= HST_FST;
+      } else {
+	fclose(params->hstfd);
+	params->hstfd = fopen(buf, "a");
+      }
+
+      fprintf(params->hstfd, "\n---------------------------\n");
+      time(&t);
+      fprintf(params->hstfd, "Run:               %s", ctime(&t));
+      fprintf(params->hstfd, "EMS Version:       %s\n", version);
+      fprintf(params->hstfd, "Executable file:   %s\n",executable );
+      getcwd(buf, MAXSTRLEN);
+      fprintf(params->hstfd, "Working directory: %s\n",buf);
+      fprintf(params->hstfd, "ID_CODE:           %s\n", params->runcode);
+      fprintf(params->hstfd, "Input file:        %s\n", params->idumpname);
+      if (strlen(params->opath)) fprintf(params->hstfd, "Output path:       %s\n", params->opath);
+      fprintf(params->hstfd, "Parameter header:  %s\n", params->parameterheader);
+      fprintf(params->hstfd, "Start time:        %s\n", params->start_time);
+      fprintf(params->hstfd, "Stop time:         %s\n", params->stop_time);
+      if (forced_restart) fprintf(params->hstfd, "Restart run.\n");
+      if (crash_restart) fprintf(params->hstfd, "Crash recovery run.\n");
+      fflush(params->hstfd);
+    }
+    if (params->history & HST_DIF) {
+      sprintf(key, "%s.txt", pname);
+      if ((dp = fopen(key, "r")) == NULL) {
+	sprintf(buf, "cp setup.txt %s", key); 
+	if (system(buf)) return;
+      } else {
+	fclose(dp);
+	if (params->history & HST_FST) {
+	  sprintf(buf, "rm %s", key); 
+	  system(buf);
+	}
+      }
+
+    }
+  }
+
+  if (mode == HST_POST && params->history & HST_DIF) {
+    if (!(params->history & HST_FST)) {
+      char first[MAXSTRLEN];
+      char pdiff[MAXSTRLEN];
+      fprintf(params->hstfd, "Difference summary\n");
+      sprintf(key, "%s.txt", pname);
+      sprintf(buf, "diff setup.txt %s > setup.diff", key);
+      system(buf);
+      dp = fopen("setup.diff", "r");
+      prm_read_char(dp, "<", first);
+      fprintf(params->hstfd, "  New:    %s\n", first);
+      prm_read_char(dp, ">", buf);
+      fprintf(params->hstfd, "  Old:    %s\n", buf);
+      strcpy(pdiff, first);
+      j = 1;
+      while(j) {
+	prm_read_char(dp, "<", buf);
+	if (strcmp(buf, pdiff) == 0) {
+	  fprintf(params->hstfd, "  recursive difference error: exiting....\n");
+	  j = 0;
+	  continue;
+	}
+	if (strcmp(buf, first) != 0) {
+	  strcpy(pdiff, buf);
+	  fprintf(params->hstfd, "  New:    %s\n",buf);
+	  prm_read_char(dp, ">", buf);
+	  fprintf(params->hstfd, "  Old:    %s\n",buf);
+	  j++;
+	} else
+	  j = 0;
+	if (j > maxdiff) {
+	  fprintf(params->hstfd, "  truncating differences....\n");
+	  j = 0;
+	}
+      }
+      fflush(params->hstfd);
+      fclose(dp);
+      sprintf(buf, "cp setup.txt %s", key); 
+      system(buf);
+      sprintf(buf, "rm setup.diff");
+      system(buf);
+    } else
+      params->history &= ~HST_FST;
+  }
+
+  if (mode == HST_OK && master->t == schedule->stop_time) {
+    time(&t);
+    if (params->hstfd != NULL) {
+      fprintf(params->hstfd, "Run successful at %s\n", ctime(&t));
+      fclose(params->hstfd);
+    }
+  }
+
+  if (mode == HST_NOK) {
+    time(&t);
+    if (params->hstfd != NULL) {
+      fprintf(params->hstfd, "Crashed %4.3f days: %s\n", master->days, ctime(&t));
+      fclose(params->hstfd);
+    }
+  }
+}
+
+/* END history_log()                                                 */
 /*-------------------------------------------------------------------*/

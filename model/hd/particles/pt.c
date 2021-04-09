@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 6174 2019-03-19 00:37:46Z her127 $
+ *  $Id: pt.c 6714 2021-03-29 00:56:29Z her127 $
  *
  */
 
@@ -830,6 +830,8 @@ void pt_new(master_t *master, long np, particle_t *p)
 
 	/* Get the source map for this particle                      */
 	master->pt_sm[n] = i;
+
+	if (master->ptmsk) p[n].flag |= PT_IN;
 
         count++;
       }

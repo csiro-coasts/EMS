@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6002 2018-10-23 02:11:40Z her127 $
+ *  $Id: transfers.c 6614 2020-09-07 03:30:15Z her127 $
  *
  */
 
@@ -125,9 +125,11 @@ void win_data_slave_update_fill_3d(master_t *master, geometry_t *window,
       windat->decv1[lc] = master->decv1[c];
       windat->decv2[lc] = master->decv2[c];
     }
-    if (master->dhwf & DHW_NOAA) {
-      windat->dhw[lc] = master->dhw[c];
-      windat->dhd[lc] = master->dhd[c];
+    for (tt = 0; tt < master->ndhw; tt++) {
+      if (master->dhwf[tt] & DHW_NOAA) {
+	windat->dhw[tt][lc] = master->dhw[tt][c];
+	windat->dhd[tt][lc] = master->dhd[tt][c];
+      }
     }
   }
   for (cc = 1; cc <= window->enonS; cc++) {
@@ -988,11 +990,13 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
 	if (master->tau_diss2) master->tau_diss2[c] = windat->tau_diss2[lc];
       }
     }
-    if (master->dhwf & DHW_NOAA) {
-      for (cc = 1; cc <= window->b3_t; cc++) {
-	lc = window->w3_t[cc];
-	c = window->wsa[lc];
-	master->dhd[c] = windat->dhd[lc];
+    for (tt = 0; tt < master->ndhw; tt++) {
+      if (master->dhwf[tt] & DHW_NOAA) {
+	for (cc = 1; cc <= window->b3_t; cc++) {
+	  lc = window->w3_t[cc];
+	  c = window->wsa[lc];
+	  master->dhd[tt][c] = windat->dhd[tt][lc];
+	}
       }
     }
     if (!(master->decf & NONE)) {
@@ -1707,6 +1711,8 @@ void master_fill_glider(master_t *master,     /* Master data         */
   int wn, tn, cg, c, cs, lc;
   int m, i, found;
   int *st = NULL, ssize;    
+
+  if (!(ts->metric & TS_GLIDER)) return;
 
   /* Get the cell the glider resides in                              */
   cg = get_glider_loc(master, ts, &ts->ts, t);

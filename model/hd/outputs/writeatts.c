@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 6244 2019-06-13 04:10:56Z riz008 $
+ *  $Id: writeatts.c 6527 2020-04-15 05:51:09Z her127 $
  *
  */
 
@@ -520,8 +520,14 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries/SHOC");
   if (dumpdata->runno >= 0)
     nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+  if (strlen(dumpdata->runcode))
+    write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
     write_text_att(cdfid, NC_GLOBAL, "Parameter_File_Revision", dumpdata->rev);
+  if (strlen(dumpdata->trl))
+    write_text_att(cdfid, NC_GLOBAL, "Technology_Readiness_Level", dumpdata->trl);
+  if (strlen(dumpdata->reference))
+    write_text_att(cdfid, NC_GLOBAL, "Output_Reference", dumpdata->reference);
   nc_put_att_int(cdfid, NC_GLOBAL, "nce1", NC_INT, 1, &nce1);
   nc_put_att_int(cdfid, NC_GLOBAL, "nce2", NC_INT, 1, &nce2);
   nc_put_att_int(cdfid, NC_GLOBAL, "nfe1", NC_INT, 1, &nfe1);

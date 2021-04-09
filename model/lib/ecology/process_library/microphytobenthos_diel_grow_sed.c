@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_diel_grow_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: microphytobenthos_diel_grow_sed.c 6694 2021-03-24 01:08:59Z wil00y $
  *
  */
 
@@ -325,8 +325,8 @@ void microphytobenthos_diel_grow_sed_calc(eprocess* p, void* pp)
         y1[ws->DIC_i] -= growth * red_W_C / porosity;
 
         y1[ws->Oxygen_i] += growth * red_W_O / porosity;
-        y1[ws->MPB_N_pr_i] += growth * SEC_PER_DAY * c->dz_sed;
-        y1[ws->MPB_N_gr_i] = growthrate / umax;
+        y1[ws->MPB_N_pr_i] += growth * SEC_PER_DAY * red_W_C * c->dz_sed;
+        y1[ws->MPB_N_gr_i] = growthrate * SEC_PER_DAY ;
         y1[ws->Oxy_pr_i] += growth * red_W_O / porosity * SEC_PER_DAY * c->dz_sed;
 
 /*        y1[ws->MPB_N_i] += growth;

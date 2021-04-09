@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 6472 2020-02-18 23:50:58Z her127 $
+ *  $Id: vel3d.c 6741 2021-03-30 00:42:20Z her127 $
  *
  */
 
@@ -43,9 +43,9 @@ void mom_balance(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void get_sdc_e1(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double gridze(geometry_t *geom, int e);
 void set_sur_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void vel_components_3d(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
+	
 /*-------------------------------------------------------------------*/
 /* Window step part 1                                                */
 /*-------------------------------------------------------------------*/
@@ -167,6 +167,7 @@ void mode3d_step_window_p2(master_t *master,   /* Master data        */
 
   windat->dt = windat->dtf;
   windat->wclk += (dp_clock() - clock);
+
 }
 
 /* END mode3d_step_window_p2()                                       */
@@ -274,6 +275,7 @@ void mode3d_post_window_p2(master_t *master,   /* Master data        */
     master_alert_fill(master, window, windat);
 
   windat->wclk += (dp_clock() - clock);
+
 }
 
 /* END mode3d_post_window_p2()                                       */
@@ -308,6 +310,12 @@ void mode3d_step(geometry_t *geom,    /* Global geometry             */
       reset_means_m(master);
     }
   }
+
+  /*-----------------------------------------------------------------*/
+  /* Read the elevation at the start of the timestep for tiled       */
+  /* coupling.                                                       */
+  if (master->obcf & DF_TILE) 
+    bdry_tiled_eta(geom, master, window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
   /* Do the custom tracer routines on the master                     */
@@ -505,6 +513,11 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
   /*-----------------------------------------------------------------*/
   /* Set the maps to be self-mapping across OBC's                    */
   set_map_e1(window);
+
+  /*-----------------------------------------------------------------*/
+  /* Read the 3D state variables at the start of the timestep for    */
+  /* tiled coupling.                                                 */
+  if (master->obcf & DF_TILE) bdry_tiled_3d(window, windat, wincon);
 
   /* Debug output                                                    */
   if (dwe > 0) {
@@ -2672,6 +2685,117 @@ void bdry_u1_3d(geometry_t *window, /* Window geometry               */
 
 
 /*-------------------------------------------------------------------*/
+/* Updates velocity in the open boundaries for tiled 2-way coupling  */
+/* (at the 3D time-step). Here the velocity data from an alternative */
+/* tile should be updated in u1 at the start of the time-step,       */
+/* rather than updating nu1 at the end of the time-step.             */
+/* This must be done because the scheduled dump for data exchange    */
+/* occurs after the model hd_step for u1, so nu1 data from an        */
+/* alternative tile is not available for an update prior to          */
+/* leapfrog_update.                                                  */
+/*-------------------------------------------------------------------*/
+void bdry_tiled_3d(geometry_t *window, /* Window geometry            */
+		   window_t *windat,   /* Window data                */
+		   win_priv_t *wincon  /* Window constants           */
+  )
+{
+  int cc, c, ee, e, n, nn, tn;         /* Counters                   */
+
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+
+    if (open->options & OP_TILED) {
+      /* Normal boundary velocity                                    */
+      if (open->bcond_nor & FILEIN) {
+	for (ee = 1; ee <= open->no3_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  windat->u1[e] = windat->nu1[e] = open->transfer_u1[ee];
+	  /* Updates the backward velocity with the Asslin time      */
+	  /* filter.                                                 */
+	  windat->u1b[e] = windat->u1b[e] + 0.5 * 0.1 *
+	    (open->d3[ee] - 2.0 * windat->u1b[e] + windat->u1[e]);
+	}
+      }
+      /* Tangential boundary velocity                                */
+      if (open->bcond_tan & FILEIN) {
+	for (ee = open->no3_e1 + 1; ee <= open->to3_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  windat->u1[e] = windat->nu1[e] = open->transfer_u2[ee];
+	  windat->u1b[e] = windat->u1b[e] + 0.5 * 0.1 *
+	    (open->d3[ee] - 2.0 * windat->u1b[e] + windat->u1[e]);
+	}
+      }
+
+      /* Tracers                                                     */
+      for (nn = 0; nn < wincon->ntbdy; nn++) {
+	tn = wincon->tbdy[nn];
+	if (open->bcond_tra[tn] & FILEIN) {
+	  for (cc = 1; cc <= open->no3_t; cc++) {
+	    c = open->obc_t[cc];
+	    windat->tr_wc[tn][c] = open->t_transfer[open->trm[tn]][cc];
+	  }
+	}
+      }
+      /* Normal depth averaged velocity                              */
+      if (open->bcond_nor2d & VERTIN) {
+	double *sum = wincon->d1;
+	int e1, c1, c2, zm1;
+	memset(sum, 0, window->szeS * sizeof(double));	  
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  e1 = window->m2de[e];
+	  zm1 = window->zm1e[e];
+	  while(e != zm1) {
+	    sum[e1] += windat->u1[e] * windat->dzu1[e] * wincon->mdx[e1];
+	    e = zm1;
+	    zm1 = window->zm1e[e];
+	  }
+	}
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  c1 = window->m2d[window->e2c[e][0]];
+	  c2 = window->m2d[window->e2c[e][1]];
+	  windat->depth_e1[e] = (max(windat->eta[c1], windat->eta[c2]) - 
+				 window->botzu1[e]);
+	  windat->u1av[e] = windat->nu1av[e] = sum[e] / 
+	    max(windat->depth_e1[e] * wincon->mdx[window->m2de[e]], wincon->hmin);
+	}
+      }
+
+      /* Tangential depth averaged velocity                          */
+      if (open->bcond_tan2d & VERTIN) {
+	double *sum = wincon->d1;
+	int e1, c1, c2, zm1;
+	memset(sum, 0, window->szeS * sizeof(double));	  
+	for (ee = open->no3_e1 + 1; ee <= open->to2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  e1 = window->m2de[e];
+	  zm1 = window->zm1e[e];
+	  while(e != zm1) {
+	    sum[e1] += windat->u1[e] * windat->dzu1[e] * wincon->mdx[e1];
+	    e = zm1;
+	    zm1 = window->zm1e[e];
+	  }
+	}
+	for (ee = open->no3_e1 + 1; ee <= open->to2_e1; ee++) {
+	  e = open->obc_e1[ee];
+	  c1 = window->m2d[window->e2c[e][0]];
+	  c2 = window->m2d[window->e2c[e][1]];
+	  windat->depth_e1[e] = (max(windat->eta[c1], windat->eta[c2]) - 
+				 window->botzu1[e]);
+	  windat->u1av[e] = windat->nu1av[e] = sum[e] / 
+	    max(windat->depth_e1[e] * wincon->mdx[window->m2de[e]], wincon->hmin);
+	}
+      }
+    }
+  }
+}
+
+/* END bdry_tiled_3d()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to extract the u1 velocity from the u1 velocity transport */
 /*-------------------------------------------------------------------*/
 void extract_u1_3d(geometry_t *window, /* Window geometry            */
@@ -2716,10 +2840,14 @@ void leapfrog_update_3d(geometry_t *window, /* Window geometry       */
   /*-----------------------------------------------------------------*/
   /* Apply the Asselin filter to remove the computational mode.      */
   /* u1 velocity.                                                    */
-  for (ee = 1; ee <= window->b3_e1; ee++) {
-    e = window->w3_e1[ee];
-    windat->u1[e] = windat->u1[e] + 0.5 * aconst *
-      (windat->u1b[e] - 2.0 * windat->u1[e] + windat->nu1[e]);
+  /* For tiled coupling this is done in velocity_adjust(), so that   */
+  /* the adjusted nu1 is used in the filtering.                      */
+  if (!(master->obcf & DF_TILE)) {
+    for (ee = 1; ee <= window->b3_e1; ee++) {
+      e = window->w3_e1[ee];
+      windat->u1[e] = windat->u1[e] + 0.5 * aconst *
+	(windat->u1b[e] - 2.0 * windat->u1[e] + windat->nu1[e]);
+    }
   }
 
   /* If the open boundary condition for 2D velocity is FILEIN, then   */
@@ -2728,17 +2856,26 @@ void leapfrog_update_3d(geometry_t *window, /* Window geometry       */
   for (n = 0; n < window->nobc; n++) {
     open_bdrys_t *open = window->open[n];
     if (open->bcond_nor & (CUSTOM|FILEIN)) {
-      if (open->type == U1BDRY) {
-	for (ee = 1; ee <= open->to3_e1; ee++) {
-	  e = open->obc_e1[ee];
-	  windat->u1[e] = u1[e];
-	}
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	e = open->obc_e1[ee];
+	windat->u1[e] = u1[e];
+	/* For tiled coupling, save the backward velocity for time    */
+	/* filtering at the start of the next time-step.              */
+	if (open->options & OP_TILED) open->d3[ee] = windat->u1b[e];
+      }
+    }
+    if (open->bcond_tan & (CUSTOM|FILEIN)) {
+      for (ee = open->no3_e1+1; ee <= open->to3_e1; ee++) {
+	e = open->obc_e1[ee];
+	windat->u1[e] = u1[e];
+	if (open->options & OP_TILED) open->d3[ee] = windat->u1b[e];
       }
     }
   }
 
   /*-----------------------------------------------------------------*/
   /* Set the velocities for the new time level                       */
+  memcpy(wincon->w10, windat->u1b, window->sze * sizeof(double));
   memcpy(windat->u1b, windat->u1, window->sze * sizeof(double));
   memcpy(windat->u2b, windat->u2, window->sze * sizeof(double));
   memcpy(windat->u1, windat->nu1, window->sze * sizeof(double));
@@ -3214,6 +3351,16 @@ void velocity_adjust(geometry_t *window,    /* Window geometry       */
     es = window->m2de[e];
     windat->u1[e] = windat->u1av[es];
     windat->u1bot[es] = 0.0;
+  }
+
+  /* Apply the Asselin filter to remove the computational mode for   */
+  /* tiled coupling.                                                 */
+  if (master->obcf & DF_TILE) {
+    for (ee = 1; ee <= window->v3_e1; ee++) {
+      e = window->w3_e1[ee];
+      windat->u1b[e] = windat->u1b[e] + 0.5 * 0.1 *
+	(wincon->w10[e] - 2.0 * windat->u1b[e] + windat->u1[e]);
+    }
   }
 }
 
@@ -3911,7 +4058,7 @@ void vel_w_trans(geometry_t *window, /* Window geometry              */
 
         /* Velocity at cell top                                      */
         windat->wm[zp1] = fctop / window->cellarea[cs];
-	
+
         /* Transfer top flux to bottom for next cell                 */
         fcbot = fctop;
         c = zp1;
@@ -4552,7 +4699,7 @@ void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon)
     cs = window->m2d[c];
     cext = wincon->cturb[n];
 
-    /* Get the direction of the cell cemtered velocity vector        */
+    /* Get the direction of the cell centered velocity vector        */
     dir =  fmod(atan2(windat->u[c], windat->v[c]) * 180.0 / M_PI + 180.0, 360.0);
 
     /* Get the edge which aligns most closely with the cell centered */

@@ -12,14 +12,12 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.h 6234 2019-05-29 03:32:02Z her127 $
+ *  $Id: datafile.h 6597 2020-09-03 05:29:26Z riz008 $
  */
 
 
 #ifndef _DATAFILE_H
 #define _DATAFILE_H
-
-#include "hash.h"
 
 /* Enumerations */
 /*
@@ -162,6 +160,13 @@ typedef struct {
   double *v2d;                  /* 2d variables */
   double *v3d;                  /* 3d variables */
 } df_mempack_t;
+
+typedef struct {
+  int nz;
+  int *kn, **kmap;
+  int last_record;
+} df_gs_t;
+
 #define DF_FIRST  0x00002
 #define DF_WAIT   0x00004
 #define DF_GO     0x00008
@@ -268,6 +273,15 @@ struct df_variable {
   /* Interpolation method */
   double (*interp) (datafile_t *df, df_variable_t *v, int record,
 		    double coords[]);
+
+  GRID_SPECS *gs0_master_2d;
+  GRID_SPECS *gs1_master_2d;
+  GRID_SPECS **gs0_master_3d;
+  GRID_SPECS **gs1_master_3d;
+  int nz;
+  int *kn, **kmap, **kflag;
+  int rid;
+  int rv[2];
   /*
    * Buffers for parallel reads
    */
@@ -414,6 +428,7 @@ struct datafile {
   hash_table_t* ht_master_2d;
   hash_table_t* ht_dist;
   hash_table_t* ht_k;
+
 };
 
 
@@ -472,6 +487,10 @@ double interp_2d_inv_weight(datafile_t *df, df_variable_t *v, int record,
                             double coords[]);
 double interp_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
 				 double coords[]);
+double interp_us_2d(datafile_t *df, df_variable_t *v, int record,
+		    double coords[]);
+double interp_us_3d(datafile_t *df, df_variable_t *v, int record,
+		    double coords[]);
 
 /* Special threaded & buffered functions */
 #ifdef __cplusplus

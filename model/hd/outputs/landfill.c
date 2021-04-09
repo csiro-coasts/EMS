@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: landfill.c 5988 2018-10-17 04:43:39Z her127 $
+ *  $Id: landfill.c 6713 2021-03-29 00:56:01Z her127 $
  *
  */
 
@@ -392,8 +392,15 @@ void cs_fill_land(dump_data_t *dumpdata)
           dumpdata->patm[j][i] = dumpdata->patm[cj][ci];
           dumpdata->wind1[j][i] = dumpdata->wind1[cj][ci];
           dumpdata->wind2[j][i] = dumpdata->wind2[cj][ci];
-	  for (n = 0; n < dumpdata->ntrS; ++n)
+	  for (n = 0; n < dumpdata->ntrS; ++n) {
+	    if(isnan(dumpdata->tr_wcS[n][j][i])) {
+	      find_closest_nonnan(dumpdata, dumpdata->tr_wcS[n], i, j, k,
+				  &ci, &cj);
+	      dumpdata->fmap_i[k][j][i] = ci;
+	      dumpdata->fmap_j[k][j][i] = cj;	
+	    }
 	    dumpdata->tr_wcS[n][j][i] = dumpdata->tr_wcS[n][cj][ci];
+	  }
 	}
         else {
 	  /* Should this be an error? */
@@ -408,6 +415,15 @@ void cs_fill_land(dump_data_t *dumpdata)
 	}
 	if (isnan(dumpdata->eta[j][i])) dumpdata->eta[j][i] = 0.0;
       }
+      /*
+      for (n = 0; n < dumpdata->ntrS; ++n) {
+	if(isnan(dumpdata->tr_wcS[n][j][i])) {
+	  find_closest_nonnan(dumpdata, dumpdata->tr_wcS[n], i, j, k,
+			      &ci, &cj);
+	  dumpdata->tr_wcS[n][j][i] = dumpdata->tr_wcS[n][cj][ci];
+	}
+      }
+      */
 
       // last e1 face value
       if (i == dumpdata->nce1-1 && dumpdata->flag[k][j][i] & (SOLID | OUTSIDE))
