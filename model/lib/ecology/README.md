@@ -14,6 +14,4 @@ The EMS biogeochemical model has been applied throughout Australian estuarine an
 * Represents seagrass, macroalgae, benthic microalgae and corals
 * Mass balance checks for carbon, nitrogen, phosphorus and oxygen
 
-### Documentation
-[Biogeochemical Model User guide](https://research.csiro.au/cem/?ddownload=180) <br>
-[Biogeochemical Model Science guide](https://research.csiro.au/cem/?ddownload=1441)
+#### [EMS Documentation](https://research.csiro.au/cem/software/ems/ems-documentation)
