@@ -30,7 +30,7 @@
 /* Release verions and getters */
 #define TRACERSTATS_MAJOR_VERSION 1
 #define TRACERSTATS_MINOR_VERSION 0
-#define TRACERSTATS_PATCH_VERSION 0
+#define TRACERSTATS_PATCH_VERSION 1
 
 int get_tracerstats_major_vers(void);
 int get_tracerstats_minor_vers(void);

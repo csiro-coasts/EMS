@@ -96,7 +96,7 @@ int strncasecmp(const char *s1, const char *s2, int n);
 /* Release verions and getters */
 #define EMSLIB_MAJOR_VERSION 1
 #define EMSLIB_MINOR_VERSION 2
-#define EMSLIB_PATCH_VERSION 0
+#define EMSLIB_PATCH_VERSION 1
 
 int get_emslib_major_vers(void);
 int get_emslib_minor_vers(void);

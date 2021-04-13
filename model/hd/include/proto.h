@@ -25,8 +25,8 @@
 /* Version information                                              */
 /*------------------------------------------------------------------*/
 #define SHOC_MAJOR_VERSION 1
-#define SHOC_MINOR_VERSION 1
-#define SHOC_PATCH_VERSION 3
+#define SHOC_MINOR_VERSION 2
+#define SHOC_PATCH_VERSION 0
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
