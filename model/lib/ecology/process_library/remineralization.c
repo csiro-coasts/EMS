@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: remineralization.c 6549 2020-05-10 23:12:28Z bai155 $
+ *  $Id: remineralization.c 6758 2021-04-12 23:55:59Z bai155 $
  *
  */
 
@@ -300,29 +300,37 @@ void remineralization_calc(eprocess* p, void* pp)
 
     Oxygen2 = Oxygen2 * Oxygen2; 
 
-    /* limit detrital remineralisation to concentrations > 0.001 */
-    double DetPL_N_break = 0.0;
-    if (DetPL_N > 0.001){
-      DetPL_N_break = cv[ws->r_DetPL_i] * DetPL_N;}
+    double DetPL_N_break,DetBL_N_break,DetR_C_break, DetR_N_break, DetR_P_break;
 
-    double DetBL_N_break = 0.0;
-    if (DetBL_N > 0.001){
-      DetBL_N_break = cv[ws->r_DetBL_i] * DetBL_N;}
+     /* Option to limit detrital remineralisation to concentrations > 0.001 commented out */
 
+    //DetPL_N_break = 0.0;
+    //if (DetPL_N > 0.001){
+    DetPL_N_break = cv[ws->r_DetPL_i] * DetPL_N;
+    //}
+
+    //DetBL_N_break = 0.0;
+    //if (DetBL_N > 0.001){
+    DetBL_N_break = cv[ws->r_DetBL_i] * DetBL_N;
+    //}
+    
     double r_RD = cv[ws->r_RD_i];
 
-    double DetR_C_break = 0.0;
-    if (DetR_C > 0.001){
-      DetR_C_break = r_RD * DetR_C;}
-
-    double DetR_N_break = 0.0;
-    if (DetR_N > 0.001){
-      DetR_N_break = r_RD * DetR_N;}
-
-    double DetR_P_break = 0.0;
-    if (DetR_P > 0.001){
-      DetR_P_break = ws->r_RD_NtoP * r_RD * DetR_P;}
-
+    //DetR_C_break = 0.0;
+    //if (DetR_C > 0.001){
+    DetR_C_break = r_RD * DetR_C;
+    //}
+    
+    //DetR_N_break = 0.0;
+    //if (DetR_N > 0.001){
+    DetR_N_break = r_RD * DetR_N;
+    //}
+    
+    //DetR_P_break = 0.0;
+    //if (DetR_P > 0.001){
+    DetR_P_break = ws->r_RD_NtoP * r_RD * DetR_P;
+    //}
+    
     double DetPL_N_remin = DetPL_N_break * (1.0 - ws->F_LD_RD - ws->F_LD_DOM);
     double DetBL_N_remin = DetBL_N_break * (1.0 - ws->F_LD_RD - ws->F_LD_DOM);
     double DetR_N_remin = DetR_N_break * (1.0 - ws->F_RD_DOM);
