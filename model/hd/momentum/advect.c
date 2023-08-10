@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: advect.c 6934 2021-10-27 02:36:22Z riz008 $
  *
  */
 
@@ -45,7 +45,6 @@ void weights_eovS(geometry_t *window, int c, int co, double pin, double qin,
 double geth(double *h, double f, int c, int *m1);
 double porus_plate_e1(geometry_t *window, window_t *windat, win_priv_t *wincon, int c);
 double porus_plate_e2(geometry_t *window, window_t *windat, win_priv_t *wincon, int c);
-int cg;
 #define SMALL 1e-10             /* Minimum value for velocity bounds */
 
 /*-------------------------------------------------------------------*/
@@ -6109,7 +6108,7 @@ void semi_lagrange_u1(geometry_t *window,  /* Processing window      */
   /*-----------------------------------------------------------------*/
   /* Trace the streamline back to the origin */
   for (cc = 1; cc <= vc; cc++) {
-    c = cg = cl[cc] = cells[cc];
+    c = cl[cc] = cells[cc];
     time_left = windat->dt;
     u = nu[c];
     v = nv[c];
@@ -6214,7 +6213,7 @@ void semi_lagrange_u1(geometry_t *window,  /* Processing window      */
   if (wincon->osl == 0) {
     if(wincon->togn & TOPRIGHT) {
       for (cc = 1; cc <= vc; cc++) {
-	c = cg = cells[cc];
+	c = cells[cc];
 	c2cc[c] = cc;
 	/*check_tridiagonal(window,windat->u1b,"before",c,cl[cc]);*/
 	windat->nu1[c] = int_val(window, cl[cc], wincon->wgt[c], windat->u1b);
@@ -6228,14 +6227,14 @@ void semi_lagrange_u1(geometry_t *window,  /* Processing window      */
       }
     } else {
       for (cc = 1; cc <= vc; cc++) {
-	c = cg = cells[cc];
+	c = cells[cc];
 	c2cc[c] = cc;
 	windat->nu1[c] = int_val_bl(window, cl[cc], wincon->wgt[c], windat->u1b);
       }
     }
   } else {
     for (cc = 1; cc <= vc; cc++) {
-      c = cg = cells[cc];
+      c = cells[cc];
       c2cc[c] = cc;
       windat->nu1[c] = int_valo(window, wincon->wgt[c], wincon->lmap[cl[cc]], 
 				windat->u1b, wincon->osl);
@@ -7549,7 +7548,7 @@ void semi_lagrange_u1av(geometry_t *window,  /* Processing window    */
   /*-----------------------------------------------------------------*/
   /* Trace the streamline back to the origin */
   for (cc = 1; cc <= vcs; cc++) {
-    c = cg = cl[cc] = cells[cc];
+    c = cl[cc] = cells[cc];
     time_left = windat->dt2d;
     u = nu[c];
     v = nv[c];
@@ -7618,7 +7617,7 @@ void semi_lagrange_u1av(geometry_t *window,  /* Processing window    */
   if (wincon->osl == 0) {
     if(wincon->togn & TOPRIGHT) {
       for (cc = 1; cc <= vcs; cc++) {
-	c = cg = cells[cc];
+	c = cells[cc];
 	c2cc[c] = cc;
 	/*check_tridiagonal(window,windat->u1avb,"before",c,cl[cc]);*/
 	windat->nu1av[c] = int_val(window, cl[cc], wincon->wgt[c], windat->u1avb);
@@ -7632,14 +7631,14 @@ void semi_lagrange_u1av(geometry_t *window,  /* Processing window    */
       }
     } else {
       for (cc = 1; cc <= vcs; cc++) {
-	c = cg = cells[cc];
+	c = cells[cc];
 	c2cc[c] = cc;
 	windat->nu1av[c] = int_val_bl(window, cl[cc], wincon->wgt[c], windat->u1avb);
       }
     }
   } else {
     for (cc = 1; cc <= vcs; cc++) {
-      c = cg = cells[cc];
+      c = cells[cc];
       c2cc[c] = cc;
       windat->nu1av[c] = int_valo(window, wincon->wgt[c], wincon->lmap[cl[cc]], 
 				  windat->u1avb, wincon->osl);
@@ -7732,7 +7731,7 @@ void semi_lagrange_u2av(geometry_t *window,  /* Processing window    */
   /*-----------------------------------------------------------------*/
   /* Trace the streamline back to the origin */
   for (cc = 1; cc <= vcs; cc++) {
-    c = cg = cl[cc] = cells[cc];
+    c = cl[cc] = cells[cc];
     time_left = windat->dt2d;
     u = nu[c];
     v = nv[c];
@@ -7802,7 +7801,7 @@ void semi_lagrange_u2av(geometry_t *window,  /* Processing window    */
   if (wincon->osl == 0) {
     if(wincon->togn & TOPRIGHT) {
       for (cc = 1; cc <= vcs; cc++) {
-	c = cg = cells[cc];
+	c = cells[cc];
 	c2cc[c] = cc;
 	/*check_tridiagonal(window,windat->u2avb,"before",c,cl[cc]);*/
 	windat->nu2av[c] = int_val(window, cl[cc], wincon->wgt[c], windat->u2avb);
@@ -7816,14 +7815,14 @@ void semi_lagrange_u2av(geometry_t *window,  /* Processing window    */
       }
     } else {
       for (cc = 1; cc <= vcs; cc++) {
-	c = cg = cells[cc];
+	c = cells[cc];
 	c2cc[c] = cc;
 	windat->nu2av[c] = int_val_bl(window, cl[cc], wincon->wgt[c], windat->u2avb);
       }
     }
   } else {
     for (cc = 1; cc <= vcs; cc++) {
-      c = cg = cells[cc];
+      c = cells[cc];
       c2cc[c] = cc;
       windat->nu2av[c] = int_valo(window, wincon->wgt[c], wincon->lmap[cl[cc]], 
 				  windat->u2avb, wincon->osl);

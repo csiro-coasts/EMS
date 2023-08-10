@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: age_wc.c 6056 2019-01-30 02:45:57Z riz008 $
+ *  $Id: age_wc.c 7212 2022-09-16 21:24:17Z bai155 $
  *
  */
 
@@ -37,8 +37,11 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "age_wc.h"
+
+void ginterface_get_ij(void* model, int col, int *ij);
+int ginterface_getwcbotk(void *model, int b);
+double ginterface_getcellz(void *model, int b, int k);
 
 typedef struct {
   /*tracer */
@@ -120,8 +123,8 @@ void age_wc_precalc(eprocess* p, void* pp)
       double z_bot;
       int wcbotk;
 
-      wcbotk = einterface_getwcbotk(c->col->model, c->b);
-      z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
+      wcbotk = ginterface_getwcbotk(c->col->model, c->b);
+      z_bot = ginterface_getcellz(c->col->model,c->b,wcbotk);
 
       if (z_bot > -10.0){
 	y[ws->source_i] = 1.0; 
@@ -129,7 +132,7 @@ void age_wc_precalc(eprocess* p, void* pp)
     }
 
     // int ij[2];
-    /*  einterface_get_ij(p->ecology->model, c->b, ij);*/
+    /*  ginterface_get_ij(p->ecology->model, c->b, ij);*/
 }
   
 void age_wc_calc(eprocess* p, void* pp)
@@ -145,7 +148,7 @@ void age_wc_calc(eprocess* p, void* pp)
 
     /* Age 1 day per day in a box */
 
-    /*  einterface_get_ij(p->ecology->model, c->b, ij);*/
+    /*  ginterface_get_ij(p->ecology->model, c->b, ij);*/
 
     /* Anti-ageing (decay of ageing effect) */
 

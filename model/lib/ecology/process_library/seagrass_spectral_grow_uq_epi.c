@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_uq_epi.c 6701 2021-03-24 01:14:15Z wil00y $
+ *  $Id: seagrass_spectral_grow_uq_epi.c 7215 2022-09-18 01:11:45Z bai155 $
  *
  */
 
@@ -29,6 +29,9 @@
 #include "column.h"
 #include "constants.h"
 #include "seagrass_spectral_grow_uq_epi.h"
+
+int ginterface_getsedtopk(void *model, int b);
+int ginterface_getsedbotk(void *model, int b);
 
 #define EPS_DIN 1.0e-10
 #define EPS_DIP 1.0e-10
@@ -109,8 +112,8 @@ void seagrass_spectral_grow_uq_epi_init(eprocess* p)
     int OFFSET_SED = tracers->n;
     int OFFSET_EPI = tracers->n * 2;
 
-    int topk_sed = einterface_getsedtopk(e->model, 0);
-    int botk_sed = einterface_getsedbotk(e->model, 0);
+    int topk_sed = ginterface_getsedtopk(e->model, 0);
+    int botk_sed = ginterface_getsedbotk(e->model, 0);
     e->use_multi_sed = 1;
 
     p->workspace = ws;

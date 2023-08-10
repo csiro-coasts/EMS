@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readdump.c 6634 2020-09-08 01:39:38Z her127 $
+ *  $Id: readdump.c 7374 2023-07-26 04:34:31Z her127 $
  *
  */
 
@@ -96,7 +96,7 @@ void master_setghosts(geometry_t *geom, /* Sparse global geometry    */
       /*geom->h2au1[e] = geom->h2au1[ci];*/
       /* OBC lengths currently hold the distance from the centre to  */
       /* the edge. Assume that the ghost centre is the same distance */
-      /* from the edge as this wet centre; i.r. mu8ltiply by 2.      */
+      /* from the edge as this wet centre; i.e. multiply by 2.       */
       geom->h2au1[e] *= 2.0;
       /*geom->thetau1[e] = geom->thetau1[ci];*/
       /*geom->h1acell[e] = geom->h1acell[ci];*/
@@ -672,9 +672,13 @@ int dumpdata_read_us(geometry_t *geom, /* Sparse global geometry structure */
     dump_close(sfid);
   }
 
-  i_free_2d(k2c);
-  i_free_2d(k2e);
-
+  if (params->tmode & SP_UGRID) {
+    master->k2c = k2c;
+    master->k2e = k2e;
+  } else {
+    i_free_2d(k2c);
+    i_free_2d(k2e);
+  }
   read_mean_atts(master, cdfid);
 
   return (1);
@@ -1274,7 +1278,6 @@ void set_bathy_us(parameters_t *params)
   /*-----------------------------------------------------------------*/
   /* Adjust for limits                                               */
   for (cc = 1; cc <= mesh->ns2; cc++) {
-
     /* Adjust botz to min and max bathymetry, checking for outside   */
     /* cells (botz < gridz[0]) and land cells (botz > etamax).       */
     if (bathylimit && bathy[cc] < etamax && bathy[cc] > -bmin)
@@ -1439,10 +1442,10 @@ void set_bathy_us(parameters_t *params)
 	/* path input: find the closest cell to each location in the */
 	/* path, and set the bathymetry value at that cell to the    */
 	/* BATHY_MASK_VAL.                                           */
-	if (m == 2) {
+	if (m == 2 || (m == 3 && strcmp(fields[0], "path") == 0)) {
 	  FILE *fp;
-	  mdh = atof(fields[0]);
-	  if ((fp = fopen(fields[1], "r"))) {
+	  mdh = atof(fields[1]);
+	  if ((fp = fopen(fields[2], "r"))) {
 	    n = 0;
 	    while (fgets(buf, MAXSTRLEN, fp) != NULL) {
 	      double d, dm = HUGE;
@@ -1460,8 +1463,44 @@ void set_bathy_us(parameters_t *params)
 	      }
 	      bathy[c] = -fabs(mdh);
 	    }
+	    fclose(fp);
 	  }
-	  fclose(fp);
+	}
+	/* 'staircase ' deepening                                    */
+	if (m == 3 && strcmp(fields[0], "stair") == 0) {
+	  int first = 1;
+	  FILE *fp;
+	  int inc = atoi(fields[1]);
+	  if ((fp = fopen(fields[2], "r"))) {
+	    n = i = 0;
+	    while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+	      double d, dm = HUGE;
+	      n = parseline(buf, fields, MAXNUMARGS);
+	      x = atof(fields[0]);
+	      y = atof(fields[1]);
+	      for (cc = 1; cc <= ns2; cc++) {
+		d1 = mesh->xloc[mesh->eloc[0][cc][0]] - x;
+		d2 = mesh->yloc[mesh->eloc[0][cc][0]] - y;
+		d = sqrt(d1 * d1 + d2 * d2);
+		if (d < dm) {
+		  dm = d;
+		    c = cc;
+		}
+	      }
+	      if (i % inc == 0) {
+		if (first) {
+		  first = 0;
+		  for (k = nz-1; k >= 0; k--)
+		    if (layers[k] < bathy[c]) break;
+		} else 
+		  k -= inc;
+	      }
+	      if (k < 0) k = 0;
+	      bathy[c] = layers[k];
+	      i++;
+	    }
+	    fclose(fp);
+	  }
 	}
 	/* polygon input: set the bathymetry value in a polygon to   */
 	/* BATHY_MASK_VAL.                                           */
@@ -1741,6 +1780,54 @@ void set_bathy_us(parameters_t *params)
   }
 
   /*-----------------------------------------------------------------*/
+  /* Create a 'staircase ' deepening                                 */
+  if (im > 0) {
+    char buf[MAXSTRLEN];
+    for (ip = 0; ip < im; ip++) {
+      sprintf(key, "BATHY_MASK_VAL%d", ip);
+      if (prm_read_char(params->prmfd, key, buf)) {
+	char *fields[MAXSTRLEN * MAXNUMARGS];
+	m = parseline(buf, fields, MAXNUMARGS);
+	if (m == 3 && strcmp(fields[0], "poststair") == 0) {
+	  int first = 1;
+	  FILE *fp;
+	  int inc = atoi(fields[1]);
+	  if ((fp = fopen(fields[2], "r"))) {
+	    n = i = 0;
+	    while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+	      double d, dm = HUGE;
+	      n = parseline(buf, fields, MAXNUMARGS);
+	      x = atof(fields[0]);
+	      y = atof(fields[1]);
+	      for (cc = 1; cc <= ns2; cc++) {
+		d1 = mesh->xloc[mesh->eloc[0][cc][0]] - x;
+		d2 = mesh->yloc[mesh->eloc[0][cc][0]] - y;
+		d = sqrt(d1 * d1 + d2 * d2);
+		if (d < dm) {
+		  dm = d;
+		  c = cc;
+		}
+	      }
+	      if (i % inc != 0) {
+		if (first) {
+		  first = 0;
+		  for (k = nz-1; k >= 0; k--)
+		    if (layers[k] < bathy[c]) break;
+		} else 
+		  k -= inc;
+	      }
+	      if (k < 0) k = 0;
+	      bathy[c] = layers[k];
+	      i++;
+	    }
+	    fclose(fp);
+	  }
+	}
+      }
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Set uniform bathymetry within bathycon cells from the boundary  */
   for (n = 0; n < params->nobc; n++) {
     open_bdrys_t *open = params->open[n];
@@ -1896,18 +1983,23 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
       d1 = atof(fields[1]);
       d2 = atof(fields[2]);
       testest(params, d1, d2);
+      strcpy(params->testcase, "estuary");
     }
     if (strcmp(fields[0], "basin") == 0) {
       d1 = atof(fields[1]);
       d2 = atof(fields[2]);
       i = atof(fields[3]);
       testbasin(params, d1, d2, i);
+      strcpy(params->testcase, "basin");
+      if (n == 5 && strcmp(fields[4], "rotating") == 0)
+	strcpy(params->testcase, "rotating");
     }
     if (strcmp(fields[0], "channel") == 0) {
       d1 = atof(fields[1]);
       d2 = atof(fields[2]);
       i = atof(fields[3]);
       testchan(params, d1, d2, i);
+      strcpy(params->testcase, "channel");
     }
   }
 
@@ -1971,7 +2063,8 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
 	bathy[j][i] = -params->bathy[n++];
   } else
     hd_quit
-      ("set_bathy: bad bathymetry data (neither 0 nor number of cells)\n");
+      ("set_bathy: bad bathymetry data (neither 0 nor number of cells: %d)\n",
+       params->nvals);
 
 
   /*-----------------------------------------------------------------*/
@@ -2145,7 +2238,7 @@ double **set_bathy(parameters_t *params,  /* Input parameter data
 	}
 	else if (maskf == 2)
 	  bathy[j][i] = (d2 - d1) * (double)(j - js) / (double)(je - js) + d1;
-	else 
+	else
 	  bathy[j][i] = mdh;
       }
     }
@@ -3381,7 +3474,6 @@ void testest(parameters_t *params,
     bathy[j][nce1-1] = -9999.0;
   }
   bathy[jmid][0] = -9999;
-
   /* Delta */
   j1 = jmid + 1;
   j2 = jmid - 1;
@@ -3394,6 +3486,7 @@ void testest(parameters_t *params,
     j1++;
     j2--;
     i--;
+    if (j1 == nce2-1 || j2 == 0) break;
   }
 
   cc = 0;

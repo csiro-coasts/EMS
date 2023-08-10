@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_wc.c 6553 2020-05-11 06:23:26Z bai155 $
+ *  $Id: massbalance_wc.c 7253 2022-10-26 10:19:01Z bai155 $
  *
  */
 
@@ -46,6 +46,7 @@ typedef struct {
   int Nfix_i;
   int CO2_flux_i;
   int O2_flux_i;
+  int COD_flux_i;
 
   int NO3_i;
   int Den_fl_i;
@@ -73,6 +74,15 @@ void massbalance_wc_init(eprocess* p)
     /*
      * tracers
      */
+    ws->BOD_i = -1;
+    ws->COD_i = -1;
+    ws->Nfix_i = -1;
+    ws->CO2_flux_i = -1;
+    ws->O2_flux_i = -1;
+    ws->COD_flux_i = -1;
+    ws->Den_fl_i = -1;
+    ws->Amm_fl_i = -1;
+
     ws->TN_i = e->find_index(tracers, "TN", e);
     ws->TP_i = e->find_index(tracers, "TP", e);
     ws->TC_i = e->find_index(tracers, "TC", e);
@@ -85,7 +95,8 @@ void massbalance_wc_init(eprocess* p)
 
     ws->CO2_flux_i = e->try_index(tracers, "CO2_flux", e);
     ws->O2_flux_i = e->try_index(tracers, "O2_flux", e);
-
+    ws->COD_flux_i = e->try_index(tracers, "COD_flux", e);
+    
     ws->Den_fl_i = e->find_index(tracers, "Den_fl", e);
     ws->Amm_fl_i = e->try_index(tracers, "Amm_fl", e);
    
@@ -96,10 +107,12 @@ void massbalance_wc_init(eprocess* p)
     ws->TP_old_i = find_index_or_add(e->cv_cell, "TP_old", e);
     ws->TC_old_i = find_index_or_add(e->cv_cell, "TC_old", e);
 
-    if (ws->COD_i > -1 && ws->O2_flux_i > -1 && ws->BOD_i > -1){
+    ws->TO_old_i = -1;
+
+    if (ws->COD_i > -1 && ws->O2_flux_i > -1 && ws->BOD_i > -1 && ws->COD_flux_i > -1){
       ws->TO_old_i = find_index_or_add(e->cv_cell, "TO_old", e);
     }else{
-      eco_write_setup(e,"\nNot doing oxygen balance because either COD, O2_flux or BOD is not in tracer list\n");
+      eco_write_setup(e,"\nNot doing oxygen balance because one of COD, O2_flux, BOD or COD_flux is not in tracer list\n");
       }
     /*
      * set a flag indicating doing mass balance calculations
@@ -151,7 +164,7 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
     cell* c = (cell*) pp;
     double* cv = c->cv;
     double* y;
-    double TN, Nfix, TP, TC, TO, TO_old, eps, CO2_flux, O2_flux;
+    double TN, Nfix, TP, TC, TO, TO_old, eps, CO2_flux, O2_flux, COD_flux;
 
     /*
      * if this is a child cell, return, the parent should take care of
@@ -189,6 +202,7 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
 
     if (ws->TO_old_i > -1){
 	O2_flux = (ws->O2_flux_i >= 0) ? y[ws->O2_flux_i] : 0.0;
+	COD_flux = (ws->COD_flux_i >= 0) ? y[ws->COD_flux_i] : 0.0;
 
           TO = y[ws->Oxygen_i] - y[ws->COD_i]  - y[ws->BOD_i];
 
@@ -202,7 +216,7 @@ void massbalance_wc_postcalc(eprocess* p, void* pp)
 
 	  /* because TO can be close to zero */
 
-	  eps = fabs(TO - cv[ws->TO_old_i] + O2_flux / c->dz_wc) / max(fabs(TO + cv[ws->TO_old_i]),8000.0);
+	  eps = fabs(TO - cv[ws->TO_old_i] + COD_flux + O2_flux / c->dz_wc) / max(fabs(TO + COD_flux + cv[ws->TO_old_i]),8000.0);
 
 	  if (eps > MASSBALANCE_EPS)
 	    e_warn("ecology: error: Oxygen - BOD - COD (%e,%e) imbalance violation in water cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);

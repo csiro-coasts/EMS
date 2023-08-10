@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: delaunay.h 6595 2020-09-03 03:36:52Z riz008 $
+ *  $Id: delaunay.h 6922 2021-10-08 04:40:51Z her127 $
  *
  */
 
@@ -146,6 +146,6 @@ int delaunay_xytoi_lag(delaunay* d, point* p, int id);
  * substantial speed gains because of the check on convex hall involved.
  */
 void delaunay_circles_find(delaunay* d, point* p, int* n, int** out);
-
+void delaunay_neighbour_finder(delaunay* d, int ***neic);
 
 #endif

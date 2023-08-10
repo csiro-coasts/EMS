@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: waves.h 6153 2019-03-05 02:50:03Z riz008 $
+ *  $Id: waves.h 7355 2023-05-08 05:36:40Z riz008 $
  *
  */
 
@@ -34,6 +34,64 @@
 #define WFILE   0x020   /* Wave variables read from file             */
 #define WCOMP   0x040   /* Wave variables computed                   */
 #define WWIND   0x080   /* Wave variables = wind waves               */
+#define WSWAN   0x100   /* Wave variables from SWAN                  */
+
+struct s_pass;
+typedef struct s_pass s_pass_t;
+
+/* SWAN data exchange structure */
+
+struct s_pass {
+  int do_amp;
+  int do_per;
+  int do_dir;
+  int do_ub;
+  int do_wif;
+  int do_stokes;
+  int do_dep;
+  int do_hs;
+  int do_Kb;
+  int do_k;
+  int do_noncon;
+  int do_dum1;
+  int do_dum2;
+  int len;
+  double *eta;
+  double *uav;
+  double *vav;
+  double *wx;
+  double *wy;
+  double *z0;
+  double *dep;
+  double *amp;
+  double *per;
+  double *dir;
+  double *ub;
+  double *Fx;
+  double *Fy;
+  double *ste1;
+  double *ste2;
+  double *Kb;
+  double *k;
+  double *fwcapx;          /* Wave whitecapping, x component */
+  double *fwcapy;          /* Wave whitecapping, y component */
+  double *fbrex;           /* Wave depth-induced breaking, x component */
+  double *fbrey;           /* Wave depth-induced breaking, y component */
+  double *fbotx;           /* Wave bottom friction dissapation, x component */
+  double *fboty;           /* Wave bottom friction dissapation, y component */
+  double *fsurx;           /* Wave surface streaming, x component */
+  double *fsury;           /* Wave surface streaming, y component */
+  double *wfdx;            /* Wave form drag, x component */
+  double *wfdy;            /* Wave form drag, y component */
+  double *wovsx;           /* Wave ocean viscous stress, x component */
+  double *wovsy;           /* Wave ocean viscous stress, y component */
+  double *frolx;           /* Wave rollers, x component */
+  double *froly;           /* Wave rollers, y component */
+  double *dum1;
+  double *dum2;
+  int nbounc;
+  int *bdry;
+} ;
 
 struct wave;
 typedef struct wave wave_t;
@@ -53,9 +111,16 @@ struct wave{
   int do_Cd;           /* Do bottom drag modification */
   int do_fetch;        /* Compute fetch */
   int do_stokes;       /* Stokes velocity read from file OK */
+  int do_hs;           /* SWAN hotstart flag */
+  int do_Kb;           /* Compute Bernoulli head */
+  int do_k;            /* Compute wavenumber */
+  int do_noncon;       /* Do non-conservative forces */
+  int do_dum1;         /* Compute dummy variable 1 */
+  int do_dum2;         /* Compute dummy variable 2 */
   int windwave;        /* Wind wave method */
   int c, cc, ij[3];
   int cols;
+  int step;
   int dt_ratio;
   int nz;
   int sednz;
@@ -115,6 +180,24 @@ struct wave{
   double *Cd;
   double *ste1;
   double *ste2;
+  double *Kb;
+  double *k;
+  double *fwcapx;          /* Wave whitecapping, x component */
+  double *fwcapy;          /* Wave whitecapping, y component */
+  double *fbrex;           /* Wave depth-induced breaking, x component */
+  double *fbrey;           /* Wave depth-induced breaking, y component */
+  double *fbotx;           /* Wave bottom friction dissapation, x component */
+  double *fboty;           /* Wave bottom friction dissapation, y component */
+  double *fsurx;           /* Wave surface streaming, x component */
+  double *fsury;           /* Wave surface streaming, y component */
+  double *wfdx;            /* Wave form drag, x component */
+  double *wfdy;            /* Wave form drag, y component */
+  double *wovsx;           /* Wave ocean viscous stress, x component */
+  double *wovsy;           /* Wave ocean viscous stress, y component */
+  double *frolx;           /* Wave rollers, x component */
+  double *froly;           /* Wave rollers, y component */
+  double *dum1;
+  double *dum2;
   double wx;
   double wy;
   char amp_name[MAXSTRLEN];
@@ -129,6 +212,24 @@ struct wave{
   char Cd_name[MAXSTRLEN];
   char ste1_name[MAXSTRLEN];
   char ste2_name[MAXSTRLEN];
+  char Kb_name[MAXSTRLEN];
+  char k_name[MAXSTRLEN];
+  char fwcapx_name[MAXSTRLEN];
+  char fwcapy_name[MAXSTRLEN];
+  char fbrex_name[MAXSTRLEN];
+  char fbrey_name[MAXSTRLEN];
+  char fbotx_name[MAXSTRLEN];
+  char fboty_name[MAXSTRLEN];
+  char fsurx_name[MAXSTRLEN];
+  char fsury_name[MAXSTRLEN];
+  char wfdx_name[MAXSTRLEN];
+  char wfdy_name[MAXSTRLEN];
+  char wovsx_name[MAXSTRLEN];
+  char wovsy_name[MAXSTRLEN];
+  char frolx_name[MAXSTRLEN];
+  char froly_name[MAXSTRLEN];
+  char dum1_name[MAXSTRLEN];
+  char dum2_name[MAXSTRLEN];
   int ampid;
   int perid;
   int dirid;
@@ -141,16 +242,28 @@ struct wave{
   int Cdid;
   int ste1id;
   int ste2id;
+  int Kbid;
+  int kid;
+  int fwcapxid, fwcapyid;
+  int fbrexid, fbreyid;
+  int fbotxid, fbotyid;
+  int fsurxid, fsuryid;
+  int wfdxid, wfdyid;
+  int wovsxid, wovsyid;
+  int frolxid, frolyid;
+  int d1id;
+  int d2id;
   double d1;
   double d2;
-
+  s_pass_t *arrays;
   void* model;
 } ;
 
+
 /* Release verions and getters */
-#define WAVES_MAJOR_VERSION 1
+#define WAVES_MAJOR_VERSION 2
 #define WAVES_MINOR_VERSION 0
-#define WAVES_PATCH_VERSION 1
+#define WAVES_PATCH_VERSION 0
 
 int get_waves_major_vers(void);
 int get_waves_minor_vers(void);
@@ -159,8 +272,11 @@ int get_waves_patch_vers(void);
 /* Internal routines */
 wave_t* wave_create();
 wave_t* wave_build(void* model, FILE *fp);
+wave_t* wave_build_m(void* model, FILE *fp);
 void wave_init(void* model, wave_t *wave, FILE *fp);
+void wave_init_m(void* model, wave_t *wave, FILE *fp);
 void wave_step(void* model, wave_t *wave, int c);
+void swan_step(wave_t *wave);
 void wave_run_setup(FILE *fp, wave_t *wave);
 
 double wavedir_estim(double wy, double wx);
@@ -212,9 +328,107 @@ extern void i_get_tracer_2d(void* hmodel, int c, int ntr, int *tmap, double **tr
 extern int *i_get_tmap_3d(void* hmodel, int ntr, char *trname[]);
 extern int *i_get_tmap_sed(void* hmodel, int ntr, char *trname[]);
 extern int *i_get_tmap_2d(void* hmodel, int ntr, char *trname[]);
+extern int i_get_swan_size(void* hmodel);
+extern double *i_get_swan_eta(void* hmodel);
+extern double *i_get_swan_uav(void* hmodel);
+extern double *i_get_swan_vav(void* hmodel);
+extern double *i_get_swan_wx(void* hmodel);
+extern double *i_get_swan_wy(void* hmodel);
+extern double *i_get_swan_dep(void* hmodel);
+extern double *i_get_swan_amp(void* hmodel);
+extern double *i_get_swan_per(void* hmodel);
+extern double *i_get_swan_dir(void* hmodel);
+extern double *i_get_swan_ub(void* hmodel);
+extern double *i_get_swan_Fx(void* hmodel);
+extern double *i_get_swan_Fy(void* hmodel);
+extern double *i_get_swan_ste1(void* hmodel);
+extern double *i_get_swan_ste2(void* hmodel);
+extern double *i_get_swan_Kb(void* hmodel);
+extern double *i_get_swan_k(void* hmodel);
+extern double *i_get_swan_fwcapx(void* hmodel);
+extern double *i_get_swan_fwcapy(void* hmodel);
+extern double *i_get_swan_fbrex(void* hmodel);
+extern double *i_get_swan_fbrey(void* hmodel);
+extern double *i_get_swan_fbotx(void* hmodel);
+extern double *i_get_swan_fboty(void* hmodel);
+extern double *i_get_swan_fsurx(void* hmodel);
+extern double *i_get_swan_fsury(void* hmodel);
+extern double *i_get_swan_wfdx(void* hmodel);
+extern double *i_get_swan_wfdy(void* hmodel);
+extern double *i_get_swan_wovsx(void* hmodel);
+extern double *i_get_swan_wovsy(void* hmodel);
+extern double *i_get_swan_frolx(void* hmodel);
+extern double *i_get_swan_froly(void* hmodel);
+extern double *i_get_swan_dum1(void* hmodel);
+extern double *i_get_swan_dum2(void* hmodel);
+extern int i_check_swan_hs(void* hmodel);
+
+extern int i_get_swan_size_m(void* hmodel);
+extern double *i_get_swan_eta_m(void* hmodel);
+extern double *i_get_swan_uav_m(void* hmodel);
+extern double *i_get_swan_vav_m(void* hmodel);
+extern double *i_get_swan_wx_m(void* hmodel);
+extern double *i_get_swan_wy_m(void* hmodel);
+extern double *i_get_swan_dep_m(void* hmodel);
+extern double *i_get_swan_amp_m(void* hmodel);
+extern double *i_get_swan_per_m(void* hmodel);
+extern double *i_get_swan_dir_m(void* hmodel);
+extern double *i_get_swan_ub_m(void* hmodel);
+extern double *i_get_swan_Fx_m(void* hmodel);
+extern double *i_get_swan_Fy_m(void* hmodel);
+extern double *i_get_swan_ste1_m(void* hmodel);
+extern double *i_get_swan_ste2_m(void* hmodel);
+extern double *i_get_swan_Kb_m(void* hmodel);
+extern double *i_get_swan_k_m(void* hmodel);
+extern double *i_get_swan_dum1_m(void* hmodel);
+extern double *i_get_swan_dum2_m(void* hmodel);
+extern int *i_get_swan_obc_m(void* hmodel);
+extern int i_get_swan_nobc_m(void* hmodel);
+extern int i_check_swan_hs_m(void* hmodel);
+extern int i_check_wave_amp_m(void *hmodel);
+extern int i_check_wave_period_m(void *hmodel);
+extern int i_check_wave_dir_m(void *hmodel);
+extern int i_check_wave_ub_m(void *hmodel);
+extern int i_check_wave_Fx_m(void *hmodel);
+extern int i_check_wave_Fy_m(void *hmodel);
+extern int i_check_wave_ste1_m(void *hmodel);
+extern int i_check_wave_ste2_m(void *hmodel);
+extern int i_check_wave_k_m(void *hmodel);
+extern int i_check_wave_Kb_m(void *hmodel);
+extern int i_check_wave_fwcapx_m(void *hmodel);
+extern int i_check_wave_fwcapy_m(void *hmodel);
+extern int i_check_wave_fbrex_m(void *hmodel);
+extern int i_check_wave_fbrey_m(void *hmodel);
+extern int i_check_wave_fbotx_m(void *hmodel);
+extern int i_check_wave_fboty_m(void *hmodel);
+extern int i_check_wave_fsurx_m(void *hmodel);
+extern int i_check_wave_fsury_m(void *hmodel);
+extern int i_check_wave_wfdx_m(void *hmodel);
+extern int i_check_wave_wfdy_m(void *hmodel);
+extern int i_check_wave_wovsx_m(void *hmodel);
+extern int i_check_wave_wovsy_m(void *hmodel);
+extern int i_check_wave_frolx_m(void *hmodel);
+extern int i_check_wave_froly_m(void *hmodel);
+extern double *i_get_swan_fwcapx_m(void* hmodel);
+extern double *i_get_swan_fwcapy_m(void* hmodel);
+extern double *i_get_swan_fbrex_m(void* hmodel);
+extern double *i_get_swan_fbrey_m(void* hmodel);
+extern double *i_get_swan_fbotx_m(void* hmodel);
+extern double *i_get_swan_fboty_m(void* hmodel);
+extern double *i_get_swan_fsurx_m(void* hmodel);
+extern double *i_get_swan_fsury_m(void* hmodel);
+extern double *i_get_swan_wfdx_m(void* hmodel);
+extern double *i_get_swan_wfdy_m(void* hmodel);
+extern double *i_get_swan_wovsx_m(void* hmodel);
+extern double *i_get_swan_wovsy_m(void* hmodel);
+extern double *i_get_swan_frolx_m(void* hmodel);
+extern double *i_get_swan_froly_m(void* hmodel);
+extern int i_check_wave_dum1_m(void *hmodel);
+extern int i_check_wave_dum2_m(void *hmodel);
 
 /* Wave interface routines */
 extern int i_check_orbital_file(void *hmodel);
+extern int w_do_waves(void *hmodel);
 extern double w_get_dt(void *hmodel);
 extern int i_check_wave_period(void *hmodel);
 extern double i_get_wave_period(void *hmodel, int c);
@@ -228,6 +442,24 @@ extern int i_check_wave_Fx(void *hmodel);
 extern double i_get_wave_Fx(void *hmodel, int c);
 extern int i_check_wave_Fy(void *hmodel);
 extern double i_get_wave_Fy(void *hmodel, int c);
+extern int i_check_wave_Kb(void *hmodel);
+extern int i_check_wave_k(void *hmodel);
+extern int i_check_wave_fwcapx(void *hmodel);
+extern int i_check_wave_fwcapy(void *hmodel);
+extern int i_check_wave_fbrex(void *hmodel);
+extern int i_check_wave_fbrey(void *hmodel);
+extern int i_check_wave_fbotx(void *hmodel);
+extern int i_check_wave_fboty(void *hmodel);
+extern int i_check_wave_fsurx(void *hmodel);
+extern int i_check_wave_fsury(void *hmodel);
+extern int i_check_wave_wfdx(void *hmodel);
+extern int i_check_wave_wfdy(void *hmodel);
+extern int i_check_wave_wovsx(void *hmodel);
+extern int i_check_wave_wovsy(void *hmodel);
+extern int i_check_wave_frolx(void *hmodel);
+extern int i_check_wave_froly(void *hmodel);
+extern int i_check_wave_dum1(void *hmodel);
+extern int i_check_wave_dum2(void *hmodel);
 extern int i_check_wind(void *hmodel);
 extern double i_get_wave_wind1(void *hmodel, int c);
 extern double i_get_wave_wind2(void *hmodel, int c);

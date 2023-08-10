@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_large_carnivore_spectral_grow_wc.c 6693 2021-03-24 01:06:11Z wil00y $
+ *  $Id: zooplankton_large_carnivore_spectral_grow_wc.c 7198 2022-09-14 06:02:52Z bai155 $
  *
  */
 
@@ -32,15 +32,19 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "zooplankton_large_carnivore_spectral_grow_wc.h"
+
+int ginterface_getwcbotk(void *model, int b);
+double ginterface_getcellz(void *model, int b, int k);
 
 typedef struct {
   int do_mb;                  /* flag */
   int with_df;                /* flag */
   int with_mpb;               /* flag */
   int with_Tricho;            /* flag */
-  
+  int with_cs;
+
   /*
    * parameters
    */
@@ -52,6 +56,7 @@ typedef struct {
   double MBrad;
   double PLrad;
   double DFrad;
+  double CSrad;
   double Tricho_rad;
   double m;
   double E;
@@ -106,7 +111,17 @@ typedef struct {
   int ZooL_sv_i;
   int PAR_i;
 
-
+  int CS_N_i;
+  int CS_NR_i;
+  int CS_I_i;
+  int CS_PR_i;
+  int CS_Chl_i;
+  int CS_Qox_i;
+  int CS_Qred_i;
+  int CS_Qi_i;
+  int CS_RO_i;
+  int CS_Xp_i;
+  int CS_Xh_i;
   /*
    * common cell variables
    */
@@ -117,6 +132,7 @@ typedef struct {
   int phi_MB_i;
   int phi_PL_i;
   int phi_DF_i;
+  int phi_CS_i;
   int phi_Tricho_i;
 } workspace;
 
@@ -145,6 +161,21 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   ws->PhyD_I_i = e->try_index(tracers, "PhyD_I", e);
   ws->PhyD_PR_i = e->try_index(tracers, "PhyD_PR", e);
   ws->PhyD_Chl_i = e->try_index(tracers, "PhyD_Chl", e);
+
+  ws->CS_N_i = e->try_index(tracers, "CS_N_free", e);
+  ws->CS_NR_i = e->try_index(tracers, "CS_NR_free", e);
+  ws->CS_I_i = e->try_index(tracers, "CS_I_free", e);
+  ws->CS_PR_i = e->try_index(tracers, "CS_PR_free", e);
+  ws->CS_Chl_i = e->try_index(tracers, "CS_Chl_free", e);
+
+  // need to add extra internal components of CS
+
+  ws->CS_Xh_i = e->try_index(tracers, "CS_Xh_free", e);
+  ws->CS_Xp_i = e->try_index(tracers, "CS_Xp_free", e);
+  ws->CS_Qox_i = e->try_index(tracers, "CS_Qox_free", e);
+  ws->CS_Qred_i = e->try_index(tracers, "CS_Qred_free", e);
+  ws->CS_Qi_i = e->try_index(tracers, "CS_Qi_free", e);
+  ws->CS_RO_i = e->try_index(tracers, "CS_RO_free", e);
 
   ws->MPB_N_i = e->try_index(tracers, "MPB_N", e);
   ws->MPB_NR_i = e->try_index(tracers, "MPB_NR", e);
@@ -186,6 +217,11 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   else
     ws->with_df = 0;
 
+  if (ws->CS_N_i > -1)
+    ws->with_cs = 1;
+  else
+    ws->with_cs = 0;
+  
   if (ws->Tricho_N_i > -1)
     ws->with_Tricho = 1;
   else
@@ -233,6 +269,9 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   if (ws->with_Tricho){
     eco_write_setup(e," Tricho");
   }
+  if (ws->with_cs){
+    eco_write_setup(e," CS");
+  }
   eco_write_setup(e,"\n");
 
   if (ws->with_mpb){
@@ -241,6 +280,9 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   if (ws->with_df){
     ws->DFrad = get_parameter_value(e, "DFrad");
   }
+  if (ws->with_cs)
+    ws->CSrad = get_parameter_value(e, "CSrad");
+  
   if (ws->with_Tricho){
     ws->Tricho_rad = get_parameter_value(e, "Tricho_rad");
   }
@@ -268,6 +310,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_init(eprocess* p)
   ws->phi_DF_i = find_index_or_add(e->cv_cell, "phi_DF", e);
   //if (ws->with_Tricho)
   ws->phi_Tricho_i = find_index_or_add(e->cv_cell, "phi_Tricho", e);
+  ws->phi_CS_i = find_index_or_add(e->cv_cell, "phi_CS", e);
 }
 
 void zooplankton_large_carnivore_spectral_grow_wc_postinit(eprocess* p)
@@ -317,6 +360,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_precalc(eprocess* p, void* pp)
   cv[ws->phi_MB_i] = (ws->with_mpb) ? phi(ws->meth, ws->MBrad, 0.004 * pow(ws->MBrad, 0.26), 0.0, ws->rad, swim, 0.0, ws->TKEeps, vis, 1000.0, temp) : 0.0;
   cv[ws->phi_DF_i] = (ws->with_df) ? phi(ws->meth, ws->DFrad, 0.004 * pow(ws->DFrad, 0.26), 0.0, ws->rad, swim, 0.0, ws->TKEeps, vis, 1000.0, temp) : 0.0;
   cv[ws->phi_Tricho_i] = (ws->with_Tricho) ? ws->Tricho_pref * phi(ws->meth, ws->Tricho_rad, 0.004 * pow(ws->Tricho_rad, 0.26), 0.0, ws->rad, swim, 0.0, ws->TKEeps, vis, 1000.0, temp) : 0.0;
+  cv[ws->phi_CS_i] = (ws->with_cs) ? phi(ws->meth, ws->CSrad, 0.004 * pow(ws->CSrad, 0.26), 0.0, ws->rad, swim, 0.0, ws->TKEeps, vis, 1000.0, temp) : 0.0;
 
   if (ws->do_mb) {
     double ZooL_N = y[ws->ZooL_N_i];
@@ -368,6 +412,24 @@ void zooplankton_large_carnivore_spectral_grow_wc_calc(eprocess* p, void* pp)
     phi_DF = 0.0;
   }
 
+  double CS_N,CS_NR,CS_I,CS_PR,CS_Chl,phi_CS;
+
+  if (ws->with_cs){
+    CS_N = y[ws->CS_N_i];
+    CS_NR = y[ws->CS_NR_i];
+    CS_I = y[ws->CS_I_i];
+    CS_PR = y[ws->CS_PR_i];
+    CS_Chl = y[ws->CS_Chl_i];
+    phi_CS = cv[ws->phi_CS_i];
+  }else{
+    CS_N = 0.0;
+    CS_NR = 0.0;
+    CS_I = 0.0;
+    CS_PR = 0.0;
+    CS_Chl = 0.0;
+    phi_CS = 0.0;
+  }
+
   double Tricho_N,Tricho_NR,Tricho_I,Tricho_PR,Tricho_Chl,phi_Tricho;
 
   if (ws->with_Tricho){
@@ -413,7 +475,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_calc(eprocess* p, void* pp)
   /* max_enc = per zooplankton cell number rate of encounter */
 
   /*double max_enc = PhyL_N * phi_PL + MPB_N * phi_MB + PhyD_N * phi_DF + Tricho_N * phi_Tricho;*/
-  double max_enc = ZooS_N * phi_ZS + PhyL_N * phi_PL + MPB_N * phi_MB + PhyD_N * phi_DF + Tricho_N * phi_Tricho;
+  double max_enc = ZooS_N * phi_ZS + PhyL_N * phi_PL + MPB_N * phi_MB + PhyD_N * phi_DF + Tricho_N * phi_Tricho + CS_N * phi_CS;
   double umax = cv[ws->umax_i];
 
   /* Technical description is more obvious - max_ing is about taking umax and turning it into a clearance 
@@ -459,6 +521,7 @@ void zooplankton_large_carnivore_spectral_grow_wc_calc(eprocess* p, void* pp)
   double grMPB = (ws->with_mpb) ? graze * phi_MB / max_enc : 0.0;
   double grD = (ws->with_df) ? graze * phi_DF / max_enc : 0.0;
   double grTricho = (ws->with_Tricho) ? graze * phi_Tricho / max_enc : 0.0;
+  double grCS = (ws->with_cs) ? graze * phi_CS / max_enc : 0.0;
 
   /* all grazed nutrient reserve must go into dissolved pools as it is not at Redfield */
   
@@ -479,6 +542,21 @@ void zooplankton_large_carnivore_spectral_grow_wc_calc(eprocess* p, void* pp)
     y1[ws->PhyD_PR_i] -= grD * PhyD_PR ;
     y1[ws->PhyD_Chl_i] -= grD * PhyD_Chl ;
   }
+
+  if (ws->with_cs) {
+    y1[ws->CS_N_i] -= grCS * CS_N;
+    y1[ws->CS_NR_i] -= grCS * CS_NR;
+    y1[ws->CS_I_i] -= grCS * CS_I;
+    y1[ws->CS_PR_i] -= grCS * CS_PR ;
+    y1[ws->CS_Chl_i] -= grCS * CS_Chl ;
+    y1[ws->CS_Xp_i] -= grCS * y[ws->CS_Xp_i];
+    y1[ws->CS_Xh_i] -= grCS *  y[ws->CS_Xh_i];
+    y1[ws->CS_Qred_i] -= grCS * y[ws->CS_Qred_i];
+    y1[ws->CS_Qox_i] -= grCS * y[ws->CS_Qox_i];
+    y1[ws->CS_Qi_i] -= grCS * y[ws->CS_Qi_i]; 
+    y1[ws->CS_RO_i] -= grCS *  y[ws->CS_RO_i];
+  }
+  
   if (ws->with_Tricho) {
     y1[ws->Tricho_N_i] -= grTricho * Tricho_N;
     y1[ws->Tricho_NR_i] -= grTricho * Tricho_NR;
@@ -494,10 +572,10 @@ void zooplankton_large_carnivore_spectral_grow_wc_calc(eprocess* p, void* pp)
     y1[ws->MPB_Chl_i] -= grMPB * MPB_Chl ;
   }
 
-  y1[ws->NH4_i] += NH4_release + (grL * PhyL_NR) + (grMPB * MPB_NR) + (grD * PhyD_NR) + (grTricho * Tricho_NR);
-  y1[ws->DIP_i] += NH4_release * red_W_P + grL * PhyL_PR + grMPB * MPB_PR + grD * PhyD_PR + grTricho * Tricho_PR;
+  y1[ws->NH4_i] += NH4_release + (grL * PhyL_NR) + (grMPB * MPB_NR) + (grD * PhyD_NR) + (grTricho * Tricho_NR) + (grCS * CS_NR);
+  y1[ws->DIP_i] += NH4_release * red_W_P + grL * PhyL_PR + grMPB * MPB_PR + grD * PhyD_PR + grTricho * Tricho_PR + grCS * CS_PR;
 
-  DIC_release += (grL * PhyL_I + grMPB * MPB_I + grD * PhyD_I + grTricho * Tricho_I)* 106.0/1060.0 * 12.01;
+  DIC_release += (grL * PhyL_I + grMPB * MPB_I + grD * PhyD_I + grTricho * Tricho_I + grCS * CS_I)* 106.0/1060.0 * 12.01;
   y1[ws->DIC_i] += DIC_release;
 
   double Oxygen2 = Oxygen * Oxygen; 
@@ -553,15 +631,15 @@ void zooplankton_large_carnivore_spectral_grow_wc_postcalc(eprocess* p, void* pp
 
     /* Depths are -ve below mean sea level. */
     
-    wcbotk = einterface_getwcbotk(c->col->model, c->b);
-    z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
+    wcbotk = ginterface_getwcbotk(c->col->model, c->b);
+    z_bot = ginterface_getcellz(c->col->model,c->b,wcbotk);
     
     if (z_bot > -100.0){
       y[ws->ZooL_sv_i] = 0.0;
       return;
     }
     
-    z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
+    z_centre = ginterface_getcellz(c->col->model,c->b,c->k_wc);
     
     y[ws->ZooL_sv_i] = - ws->ZLdvmrate;
     

@@ -41,7 +41,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: oxygen_exchange_wc.c 5944 2018-09-13 05:35:16Z bai155 $
+ *  $Id: oxygen_exchange_wc.c 7201 2022-09-14 10:24:02Z bai155 $
  *
  */
 
@@ -53,7 +53,9 @@
 #include "utils.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+// #include "einterface.h"
+
+int ginterface_getwctopk(void *model, int b);
 
 /*
  * must be a coefficient of molecular diffusion of oxygen in water
@@ -118,7 +120,7 @@ void oxygen_exchange_wc_calc(eprocess* p, void* pp)
     intargs* ia = (intargs*) pp;
     cell* c = ((cell*) ia->media);
     int b = c->b;
-    int topk = einterface_getwctopk(model, b);
+    int topk = ginterface_getwctopk(model, b);
 
     double salt, temp, sat, Oxygen;
     double* y;

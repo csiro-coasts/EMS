@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: time.c 5831 2018-06-26 23:48:06Z riz008 $
+ *  $Id: time.c 6814 2021-06-23 02:44:49Z her127 $
  */
 
 
@@ -437,6 +437,35 @@ char *tm_time_to_datestr(double t, char *u)
 
   /* Store the resulting string */
   sprintf(datestring, "%4d-%02d-%02d %02d:%02d:%02d", y, mo, d, h, mi, s);
+
+  return (datestring);
+}
+
+char *tm_time_to_datestrc(double t, char *u)
+{
+  char units[] = "1 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+  char df[MAXSTRLEN];
+  double mult;
+  int y, mo, d;
+  int h, mi, s;
+  double j = tm_time_to_julsecs(u);
+  double f;
+
+  /* Read units, convert to seconds */
+  if (sscanf(u, "%10s since %*d-%*d-%*d", &units[2]) != 1)
+    quit("tm_time_to_datestr: Can't understand %s\n", u);
+  if (!tm_scale_to_secs(units, &mult))
+    quit("tm_time_to_datestr: Can't convert %s to seconds\n", units);
+
+  /* Add time value to epoch */
+  j += t * mult / 86400.0;
+
+  /* Convert back to date */
+  tm_to_julsecs(j, &y, &mo, &d, &h, &mi, &s);
+  sprintf(df, "%4d%02d%02d", y, mo, d);
+  f = atof(df) + (double)(h * 3600 + mi * 60 + s) / 86400.0;
+  /* Store the resulting string */
+  sprintf(datestring, "%8.4f", f);
 
   return (datestring);
 }

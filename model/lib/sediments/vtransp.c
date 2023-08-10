@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vtransp.c 6575 2020-07-06 06:17:49Z mar644 $
+ *  $Id: vtransp.c 7382 2023-08-07 02:04:56Z mar644 $
  *
  */
 
@@ -1022,14 +1022,20 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
       d_free_1d(dvar);
 
       /* explicit influx in water from sediment */
+
+      // NMY 2023 skip processing temp and salt in water column
+      if (!param->geomorph && (strcmp("temp",tracer->name) == 0 ||
+          strcmp("salt",tracer->name) == 0) )
+		continue;
+
       // NMY 2013 surface flux
       srf_flux_inout(sediment, sm, nt, &srf_flux_in, &srf_flux_out_coef);
       botinflux = sm->watvel_sed[tk_sed + 1] * sm->tr_sed[nt][tk_sed];
 // NMY 2018 
-      sm->erdepflux[param->vtransp_dissolv[n]] = botinflux;
-      if (!param->geomorph && (strcmp("temp",tracer->name) == 0 ||
-          strcmp("salt",tracer->name) == 0) )
-        botinflux = 0.;     /* Cut temp and salt influx */
+//      sm->erdepflux[param->vtransp_dissolv[n]] = botinflux;
+//      if (!param->geomorph && (strcmp("temp",tracer->name) == 0 ||
+//          strcmp("salt",tracer->name) == 0) )
+//        botinflux = 0.;     /* Cut temp and salt influx */
       dvar = d_alloc_1d(param->nz + 1);
       vdiff_dissolved_wc(sediment, sm, tracer, botinflux, srf_flux_in,
 			 zeroval, srf_flux_out_coef, dvar);
@@ -1046,20 +1052,23 @@ static void update_dissolved_tr(sediment_t *sediment, sed_column_t *sm)
       double *dvar;
       int nt = param->vtransp_dissolv[n];
       sed_tracer_t *tracer = &sediment->mstracers[nt];
-      dvar = d_alloc_1d(param->nz + 1);
-      // NMY 2013 surface flux
-      // sets srf_flux_in, srf_flux_out_coef
-      srf_flux_inout(sediment, sm, nt, &srf_flux_in, &srf_flux_out_coef);
-      botoutfluxcoef = sm->watvel_sed[tk_sed + 1];
-      if (!param->geomorph && (strcmp("temp",tracer->name) == 0 ||  strcmp("salt",tracer->name) == 0))
-        botoutfluxcoef = 0.;  /* Cut temp and salt outflux */
-      vdiff_dissolved_wc(sediment, sm, tracer, zeroval, srf_flux_in,
+
+      // NMY 2023 skip processing temp and salt in water column (if neither temp nor salt then ...)
+      if (param->geomorph || (strcmp("temp",tracer->name) != 0 &&  strcmp("salt",tracer->name) != 0)) {
+          dvar = d_alloc_1d(param->nz + 1);
+          // NMY 2013 surface flux
+          // sets srf_flux_in, srf_flux_out_coef
+          srf_flux_inout(sediment, sm, nt, &srf_flux_in, &srf_flux_out_coef);
+          botoutfluxcoef = sm->watvel_sed[tk_sed + 1];
+          //if (!param->geomorph && (strcmp("temp",tracer->name) == 0 ||  strcmp("salt",tracer->name) == 0))
+          //   botoutfluxcoef = 0.;  /* Cut temp and salt outflux */
+          vdiff_dissolved_wc(sediment, sm, tracer, zeroval, srf_flux_in,
 			 botoutfluxcoef, srf_flux_out_coef, dvar);
+          for (k = bk_wc; k <= tk_wc; k++)
+              sm->tr_wc[nt][k] += dvar[k];
+          d_free_1d(dvar);
+      }
 
-      for (k = bk_wc; k <= tk_wc; k++)
-        sm->tr_wc[nt][k] += dvar[k];
-
-      d_free_1d(dvar);
 
       /* explicit influx in sediment from water */
       topinflux = sm->watvel_sed[tk_sed + 1] * sm->tr_wc[nt][bk_wc];
@@ -1341,8 +1350,11 @@ void sed_tracer_decay(sediment_t *sediment, sed_column_t *sm)
   /* decay */
   for (n = 0; n < param->n_vtransp_decay; n++) {
     sed_tracer_t *tracer = &sediment->mstracers[param->vtransp_decay[n]];
-    double rate = tracer->decay;
+    double rate = tracer->decay_days;
     double dt = param->dt;
+
+    //fprintf(stderr, "vtransp.c: sed_tracer_decay: tracer=%s, decay=%lf \n", tracer->name, tracer->decay_days);
+
     rate = 1. / (24. * 3600. * rate);
     for (k = bk_wc; k <= tk_wc; k++)
       sm->tr_wc[param->vtransp_decay[n]][k] *= exp(-rate * dt);

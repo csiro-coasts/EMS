@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: timeseries.c 6648 2020-09-08 01:44:06Z her127 $
+ *  $Id: timeseries.c 7007 2022-02-27 23:56:05Z her127 $
  *
  */
 
@@ -120,6 +120,10 @@ static void ts_add_point(double t, int n, int mode)
   ycpt = master->v[c];
   xcpta = master->uav[cs];
   ycpta = master->vav[cs];
+  /*
+  xcpt = master->u1[geom->c2e[1][c]];
+  xcpta = master->u1av[geom->c2e[1][cs]];
+  */
 
   /* Read in data */
   if (tslist[n].ndata) {
@@ -223,15 +227,39 @@ static double ts_event(sched_event_t *event, double t)
 	 * See if we're in the range of the file
 	 */
 	if (ts_has_time(loc_ts, ts_t)) {
-	  // Get the new i,j,k
+	  int oldcode = 0;
 
-	  tslist[n].x = ts_eval(loc_ts, tslist[n].varids[0], ts_t);
-	  tslist[n].y = ts_eval(loc_ts, tslist[n].varids[1], ts_t);
+	  // Get the new i,j,k
+	  if (tslist[n].type & TS_X)
+	    tslist[n].x = ts_eval(loc_ts, tslist[n].varids[0], ts_t);
+
+	  if (tslist[n].type & TS_Y)
+	    tslist[n].y = ts_eval(loc_ts, tslist[n].varids[1], ts_t);
+
+	  if (tslist[n].type & TS_Z) {
+	    tslist[n].z = ts_eval(loc_ts, tslist[n].varids[2], ts_t);
+	  }
+	  if (loc_ts->df->variables[tslist[n].varids[2]].z_is_depth)
+	    tslist[n].z = -tslist[n].z;
+	  if (oldcode) {
+	  df_variable_t *v;
+	  // Get the new i,j,k
+	  v = &loc_ts->df->variables[tslist[n].varids[0]];
+	  if (!v->nd && !v->nc)
+	    nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[0], 0, 0, &tslist[n].x);
+	  else
+	    tslist[n].x = ts_eval(loc_ts, tslist[n].varids[0], ts_t);
+	  v = &loc_ts->df->variables[tslist[n].varids[1]];
+	  if (!v->nd && !v->nc)
+	    nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[1], 0, 0, &tslist[n].y);
+	  else
+	    tslist[n].y = ts_eval(loc_ts, tslist[n].varids[1], ts_t);
 	  tslist[n].z = ts_eval(loc_ts, tslist[n].varids[2], ts_t);
 	  
 	  if (loc_ts->df->variables[tslist[n].varids[2]].z_is_depth)
 	    tslist[n].z = -tslist[n].z;
-	  
+	  }
+
 	  /*
 	   * Skip over this point if not in the domain
 	   *
@@ -593,7 +621,7 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
   FILE *locF = NULL;
 
   if (master->runmode & DUMP) return;
-	
+
   /* Get number of time series points from parameter file */
   prm_set_errfn(hd_silent_warn);
   
@@ -626,6 +654,8 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
   for (n = 0; n < nts; n++) {
     timeseries_t *loc_ts = &tslist[n].ts;
 
+    tslist[n].type = 0;
+
     sprintf(key, "TS%1d.name", n);
     prm_read_char(tsfd, key, tslist[n].pname);
 
@@ -650,22 +680,43 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
       if (sscanf(buf, "%lf %lf %lf",
 		 &tslist[n].x, &tslist[n].y, &tslist[n].z) != 3)
 	hd_quit_and_dump("timeseries_init: Can't read point list\n");
+      tslist[n].type |= TS_CONST;
     } else {
       // Cache the variable id's
       char *varname;
       char buf2[MAXSTRLEN];
+      df_variable_t *v;
+
       // Make sure buf points to the the full name string
       varname = fv_get_varname(buf, "lon", buf2);
       if ((tslist[n].varids[0] = ts_get_index(loc_ts, varname)) < 0)
 	hd_quit("ts_init: variable for 'lon' not found in '%s'\n", buf);
+      /* Check the dimensions of the lon variable.                   */
+      /* Glider data has lon,lat,depth variable                      */
+      /* IMOS netCDF mooring data has depth variable                 */
+      v = &loc_ts->df->variables[tslist[n].varids[0]];
+      if (!v->nd && !v->nc) {
+	nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[0], 0, 0, &tslist[n].x);
+      } else
+	tslist[n].type |= TS_X;
 
       varname = fv_get_varname(buf, "lat", buf2);
       if ((tslist[n].varids[1] = ts_get_index(loc_ts, varname)) < 0)
 	hd_quit("ts_init: variable for 'lat' not found in '%s'\n", buf);
+      v = &loc_ts->df->variables[tslist[n].varids[1]];
+      if (!v->nd && !v->nc) {
+	nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[1], 0, 0, &tslist[n].y);
+      } else
+	tslist[n].type |= TS_Y;
 
       varname = fv_get_varname(buf, "depth", buf2);
       if ((tslist[n].varids[2] = ts_get_index(loc_ts, varname)) < 0)
 	hd_quit("ts_init: variable for 'depth' not found in '%s'\n", buf);
+      v = &loc_ts->df->variables[tslist[n].varids[2]];
+      if (!v->nd && !v->nc) {
+	nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[2], 0, 0, &tslist[n].z);
+      } else
+	tslist[n].type |= TS_Z;
     }
     sprintf(key, "TS%1d.dt", n);
 
@@ -693,14 +744,14 @@ void timeseries_init(FILE * prmfd, master_t *master,geometry_t *geom,
         tslist[n].v_offset = 2;
     }
 
-    tslist[n].type = SIMPLE;
     sprintf(key, "TS%1d.type", n);
     if (prm_read_char(tsfd, key, buf)) {
       if (strcmp(buf, "simple") == 0 || strcmp(buf, "SIMPLE") == 0)
-        tslist[n].type = SIMPLE;
+        tslist[n].type |= SIMPLE;
       if (strcmp(buf, "standard") == 0 || strcmp(buf, "STANDARD") == 0)
-        tslist[n].type = STANDARD;
-    }
+        tslist[n].type |= STANDARD;
+    } else 
+      tslist[n].type |= SIMPLE;
 
     /*
      * DA flags
@@ -1027,22 +1078,35 @@ void timeseries_init_m(FILE * prmfd, master_t *master,geometry_t *geom,
       if (sscanf(buf, "%lf %lf %lf",
 		 &tslist[n].x, &tslist[n].y, &tslist[n].z) != 3)
 	hd_quit_and_dump("timeseries_init: Can't read point list\n");
-
+      tslist[n].type |= TS_CONST;
     } else {
       // Cache the variable id's
       char *varname;
+      df_variable_t *v;
 
       varname = fv_get_varname(fname, "lon", buf);
       if ((tslist[n].varids[0] = ts_get_index(loc_ts, varname)) < 0)
 	hd_quit("ts_init: variable for 'lon' not found in '%s'\n", buf);
+      if (!v->nd && !v->nc) {
+	nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[0], 0, 0, &tslist[n].x);
+      } else
+	tslist[n].type |= TS_X;
 
       varname = fv_get_varname(fname, "lat", buf);
       if ((tslist[n].varids[1] = ts_get_index(loc_ts, varname)) < 0)
 	hd_quit("ts_init: variable for 'lat' not found in '%s'\n", buf);
+      if (!v->nd && !v->nc) {
+	nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[1], 0, 0, &tslist[n].y);
+      } else
+	tslist[n].type |= TS_Y;
 
       varname = fv_get_varname(fname, "depth", buf);
       if ((tslist[n].varids[2] = ts_get_index(loc_ts, varname)) < 0)
 	hd_quit("ts_init: variable for 'depth' not found in '%s'\n", buf);
+      if (!v->nd && !v->nc) {
+	nc_get_vara_double(loc_ts->df->ncid, tslist[n].varids[2], 0, 0, &tslist[n].z);
+      } else
+	tslist[n].type |= TS_Z;
     }
     sprintf(key, "TS%1d.dt", n);
 
@@ -1401,6 +1465,8 @@ void read_ts_data_init(FILE *fp,          /* Input parameters data   */
 	ts->metric = TS_RMSE;      
       if (strcmp(buf, "MINMAX") == 0)
 	ts->metric = (TS_MINMAX|TS_CLOS);
+      if (strcmp(buf, "ZINTERP") == 0)
+	ts->metric = (TS_ZINTERP);
       if (strcmp(buf, "CATEGORICAL") == 0)
 	ts->metric = TS_CAT;
       if (strcmp(buf, "TRUE_SKILL") == 0)
@@ -1768,6 +1834,34 @@ int read_ts_data(master_t *master, ts_point_t tslist, double t, int c)
 	  tslist.maxv[tn] = max(tslist.maxv[tn], d2);
 	}
       }
+    } else if (tslist.metric & TS_ZINTERP) {
+      int cp = c;
+      int cm = c;
+      double z, dp, dm, vp, vm;
+      double ts_t = t;
+      timeseries_t *loc_ts = &tslist.ts;
+      /* Get the glider vertical position                            */
+      if (tslist.type & TS_Z) {
+	tm_change_time_units(master->timeunit, loc_ts->t_units, &ts_t, 1);
+	z = ts_eval(loc_ts, tslist.varids[2], ts_t);
+	if (loc_ts->df->variables[tslist.varids[2]].z_is_depth) z = -z;
+      } else
+	z = tslist.z;
+      /* Layers above and below                                      */
+      while (cp != geom->zp1[cp] && geom->cellz[cp] < z)
+	cp = geom->zp1[cp];
+      while (cm != geom->zm1[cm] && geom->cellz[cm] > z)
+	cm = geom->zm1[cm];
+      /* Interpolate                                                 */
+      if (cp == cm)
+	tslist.val[tn] = tslist.data[tn][c];
+      else {
+	dp = geom->cellz[cp];
+	dm = geom->cellz[cm];
+	vp = tslist.data[tn][cp];
+	vm = tslist.data[tn][cm];
+	tslist.val[tn] = (vp - vm) * (z - dp) / (dp - dm) + vp;
+      }
     } else if (tslist.metric & TS_DIFF && tslist.thresh != NULL) {
       double thresh, d1 = 0.0;
       tslist.val[tn] = 0.0;
@@ -1913,7 +2007,7 @@ double average_glider_data(master_t *master,   /* Master data        */
   for (m = 0; m < tslist->ndata; ++m) {
     timeseries_t *ts = tsdata[m];
 
-    if (tslist->dvarids[tn][i] < 0) continue;
+    if (tslist->dvarids[tn][m] < 0) continue;
     df = ts->df;
     v = df_get_variable(df, tslist->dvarids[tn][m]);
 
@@ -1937,6 +2031,7 @@ double average_glider_data(master_t *master,   /* Master data        */
       if (!(cg = get_glider_loc(master, tslist, loc_ts, tg))) {
 	break;
       }
+      if(master->dt < tslist->tsdt && tg < t - master->dt) break;
     }
     *cu = cg;
     *tu = tg;
@@ -1954,12 +2049,13 @@ double average_glider_data(master_t *master,   /* Master data        */
 	n++;
 	if (firstval) fv = 0;
       }
-      r2 = min(r2 + 1, v->nrecords - 1);    /* Increment the record  */
+      r2 = min(r2 + 1, df->nrecords - 1);    /* Increment the record  */
       tg = df->records[r2];                 /* Glider time of record */
       cp = cg;
       if (!(cg = get_glider_loc(master, tslist, loc_ts, tg))) {
 	break;
       }
+      if(master->dt < tslist->tsdt && tg > t + master->dt) break;
     }
     *cd = cg;
     *td = tg;
@@ -1984,12 +2080,40 @@ int get_glider_loc(master_t *master, ts_point_t *tslist, timeseries_t *loc_ts, d
   tm_change_time_units(master->timeunit, loc_ts->t_units, &ts_t, 1);
 
   if (ts_has_time(loc_ts, ts_t)) {
-    x = ts_eval(loc_ts, tslist->varids[0], ts_t);
-    y = ts_eval(loc_ts, tslist->varids[1], ts_t);
+    int oldcode = 0;
+    
+    // Get the new i,j,k
+    if (tslist->type & TS_X)
+      x = ts_eval(loc_ts, tslist->varids[0], ts_t);
+    else
+      x = tslist->x;
+    if (tslist->type & TS_Y)
+      y = ts_eval(loc_ts, tslist->varids[1], ts_t);
+    else
+      y = tslist->y;
+    if (tslist->type & TS_Z) {
+      z = ts_eval(loc_ts, tslist->varids[2], ts_t);
+    }
+    else
+      z = tslist->z;
+
+    if (oldcode) {
+    df_variable_t *v;
+    v = &loc_ts->df->variables[tslist->varids[0]];
+    if (!v->nd && !v->nc)
+      nc_get_vara_double(loc_ts->df->ncid, tslist->varids[0], 0, 0, &x);
+    else
+      x = ts_eval(loc_ts, tslist->varids[0], ts_t);
+    v = &loc_ts->df->variables[tslist->varids[1]];
+    if (!v->nd && !v->nc)
+      nc_get_vara_double(loc_ts->df->ncid, tslist->varids[1], 0, 0, &y);
+    else
+      y = ts_eval(loc_ts, tslist->varids[1], ts_t);
     z = ts_eval(loc_ts, tslist->varids[2], ts_t);
+    }
+
     if (loc_ts->df->variables[tslist->varids[2]].z_is_depth)
       z = -z;
-
     if ((c = hd_grid_xytoij(master, x, y, &i, &j))) {
       cs = geom->m2d[c];
       c = d2c(master, z, tslist->v_offset, cs);

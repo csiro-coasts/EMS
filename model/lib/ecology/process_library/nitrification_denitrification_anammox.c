@@ -245,10 +245,14 @@ void nitrification_denitrification_anammox_calc(eprocess* p, void* pp)
     dz = c->dz_wc;
   }else{
     dz = c->dz_sed * c->porosity;
-    if (dz > 0.2){
-      return;
-    }
-  }
+    /*    if (dz > 0.2){
+	  return;  *** KWA omit dz based limit on processes occurring in deep sediments 
+    }*/
+    //***KWA added NO3 based limit on processes occurring in deep sediments
+    if (y[ws->NO3_i]*dz < 0.01){
+	return;
+      }
+ }
   
   double NH4 = y[ws->NH4_i];
   double NO3 = y[ws->NO3_i];
@@ -267,7 +271,7 @@ void nitrification_denitrification_anammox_calc(eprocess* p, void* pp)
   y1[ws->NO3_i] += Nitrification - Denitrification - Anammox/2.0;
     
   if (ws-> NH4_pr_i > -1)
-    y1[ws->NH4_pr_i] -= Nitrification * SEC_PER_DAY * dz;
+    y1[ws->NH4_pr_i] -= (Nitrification + Anammox/2.0) * SEC_PER_DAY * dz;
   
   if (ws-> Den_fl_i > -1)
     y1[ws->Den_fl_i] += Denitrification * SEC_PER_DAY * dz;

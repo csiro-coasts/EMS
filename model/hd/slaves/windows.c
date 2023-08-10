@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 6715 2021-03-29 00:56:57Z her127 $
+ *  $Id: windows.c 7356 2023-05-09 04:03:42Z riz008 $
  *
  */
 
@@ -4959,7 +4959,7 @@ window_t **win_data_build(master_t *master, /* Model data structure */
     windat[n]->regionid = windat[n]->regres = windat[n]->Vi = NULL;
     windat[n]->reefe1 = windat[n]->reefe2 = windat[n]->agetr = NULL;
     windat[n]->tr_adv = windat[n]->tr_hdif = windat[n]->tr_vdif = windat[n]->tr_ncon = NULL;
-    windat[n]->wave_stke1 = windat[n]->wave_stke1 = NULL;
+    windat[n]->wave_stke1 = windat[n]->wave_stke2 = NULL;
     if (master->ndhw) {
       windat[n]->dhw = (double **)p_alloc_1d(master->ndhw);
       windat[n]->dhd = (double **)p_alloc_1d(master->ndhw);
@@ -5130,7 +5130,15 @@ window_t **win_data_build(master_t *master, /* Model data structure */
       } else if (strcmp("decorr_e2", master->trname[tn]) == 0) {
         windat[n]->decv2 = windat[n]->tr_wc[tn];
       } else if (master->swr_type & SWR_3D && strcmp("swr_attenuation", master->trname[tn]) == 0) {
+	int m;
         windat[n]->swr_attn = windat[n]->tr_wc[tn];
+	/* Re-wire, if tracer */
+	for (m = 0; m < windat[n]->ntr; m++)
+	  if (strcmp(master->params->swr_attn,
+		     master->trinfo_3d[m].name) == 0) {
+	    windat[n]->swr_attn = windat[n]->tr_wc[m];
+	    break;
+	  }
       } else if (master->trperc >= 0) {
 	char buf[MAXSTRLEN];
 	sprintf(buf, "percentile_%s", 
@@ -5364,7 +5372,10 @@ window_t *win_data_init(master_t *master, /* Master data structure */
 	windat->cloud = d_alloc_1d(winsize);
       if (master->heatflux & COMP_HEAT)
 	windat->lwrd = d_alloc_1d(winsize);
+      if (master->heatflux & ADVANCED && master->heatflux & COMP_LWI)
+	windat->lwri = d_alloc_1d(winsize);
     }
+
     if (master->heatflux & (COMP_HEAT_MOM | COMP_HEAT_NONE))
       if (master->swrd) windat->swrd = d_alloc_1d(winsize);
     if (master->heatflux & (COMP_HEAT | COMP_HEAT_MOM | COMP_HEAT_NONE)) {
@@ -5382,7 +5393,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
     if (master->sh_f & (DEWPOINT|WETBULB))
       windat->wetb = d_alloc_1d(winsize);
     else
-      if (master->sh_f & RELHUM)
+      if (master->sh_f & (RELHUM|SPECHUM))
 	windat->rh = d_alloc_1d(winsize);
     
     if (master->albedo_l)
@@ -5714,6 +5725,7 @@ window_t *win_data_init(master_t *master, /* Master data structure */
     windat->swrd = master->swrd;
     windat->lwrd = master->lwrd;
     windat->lwro = master->lwro;
+    windat->lwri = master->lwri;
     windat->shfd = master->shfd;
     windat->lhfd = master->lhfd;
     windat->nsfd = master->nsfd;
@@ -5937,6 +5949,8 @@ void win_data_clear(window_t *windat  /* Window data structure */
       d_free_1d(windat->airtemp);
     if (windat->cloud)
       d_free_1d(windat->cloud);
+    if (windat->lwri)
+      d_free_1d(windat->lwri);
   }
 
   win_data_init_transfer_buf_cleanup(windat);
@@ -6372,6 +6386,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->attn_tr = master->attn_tr;
     wincon[n]->tran_tr = master->tran_tr;
     wincon[n]->swr_type = master->swr_type;
+    wincon[n]->eta_ib = master->eta_ib;
     if (master->ndhw) {
       wincon[n]->ndhw = master->ndhw;
       wincon[n]->dhwf = i_alloc_1d(master->ndhw);
@@ -6676,7 +6691,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     /* Set linear advection flags                                    */
     wincon[n]->dolin_u1 = wincon[n]->dolin_u2 = 0;
     wincon[n]->dobdry_u1 = wincon[n]->dobdry_u2 = 0;
-    wincon[n]->linmask_u1 = wincon[n]->linmask_u1 = NULL;
+    wincon[n]->linmask_u1 = wincon[n]->linmask_u2 = NULL;
     wincon[n]->obcmap = i_alloc_1d(window[n]->sgsiz);
     memset(wincon[n]->obcmap, 0, window[n]->sgsiz * sizeof(int));
     for (i = 0; i < window[n]->nobc; i++) {
@@ -7327,6 +7342,15 @@ void pre_run_setup(master_t *master,  /* Master data structure */
       tidalc_setup(geom, window[n], open);
     }
 
+    /*---------------------------------------------------------------*/
+    /* Eta initial condition adjustment for inverse barometer        */
+    if (master->eta_ib) {
+      for (cc = 1; cc <= window[n]->b2_t; cc++) {
+	c = window[n]->w2_t[cc];
+	windat[n]->eta[c] += (wincon[n]->ambpress - windat[n]->patm[c]) /
+	  (windat[n]->dens[c] * wincon[n]->g);
+      }
+    }
       /*win_data_empty_3d(master,window[n],windat[n],TRACERS);
 	win_data_refill_3d(master,window[n],windat[n],nwindows,TRACERS); */
   }
@@ -9129,16 +9153,16 @@ void nan_check(geometry_t **window, /* Processing window */
     for (cc = 1; cc <= window[n]->b2_e1; cc++) {
       c = window[n]->w2_e1[cc];
       if (isnan(windat[n]->u1av[c]))
-	hd_warn("NaN found in u1av, window %d at (%d %d)\n", n, window[n]->s2i[c], window[n]->s2j[c]);
+	hd_warn("NaN found in u1av, window %d at %d(%d %d)\n", n, c, window[n]->s2i[c], window[n]->s2j[c]);
       if (isnan(windat[n]->wind1[c]))
-	hd_warn("NaN found in wind1, window %d at (%d %d)\n", n, window[n]->s2i[c], window[n]->s2j[c]);
+	hd_warn("NaN found in wind1, window %d at %d(%d %d)\n", n, c, window[n]->s2i[c], window[n]->s2j[c]);
     }
     for (cc = 1; cc <= window[n]->b2_e2; cc++) {
       c = window[n]->w2_e2[cc];
       if (isnan(windat[n]->u2av[c]))
-	hd_warn("NaN found in u2av, window %d at (%d %d)\n", n, window[n]->s2i[c], window[n]->s2j[c]);
+	hd_warn("NaN found in u2av, window %d at %d(%d %d)\n", n, c, window[n]->s2i[c], window[n]->s2j[c]);
       if (isnan(windat[n]->wind2[c]))
-	hd_warn("NaN found in wind2, window %d at (%d %d)\n", n, window[n]->s2i[c], window[n]->s2j[c]);
+	hd_warn("NaN found in wind2, window %d at %d(%d %d)\n", n, c, window[n]->s2i[c], window[n]->s2j[c]);
     }
     /* T/S */
     for (cc = 1; cc <= window[n]->b3_t; cc++) {

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6614 2020-09-07 03:30:15Z her127 $
+ *  $Id: transfers.c 6962 2021-12-17 03:18:05Z her127 $
  *
  */
 
@@ -185,7 +185,7 @@ void win_data_slave_update_fill_3d(master_t *master, geometry_t *window,
     
   /*-----------------------------------------------------------------*/
   /* Relative humidity                                               */
-  if (master->sh_f & RELHUM)
+  if (master->sh_f & (RELHUM|SPECHUM))
     for (cc = 1; cc <= window->enonS; cc++) {
       c = window->wsa[cc];
       windat->rh[cc] = master->rh[c];
@@ -207,6 +207,8 @@ void win_data_slave_update_fill_3d(master_t *master, geometry_t *window,
 	windat->swr[cc] = master->swr[c];
       windat->airtemp[cc] = master->airtemp[c];
       if (master->cloud) windat->cloud[cc] = master->cloud[c];
+      if (master->heatflux & COMP_LWI)
+	windat->lwri[cc] = master->lwri[c];
     }
   }
   if (master->heatflux & COMP_HEAT) {
@@ -1883,7 +1885,7 @@ void s2m_2d(master_t *master,   /* Model grid data structure */
         master->tr_sed[tn][k][c] = windat->tr_sed[tn][k][lc];
     }
   }
-  
+
   /* e1 face centered variables */
   for (cc = 1; cc <= window->b2_e1; cc++) {
     lc = window->w2_e1[cc];

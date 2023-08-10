@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6660 2020-09-08 06:08:47Z her127 $
+ *  $Id: readparam_t.c 7320 2023-04-11 02:07:46Z her127 $
  *
  */
 
@@ -122,7 +122,8 @@ FILE *fp;
   prm_read_char(fp, keyword, params->sequence);
   /* ID number and revision */
   sprintf(keyword, "ID_NUMBER");
-  prm_read_double(fp, keyword, &params->runno);
+  prm_read_char(fp, keyword, params->runnoc);
+  params->runno = atof(params->runnoc);
   sprintf(keyword, "REVISION");
   prm_read_char(fp, keyword, params->rev);
   /* This is needed to make dtime work with longitude */
@@ -328,8 +329,14 @@ FILE *fp;
   params->ntr += import_init(params, fp);
   read_decorr(params, fp, 0);
   params->ntr += read_dhw(params, fp);
+  /* Auto point source                                               */
+  if (prm_read_char(fp, "pss", buf)) {
+    params->numbers |= PASS;
+    params->ntr += 1;
+  }
   /* Means */
   read_means(params, fp, 0);
+
   /* Alerts */
   sprintf(keyword, "ALERT");
   if (prm_read_char(fp, keyword, params->alert)) {
@@ -415,8 +422,22 @@ FILE *fp;
 #if defined(HAVE_WAVE_MODULE)
   params->do_wave = 0;
   sprintf(keyword, "DO_WAVES");
+  /*
   if (prm_read_char(fp, keyword, buf) && is_true(buf)) {
     params->do_wave = is_true(buf);
+    prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
+  */
+  if (prm_read_char(fp, keyword, buf)) {
+    if (strcmp(buf, "NONE") == 0)
+      params->do_wave = NONE;
+    if (strcmp(buf, "FILE") == 0 || is_true(buf))
+      params->do_wave = W_FILE;
+    if (strcmp(buf, "COMP") == 0)
+      params->do_wave = W_COMP;
+    if (strcmp(buf, "SWAN") == 0)
+      params->do_wave = (W_SWAN|W_SWANM);
+    if (strcmp(buf, "SWAN_W") == 0)
+      params->do_wave = (W_SWAN|W_SWANW);
     prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
   }
 #endif
@@ -444,6 +465,9 @@ FILE *fp;
   /* Particle tracking */
   if(prm_read_char(fp, "PT_InputFile", params->ptinname)) {
     params->do_pt = 1;
+    /* Auto particle source                                          */
+    if (prm_read_char(fp, "particles", params->particles))
+      params->do_pt = 2;
     params->ntr++;
   }
 
@@ -786,6 +810,17 @@ FILE *fp;
     }
   }
 
+  sprintf(keyword, "RENDER_ECOSED_NAME");
+  if (prm_read_char(fp, keyword, params->rendername)) {
+    sprintf(keyword, "RENDER_ECOSED_DESC");
+    prm_read_char(fp, keyword, params->renderdesc);
+  }
+  sprintf(keyword, "RENDER_ECOSED_PATH");
+  prm_read_char(fp, keyword, params->renderpath);
+  sprintf(keyword, "RENDER_ECOSED_REMOVE");
+  prm_read_char(fp, keyword, params->renderrem);
+  sprintf(keyword, "ECOSED_CONFIG");
+  prm_read_char(fp, keyword, params->ecosedconfig);
 
 #if defined(HAVE_SEDIMENT_MODULE)
   read_sediments(params, fp, &params->ntr);
@@ -1129,7 +1164,7 @@ void read_tmode_params(FILE *fp, parameters_t *params)
   params->trans_num_omp = 1; /* default to 1 */
   prm_read_int(fp, keyword, &params->trans_num_omp);
 #endif
-  
+
 }
 
 /* END read_tmode_params()                                           */

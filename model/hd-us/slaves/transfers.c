@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6744 2021-03-30 00:43:43Z her127 $
+ *  $Id: transfers.c 7377 2023-07-26 04:35:37Z her127 $
  *
  */
 
@@ -75,6 +75,7 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
   windat->rampval = master->rampval;
   windat->nstep = master->nstep;
   /*windat->etarlxtc = master->etarlxtc;*/
+  windat->swan_hs = master->swan_hs;
 
   windat->df_diagn_set = master->df_diagn_set;
   tr_diag_reset_m(master);
@@ -123,6 +124,8 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     for (tt = 0; tt < master->nres; tt++) {
       tn = master->reset[tt];
       windat->tr_wc[tn][lc] = master->tr_wc[tn][c];
+      if (master->swr_attn == master->tr_wc[tn]) 
+	windat->swr_attn[lc] = master->swr_attn[c];
     }
     if (master->rtemp) windat->rtemp[lc] = master->rtemp[c];
     if (master->rsalt) windat->rsalt[lc] = master->rsalt[c];
@@ -143,7 +146,7 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
       tn = master->reset2d[tt];
       windat->tr_wcS[tn][cc] = master->tr_wcS[tn][c];
     }
-    if (master->orbital) {
+    if (!(master->do_wave & NONE) || master->orbital) {
       windat->wave_ub[cc] = master->wave_ub[c];
       windat->wave_period[cc] = master->wave_period[c];
       windat->wave_dir[cc] = master->wave_dir[c];
@@ -165,6 +168,25 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
       if (windat->tau_w2) windat->tau_w2[cc] = master->tau_w2[c];
       if (windat->tau_diss1) windat->tau_diss1[cc] = master->tau_diss1[c];
       if (windat->tau_diss2) windat->tau_diss2[cc] = master->tau_diss2[c];
+      if (windat->wave_k) windat->wave_k[cc] = master->wave_k[c];
+    }
+    if (master->waves & NEARSHORE) {
+      if (windat->wave_Kb) windat->wave_Kb[cc] = master->wave_Kb[c];
+      if (windat->wave_k) windat->wave_k[cc] = master->wave_k[c];
+      if (windat->wave_fwcapx) windat->wave_fwcapx[cc] = master->wave_fwcapx[c];
+      if (windat->wave_fwcapy) windat->wave_fwcapy[cc] = master->wave_fwcapy[c];
+      if (windat->wave_fbrex) windat->wave_fbrex[cc] = master->wave_fbrex[c];
+      if (windat->wave_fbrey) windat->wave_fbrey[cc] = master->wave_fbrey[c];
+      if (windat->wave_fbotx) windat->wave_fbotx[cc] = master->wave_fbotx[c];
+      if (windat->wave_fboty) windat->wave_fboty[cc] = master->wave_fboty[c];
+      if (windat->wave_fsurx) windat->wave_fsurx[cc] = master->wave_fsurx[c];
+      if (windat->wave_fsury) windat->wave_fsury[cc] = master->wave_fsury[c];
+      if (windat->wave_wfdx) windat->wave_wfdx[cc] = master->wave_wfdx[c];
+      if (windat->wave_wfdy) windat->wave_wfdy[cc] = master->wave_wfdy[c];
+      if (windat->wave_wovsx) windat->wave_wovsx[cc] = master->wave_wovsx[c];
+      if (windat->wave_wovsy) windat->wave_wovsy[cc] = master->wave_wovsy[c];
+      if (windat->wave_frolx) windat->wave_frolx[cc] = master->wave_frolx[c];
+      if (windat->wave_froly) windat->wave_froly[cc] = master->wave_froly[c];
     }
     if (master->waves & SPECTRAL) {
       for (tt = 0; tt < master->nsfr; tt++) {
@@ -192,7 +214,7 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
     
   /*-----------------------------------------------------------------*/
   /* Relative humidity                                               */
-  if (master->sh_f & RELHUM)
+  if (master->sh_f & (RELHUM|SPECHUM))
     for (cc = 1; cc <= window->enonS; cc++) {
       c = window->wsa[cc];
       windat->rh[cc] = master->rh[c];
@@ -214,6 +236,8 @@ void win_data_fill_3d(master_t *master,   /* Master data             */
 	windat->swr[cc] = master->swr[c];
       windat->airtemp[cc] = master->airtemp[c];
       if (master->cloud) windat->cloud[cc] = master->cloud[c];
+      if (master->heatflux & COMP_LWI)
+	windat->lwri[cc] = master->lwri[c];
     }
   }
   if (master->heatflux & COMP_HEAT) {
@@ -592,6 +616,13 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
       }
       */
     }
+    if (master->waves & NEARSHORE) {
+      for (cc = 1; cc <= window->nm2sS; cc++) {
+	lc = window->m2s[cc];
+	c = window->wsa[lc];
+	windat->wave_P[lc] = master->wave_P[c];
+      }
+    }
     /* Transfer any custom data from the master to the slaves        */
     bdry_transfer_u1(master, window, windat);
 
@@ -613,14 +644,14 @@ void win_data_refill_3d(master_t *master,   /* Master data           */
       /* Cell thickness is required for tracer horizontal diffusion  */
       windat->dzu1[le] = master->dzu1[e];
     }
-    /*
+    /* Cell centered velocity                                        */
     for (cc = 1; cc <= window->nm2s; cc++) {
       lc = window->m2s[cc];
       c = window->wsa[lc];
       windat->u[lc] = master->u[c];
       windat->v[lc] = master->v[c];
     }
-    */
+
     /*
     zflux_e1(geom, window, master->u1flux3d, windat->u1flux3d, window->m2se1,
              window->wse, window->nm2se1);
@@ -694,10 +725,24 @@ void win_data_refill_2d(master_t *master,   /* Master data           */
   /* but the elevation calculation is made using unfiltered          */
   /* velocities.                                                     */
   if (mode & NVELOCITY) {
+    int n;
     for (ee = 1; ee <= window->nm2se1S; ee++) {
       le = window->m2se1[ee];
       e = window->wse[le];
       windat->nu1av[le] = master->nu1av[e];
+    }
+    /* For VERTIN OBCs the depth is reset so copy tangential OBC     */
+    /* depths, so that tangential OBC auxiliaries are set in other   */
+    /* windows.                                                      */
+    for (n = 0; n < window->nobc; n++) {
+      open_bdrys_t *open = window->open[n];
+      if (open->bcond_tan2d & VERTIN) {
+	for (ee = 1; ee <= open->no2_ta; ee++) {
+	  le = open->obc_ta[ee];
+	  e = window->wse[le];
+	  windat->depth_e1[le] = master->depth_e1[e];
+	}
+      }
     }
   }
   if (mode & DEPTH) {
@@ -763,6 +808,8 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
 	  master->vf[nb] += windat->vf[wn];
       }
     }
+    if (master->errornorm & N_ERRN)
+      error_norms_m(master, window, windat, window->wincon);
     if (geom->nregions)
       region_transfer(master, window);
   }
@@ -826,6 +873,13 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
 	master->sdc[c] = windat->sdc[lc];
       }
     }
+    if (master->waves & NEARSHORE) {
+      for (cc = 1; cc <= window->ns2mS; cc++) {
+	lc = window->s2m[cc];
+	c = window->wsa[lc];
+	master->wave_P[c] = windat->wave_P[lc];
+      }
+    }
   }
 
   /* mode = VELOCITY : depth averaged adjusted velocities for the    */
@@ -853,14 +907,15 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
     /* Set in set_new_cells_ and used in tracer horz diffusion       */
     s2m_vel(master->dzu1, windat->dzu1,
 	    window->s2me1, window->wse, window->ns2me1);
-    /*
+
+    /* Cell centered velocity                                        */
     for (cc = 1; cc <= window->ns2m; cc++) {
       lc = window->s2m[cc];
       c = window->wsa[lc];
       master->u[c] = windat->u[lc];
       master->v[c] = windat->v[lc];
     }
-    */
+
   }
   /* mode = WVEL : 3D vertical velocity and 2D surface and bottom    */
   /* vertical velocities. Also include the 3D velocity deviations    */
@@ -934,6 +989,10 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
         tn = master->reset[tt];
         master->tr_wc[tn][c] = windat->tr_wc[tn][lc];
       }
+      /* Cell centered velocity for Lagrange    tracking             */
+      master->u[c] = windat->u[lc];
+      master->v[c] = windat->v[lc];
+      master->w[c] = windat->w[lc];
     }
     if (master->heatflux & ADVANCED) {
       for (cc = 1; cc <= window->b2_t; cc++) {
@@ -972,6 +1031,32 @@ void win_data_empty_3d(master_t *master,   /* Master data            */
 	if (master->tau_diss2) master->tau_diss2[c] = windat->tau_diss2[lc];
       }
     }
+    /* Wave variables on the slaves are not updated; no need to      */
+    /* transfer back to the master.                                  
+    if (master->waves & NEARSHORE) {
+      for (cc = 1; cc <= window->b2_t; cc++) {
+	lc = window->w2_t[cc];
+	c = window->wsa[lc];
+	if (master->wave_k) master->wave_k[c] = windat->wave_k[lc];
+	if (master->wave_Kb) master->wave_Kb[c] = windat->wave_Kb[lc];
+	if (master->wave_P) master->wave_P[c] = windat->wave_P[lc];
+	if (master->wave_fwcapx) master->wave_fwcapx[cc] = windat->wave_fwcapx[c];
+	if (master->wave_fwcapy) master->wave_fwcapy[cc] = windat->wave_fwcapy[c];
+	if (master->wave_fbrex) master->wave_fbrex[cc] = windat->wave_fbrex[c];
+	if (master->wave_fbrey) master->wave_fbrey[cc] = windat->wave_fbrey[c];
+	if (master->wave_fbotx) master->wave_fbotx[cc] = windat->wave_fbotx[c];
+	if (master->wave_fboty) master->wave_fboty[cc] = windat->wave_fboty[c];
+	if (master->wave_fsurx) master->wave_fsurx[cc] = windat->wave_fsurx[c];
+	if (master->wave_fsury) master->wave_fsury[cc] = windat->wave_fsury[c];
+	if (master->wave_wfdx) master->wave_wfdx[cc] = windat->wave_wfdx[c];
+	if (master->wave_wfdy) master->wave_wfdy[cc] = windat->wave_wfdy[c];
+	if (master->wave_wovsx) master->wave_wovsx[cc] = windat->wave_wovsx[c];
+	if (master->wave_wovsy) master->wave_wovsy[cc] = windat->wave_wovsy[c];
+	if (master->wave_frolx) master->wave_frolx[cc] = windat->wave_frolx[c];
+	if (master->wave_froly) master->wave_froly[cc] = windat->wave_froly[c];
+      }
+    }
+    */
     for (tt = 0; tt < master->ndhw; tt++) {
       if (master->dhwf[tt] & DHW_NOAA) {
 	for (cc = 1; cc <= window->b3_t; cc++) {
@@ -1089,8 +1174,22 @@ void win_data_empty_2d(master_t *master,    /* Master data           */
   }
   /* mode = NVELOCITY : updated velocity. Used in asselin().         */
   if (mode & NVELOCITY) {
+    int n, ee, e, le;
     s2m_vel(master->nu1av, windat->nu1av,
 	    window->s2me1, window->wse, window->ns2me1S);
+    /* For VERTIN OBCs the depth is reset so copy tangential OBC     */
+    /* depths, so that tangential OBC auxiliaries are set in other   */
+    /* windows.                                                      */
+    for (n = 0; n < window->nobc; n++) {
+      open_bdrys_t *open = window->open[n];
+      if (open->bcond_tan2d & VERTIN) {
+	for (ee = open->no3_e1 + 1; ee <= open->to2_e1; ee++) {
+	  le = open->obc_e1[ee];
+	  e = window->wse[le];
+	  master->depth_e1[e] = windat->depth_e1[le];
+	}
+      }
+    }
   }
 
   if (mode & ETA_A) {
@@ -1534,6 +1633,7 @@ void master_fill_ts(master_t *master,     /* Master data             */
 	master->uav[c] = windat[n]->uav[lc];
 	master->vav[c] = windat[n]->vav[lc];
 	for (tt = 0; tt < master->ntrS; tt++) {
+	  if (master->do_wave & W_SWAN && master->trinfo_2d[tt].type & WAVE) continue;
 	  master->tr_wcS[tt][c] = windat[n]->tr_wcS[tt][lc];
 	}
       }
@@ -1730,8 +1830,10 @@ void s2m_2d(master_t *master,   /* Master data                       */
     master->wtop[c] = windat->wtop[lc];
     master->uav[c] = windat->uav[lc];
     master->vav[c] = windat->vav[lc];
-    for (tn = 0; tn < master->ntrS; tn++)
+    for (tn = 0; tn < master->ntrS; tn++) {
+      if (master->do_wave & W_SWAN && master->trinfo_2d[tn].type & WAVE) continue;
       master->tr_wcS[tn][c] = windat->tr_wcS[tn][lc];
+    }
     for (tn = 0; tn < windat->nsed; tn++) {
       for (k = 0; k < window->sednz; k++)
         master->tr_sed[tn][k][c] = windat->tr_sed[tn][k][lc];
@@ -2577,6 +2679,153 @@ void check_transfers(geometry_t *geom,    /* Global geometry         */
 /*-------------------------------------------------------------------*/
 /* Resets all the arrays on the windows                              */
 /*-------------------------------------------------------------------*/
+void window_resetm(master_t *master,      /* Master data             */
+		   geometry_t **window,   /* Window geometry         */
+		   window_t **windat,     /* Window data             */
+		   win_priv_t **wincon,   /* Window constants        */
+		   int mode
+		   )
+{
+  int c, cc, lc, cs, n, m, k, tn;
+  int ee, e, es, vv, v;
+  int nwindows = master->nwindows;
+
+  if (mode & RS_VH) {
+    for (n = 1; n <= nwindows; n++) {
+      for (ee = 1; ee <= window[n]->sze; ee++) {
+	e = window[n]->wse[ee];
+	wincon[n]->u1vh[ee] = master->u1vh[e];
+      }
+      master->dtb = master->dtf = master->dt = master->grid_dt;
+      master->dt2d = master->grid_dt / master->iratio;
+      windat[n]->dtf2 = master->dt / master->iratio;
+      return;
+    }
+  }
+
+  for (n = 1; n <= nwindows; n++) {
+    window_reset(master, window[n], windat[n], wincon[n], RS_ALL);
+    win_data_fill_3d(master, window[n], windat[n], master->nwindows);
+    win_data_fill_2d(master, window[n], windat[n], master->nwindows);
+    set_map_inside(window[n]);
+    memcpy(wincon[n]->oldeta, windat[n]->eta, window[n]->sgsizS * sizeof(double));
+    set_dz(window[n], windat[n], wincon[n]);
+    get_depths(window[n], windat[n], wincon[n]);
+    density_w(window[n], windat[n], wincon[n]);
+
+    /* Set sponge zones                                              */
+    set_sponge_cells(window[n]);
+    set_sponge_c(window[n], wincon[n]->u1kh, windat[n]->dt);
+    set_sponge_e(window[n], wincon[n]->u1vh, windat[n]->dt);
+    set_sponge_e(window[n], wincon[n]->u2kh, windat[n]->dt);    
+
+    /*---------------------------------------------------------------*/
+    /* Coriolis at vertices                                          */
+    for (vv = 1; vv <= window[n]->n2_e2; vv++) {
+      double d1, d2;
+      v = window[n]->w2_e2[vv];
+      d1 = d2 = 0.0;
+      for (m = 1; m <= window[n]->nvc[v]; m++) {
+	c = window[n]->v2c[v][m];
+	if (c && !window[n]->wgst[c]) {
+	  d2 += wincon[n]->coriolis[c] * window[n]->dualareap[v][m];
+	  d1 += window[n]->dualareap[v][m];
+	}
+      }
+      if (d1) windat[n]->fv[v] = d2 / d1;
+    }
+  }
+
+  /* Cell centrered velocity (for restarts)                          */
+  for (n = 1; n <= nwindows; n++) {
+    memset(windat[n]->u2, 0, window[n]->sze);
+    memset(windat[n]->u2av, 0, window[n]->szeS);
+    win_data_refill_3d(master, window[n], windat[n], master->nwindows, VELOCITY);
+    vel_components_3d(window[n], windat[n], wincon[n]);
+    for (ee = 1; ee <= window[n]->nm2se1S; ee++) {
+      lc = window[n]->m2se1[ee];
+      e = window[n]->wse[lc];
+      windat[n]->u1av[lc] = master->u1av[e];
+    }
+    vel_components_2d(window[n], windat[n], wincon[n]);
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Master fill                                                     */
+  master->is_filled = 0;
+  master_fill(master, window, windat, wincon);
+  master->is_filled = 0;
+
+  /*-----------------------------------------------------------------*/
+  /* Variable filling and initialisation                             */
+  for (n = 1; n <= nwindows; n++) {
+
+    win_data_fill_3d(master, window[n], windat[n], master->nwindows);
+    win_data_fill_2d(master, window[n], windat[n], master->nwindows);
+    compute_ref_density(master, window[n], windat[n], wincon[n]);
+    Set_lateral_BC_density_w(windat[n]->dens, window[n]->nbpt,
+                             window[n]->bpt, window[n]->bin);
+
+    windat[n]->dtf2 = master->dt / master->iratio;
+    wincon[n]->calc_closure(window[n], windat[n], wincon[n]);
+
+    /* Set a no-gradient over ghost OBCs                             */
+    OBC_bgz_nograd(window[n]);
+
+    /* Set the leapfrog arrays for the first iteration               */
+    for (ee = 1; ee <= window[n]->b3_e1; ee++) {
+      e = window[n]->w3_e1[ee];
+      windat[n]->u1b[e] = windat[n]->u1[e];
+      windat[n]->u2b[e] = windat[n]->u2[e];
+    }
+    for (ee = 1; ee <= window[n]->b2_e1; ee++) {
+      e = window[n]->w2_e1[ee];
+      windat[n]->u1avb[e] = windat[n]->u1av[e];
+    }
+    for (cc = 1; cc <= window[n]->b2_t; cc ++) {
+      c = window[n]->w2_t[cc];
+      windat[n]->etab[c] = wincon[n]->oldeta[c] = windat[n]->eta[c];
+    }
+    /* Set the lateral boundary conditions for velocity.             */
+#if !GLOB_BC
+    vel2D_lbc(windat[n]->u1, window[n]->nbpte1, window[n]->nbe1,
+	      window[n]->bpte1, window[n]->bine1, wincon[n]->slip);
+    vel2D_lbc(windat[n]->u1b, window[n]->nbpte1, window[n]->nbe1,
+	      window[n]->bpte1, window[n]->bine1, wincon[n]->slip);
+    set_lateral_bc_eta(windat[n]->etab, window[n]->nbptS, window[n]->bpt,
+		       window[n]->bin, window[n]->bin2, 1);
+    set_lateral_bc_eta(wincon[n]->oldeta, window[n]->nbptS, window[n]->bpt,
+		       window[n]->bin, window[n]->bin2, 1);
+#endif
+
+    win_data_empty_3d(master, window[n], windat[n], (VELOCITY|WVEL));
+    win_data_empty_2d(master, window[n], windat[n], DEPTH);
+  }
+
+  /* Transfer the backward arrays to auxiliary cells                 */
+  /* Slave to master */
+  for (n = 1; n <= nwindows; n++) {
+    s2m_vel(master->u1avb, windat[n]->u1avb,
+            window[n]->s2me1, window[n]->wse, window[n]->ns2me1S);
+  }
+  /* Master to slave                                                 */
+  for (n = 1; n <= nwindows; n++) {
+    int ce1;
+    for (ee = 1; ee <= window[n]->nm2se1S; ee++) {
+      e = window[n]->m2se1[ee];
+      ce1 = window[n]->wse[e];
+      windat[n]->u1avb[e] = master->u1avb[ce1];
+    }
+  }
+
+  obc_setup(master, window);
+  init_trans(master, window, wincon);
+  nan_check(window, windat, wincon, nwindows);
+  pt_setup(master, window, windat, wincon);
+  swr_params_init(master, window);
+
+}
+
 void window_reset(master_t *master,      /* Master data              */
 		  geometry_t *window,    /* Window geometry          */
 		  window_t *windat,      /* Window data              */
@@ -2584,13 +2833,14 @@ void window_reset(master_t *master,      /* Master data              */
 		  int mode
 		  )
 {
+  geometry_t *geom = master->geom;
   int c, cc, cs, n, k, tn;
   int ee, e, es;
 
   if (mode & RS_VH) {
-    for (cc = 1; cc <= window->sze; cc++) {
-      c = window->wse[cc];
-      wincon->u1vh[cc] = master->u1vh[c];
+    for (ee = 1; ee <= window->sze; ee++) {
+      e = window->wse[ee];
+      wincon->u1vh[ee] = master->u1vh[e];
     }
     master->dtb = master->dtf = master->dt = master->grid_dt;
     master->dt2d = master->grid_dt / master->iratio;
@@ -2611,7 +2861,7 @@ void window_reset(master_t *master,      /* Master data              */
     windat->w[cc] = master->w[c];
     windat->Kz[cc] = master->Kz[c];
     windat->Vz[cc] = master->Vz[c];
-
+    /*wincon->u1kh[cc] = master->u1kh[c];*/
     
     if (cc <= window->enonS) {
       windat->eta[cc] = master->eta[c];
@@ -2619,9 +2869,11 @@ void window_reset(master_t *master,      /* Master data              */
       windat->wtop[cc] = master->wtop[c];
       windat->wbot[cc] = master->wbot[c];
       windat->patm[cc] = master->patm[c];
-      if (master->show_win)
+
+      if (master->show_win) {
 	master->shwin[window->wsa[cc]] = windat->shwin[cc] = (double)window->wn;
-      
+      }
+
       if (master->ntrS) {
 	for (tn = 0; tn < windat->ntrS; tn++) {
 	  windat->tr_wcS[tn][cc] = master->tr_wcS[tn][c];
@@ -2636,10 +2888,11 @@ void window_reset(master_t *master,      /* Master data              */
     }
   }
   /* Edge arrays                                                     */
-  for (ee = 1; ee < window->szeS; ee++) {
+  for (ee = 1; ee < window->sze; ee++) {
     e = window->wse[ee];
     windat->u1[ee] = master->u1[e];
     wincon->u1vh[ee] = master->u1vh[e];
+    wincon->u2kh[ee] = master->u2kh[e];
   }
   for (ee = 1; ee < window->szeS; ee++) {
     e = window->wse[ee];
@@ -2648,6 +2901,11 @@ void window_reset(master_t *master,      /* Master data              */
     windat->wind2[ee] = master->wind2[e];
     windat->windspeed[ee] = master->windspeed[e];
     windat->winddir[ee] = master->winddir[e];
+    if (master->u1vhin) windat->u1vhin[ee] = master->u1vhin[e];
+    wincon->basev[ee] = master->basev[e];
+    wincon->smagv[ee] = master->smagv[e];
+    wincon->basek[ee] = master->basek[e];
+    wincon->smagk[ee] = master->smagk[e];
   }
 
   /* Save the bottom velocity for the 2D mode                        */
@@ -2675,28 +2933,64 @@ void window_reset(master_t *master,      /* Master data              */
   set_dz(window, windat, wincon);
   get_depths(window, windat, wincon);
   density_w(window, windat, wincon);
-  OBC_bgz_nograd(window);
+
+  set_sponge_cells(window);
+  set_sponge_c(window, wincon->u1kh, windat->dt);
+  set_sponge_e(window, wincon->u1vh, windat->dt);
+  set_sponge_e(window, wincon->u2kh, windat->dt);    
+
+  /* Cell centrered velocity (for restarts)                          */
+  win_data_refill_3d(master, window, windat, master->nwindows, VELOCITY);
+  vel_components_3d(window, windat, wincon);
+  for (ee = 1; ee <= window->nm2se1S; ee++) {
+    int lc = window->m2se1[ee];
+    e = window->wse[lc];
+    windat->u1av[lc] = master->u1av[e];
+  }
+  vel_components_2d(window, windat, wincon);
+
+  /*-----------------------------------------------------------------*/
+  /* Variable filling and initialisation                             */
+  win_data_fill_3d(master, window, windat, master->nwindows);
+  win_data_fill_2d(master, window, windat, master->nwindows);
   compute_ref_density(master, window, windat, wincon);
   Set_lateral_BC_density_w(windat->dens, window->nbpt,
 			   window->bpt, window->bin);
+
+  windat->dtf2 = master->dt / master->iratio;
   wincon->calc_closure(window, windat, wincon);
 
+  /* Set a no-gradient over ghost OBCs                               */
+  OBC_bgz_nograd(window);
+
+  /* Set the leapfrog arrays for the first iteration                 */
+  for (ee = 1; ee <= window->b3_e1; ee++) {
+    e = window->w3_e1[ee];
+    windat->u1b[e] = windat->u1[e];
+    windat->u2b[e] = windat->u2[e];
+  }
+  for (ee = 1; ee <= window->b2_e1; ee++) {
+    e = window->w2_e1[ee];
+    windat->u1avb[e] = windat->u1av[e];
+  }
+  for (cc = 1; cc <= window->b2_t; cc ++) {
+    c = window->w2_t[cc];
+    windat->etab[c] = wincon->oldeta[c] = windat->eta[c];
+  }
   /* Set the lateral boundary conditions for velocity.               */
 #if !GLOB_BC
   vel2D_lbc(windat->u1, window->nbpte1, window->nbe1,
 	    window->bpte1, window->bine1, wincon->slip);
   vel2D_lbc(windat->u1b, window->nbpte1, window->nbe1,
 	    window->bpte1, window->bine1, wincon->slip);
-  vel2D_lbc(windat->u1av, window->nbpte1S, window->nbe1S,
-	    window->bpte1S, window->bine1S, wincon->slip);
   set_lateral_bc_eta(windat->etab, window->nbptS, window->bpt,
 		     window->bin, window->bin2, 1);
   set_lateral_bc_eta(wincon->oldeta, window->nbptS, window->bpt,
 		     window->bin, window->bin2, 1);
 #endif
 
-    win_data_empty_3d(master, window, windat, (VELOCITY|WVEL));
-    win_data_empty_2d(master, window, windat, DEPTH);
+  win_data_empty_3d(master, window, windat, (VELOCITY|WVEL));
+  win_data_empty_2d(master, window, windat, DEPTH);
 
   /* Transfer the backward arrays to auxiliary cells                 */
   /* Slave to master                                                 */

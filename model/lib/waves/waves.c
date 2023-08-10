@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: waves.c 6117 2019-02-26 04:26:42Z her127 $
+ *  $Id: waves.c 7315 2023-04-11 02:03:36Z her127 $
  *
  */
 
@@ -28,7 +28,7 @@
 #define B_EDGE 0x400   /* u2 bdry point on back side of interior cell    */
 #define F_EDGE 0x800   /* u2 bdry point on forward side of interior cell */
 
-double g = 9.81;
+static double g = 9.81;
 
 static double get_fetch(double *fetch, double dir);
 static void wind_wave_toba(wave_t *wave, double *f);
@@ -39,6 +39,7 @@ static void madsen94o(int i, int j, double ubr, double wr, double ucr,
                       double zr, double phiwc, double zo,
                       double *pustrc, double *pustrwm,
                       double *pustrr, double *pfwc, double *pzoa);
+extern void swmain (int IT, s_pass_t *arrays);
 
 /* Version information */
 int get_waves_major_vers(void)
@@ -71,12 +72,27 @@ wave_t* wave_build(void* model, FILE *fp)
 
 
 /*-------------------------------------------------------------------*/
+/* Builds and initialises the interface on the master                */
+/*-------------------------------------------------------------------*/
+wave_t* wave_build_m(void* model, FILE *fp)
+{
+  wave_t* wave = wave_create();
+
+  wave_init_m(model, wave, fp);
+
+  return wave;
+}
+/* END wave_build_m()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Allocates memory for the interface structure                      */
 /*-------------------------------------------------------------------*/
 wave_t* wave_create() {
   wave_t *wave = (wave_t *)malloc(sizeof(wave_t));
 
-  wave->do_waves = 0;
+  wave->do_waves = WNONE;
   wave->do_amp = WNONE;
   wave->do_per = WNONE;
   wave->do_dir = WNONE;
@@ -86,6 +102,7 @@ wave_t* wave_create() {
   wave->do_rs = 0;
   wave->do_Cd = 0;
   wave->do_fetch = 0;
+  wave->do_hs = 0;
   wave->windwave = TOBA;
   wave->cols = -1;
   wave->nz = -1;
@@ -144,15 +161,63 @@ wave_t* wave_create() {
   strcpy(wave->ste2_name, "sty");
   wave->ste2 = NULL;
   wave->ste2id = -1;
-
-
+  strcpy(wave->Kb_name, "wave_Kb");
+  wave->Kb = NULL;
+  wave->Kbid = -1;
+  strcpy(wave->k_name, "wave_k");
+  wave->k = NULL;
+  wave->kid = -1;
+  strcpy(wave->fwcapx_name, "wave_fwcapx");
+  wave->fwcapx = NULL;
+  wave->fwcapxid = -1;
+  strcpy(wave->fwcapy_name, "wave_fwcapy");
+  wave->fwcapy = NULL;
+  wave->fwcapyid = -1;
+  strcpy(wave->fbrex_name, "wave_fbrex");
+  wave->fbrex = NULL;
+  wave->fbrexid = -1;
+  strcpy(wave->fbrey_name, "wave_fbrey");
+  wave->fbrey = NULL;
+  wave->fbreyid = -1;
+  strcpy(wave->fbotx_name, "wave_fbotx");
+  wave->fbotx = NULL;
+  wave->fbotxid = -1;
+  strcpy(wave->fboty_name, "wave_fboty");
+  wave->fboty = NULL;
+  wave->fbotyid = -1;
+  strcpy(wave->fsurx_name, "wave_fsurx");
+  wave->fsurx = NULL;
+  wave->fsurxid = -1;
+  strcpy(wave->fsury_name, "wave_fsury");
+  wave->fsury = NULL;
+  wave->fsuryid = -1;
+  strcpy(wave->wfdx_name, "wave_wfdx");
+  wave->wfdx = NULL;
+  wave->wfdxid = -1;
+  strcpy(wave->wfdy_name, "wave_wfdy");
+  wave->wfdy = NULL;
+  wave->wfdyid = -1;
+  strcpy(wave->wovsx_name, "wave_wovsx");
+  wave->wovsx = NULL;
+  wave->wovsxid = -1;
+  strcpy(wave->wovsy_name, "wave_wovsy");
+  wave->wovsy = NULL;
+  wave->wovsyid = -1;
+  strcpy(wave->frolx_name, "wave_frolx");
+  wave->frolx = NULL;
+  wave->frolxid = -1;
+  strcpy(wave->froly_name, "wave_froly");
+  wave->froly = NULL;
+  wave->frolyid = -1;
   strcpy(wave->ustrcw_name, "ustrcw");
   wave->ustrcw = NULL;
   wave->ustid = -1;
-  strcpy(wave->Cd_name, "wave_Cd");
-  wave->Cd = NULL;
-  wave->Cdid = -1;
-
+  strcpy(wave->dum1_name, "wave_dum1");
+  wave->dum1 = NULL;
+  wave->d1id = -1;
+  strcpy(wave->dum2_name, "wave_dum2");
+  wave->dum2 = NULL;
+  wave->d2id = -1;
 
   wave->eta = 0.0;
   wave->area = 0.0;
@@ -191,7 +256,7 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   char **trname_3d;       /* 3D tracer names                         */
   char **trname_2d;       /* 2D tracer names                         */
   char **trname_sed;      /* Sediment tracer names                   */
-  int size;               /* Size of the grid                        */
+  int size = 0;           /* Size of the grid                        */
   double dt;
   char buf[MAXSTRLEN];
 
@@ -232,59 +297,156 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   wave->quad_bfc = i_get_quad_bfc(model);
 
   /* Set the method of computing the wave variables                  */
-  wave->do_amp = wave->do_per = wave->do_dir = wave->do_ub = WCOMP;
-  w_check_wave_data(&n, &m, &i, &j, &k, &nn);
-  if (n) wave->do_amp = WFILE;
-  if (m) wave->do_per = WFILE;
-  if (i) wave->do_dir = WFILE;
-  if (j) wave->do_ub = WFILE;
-  if (k) wave->do_wif = WFILE;
-  if (nn) wave->do_stokes = WFILE;
+  n = w_do_waves(model);
+  if (n == 2)
+    wave->do_waves = wave->do_amp = wave->do_per = wave->do_dir = wave->do_ub = WCOMP;
+  else if (n == 1) {
+    wave->do_amp = wave->do_per = wave->do_dir = wave->do_ub = WCOMP;
+    w_check_wave_data(&n, &m, &i, &j, &k, &nn);
+    wave->do_waves = WFILE;
+    if (n) wave->do_amp = WFILE;
+    if (m) wave->do_per = WFILE;
+    if (i) wave->do_dir = WFILE;
+    if (j) wave->do_ub = WFILE;
+    if (k) wave->do_wif = WFILE;
+    if (nn) wave->do_stokes = WFILE;
+  } else if (n == 4)
+    wave->do_waves = WSWAN;
+
+  if (wave->do_waves & WSWAN) {
+    s_pass_t *arrays;
+    wave->step = 0;
+
+    wave->do_amp = wave->do_per = wave->do_dir = wave->do_ub = wave->do_Kb = 0;
+    wave->do_wif = wave->do_stokes = wave->do_k = 0;
+    wave->do_noncon = wave->do_dum1 = 0;
+    wave->do_dum2 = 0;
+    wave->do_amp = i_check_wave_amp(model);
+    wave->do_per = i_check_wave_period(model);
+    wave->do_dir = i_check_wave_dir(model);
+    wave->do_ub = i_check_wave_ub(model);
+    wave->do_hs = i_check_swan_hs(model);
+    wave->do_k = i_check_wave_k(model);
+    wave->do_Kb = i_check_wave_Kb(model);
+    if (i_check_wave_fwcapx(model) && i_check_wave_fwcapy(model) &&
+	i_check_wave_fbrex(model) && i_check_wave_fbrey(model) &&
+	i_check_wave_fbotx(model) && i_check_wave_fboty(model) &&
+	i_check_wave_fsurx(model) && i_check_wave_fsury(model) &&
+	i_check_wave_wfdx(model) && i_check_wave_wfdy(model) &&
+	i_check_wave_wovsx(model) && i_check_wave_wovsy(model))
+      wave->do_noncon = 1;
+    wave->do_dum1 = i_check_wave_dum1(model);
+    wave->do_dum2 = i_check_wave_dum2(model);
+    if (i_check_wave_Fx(model) && i_check_wave_Fy(model))
+      wave->do_wif = 1;
+    if (i_check_wave_ste1(model) && i_check_wave_ste2(model))
+      wave->do_stokes = 1;
+    wave->arrays = (s_pass_t *)malloc(sizeof(s_pass_t)); 
+
+    arrays = wave->arrays;
+    arrays->do_dep = 1;
+    arrays->len = i_get_swan_size(model);
+    arrays->do_amp = wave->do_amp;
+    arrays->do_per = wave->do_per;
+    arrays->do_dir = wave->do_dir;
+    arrays->do_ub = wave->do_ub;
+    arrays->do_wif = wave->do_wif;
+    arrays->do_stokes = wave->do_stokes;
+    arrays->do_hs = wave->do_hs;
+    arrays->do_Kb = wave->do_Kb;
+    arrays->do_k = wave->do_k;
+    arrays->do_noncon = wave->do_noncon;
+    arrays->do_dum1 = wave->do_dum1;
+    arrays->do_dum2 = wave->do_dum2;
+
+    arrays->eta = i_get_swan_eta(model);
+    arrays->uav = i_get_swan_uav(model);
+    arrays->vav = i_get_swan_vav(model);
+    arrays->wx = i_get_swan_wx(model);
+    arrays->wy = i_get_swan_wy(model);
+    arrays->dep = i_get_swan_dep(model);
+
+    arrays->amp = arrays->per = arrays->ub = NULL;
+    arrays->Fx = arrays->Fy = arrays->ste1 = arrays->ste2 = NULL;
+    if (wave->do_amp) arrays->amp = i_get_swan_amp(model);
+    if (wave->do_per) arrays->per = i_get_swan_per(model);
+    if (wave->do_dir) arrays->dir = i_get_swan_dir(model);
+    if (wave->do_ub) arrays->ub = i_get_swan_ub(model);
+    if (wave->do_Kb) arrays->Kb = i_get_swan_Kb(model);
+    if (wave->do_k) arrays->k = i_get_swan_k(model);
+    if (wave->do_noncon) {
+      arrays->fwcapx = i_get_swan_fwcapx(model);
+      arrays->fwcapy = i_get_swan_fwcapy(model);
+      arrays->fbrex = i_get_swan_fbrex(model);
+      arrays->fbrey = i_get_swan_fbrey(model);
+      arrays->fbotx = i_get_swan_fbotx(model);
+      arrays->fboty = i_get_swan_fboty(model);
+      arrays->fsurx = i_get_swan_fsurx(model);
+      arrays->fsury = i_get_swan_fsury(model);
+      arrays->wfdx = i_get_swan_wfdx(model);
+      arrays->wfdy = i_get_swan_wfdy(model);
+      arrays->wovsx = i_get_swan_wovsx(model);
+      arrays->wovsy = i_get_swan_wovsy(model);
+      arrays->frolx = i_get_swan_frolx(model);
+      arrays->froly = i_get_swan_froly(model);
+    }
+    if (wave->do_wif) {
+      arrays->Fx = i_get_swan_Fx(model);
+      arrays->Fy = i_get_swan_Fy(model);
+    }
+    if (wave->do_stokes) {
+      arrays->ste1 = i_get_swan_ste1(model);
+      arrays->ste2 = i_get_swan_ste2(model);
+    }
+    if (wave->do_dum1) arrays->dum1 = i_get_swan_dum1(model);
+    if (wave->do_dum2) arrays->dum2 = i_get_swan_dum2(model);
+  }
 
   /* Check that wave variables exist */
-  if(!i_check_orbital_file(model)) {
-    emstag(LFATAL,"waves:init"," Wave input file is undefined. Use ORBITAL_VEL in the parameter file.\n");
-    exit(0);
-  }
-  if (!i_check_wave_period(model)) {
-    emstag(LFATAL,"waves:init"," Wave period variable, '%s', undefined.\n", wave->period_name );
-    exit(0);
-  }
-  if (!i_check_wave_amp(model)) {
-    emstag(LFATAL,"waves:init"," Wave amplitude variable, '%s', undefined.\n", wave->amp_name);
-    exit(0);
-  }
-  if (!i_check_wave_dir(model)) {
-    emstag(LFATAL,"waves:init"," Wave direction variable, '%s', undefined.\n", wave->dir_name);
-    exit(0);
-  }
-  if (!i_check_wave_ub(model)) {
-    emstag(LFATAL,"waves:init"," Wave orbital velocity variable, '%s', undefined.\n", wave->ub_name);
-    exit(0);
-  }
-  if (wave->do_wif & WFILE) {
-    if (!i_check_wave_Fx(model)) {
-      emstag(LFATAL,"waves:init"," Wave-induced force e1 variable, '%s', undefined.\n", wave->Fx_name);
+  if(wave->do_waves & WFILE) {
+    if (!i_check_orbital_file(model)) {
+      emstag(LFATAL,"waves:init"," Wave input file is undefined.\n");
       exit(0);
     }
-    if (!i_check_wave_Fy(model)) {
-      emstag(LFATAL,"waves:init"," Wave-induced force e2 variable, '%s', undefined.\n", wave->Fy_name);
+    if (!i_check_wave_period(model)) {
+      emstag(LFATAL,"waves:init"," Wave period variable, '%s', undefined.\n", wave->period_name );
       exit(0);
     }
-  }
-  if (!i_check_wind(model)) {
-    emstag(LFATAL,"waves:init"," Wind variables undefined.\n");
-    exit(0);
-  }
-
-  if (wave->do_stokes & WFILE) {
-    if (!i_check_wave_ste1(model)) {
-      emstag(LFATAL,"waves:init"," Stokes velocity x variable, '%s', undefined.\n", wave->ste1_name);
+    if (!i_check_wave_amp(model)) {
+      emstag(LFATAL,"waves:init"," Wave amplitude variable, '%s', undefined.\n", wave->amp_name);
       exit(0);
     }
-    if (!i_check_wave_ste2(model)) {
-      emstag(LFATAL,"waves:init"," Stokes velocity y variable, '%s', undefined.\n", wave->ste2_name);
+    if (!i_check_wave_dir(model)) {
+      emstag(LFATAL,"waves:init"," Wave direction variable, '%s', undefined.\n", wave->dir_name);
       exit(0);
+    }
+    if (!i_check_wave_ub(model)) {
+      emstag(LFATAL,"waves:init"," Wave orbital velocity variable, '%s', undefined.\n", wave->ub_name);
+      exit(0);
+    }
+    if (wave->do_wif & WFILE) {
+      if (!i_check_wave_Fx(model)) {
+	emstag(LFATAL,"waves:init"," Wave-induced force e1 variable, '%s', undefined.\n", wave->Fx_name);
+	exit(0);
+      }
+      if (!i_check_wave_Fy(model)) {
+	emstag(LFATAL,"waves:init"," Wave-induced force e2 variable, '%s', undefined.\n", wave->Fy_name);
+	exit(0);
+      }
+    }
+    if (!i_check_wind(model)) {
+      emstag(LFATAL,"waves:init"," Wind variables undefined.\n");
+      exit(0);
+    }
+    if (wave->do_stokes & WFILE) {
+      if (!i_check_wave_ste1(model)) {
+	emstag(LFATAL,"waves:init"," Stokes velocity x variable, '%s', undefined.\n", wave->ste1_name);
+	exit(0);
+      }
+      if (!i_check_wave_ste2(model)) {
+	emstag(LFATAL,"waves:init"," Stokes velocity y variable, '%s', undefined.\n", wave->ste2_name);
+	exit(0);
+      }
     }
   }
 
@@ -324,6 +486,14 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
     if (strcmp(wave->ste1_name, trname_2d[n]) == 0)
       wave->ntrS++;
     if (strcmp(wave->ste2_name, trname_2d[n]) == 0)
+      wave->ntrS++;
+    if (strcmp(wave->Kb_name, trname_2d[n]) == 0)
+      wave->ntrS++;
+    if (strcmp(wave->k_name, trname_2d[n]) == 0)
+      wave->ntrS++;
+    if (strcmp(wave->dum1_name, trname_2d[n]) == 0)
+      wave->ntrS++;
+    if (strcmp(wave->dum2_name, trname_2d[n]) == 0)
       wave->ntrS++;
 
     if (strcmp(wave->ustrcw_name, trname_2d[n]) == 0)
@@ -398,6 +568,26 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
       strcpy(wave->trname_2d[m], wave->ste2_name);
       m++;
     }
+    if (strcmp(wave->Kb_name, trname_2d[n]) == 0) {
+      wave->Kbid= m;
+      strcpy(wave->trname_2d[m], wave->Kb_name);
+      m++;
+    }
+    if (strcmp(wave->k_name, trname_2d[n]) == 0) {
+      wave->kid= m;
+      strcpy(wave->trname_2d[m], wave->k_name);
+      m++;
+    }
+    if (strcmp(wave->dum1_name, trname_2d[n]) == 0) {
+      wave->d1id= m;
+      strcpy(wave->trname_2d[m], wave->dum1_name);
+      m++;
+    }
+    if (strcmp(wave->dum2_name, trname_2d[n]) == 0) {
+      wave->d2id= m;
+      strcpy(wave->trname_2d[m], wave->dum2_name);
+      m++;
+    }
 
     if (strcmp(wave->ustrcw_name, trname_2d[n]) == 0) {
       wave->ustid = m;
@@ -410,14 +600,7 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
       wave->do_Cd = 1;
       m++;
     }
-
-
   }
-
-  if (wave->Sxyid >= 0 && wave->Syxid >= 0)
-     wave->do_rs = 1;
-  if (wave->ste1id >= 0 && wave->ste2id >= 0)
-    wave->do_stokes = 1;
 
   /* Get the tracer map and check if all tracers have been found    */
   wave->tmap_2d = i_get_tmap_2d(model, wave->ntrS, wave->trname_2d);
@@ -429,13 +612,8 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
       emstag(LTRACE,"waves:init","Wave tracer %d = %s.\n", n, wave->trname_2d[n]);
   }
 
-  /* Get the boundary radiation stress mask                         */
-  size = i_get_winsize(model);
-  wave->brsm = i_alloc_1d(size);
-  memset(wave->brsm, 0, size * sizeof(int));
-  w_get_brsm(model, wave->brsm);
-
   /* Get the grid angles                                            */
+  /* Not used
   wave->thetau1 = d_alloc_1d(size);
   wave->thetau2 = d_alloc_1d(size);
   wave->sinthcell = d_alloc_1d(size);
@@ -446,19 +624,33 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
     wave->sinthcell[i] = i_get_sinthcell(model, i);
     wave->sinthcell[i] = i_get_costhcell(model, i);
   }
+  */
 
-  /* Get the fetch                                                  */
-  if (i_check_fetch(model)) {
-    wave->do_fetch = 1;
-    wave->fetch = d_alloc_2d(8, size);
-    for (i = 1; i <= wave->cols; i++) {
-      for (n = 0; n < 8; n++)
-	wave->fetch[i][n] = i_get_fetch(model, i, n);
+  if (!(wave->do_waves & WSWAN)) {
+    size = i_get_winsize(model);
+    if (wave->Sxyid >= 0 && wave->Syxid >= 0) {
+      wave->do_rs = 1;
+      /* Get the boundary radiation stress mask                     */
+      wave->brsm = i_alloc_1d(size);
+      memset(wave->brsm, 0, size * sizeof(int));
+      w_get_brsm(model, wave->brsm);
+    }
+    if (wave->ste1id >= 0 && wave->ste2id >= 0)
+      wave->do_stokes = 1;
+
+    /* Get the fetch                                                */
+    if (i_check_fetch(model)) {
+      wave->do_fetch = 1;
+      wave->fetch = d_alloc_2d(8, size);
+      for (i = 1; i <= wave->cols; i++) {
+	for (n = 0; n < 8; n++)
+	  wave->fetch[i][n] = i_get_fetch(model, i, n);
+      }
     }
   }
 
   /* Get the wind wave method                                       */
-  if (!(wave->do_per & WFILE)) {
+  if (wave->do_per & WCOMP) {
     if (prm_read_char(fp, "WIND_WAVE", buf)) {
       if (strcmp(buf, "TOBA") == 0) {
 	wave->windwave = TOBA;
@@ -485,7 +677,7 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
   free((char **)trname_2d);
   free((char **)trname_3d);
 
-  wave->do_waves = 1;
+  /*wave->do_waves = 1;*/
   emstag(LTRACE,"waves:init","Waves initialised OK.\n");
 }
 
@@ -550,8 +742,12 @@ void wave_step(void* model, wave_t *wave, int c) {
   wave->eta = i_get_eta(model, c);
 
   /* Get the bottom velocities                                       */
-  i_get_bot_vel(model, wave->sinthcell[wave->cc], wave->costhcell[wave->cc],
-		&wave->u1bot, &wave->u2bot, & wave->bot_l, c);
+  if (wave->sinthcell != NULL && wave->costhcell != NULL)
+    i_get_bot_vel(model, wave->sinthcell[wave->cc], wave->costhcell[wave->cc],
+		  &wave->u1bot, &wave->u2bot, &wave->bot_l, c);
+  else
+    i_get_bot_vel(model, 0.0, 0.0,
+		  &wave->u1bot, &wave->u2bot, &wave->bot_l, c);
 
   /* Get the wind components                                         */
   wave->wx = i_get_wave_wind1(model, c);
@@ -565,6 +761,10 @@ void wave_step(void* model, wave_t *wave, int c) {
   wave->period = wave->tr_in[wave->perid];
   wave->dir = wave->tr_in[wave->dirid];
   wave->ub = wave->tr_in[wave->ubid];
+  wave->Kb = wave->tr_in[wave->Kbid];
+  wave->k = wave->tr_in[wave->kid];
+  wave->dum1 = wave->tr_in[wave->d1id];
+  wave->dum2 = wave->tr_in[wave->d2id];
   wave->ustrcw = wave->tr_in[wave->ustid];
   if (wave->do_rs) {
     wave->Sxy = wave->tr_in[wave->Sxyid];
@@ -598,7 +798,6 @@ void wave_step(void* model, wave_t *wave, int c) {
     wavenumb = wavenumb_estim(*wave->period, wave->depth_wc);
     *wave->amp = wamp_estim(wave->wx, wave->wy, wavenumb, *wave->period);
   }
-
   /* Estimate wave orbital velocity if not provided                  */
   if (wave->do_ub & (WCOMP|WWIND)) {
     wavenumb = wavenumb_estim(*wave->period, wave->depth_wc);
@@ -617,12 +816,167 @@ void wave_step(void* model, wave_t *wave, int c) {
   }
 }
 
+/* END wave_step()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Couples the driver to SWAN                                        */
+/*-------------------------------------------------------------------*/
+void swan_step(wave_t *wave)
+{
+  if (!(wave->do_waves & WSWAN)) return;
+
+  /* Call the SWAN main routine. The arrays to pass to SWAN and      */
+  /* outputs from SWAN are passed via the waves->arrays structure,   */
+  /* set up in wave_init().                                          */
+#ifdef HAVE_SWAN
+
+  swmain(wave->step, wave->arrays);
+
+#endif
+  /* Increment the wave counter                                      */
+  wave->step += 1;  
+}
+
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initialises the tracer statistics structure using information     */
+/* from the host model.                                              */
+/*-------------------------------------------------------------------*/
+void wave_init_m(void* model, wave_t *wave, FILE *fp) {
+  int n, nn, m, i, j, k, ntr_tmp;
+  s_pass_t *arrays;
+
+  /* Assign a reference to the parent model                          */
+  wave->model = model;
+
+  wave->do_waves = WSWAN;
+  wave->step = 0;
+
+  wave->do_amp = wave->do_per = wave->do_dir = wave->do_ub = 0;
+  wave->do_wif = wave->do_stokes = wave->do_k = wave->do_Kb = 0;
+  wave->do_noncon = wave->do_dum1 = 0;
+  wave->do_dum2 = 0;
+  wave->do_amp = i_check_wave_amp_m(model);
+  wave->do_per = i_check_wave_period_m(model);
+  wave->do_dir = i_check_wave_dir_m(model);
+  wave->do_ub = i_check_wave_ub_m(model);
+  wave->do_hs = i_check_swan_hs_m(model);
+  if (i_check_wave_Fx_m(model) && i_check_wave_Fy_m(model))
+    wave->do_wif = 1;
+  if (i_check_wave_ste1_m(model) && i_check_wave_ste2_m(model))
+    wave->do_stokes = 1;
+  wave->do_k = i_check_wave_k_m(model);
+  wave->do_Kb = i_check_wave_Kb_m(model);
+  if (i_check_wave_fwcapx_m(model) && i_check_wave_fwcapy_m(model) &&
+      i_check_wave_fbrex_m(model) && i_check_wave_fbrey_m(model) &&
+      i_check_wave_fbotx_m(model) && i_check_wave_fboty_m(model) &&
+      i_check_wave_fsurx_m(model) && i_check_wave_fsury_m(model) &&
+      i_check_wave_wfdx_m(model) && i_check_wave_wfdy_m(model) &&
+      i_check_wave_wovsx_m(model) && i_check_wave_wovsy_m(model))
+    wave->do_noncon = 1;
+  wave->do_dum1 = i_check_wave_dum1_m(model);
+  wave->do_dum2 = i_check_wave_dum2_m(model);
+  wave->arrays = (s_pass_t *)malloc(sizeof(s_pass_t)); 
+
+
+  arrays = wave->arrays;
+  arrays->do_dep = 1;
+  arrays->len = i_get_swan_size_m(model);
+  arrays->nbounc = i_get_swan_nobc_m(model);
+  arrays->do_amp = wave->do_amp;
+  arrays->do_per = wave->do_per;
+  arrays->do_dir = wave->do_dir;
+  arrays->do_ub = wave->do_ub;
+  arrays->do_Kb = wave->do_Kb;
+  arrays->do_k = wave->do_k;
+  arrays->do_noncon = wave->do_noncon;
+  arrays->do_dum1 = wave->do_dum1;
+  arrays->do_dum2 = wave->do_dum2;
+  arrays->do_wif = wave->do_wif;
+  arrays->do_stokes = wave->do_stokes;
+  arrays->do_hs = wave->do_hs;
+  arrays->eta = i_get_swan_eta_m(model);
+  arrays->uav = i_get_swan_uav_m(model);
+  arrays->vav = i_get_swan_vav_m(model);
+  arrays->wx = i_get_swan_wx_m(model);
+  arrays->wy = i_get_swan_wy_m(model);
+  arrays->dep = i_get_swan_dep_m(model);
+  arrays->bdry = i_get_swan_obc_m(model);
+
+  arrays->amp = arrays->per = arrays->ub = arrays->k = arrays->Kb = NULL;
+  arrays->Fx = arrays->Fy = arrays->ste1 = arrays->ste2 = NULL;
+  arrays->dum1 = arrays->dum2 = NULL;
+  if (wave->do_amp) arrays->amp = i_get_swan_amp_m(model);
+
+  if (wave->do_per) arrays->per = i_get_swan_per_m(model);
+  if (wave->do_dir) arrays->dir = i_get_swan_dir_m(model);
+  if (wave->do_ub) arrays->ub = i_get_swan_ub_m(model);
+  if (wave->do_wif) {
+    arrays->Fx = i_get_swan_Fx_m(model);
+    arrays->Fy = i_get_swan_Fy_m(model);
+  }
+  if (wave->do_stokes) {
+    arrays->ste1 = i_get_swan_ste1_m(model);
+    arrays->ste2 = i_get_swan_ste2_m(model);
+  }
+  if (wave->do_Kb)
+    arrays->Kb = i_get_swan_Kb_m(model);
+  if (wave->do_k)
+    arrays->k = i_get_swan_k_m(model);
+  if (wave->do_noncon) {
+    arrays->fwcapx = i_get_swan_fwcapx_m(model);
+    arrays->fwcapy = i_get_swan_fwcapy_m(model);
+    arrays->fbrex = i_get_swan_fbrex_m(model);
+    arrays->fbrey = i_get_swan_fbrey_m(model);
+    arrays->fbotx = i_get_swan_fbotx_m(model);
+    arrays->fboty = i_get_swan_fboty_m(model);
+    arrays->fsurx = i_get_swan_fsurx_m(model);
+    arrays->fsury = i_get_swan_fsury_m(model);
+    arrays->wfdx = i_get_swan_wfdx_m(model);
+    arrays->wfdy = i_get_swan_wfdy_m(model);
+    arrays->wovsx = i_get_swan_wovsx_m(model);
+    arrays->wovsy = i_get_swan_wovsy_m(model);
+    arrays->frolx = i_get_swan_frolx_m(model);
+    arrays->froly = i_get_swan_froly_m(model);
+  }
+  if (wave->do_dum1)
+    arrays->dum1 = i_get_swan_dum1_m(model);
+  if (wave->do_dum2)
+    arrays->dum2 = i_get_swan_dum2_m(model);
+
+  return;
+}
+
+/*-------------------------------------------------------------------*/
+
+
 /*-------------------------------------------------------------------*/
 /* Writes wave info into the setup.txt file                          */
 /*-------------------------------------------------------------------*/
 void wave_run_setup(FILE *fp, wave_t *wave)
 {
+  if (wave == NULL) return;
+
   fprintf(fp, "\n");
+  if (wave->do_waves & WSWAN) {
+    fprintf(fp, "Waves coupled to SWAN libraries.\n");
+    if (wave->do_amp) fprintf(fp, "  Significant Wave height computed by SWAN.\n");
+    if (wave->do_per) fprintf(fp, "  Peak wave period computed by SWAN.\n");
+    if (wave->do_dir) fprintf(fp, "  Mean wave direction computed by SWAN.\n");
+    if (wave->do_ub) fprintf(fp, "  Wave bottom orbital velocity computed by SWAN.\n");
+    if (wave->do_wif) fprintf(fp, "  Wave radiation forces computed by SWAN.\n");
+    if (wave->do_stokes) fprintf(fp, "  Wave Stokes forces computed by SWAN.\n");
+    if (wave->do_k) fprintf(fp, "  Wavenumber computed by SWAN.\n");
+    if (wave->do_dum1) fprintf(fp, "  Dummay array 1 used by SWAN.\n");
+    if (wave->do_dum2) fprintf(fp, "  Dummay array 2 used by SWAN.\n");
+    if (wave->do_Kb) fprintf(fp, "  Wave Bernoulli head computed by SWAN.\n");
+    if (wave->do_noncon) fprintf(fp, "  Non-conservative wave forces computed by SWAN.\n");
+    return;
+  }
   fprintf(fp, "Waves library invoked\n");
   
   if (wave->do_per & WWIND && wave->do_fetch) {

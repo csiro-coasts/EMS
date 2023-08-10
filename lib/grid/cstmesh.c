@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: cstmesh.c 6288 2019-08-08 04:36:16Z her127 $
+ *  $Id: cstmesh.c 7184 2022-08-08 23:46:07Z her127 $
  */
 
 #include <stdio.h>
@@ -300,49 +300,55 @@ int coastmesh(coamsh_t *cm, int mode)
   /* Start index.                                                      */
   dist1 = 1e10;
   sdir = 0;
-  for (n = 0; n < ns; n++) {
-    if ((i = find_index(cm->slon, cm->slat, rlon[n], rlat[n], nsl[n], &dist)) >= 0) {
-      if (dist < dist1) {
-	dist1 = dist;
-	sid = i;
-	sn = n;
-      }
-    }
-  }
-  if (sid >= 0) {
-    /* End and mid indices                                             */
-    dist1 = dist2 = 1e10;
+  if (cm->sid >=0 && cm->eid >=0 && cm->mid >= 0) {
     for (n = 0; n < ns; n++) {
-      if ((i = find_index(cm->elon, cm->elat, rlon[n], rlat[n], nsl[n], &dist)) >= 0) {
+      if ((i = find_index(cm->slon, cm->slat, rlon[n], rlat[n], nsl[n], &dist)) >= 0) {
 	if (dist < dist1) {
 	  dist1 = dist;
-	  eid = i;
-	  en = n;
+	  cm->sid = sid = i;
+	  sn = n;
 	}
       }
     }
-    if (sid >= 0 && eid >= 0) {
-      obcint = 1;
+    if (sid >= 0) {
+      /* End and mid indices                                           */
+      dist1 = dist2 = 1e10;
       for (n = 0; n < ns; n++) {
-	if ((i = find_index(cm->mlon, cm->mlat, rlon[n], rlat[n], nsl[n], &dist)) >= 0) {
-	  if (dist < dist2) {
-	    dist2 = dist;
-	    mid = i;
-	    mn = n;
+	if ((i = find_index(cm->elon, cm->elat, rlon[n], rlat[n], nsl[n], &dist)) >= 0) {
+	  if (dist < dist1) {
+	    dist1 = dist;
+	    cm->eid = eid = i;
+	    en = n;
 	  }
 	}
       }
-    }
-    if (sn != mn) fprintf(pp, "Error start segment %d is not the same as the mid segment %d\n", sn, mn);
+      if (sid >= 0 && eid >= 0) {
+	obcint = 1;
+	for (n = 0; n < ns; n++) {
+	  if ((i = find_index(cm->mlon, cm->mlat, rlon[n], rlat[n], nsl[n], &dist)) >= 0) {
+	    if (dist < dist2) {
+	      dist2 = dist;
+	      cm->mid = mid = i;
+	      mn = n;
+	    }
+	  }
+	}
+      }
+      if (sn != mn) fprintf(pp, "Error start segment %d is not the same as the mid segment %d\n", sn, mn);
 
-    /* Find the direction to cycle the start index                     */
-    sdir = -1;
-    for( i = sid; i <= nsl[sn]; i++) {
-      if (i == mid) {
-	sdir = 1;
-	break;
+      /* Find the direction to cycle the start index                   */
+      sdir = -1;
+      for( i = sid; i <= nsl[sn]; i++) {
+	if (i == mid) {
+	  sdir = 1;
+	  break;
+	}
       }
     }
+  } else {
+    sn = 0;     /* Reserve the OBC path for segment 0                  */
+    obcint = 0;
+    sid = eid = mid = -1;
   }
 
   /*-------------------------------------------------------------------*/
@@ -461,10 +467,12 @@ int coastmesh(coamsh_t *cm, int mode)
       if (links->flag & LINK_N) links->dir = 0;
       connect_link(ns, cm->nlink, nsl, &nlm, rlat, rlon, m, cm->link);
     }
+    lon = d_alloc_2d(nlm, ns);
+    lat = d_alloc_2d(nlm, ns);
     for (n = 0; n < ns; n++) {
       for (i = 0; i < nsl[n]; i++) {
 	lat[n][i] = rlat[n][i];
-	lat[n][i] = rlat[n][i];
+	lon[n][i] = rlon[n][i];
       }
     }
     d_free_2d(rlat);
@@ -643,12 +651,16 @@ int coastmesh(coamsh_t *cm, int mode)
 
   /*-------------------------------------------------------------------*/
   /* If no start/end index is supplied, the boundary forms a closed    */
-  /* segment within which all othe segments lie.                       */
-  if (sid == -1 && eid == -1) {
+  /* segment within which all other segments lie.                      */
+  if (!obcint) {
     cmobc_t *open = &cm->obc[0];
     if (!cm->nobc) {
       quit("coastmesh: Must supply a closed open boundary if no start/end coordinates are specified.\n");
     }
+    if (open->olon[0] != open->olon[open->nobc-1] && open->olat[0] != open->olat[open->nobc-1]) {
+      quit("coastmesh: Closed open boundary must have the same start and end points.\n");
+    }
+    obcf = 0;
     obci = 1;
     obcs = 1;
     /* Include the OBC as the 1st segment                              */
@@ -785,10 +797,12 @@ int coastmesh(coamsh_t *cm, int mode)
     point += open->nobc;
   }
 
+
   /*-------------------------------------------------------------------*/
   /* Set the OBC endpoints to the start and end index (for continuity  */
   /* since the start/end coordinates of nlon/nlat may have changed due */
   /* to smoothing.                                                     */
+  /* Note: cm->nobc = 0 if obcint = 1.                                 */
   for (n2 = 0; n2 < cm->nobc; n2++) {
     cmobc_t *open = &cm->obc[n2];
     if (obcf == 0) {
@@ -804,8 +818,8 @@ int coastmesh(coamsh_t *cm, int mode)
     }
   }
 
-  /*-------------------------------------------------------------------*/
-  /* Integrate the obc path into the major segment if required         */
+    /*-----------------------------------------------------------------*/
+    /* Integrate the obc path into the major segment if required       */
   if (obcint) {
     tlon = d_alloc_1d(msl + obcm);
     tlat = d_alloc_1d(msl + obcm);
@@ -925,12 +939,13 @@ int coastmesh(coamsh_t *cm, int mode)
     if (opp) fprintf(opp, "%f %f\n", nlon[i], nlat[i]);
     msh->coords[0][mi] = cm->x[mi] = nlon[i];
     msh->coords[1][mi] = cm->y[mi] = nlat[i];
-    msh->flag[mi] = flag[sn][i];
+    msh->flag[mi] = (obcint) ? flag[sn][i] : S_OBC;
     mi++;
   }
 
   /* Boundary path, from the location closest to the end coordinate to */
   /* that closest to the start coordinate.                             */
+  /* No longer required
   if (!obcint) {
     m = msl;
     for (i = 0; i < cm->nobc; i++) {
@@ -966,6 +981,7 @@ int coastmesh(coamsh_t *cm, int mode)
       }
     }
   }
+  */
   if (opp){
     fprintf(opp, "%f %f\n", nlon[0], nlat[0]);
     fprintf(opp, "NaN NaN\n");
@@ -1125,7 +1141,6 @@ void cm_read(coamsh_t *cm, FILE *ip)
   int n, m, i, j;
   int sid, eid, mid; /* Start, end and mid index for the major segment */
   double bslon, bslat, belon, belat; /* Bounding box                   */
-
 
   /*-------------------------------------------------------------------*/
   /* Read the input parameters                                         */
@@ -1367,9 +1382,9 @@ void cm_read(coamsh_t *cm, FILE *ip)
       printf("Start lon/lat incorrectly specified.\n");
       exit(0);
     }
-    sid = 0;
+    cm->sid = 0;
   } else {
-    sid = -1;
+    cm->sid = -1;
   }
   if (prm_read_char(ip, "END_COORD", buf)) {
     char *fields[MAXSTRLEN * 100];
@@ -1381,9 +1396,9 @@ void cm_read(coamsh_t *cm, FILE *ip)
       printf("End lon/lat incorrectly specified.\n");
       exit(0);
     }
-    eid = 0;
+    cm->eid = 0;
   } else {
-    eid = -1;
+    cm->eid = -1;
   }
   if (prm_read_char(ip, "MID_COORD", buf)) {
     char *fields[MAXSTRLEN * 100];
@@ -1395,9 +1410,9 @@ void cm_read(coamsh_t *cm, FILE *ip)
       printf("Mid lon/lat incorrectly specified.\n");
       exit(0);
     }
-    mid = 0;
+    cm->mid = 0;
   } else {
-    mid = -1;
+    cm->mid = -1;
   }
 
   /*-------------------------------------------------------------------*/

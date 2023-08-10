@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: process_defaults.c 6722 2021-03-29 05:00:58Z bai155 $
+ *  $Id: process_defaults.c 6909 2021-09-23 00:09:58Z riz008 $
  *
  */
 
@@ -812,6 +812,10 @@ static void eco_processes_std(int type, const char **procs[], int *nprocs)
     *procs  = SED_PROCESS_STD;
     *nprocs = NUM_SED_PROCESS_STD;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_std: Unknown Process Type '%d'\n", type);
   }    
@@ -835,6 +839,10 @@ static void eco_processes_pore(int type, const char **procs[], int *nprocs)
   case PT_SED:
     *procs  = SED_PROCESS_PORE;
     *nprocs = NUM_SED_PROCESS_PORE;
+    return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
     return;
   default:
     e_quit("eco_processes_opt: Unknown Process Type '%d'\n", type);
@@ -860,6 +868,10 @@ static void eco_processes_opt(int type, const char **procs[], int *nprocs)
     *procs  = SED_PROCESS_OPT;
     *nprocs = NUM_SED_PROCESS_OPT;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_opt: Unknown Process Type '%d'\n", type);
   }
@@ -884,6 +896,10 @@ static void eco_processes_gas(int type, const char **procs[], int *nprocs)
     *procs  = SED_PROCESS_GAS;
     *nprocs = NUM_SED_PROCESS_GAS;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_gas: Unknown Process Type '%d'\n", type);
   }
@@ -906,6 +922,10 @@ static void eco_processes_est(int type, const char **procs[], int *nprocs)
   case PT_SED:
     *procs  = SED_PROCESS_EST;
     *nprocs = NUM_SED_PROCESS_EST;
+    return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
     return;
   default:
     e_quit("eco_processes_est: Unknown Process Type '%d'\n", type);
@@ -931,6 +951,10 @@ static void eco_processes_gbr4(int type, const char **procs[], int *nprocs)
     *procs  = SED_PROCESS_GBR4;
     *nprocs = NUM_SED_PROCESS_GBR4;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_gbr4: Unknown Process Type '%d'\n", type);
   }    
@@ -954,6 +978,10 @@ static void eco_processes_gbr4_coral(int type, const char **procs[], int *nprocs
   case PT_SED:
     *procs  = SED_PROCESS_GBR4_CORAL;
     *nprocs = NUM_SED_PROCESS_GBR4_CORAL;
+    return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
     return;
   default:
     e_quit("eco_processes_gbr4_coral: Unknown Process Type '%d'\n", type);
@@ -979,6 +1007,10 @@ static void eco_processes_gbr4_seagrass(int type, const char **procs[], int *npr
     *procs  = SED_PROCESS_GBR4_SEAGRASS;
     *nprocs = NUM_SED_PROCESS_GBR4_SEAGRASS;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_gbr4_seagrass: Unknown Process Type '%d'\n", type);
   }    
@@ -1002,6 +1034,10 @@ static void eco_processes_bgc2p0(int type, const char **procs[], int *nprocs)
   case PT_SED:
     *procs  = SED_PROCESS_BGC2p0;
     *nprocs = NUM_SED_PROCESS_BGC2p0;
+    return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
     return;
   default:
     e_quit("eco_processes_bgc2p0: Unknown Process Type '%d'\n", type);
@@ -1028,6 +1064,10 @@ static void eco_processes_bgc3p1(int type, const char **procs[], int *nprocs)
     *procs  = SED_PROCESS_BGC3p1;
     *nprocs = NUM_SED_PROCESS_BGC3p1;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_bgc3p1: Unknown Process Type '%d'\n", type);
   }
@@ -1052,6 +1092,10 @@ static void eco_processes_dead(int type, const char **procs[], int *nprocs)
   case PT_SED:
     *procs  = SED_PROCESS_DEAD;
     *nprocs = NUM_SED_PROCESS_DEAD;
+    return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
     return;
   default:
     e_quit("eco_processes_dead_only: Unknown Process Type '%d'\n", type);
@@ -1078,6 +1122,10 @@ static void eco_processes_TASSE1p0(int type, const char **procs[], int *nprocs)
     *procs  = SED_PROCESS_TASSE1p0;
     *nprocs = NUM_SED_PROCESS_TASSE1p0;
     return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
+    return;
   default:
     e_quit("eco_processes_TASSE1p0: Unknown Process Type '%d'\n", type);
   }
@@ -1101,6 +1149,10 @@ static void eco_processes_gbr4_small(int type, const char **procs[], int *nprocs
   case PT_SED:
     *procs  = SED_PROCESS_GBR4_SMALL;
     *nprocs = NUM_SED_PROCESS_GBR4_SMALL;
+    return;
+  case PT_COL:
+    *procs = NULL;
+    *nprocs = 0;
     return;
   default:
     e_quit("eco_processes_gbr4_small: Unknown Process Type '%d'\n", type);

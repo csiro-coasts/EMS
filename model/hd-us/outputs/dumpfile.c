@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 6742 2021-03-30 00:42:53Z her127 $
+ *  $Id: dumpfile.c 7337 2023-04-11 02:35:26Z her127 $
  *
  */
 
@@ -33,6 +33,7 @@
 #define SIMPLE_SHORT_MISSING_VALUE -32767
 #define STD_ALL_VARS "u1av u2av wtop topz eta wind1 wind2 patm u1 u2 w u v dens dens_0 Kz Vz u1bot u2bot Cd flag u1vh u2vh "
 #define SIMPLE_ALL_VARS "uav vav avg_speed avg_dir u v current_speed current_dir w eta wind_u wind_v wind_mag wind_dir patm dens dens_0 Kz Vz bottom_u bottom_v bottom_speed bottom_dir Cd "
+#define FORCING_VARS "wind1 patm air_temp cloud precipitation dew_point "
 
 #define PARRAY_MISSING_VALUE 1e35
 #define PARRAY_SHORT_MISSING_VALUE -32767
@@ -74,7 +75,7 @@ static int read_subsection_range(FILE * fp, char *key, int nc, int nf,
          int *sslower, int *ssnc, int *ssnf);
          
 static void read_dumpfile_points(FILE * fp, char *key, dump_file_t* file);
-         
+int read_dump_subset(dump_file_t *list, dump_data_t *dumpdata, char *name);         
 static void vector_component(dump_data_t *dumpdata, double **vi,
                              double **vj, int ilower, int jlower, int nce1,
                              int nce2, int mode, double **nv);
@@ -163,7 +164,7 @@ static struct {
     "simple_cf", df_simple_cf_create, df_simple_write, df_simple_close, df_simple_reset, 1}, {
     "parray", df_parray_create, df_parray_write, df_parray_close, df_parray_reset, 0}, {
     "memory", df_memory_create, df_memory_write, df_memory_close, df_null_reset, 0}, {
-    "sparse", df_ugrid3_create, df_ugrid3_write, df_ugrid_close, df_ugrid_reset, 1}, {
+    "sparse", df_ugrid3_create, df_ugrid3_write, df_ugrid_close, df_ugrid_reset, 2}, {
     "ugrid", df_ugrid_create, df_ugrid_write, df_ugrid_close, df_ugrid_reset, 1}, {
     "mom", df_mom_create, df_mom_write, df_mom_close, df_mom_reset, 1}, {
     "roms", df_roms_create, df_roms_write, df_roms_close, df_roms_reset, 1}, {
@@ -977,6 +978,7 @@ int count_dumpfiles(FILE *fp, int *type)
 void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata, 
 		    double t, int f)
 {
+  master_t *master =  dumpdata->master;
   char buf[MAXSTRLEN], key[MAXSTRLEN], buf2[MAXLINELEN];
   int i, mapIndex = 0;
 
@@ -1049,6 +1051,10 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
       } else
 	hd_quit("dumpfile_init: Can't read file %d time increment\n", f);
     }
+  }
+  if (list->tinc < master->grid_dt) {
+    hd_warn("read_dumpfiles: dump file %s has tinc < model time-step. Resetting to %f\n",
+	    list->name, list->tinc);
   }
 
   /* Fit the start and stop times to the actual simulation period */
@@ -1131,6 +1137,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   if (prm_read_char(fp, key, buf) == 0)
     strcpy(buf, df_func_map[0].tag);
   if (!(dumpdata->us_type & US_IJ) && (strcmp(buf, "ugrid") != 0 && 
+				       strcmp(buf, "sparse") != 0 &&
 				       strcmp(buf, "parray") != 0 &&
 				       strcmp(buf, "memory") != 0))
     hd_quit("read_dumpfiles: Unstructured grid can only dump filetype 'ugrid' or 'parray'.\n");
@@ -1293,11 +1300,18 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   }
 
   /* Read the list of points to output. Only used by parray */
+  if (df_func_map[mapIndex].xyGridOutput == 2) {
+    sprintf(key, "file%d.points", f);
+    prm_read_char(fp,key,buf);
+    if (!read_dump_subset(list, dumpdata, buf))
+      read_dumpfile_points(fp,key,list);
+  }
   if (!df_func_map[mapIndex].xyGridOutput) {
     sprintf(key, "file%d.points", f);
-    if(prm_read_char(fp,key,buf))
-      read_dumpfile_points(fp,key,list);
-    else {
+    if(prm_read_char(fp,key,buf)) {
+      if (!read_dump_subset(list, dumpdata, buf))
+	read_dumpfile_points(fp,key,list);
+    } else {
       sprintf(key, "file%d.pointfile", f);
       if(prm_read_char(fp,key,buf)) {
 	FILE* fpp = fopen(buf,"r");
@@ -1715,7 +1729,7 @@ static void read_dumpfile_points(FILE * fp, char *key, dump_file_t* file)
 void df_parse_vars(dump_data_t *dumpdata, dump_file_t *df, char* excludevars, char* all_vars)
 {
 	
-	int i, n;
+  int i, n;
   char subset[MAXNUMVARS][MAXSTRLEN];
   char buffer[MAXSTRLEN]; 
   char line[MAXNUMVARS * 20] = "";
@@ -1744,6 +1758,24 @@ void df_parse_vars(dump_data_t *dumpdata, dump_file_t *df, char* excludevars, ch
     {
       /* sprintf(line, STD_ALL_VARS); */
       sprintf(line, "%s", all_vars);
+    }
+    else if (contains_token(df->vars[i], "FORCING_VARS")) {
+      sprintf(line, FORCING_VARS);
+      if ((n = tracer_find_index("eta_force", dumpdata->ntrS, dumpdata->trinfo_2d))
+	  >= 0)
+	sprintf(line + strlen(line), "%s ", dumpdata->trinfo_2d[n].name);
+      if ((n = tracer_find_index("salt_force", dumpdata->ntr, dumpdata->trinfo_3d))
+	  >= 0)
+	sprintf(line + strlen(line), "%s ", dumpdata->trinfo_3d[n].name);
+      if ((n = tracer_find_index("temp_force", dumpdata->ntr, dumpdata->trinfo_3d))
+	  >= 0)
+	sprintf(line + strlen(line), "%s ", dumpdata->trinfo_3d[n].name);
+      if ((n = tracer_find_index("velu_force", dumpdata->ntr, dumpdata->trinfo_3d))
+	  >= 0)
+	sprintf(line + strlen(line), "%s ", dumpdata->trinfo_3d[n].name);
+      if ((n = tracer_find_index("velv_force", dumpdata->ntr, dumpdata->trinfo_3d))
+	  >= 0)
+	sprintf(line + strlen(line), "%s ", dumpdata->trinfo_3d[n].name);
     }
     else if (contains_token(df->vars[i], "TRACERS_WC")) {
       for (n = 0; n < dumpdata->ntr; n++)
@@ -1891,6 +1923,7 @@ static void df_restart_write(dump_data_t *dumpdata, dump_file_t *df, double t) {
   if (t < (df->tout - DT_EPS)) return;
 
   /* Write the restart file. */
+  master->swan_hs = 1;
   strcpy(restart_fname, df->name);
   strcpy(new_restart_fname, dirname(strdup(df->name)));
   strcat(new_restart_fname, "/new_restart.nc");
@@ -1919,7 +1952,11 @@ void df_std_reset(dump_data_t *dumpdata, dump_file_t *df, double t)
 {
   df_std_data_t *data = df->private_data;
   /* Rewind to the first next time after t */
-  while (t <= (df->tout - df->tinc))
+  /* Note: used to have t <= (df->tout - df->tinc), but for crash   */
+  /* recovery this reset the start time of a recovery to the reset  */
+  /* time twice, since the scheduler->t adopts df->tout.            */
+  /* Changed to t < (df->tout - df->tinc) on 12.04.2021.            */
+  while (t < (df->tout - df->tinc))
     df->tout -= df->tinc;
   data->nextrec = find_next_restart_record(df, data->fid, "t", df->tout);
 }
@@ -2869,7 +2906,7 @@ void df_simple_reset(dump_data_t *dumpdata, dump_file_t *df, double t)
 {
   df_simple_data_t *data = df->private_data;
   /* Rewind to the first next time after t */
-  while (t <= (df->tout - df->tinc))
+  while (t < (df->tout - df->tinc))
     df->tout -= df->tinc;
   data->nextrec = find_next_restart_record(df, data->fid, "time", df->tout);
 }
@@ -3188,27 +3225,29 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
     write_text_att(cdfid, vid, "standard_name", "longitude");
     write_text_att(cdfid, vid, "coordinate_type", "longitude");
   } else {
-  	nc_def_var(cdfid, "xc", NC_DOUBLE, 2, dims, &vid);
+    nc_def_var(cdfid, "xc", NC_DOUBLE, 2, dims, &vid);
     write_text_att(cdfid, vid, "units", dumpdata->lenunit);
     write_text_att(cdfid, vid, "long_name", "X");
     write_text_att(cdfid, vid, "axis", "X");
+    write_text_att(cdfid, vid, "coordinate_type", "X");
   }
   if (has_proj)
     write_text_att(cdfid, vid, "projection", projection);
   write_analytic_att(dumpdata, cdfid, vid, df->ilower, df->nce1,
                      df->jlower, df->nce2, CL_CENTRE);
 
-
-  nc_def_var(cdfid, "latitude", NC_DOUBLE, 2, dims, &vid);
   if (is_geog) {
+    nc_def_var(cdfid, "latitude", NC_DOUBLE, 2, dims, &vid);
     write_text_att(cdfid, vid, "units", "degrees_north");
     write_text_att(cdfid, vid, "long_name", "Latitude");
     write_text_att(cdfid, vid, "standard_name", "latitude");
     write_text_att(cdfid, vid, "coordinate_type", "latitude");
   } else {
+    nc_def_var(cdfid, "yc", NC_DOUBLE, 2, dims, &vid);
     write_text_att(cdfid, vid, "units", dumpdata->lenunit);
     write_text_att(cdfid, vid, "long_name", "Y");
     write_text_att(cdfid, vid, "axis", "Y");
+    write_text_att(cdfid, vid, "coordinate_type", "Y");
   }
   if (has_proj)
     write_text_att(cdfid, vid, "projection", projection);
@@ -4786,7 +4825,7 @@ void df_parray_reset(dump_data_t *dumpdata, dump_file_t *df, double t)
 {
   df_parray_data_t *data = df->private_data;
   /* Rewind to the first next time after time */
-  while (t <= (df->tout - df->tinc))
+  while (t < (df->tout - df->tinc))
     df->tout -= df->tinc;
   data->nextrec = find_next_restart_record(df, data->fid, "time", df->tout);
 }
@@ -5067,13 +5106,14 @@ void df_parray_write(dump_data_t *dumpdata, dump_file_t *df, double t)
     df_parray_var_t *var = &data->vars[n];
 
     if (var->ndims == 2) {
+
       if (var->vector_mode == VM_NONE)
-        df_parray_writesub_2d(dumpdata, df, n, get_data(var));
+	df_parray_writesub_2d(dumpdata, df, n, get_data(var));
       else {
-        df_parray_writevec_2d(dumpdata, df, n, get_data(var));
+	df_parray_writevec_2d(dumpdata, df, n, get_data(var));
 	/*df_parray_writevec_2d(dumpdata, df, n,
-                              get_data_vector(var, 0),
-                              get_data_vector(var, 1));*/
+	  get_data_vector(var, 0),
+	  get_data_vector(var, 1));*/
       }
 
     } else if (var->ndims == 3) {
@@ -5089,15 +5129,17 @@ void df_parray_write(dump_data_t *dumpdata, dump_file_t *df, double t)
         klower = df->klower;
         nz = df->nz;
       }
-      if (var->vector_mode & VM_NONE)
-        df_parray_writesub_3d(dumpdata, df, n, get_data(var),
-                              klower, nz);
+
+      if (var->vector_mode == VM_NONE)
+	df_parray_writesub_3d(dumpdata, df, n, get_data(var),
+			      klower, nz);
       else {
-        df_parray_writevec_3d(dumpdata, df, n, get_data(var),
-                              klower, nz);
-        /*df_parray_writevec_3d(dumpdata, df, n,
-                              get_data_vector(var, 0),
-                              get_data_vector(var, 1), klower, nz);*/
+	df_parray_writevec_3d(dumpdata, df, n, get_data(var),
+			      klower, nz);
+	printf("b\n");
+	/*df_parray_writevec_3d(dumpdata, df, n,
+	  get_data_vector(var, 0),
+	  get_data_vector(var, 1), klower, nz);*/
       }
     }
   }
@@ -5236,6 +5278,7 @@ int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
   var->scale = 1.0;
   var->offset = 0.0;
   var->sediment = 0;
+  var->vector_mode = VM_NONE;
   set_data(var, NULL);
   set_xyloc(var, CL_CENTRE);
   set_zloc(var, CL_NONE);
@@ -7606,8 +7649,13 @@ int set_transfiles(int fn, char *key, dump_data_t *dumpdata, dump_file_t *list,
       if (dumpdata->tmode & SP_FFSL) {
 	if (m)
 	  strcpy(buf, "eta umean wmean temp salt Kzmean u1vmean swr");
-	else
+	else {
 	  strcpy(buf, "eta umean wmean temp salt Kzmean u1vmean");
+	  /*strcpy(buf, "eta umean wmean temp salt Kzmean u1vmean passive");*/
+	}
+      }
+      if (dumpdata->tmode & SP_UGRID) {
+	strcat(buf, " dz dzu1");
       }
       list[nf].nvars = parseline(strdup(buf), list[nf].vars, MAXNUMVARS);
       strcpy(list[nf].type, "sparse");
@@ -7657,6 +7705,194 @@ int set_transfiles(int fn, char *key, dump_data_t *dumpdata, dump_file_t *list,
 
 /* END get_transfiles()                                             */
 /*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Extracts a set of points for a parray subset                     */
+/*------------------------------------------------------------------*/
+int read_dump_subset(dump_file_t *list, dump_data_t *dumpdata, char *name)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  int c, cc, ee, e, n, m, np;
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  char sname[MAXSTRLEN], buf[MAXSTRLEN];
+  int ff = 0;
+  FILE *fp;
+
+  m = parseline(name, fields, MAXNUMARGS);
+  strcpy(sname, fields[0]);
+
+  /* Check if the subset is an open boundary                        */
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    if (strcmp(open->name, sname) == 0) {
+      list->obcid = open->id;
+      list->flag |= DF_OBC;
+      sprintf(buf, "OBClist_%s.txt", open->name);
+      if (ff) fp = fopen(buf, "w");
+      /* Edge points. Note: when u1 velocity is dumped to a ugrid3  */
+      /* file, the velocities are dumped from the u1 & u2 transfer  */
+      /* vectors to represent the whole velocity boundary, which    */
+      /* includes normal and tangential edges. The normal edges are */
+      /* dumped first from open->transfer_e1, followed by the       */
+      /* tangential from open->transfer_e2.                         */
+      list->npoints = open->no2_e1 + (open->to2_e1 - open->no3_e1);
+      list->nedge2 = open->no2_e1;
+      list->nedge3 = open->no3_e1;
+      list->x = d_alloc_1d(list->npoints);
+      list->y = d_alloc_1d(list->npoints);
+      /* Normal boundary locations                                  */
+      np = 0;
+      if (ff) fprintf(fp, "Edge locations (normal): %d\n", open->no2_e1);
+      for (cc = 1; cc <= open->no2_e1; cc++) {
+	c = open->obc_e1[cc];
+	list->x[np] = geom->u1x[c];
+	list->y[np] = geom->u1y[c];
+	if (ff) fprintf(fp, "%f %f\n",geom->u1x[c], geom->u1y[c]);
+	np++;
+      }
+      /* Tangential boundary locations                              */
+      list->nedge2 += (open->to2_e1 - open->no3_e1);
+      list->nedge3 += (open->to3_e1 - open->no3_e1);
+      if (ff) fprintf(fp, "\nEdge locations (tangential): %d\n", open->to2_e1 - open->no3_e1);
+      for (cc = open->no3_e1 + 1; cc <= open->to2_e1; cc++) {
+	c = open->obc_e1[cc];
+	list->x[np] = geom->u1x[c];
+	list->y[np] = geom->u1y[c];
+	if (ff) fprintf(fp, "%f %f\n",geom->u1x[c], geom->u1y[c]);
+	np++;
+      }
+      /* 2D tracer points                                           */
+      list->npoints = open->no2_t;
+      list->nface2 = open->no2_t;
+      for (ee = 1; ee <= open->no2_e1; ee++) {
+	list->npoints += open->bgz;
+      }
+      if (list->npoints > 0) {
+	if (ff) fprintf(fp, "\nCentre locations: %d\n", list->npoints);
+	list->x = d_alloc_1d(list->npoints);
+	list->y = d_alloc_1d(list->npoints);
+	np = 0;
+	for (cc = 1; cc <= open->no2_t; cc++) {
+	  c = open->obc_t[cc];
+	  list->x[np] = geom->cellx[c];
+	  list->y[np] = geom->celly[c];
+	  if (ff) fprintf(fp, "%f %f\n", geom->cellx[c],geom->celly[c]);
+	  np++;
+	}
+	for (ee = 1; ee <= open->no2_e1; ee++) {
+	  c = open->obc_e2[ee];
+	  e = open->obc_e1[ee];
+	  for(m = 1; m <= open->bgz; m++) {
+	    c = open->omape[ee][c];
+	    list->x[np] = geom->cellx[c];
+	    list->y[np] = geom->celly[c];
+	    if (ff) fprintf(fp, "%f %f\n", geom->cellx[c],geom->celly[c]);
+	    np++;
+	  }
+	}
+      }
+      /* 3D centres including ghost cells                           */
+      np = 0;
+      for (cc = 1; cc <= open->no3_t; cc++) {
+	c = open->obc_t[cc];
+	np++;
+      }
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	c = open->obc_e2[ee];
+	e = open->obc_e1[ee];
+	for(m = 1; m <= open->bgz; m++) {
+	  c = open->omape[ee][c];
+	  np++;
+	}
+      }
+      list->nface3 = np;
+
+      for (n = 0; n < list->nvars; ++n) {
+	if (strcmp(list->vars[n], "eta") == 0
+	    && open->transfer_eta == NULL)
+	  hd_quit("dumpfiles: file %s require an active OBC for eta in OBC %s\n",
+		  list->name, open->name);
+	if (strcmp(list->vars[n], "u1") == 0
+	    && (open->transfer_u1 == NULL || open->transfer_u2 == NULL))
+	  hd_quit("dumpfiles: file %s require an active OBC for u1 in OBC %s\n",
+		  list->name, open->name);
+	for (m = 0; m < master->ntr; m++) {
+	  if (strcmp(list->vars[n], master->trinfo_3d[m].name) == 0) {
+	    int tm = open->trm[m];
+	    if (open->t_transfer[tm] == NULL)
+	      hd_quit("dumpfiles: file %s require an active OBC for %s in OBC %s\n",
+		      list->name, list->vars[n], open->name);
+	  }
+	}
+      }
+      if (ff) fclose(fp);
+      return(1);
+    }
+  }
+
+  /* Check if the subset is a polygon file                          */
+  if (endswith(sname, ".xy")) {
+    FILE *fp;
+    poly_t *pl;
+    int *mask;
+    double x, y, x0, y0;
+    /* Get the polygon coordinates                                  */
+    if ((fp = fopen(name, "r")) != NULL) {
+      pl = poly_create();
+      n = 0;
+      while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+	m = parseline(buf, fields, MAXNUMARGS);
+	x = atof(fields[0]);
+	y = atof(fields[1]);
+	if (n == 0) {
+	  x0 = x;
+	  y0 = y;
+	}
+	poly_add_point(pl, x, y);
+	n++;
+      }
+      poly_add_point(pl, x0, y0);
+      /* Count the points in the polygon                            */
+      list->npoints = 0;
+      mask = i_alloc_1d(geom->szcS);
+      memset(mask, 0, geom->szcS * sizeof(int));
+      for (cc = 1; cc <= geom->b2_t; cc++) {
+	c = geom->w2_t[cc];
+	if (poly_contains_point(pl, geom->cellx[c], geom->celly[c])) {
+	  mask[c] = 1;
+	  list->npoints++;
+	}
+      }
+      if (list->npoints > 0) {
+	list->x = d_alloc_1d(list->npoints);
+	list->y = d_alloc_1d(list->npoints);
+	np = 0;
+	for (cc = 1; cc <= geom->b2_t; cc++) {
+	  c = geom->w2_t[cc];
+	  if (mask[c]) {
+	    list->x[np] = geom->cellx[c];
+	    list->y[np] = geom->celly[c];
+	    np++;
+	  }
+	}
+	fclose(fp);
+	i_free_1d(mask);
+	poly_destroy(pl);
+	return(1);
+      }
+      fclose(fp);
+      i_free_1d(mask);
+      poly_destroy(pl);
+    }
+  }
+  return(0);
+}
+
+/* END get_dump_subset()                                            */
+/*------------------------------------------------------------------*/
+
 
 /*
  * Gets the modified name of the output file based on the chunk type
@@ -7720,4 +7956,3 @@ int get_nc_mode(dump_file_t *df)
   }
   return(nc_mode);
 }
-

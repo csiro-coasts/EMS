@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 6735 2021-03-30 00:39:22Z her127 $
+ *  $Id: hd_init.c 7331 2023-04-11 02:32:53Z her127 $
  *
  */
 
@@ -101,7 +101,6 @@ hd_data_t *hd_init(FILE * prmfd)
     /* Using the model start time, confirm that we have a dump in   */
     /* the input file.                                              */
     timeindex = dump_choose_by_time(params, icdfid, schedule->start_time);
-
   } else {
     /* Set and check the bathymetry array                           */
     if (params->us_type & US_IJ)
@@ -172,7 +171,7 @@ hd_data_t *hd_init(FILE * prmfd)
 
 #ifdef HAVE_WAVE_MODULE
   /* Initialise the fetch if required                                */
-  if (params->do_wave)
+  if (!(params->do_wave & NONE))
     init_fetch(master, params, dumpdata->flag[geom->nz-1]);
 #endif
 
@@ -319,16 +318,19 @@ hd_data_t *hd_init(FILE * prmfd)
     }
 
     if (params->runmode & AUTO)
-      params_write(params, dumpdata);
+      params_write(params, dumpdata, params->oname);
     if (strlen(params->cookiecut)) cookie_cut(master, params);
     if (DEBUG("init_m"))
       dlog("init_m", "\nDumpfile %s created OK\n\n", tag);
   }
 
+  write_swan_mesh(master, window, windat, wincon);
   write_mom_grid(dumpdata);
   write_roms_grid(dumpdata);
-  write_swan_mesh(master);
-  if (strlen(params->wind_file))
+
+  if (params->map_type & GEOM_DUMP && strlen(params->geom_file)) 
+    dump_geom_us(master, params->geom_file);
+  if (params->map_type & WIN_DUMP && strlen(params->wind_file))
     dump_windows_us(master, window, params->wind_file, params->prmname);
 
   if (params->runmode & EXIT) {
@@ -361,10 +363,16 @@ hd_data_t *hd_init(FILE * prmfd)
   /* dumping. This is important for daily NRT operation.            */
   tracer_dhw_init(master);
 
+  if (master->do_wave & W_SWANM) swan_couple_init(master);
+
   /* Print the runtime diagnostics */
   history_log(master, HST_PRE);
   write_run_setup(hd_data);
   history_log(master, HST_POST);
+  if (strlen(master->autotrpath))
+    write_autotracer(master);
+  render_manage(master);
+
   if (strlen(master->opath)) {
     /* Write also to the output path */
     char buf[MAXSTRLEN];
@@ -558,6 +566,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   int ns;                       /* Number of smoothing passes        */
   double *bfc;                  /* Bottom friction coefficient       */
   double *w1;                   /* Dummy                             */
+  int dohdiff = 0;
 
   /* Set the master parameters from the parameter data structure     */
   /* Time stepping constants and variables                           */
@@ -579,8 +588,12 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->momsc = params->momsc;
   master->momsc2d = master->momsc;
   master->ultimate = params->ultimate;
+  master->kinetic = params->kinetic;
+  master->kfact = params->kfact;
   master->rkstage = params->rkstage;
   master->osl = params->osl;
+  master->u1vhi = params->u1vh;
+  master->u1khi = params->u1kh;
   master->smagorinsky = params->smagorinsky;
   master->sue1 = params->sue1;
   master->kue1 = params->kue1;
@@ -590,12 +603,17 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->diff_scale = params->diff_scale;
   master->visc_method = params->visc_method;
   master->visc_fact = params->visc_fact;
+  strcpy(master->u1vhci, params->u1vhc);
+  strcpy(master->u1khci, params->u1khc);
   master->stab = params->stab;
   master->thin_merge = params->thin_merge;
   master->sigma = params->sigma;
   master->nonlinear = params->nonlinear;
   master->calc_dens = params->calc_dens;
   master->roammode = params->roammode;
+  master->eta_ib = params->eta_ib;
+  strcpy(master->smooth_v, params->smooth_v);
+  strcpy(master->scale_v, params->scale_v);
   if (strlen(params->densname)) {
     tn = tracer_find_index(params->densname, master->ntr, master->trinfo_3d);
     if (tn >= 0 && tn < master->ntr)
@@ -608,6 +626,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->tidef = params->tidef;
   master->tidep = params->tidep;
   master->nwindows = params->nwindows;
+  master->ghrsst_type = params->ghrsst_type;
   master->dbc = 0;
   master->dbgtime = 0.0;
   m = 0;
@@ -663,6 +682,35 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->monomn = params->monomn;
   master->monomx = params->monomx;
   master->monon = tracer_find_index(params->monotr, master->ntr, master->trinfo_3d);
+  master->errornorm = NONE;
+  if (strlen(params->errornorm)) {
+    int t1, t2;
+    char *files[MAXSTRLEN * MAXNUMARGS];
+    m = parseline(params->errornorm, (char **)files, MAXNUMTSFILES);
+    if (m >= 2) {
+      t1 = tracer_find_index(files[0], master->ntr, master->trinfo_3d);
+      t2 = tracer_find_index(files[1], master->ntr, master->trinfo_3d);
+      tn = N_TRA3D;
+      if (t1 < 0 && t2 < 0) {
+	t1 = tracer_find_index(files[0], master->ntrS, master->trinfo_2d);
+	t2 = tracer_find_index(files[1], master->ntrS, master->trinfo_2d);
+	tn = N_TRA2D;
+      }
+      if (t1 >= 0 && t2 >= 0) {
+	master->errornorm = N_ERRN;
+	master->normt1 = t1;
+	master->normt2 = t2;
+	master->errornorm |= tn;
+	master->enorm_dt = params->enorm_dt;
+	init_error_norms(master);
+      } else {
+	master->errornorm = NONE;
+	hd_warn("Can't find tracers %s and %s for error norm diagnostic.\n",
+		files[1], files[2]);
+      }
+      if (m ==3 && strcmp("surf",files[2]) == 0) master->errornorm |= N_SURF;
+    }
+  }
   master->mixlayer = params->mixlayer;
   master->show_layers = params->show_layers;
   master->lnm = fabs(params->lnm);
@@ -763,6 +811,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
 
   /* Particles                                                       */
+  master->do_lag = params->do_lag;
   master->do_pt = params->do_pt;
   if (master->do_pt)
     strcpy(master->ptinname, params->ptinname);
@@ -781,6 +830,10 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   strcpy(master->bdrypath, params->bdrypath);
   master->restart_dt = params->restart_dt;
   strcpy(master->restart_name, params->restart_name);
+  if (master->restart_dt > 0)
+    master->swan_hs = 1;
+  else
+    master->swan_hs = 0;
   master->runmode = VEL3D;
   master->sh_f = NONE;
   if (master->mode2d)
@@ -946,14 +999,19 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   master->hfadf = params->hfadf;
   master->hftc = params->hftc;
   master->hf_ramp = params->hf_ramp;
-  /* Override input file swr parameters if they are numbers          */
+  for (n = 0; n < 6; n++) master->swr_ens[n] = params->swr_ens[n];
+  /* Override input file swr parameters if they are numbers */
   if (master->swr_attn) {
     double d1;
     int cc, c;
     master->attn_tr = -1;
+    if ((tn = tracer_find_index(params->swr_attn, master->ntrS, master->trinfo_2d)) >= 0) {
+      memcpy(master->swr_attn, master->tr_wcS[tn], geom->szcS * sizeof(double));
+      master->attn_tr = tn;
+    }
     if (sscanf(params->swr_attn, "%lf", &d1) == 1) {
       if (params->swr_type & SWR_2D) {
-        for (cc = 1; cc <= geom->b2_t; cc++) {
+	for (cc = 1; cc <= geom->b2_t; cc++) {
 	  c = geom->w2_t[cc];
 	  master->swr_attn[c] = d1;
 	}
@@ -972,6 +1030,10 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       }
     }
     master->tran_tr = -1;
+    if (master->swr_tran && (tn = tracer_find_index(params->swr_tran, master->ntrS, master->trinfo_2d)) >= 0) {
+      memcpy(master->swr_tran, master->tr_wcS[tn], geom->szcS * sizeof(double));
+      master->tran_tr = tn;
+    }
     if (master->swr_tran && sscanf(params->swr_tran, "%lf", &d1) == 1) {
       for (cc = 1; cc <= geom->b2_t; cc++) {
 	c = geom->w2_t[cc];
@@ -1074,6 +1136,30 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	hd_warn("Active relaxation ALERT requires mean elevation specified\n");
     }
   }
+  /* Render manager */
+  strcpy(master->rendername, params->rendername);
+  strcpy(master->renderpath, params->renderpath);
+  strcpy(master->renderdesc, params->renderdesc);
+  strcpy(master->renderrem, params->renderrem);
+  master->rendertype = (R_HYDRO|R_SED|R_ECO);
+  if (strlen(params->rendertype)) {
+    master->rendertype = 0;
+    if (contains_token(params->rendertype, "HYDRO") != NULL)
+      master->rendertype |= R_HYDRO;
+    if (contains_token(params->rendertype, "SED") != NULL)
+      master->rendertype |= R_SED;
+    if (contains_token(params->rendertype, "ECO") != NULL)
+      master->rendertype |= R_ECO;
+  }
+  master->renderopts = NONE;
+  if (strlen(params->renderopts)) {
+    master->renderopts = 0;
+    if (contains_token(params->renderopts, "LIST") != NULL)
+      master->renderopts |= R_LIST;
+    if (contains_token(params->renderopts, "DUMP") != NULL)
+      master->renderopts |= R_DUMP;
+  }
+  strcpy(master->ecosedconfig, params->ecosedconfig);
 
 #if defined(HAVE_SEDIMENT_MODULE)
   /* Sediments                                                       */
@@ -1355,6 +1441,8 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     }
   }
 
+  set_hor_diff(master);
+  if (dohdiff) {
   /* Horizontal viscosity                                            */
   if (params->u1vh > 0.0 || params->bsue1 > 0.0 || 
       params->diff_scale & VH_REG) {
@@ -1793,6 +1881,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     master->u1vh[e] = master->u1vh[c2];
     master->u2kh[e] = master->u2kh[c2];
   }
+  }
 
   /* Cell centered horizontal viscosity diagnostic                   */
   if (master->u1vhc) {
@@ -1808,12 +1897,13 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
 	if (params->diff_scale & LINEAR) dh = sqrt(dh);
 	if (params->diff_scale & CUBIC) dh = dh * sqrt(dh);
 	if (params->diff_scale & AUTO) dh = 1.0;
-	master->u1vhc[c] += (dh * master->u1vh[e]);
+	if (params->diff_scale & SCALEBI)
+	  master->u1vhc[c] += (dh * master->u1vh[e] / (0.125 * geom->edgearea[es]));
+	else
+	  master->u1vhc[c] += (dh * master->u1vh[e]);
 	d1 += dh;
       }
       master->u1vhc[c] /= d1;
-      if (params->diff_scale & SCALEBI)
-	master->u1vhc[c] /= (0.125 * geom->cellarea[c2]);
     }
   }
 
@@ -1893,6 +1983,14 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
       master->meshun[c] /= sum;
     }
   }
+
+  /* Rotating cylinder test case initialisation.                     */
+  /* The tracers assinged to the cylinder must be defined in this    */
+  /* function ('passive' by default).                                */
+  if (strcmp(params->testcase, "rotating") == 0) {
+    rotating_cylinder_init(master);
+  }
+  /*rotating_cylinder_init(master);*/
 }
 
 /* END compute_constants()                                           */
@@ -1926,6 +2024,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   master->ntre = params->ntre;
   master->ntreS = params->ntreS;
   strcpy(master->tracerdata, params->tracerdata);
+  strcpy(master->autotrpath, params->autotrpath);
   strcpy(master->timeunit, params->timeunit);
   master->tsfile_caching = params->tsfile_caching;
 
@@ -2120,8 +2219,12 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   master->wind2 = d_alloc_1d(geom->szeS);
   master->windspeed = d_alloc_1d(geom->szeS);
   master->winddir = d_alloc_1d(geom->szeS);
-  if (params->wind_dt && params->storm_dt) {
+  if (params->wind_dt && (params->storm_dt)) {
     master->swind1 = d_alloc_1d(geom->szeS);
+  }
+  if (params->wind_dt && params->do_wave & W_SWAN) {
+    master->swind1 = d_alloc_1d(geom->szcS);
+    master->swind2 = d_alloc_1d(geom->szcS);
   }
   master->patm = d_alloc_1d(geom->szcS);
 
@@ -2222,6 +2325,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
       memset(master->odeta, 0, geom->szcS * sizeof(double));
     }
   }
+
   if (params->runmode & TRANS) {
     /* Use the viscosity tensors to store streamline Courant nos.    */
     master->origin = master->Vz;
@@ -2300,10 +2404,9 @@ void master_free_nwin(master_t *master)
   d_free_1d(master->wind2);
   d_free_1d(master->windspeed);
   d_free_1d(master->winddir);
-  if (master->wind_dt && master->storm_dt) {
-    d_free_1d(master->swind1);
-    d_free_1d(master->swind2);
-  }
+  if (master->swind1) d_free_1d(master->swind1);
+  if (master->swind2) d_free_1d(master->swind2);
+
   d_free_1d(master->waterss);
   d_free_1d(master->waterss2d);
   d_free_1d(master->u1c1);
@@ -3302,6 +3405,134 @@ relax_info_t *relax_info_init(char *rname,  /* Relaxation filename   */
 }
 
 /* END relax_info_init()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Initialises a tracer and windfield for the rotating cylinder test */
+/* case. tn is the tracer number of the tracer to rotate, and ta is  */
+/* the tracer number of the analytic solution (doesn't undergo       */
+/* advection and diffusion).                                         */
+/* This test should generally be set up with the 'basin' testcase,   */
+/* TESTCASE             basin 50.0 50.0 1 rotating                   */
+/* for a 50m deep basin.                                             */
+/*-------------------------------------------------------------------*/
+void rotating_cylinder_init(master_t *master)
+{
+  geometry_t *geom = master->geom;
+  int tn = tracer_find_index("passivet", master->ntr, master->trinfo_3d);
+  int ta = tracer_find_index("passiveh", master->ntr, master->trinfo_3d);
+  double ws = 0.1;           /* Maximum wind stress (Nm-2)           */
+  double dist = 10000.0;     /* Radius of the cylinder (m)           */
+  double depth = -25.0;      /* Depth of the cut                     */
+  double width = 2000.0;     /* width of the cut                     */
+  int cc, c, cs, e;
+  double d, s, x, y, x0, y0;
+  double gscale = 0.25 * dist;
+
+  if (tn <0) return;
+
+  /* Get the centre of mass of the domain                            */
+  x0 = y0 = 0.0;
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    x0 += geom->cellx[c];
+    y0 += geom->celly[c];
+  }
+  x0 /= (double)geom->b2_t;
+  y0 /= (double)geom->b2_t;
+
+  /* Build the surface                                               */
+  memset(master->tr_wc[tn], 0, geom->szc * sizeof(double));
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    c = geom->w3_t[cc];
+    cs = geom->m2d[c];
+
+    x = fabs(geom->cellx[cs] - x0);
+    y = fabs(geom->celly[cs] - y0);
+    d = sqrt(x * x + y * y);
+    if (d <= dist) {
+      if (tn >= 0)
+	master->tr_wc[tn][c] = wgt_gaussian_2d(x, y, gscale);
+      if (ta >= 0)
+	master->tr_wc[ta][c] = wgt_gaussian_2d(x, y, gscale);
+    }
+  }
+  /* Inset the cut                                                   */
+  /*
+  for (cc = 1; cc <= geom->b3_t; cc++) {
+    c = geom->w3_t[cc];
+    cs = geom->m2d[c];
+    if (geom->cellz[c] > depth) {
+      y = fabs(geom->celly[cs] - y0);
+      if (y < width) {
+	if (tn >= 0)
+	  master->tr_wc[tn][c] = 0.0;
+	if (ta >= 0)
+	  master->tr_wc[ta][c] = 0.0;
+      }
+    }
+  }
+  */
+  /* Make the windfield                                              */
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    /* West winds                                                    */
+    e = geom->c2e[1][c];
+    d = geom->celly[c] - y0;
+    s = (d > 0.0) ? 1.0 : -1.0;
+    d = min(dist, fabs(d));
+    master->wind1[e] = s * ws * d / dist;
+    /* North winds                                                   */
+    e = geom->c2e[2][c];
+    d = geom->cellx[c] - x0;
+    s = (d > 0.0) ? -1.0 : 1.0;
+    d = min(dist, fabs(d));
+    master->wind1[e] = s * ws * d / dist;
+  }
+}
+
+/* END rotating_cylinder_init()                                      */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+void rotating_cylinder(geometry_t *window, 
+		       window_t *windat,
+		       win_priv_t *wincon
+		       )
+{
+  int tn = tracer_find_index("passivet", wincon->ntr, wincon->trinfo_3d);
+  int ta = tracer_find_index("passiveh", wincon->ntr, wincon->trinfo_3d);
+  double ws = 0.1;           /* Maximum wind stress (Nm-2)           */
+  double dist = 10000.0;     /* Radius of the cylinder (m)           */
+  double depth = -25.0;      /* Depth of the cut                     */
+  double width = 2000.0;     /* width of the cut                     */
+  int cc, c, cs, e;
+  double x, y, x0, y0, v, w, r, t;
+  double d1;
+
+  wincon->trinfo_3d[tn].advect = 1;
+  if (windat->days < 6) wincon->trinfo_3d[tn].advect = 0;
+
+  /* Build the analytic surface                                      */
+  d1 = 0.0;
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    cs = window->m2d[c];
+    v = sqrt(windat->u[c] * windat->u[c] + windat->v[c] * windat->v[c]);
+    x = fabs(geom->cellx[cs] - x0);
+    y = fabs(geom->celly[cs] - y0);
+    r = sqrt(x * x + y * y);
+    w = (r) ? v / r : 0.0;
+    t = w * windat->t;
+    d1 += t;
+  }
+
+  d1 /= (double)window->b2_t;
+}
+
+/* END rorating cylinder()                                           */
 /*-------------------------------------------------------------------*/
 
 

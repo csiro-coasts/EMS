@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel2d.c 6740 2021-03-30 00:41:49Z her127 $
+ *  $Id: vel2d.c 7334 2023-04-11 02:34:10Z her127 $
  *
  */
 
@@ -53,6 +53,7 @@ void coriolis_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void bottom_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void nonlinear_u1av(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void asselin_tiled_2d(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void stokes_step(geometry_t *window, window_t *windat, win_priv_t *wincon);
 
 /*-------------------------------------------------------------------*/
 /* 2D window step part 1                                             */
@@ -110,6 +111,7 @@ void mode2d_step_window_p2(master_t *master,
   if (master->nwindows > 1)
     win_data_refill_2d(master, window, windat, master->nwindows,
                        NVELOCITY);
+
   /*-----------------------------------------------------------------*/
   /* Apply the Asselin filter to remove the computational mode       */
   asselin(window, windat, wincon);
@@ -122,7 +124,7 @@ void mode2d_step_window_p2(master_t *master,
   alerts_w(window, VEL2D);
 
   /* Check for fatal instabilities                                   */
-  if (check_unstable(window, windat, wincon, VEL2D)) return;
+  if ((windat->cc2 = check_unstable(window, windat, wincon, VEL2D))) return;
 
   /*-----------------------------------------------------------------*/
   /* Get the surface elevation and set the elevation OBC.            */
@@ -132,9 +134,8 @@ void mode2d_step_window_p2(master_t *master,
   bdry_eta(window, windat, wincon);
   /* Calculate the elevation alert diagnostics                       */
   alerts_w(window, ETA_A);
-
   /* Check for fatal instabilities                                   */
-  if (check_unstable(window, windat, wincon, ETA_A)) return;
+  if ((windat->cc2 = check_unstable(window, windat, wincon, ETA_A))) return;
 
   /*-----------------------------------------------------------------*/
   /* Update the velocities                                           */
@@ -484,6 +485,21 @@ void pressure_u1av(geometry_t *window,    /* Window geometry         */
 				 (windat->patm[c1] - windat->patm[c2])) / 
       wincon->densavu1[e];
   }
+  /* Subtract the wave averaged sea state, as computed in            */
+  /* wave_av_sbc().                                                  */
+  if (wincon->waves & NEARSHORE) {
+    for (ee = 1; ee <= wincon->vcs; ee++) {
+      e = wincon->s3[ee];
+      c1 = window->e2c[e][0];
+      c2 = window->e2c[e][1];
+      wincon->tend2d[T_BTP][e] += (alpha * (windat->wave_P[c1] - windat->wave_P[c2]) * 
+				   wincon->topdensu1[e]) / wincon->densavu1[e];
+      /*
+      if(window->wn==10)printf("a %f %d %d %e %f %f\n",windat->days,c1,c2,(alpha * (windat->wave_P[c1] - windat->wave_P[c2]) * 
+							      wincon->topdensu1[e]) / wincon->densavu1[e],windat->wave_P[c1],windat->wave_P[c2]);
+      */
+    }
+  }
 }
 
 /* END pressure_u1av()                                               */
@@ -557,6 +573,14 @@ void bottom_u1av(geometry_t *window,      /* Window geometry         */
     /* Note: depth=1 in the sigma case                               */
     wincon->tend2d[T_BOT][e] = -val * botu1 / depth[e];
   }
+  /* Add the wave bottom streaming if required                       */
+  if (wincon->waves & NEARSHORE) {
+    for (ee = 1; ee <= wincon->vcs; ee++) {
+      e = wincon->s3[ee];
+      val = fabs(vel_c2e(window, windat->wave_fbotx, windat->wave_fboty, e));
+      wincon->tend2d[T_BOT][e] -= (val / depth[e]);
+    }
+  }
 }
 
 /* END bottom_u1av()                                                 */
@@ -603,9 +627,13 @@ void nonlinear_u1av(geometry_t *window,   /* Window geometry         */
       e = wincon->s3[ee];
       fe = vel_c2e(window, windat->wave_Fx, windat->wave_Fy, e);
       rst = windat->dt2d * fe / (rho0 * max(depth[e], wincon->hmin));
-      if (windat->u1_rad) windat->u1_rad[e] = rst;
+      if (windat->u1_rad) {
+	wincon->d2[e] = rst;
+      }
       wincon->tend2d[T_NLI][e] += rst;
     }
+    if (windat->u1_rad)
+      vel_cen(window, windat, wincon, wincon->d2, NULL, windat->u1_rad, windat->u2_rad, NULL, NULL, 1);
   }
   /* Not implemented for unstructured
   else if (wincon->waves & TAN_RAD) {
@@ -741,6 +769,9 @@ void vel_u1av_update_seq(geometry_t *window,  /* Window geometry     */
       val = depth[e] * midx / windat->dt2d;
     /* Note: depth=1 in the sigma case                               */
     bft = -val * botu1 / depth[e];
+    /* Add the wave bottom streaming if required                     */
+    if (wincon->waves & NEARSHORE)
+      bft -= fabs(vel_c2e(window, windat->wave_fbotx, windat->wave_fboty, e));
     if (window->e2e[e][0] == dbj && window->e2c[e][dbj] == dbc) {
       wincon->b1 = pgt;
       wincon->b2 = cot;
@@ -1362,6 +1393,7 @@ void eta_step(geometry_t *window,   /* Window geometry               */
   int n, ee, e;                 /* Edge coordinates, counters        */
   double colflux;               /* Velocity transport divergence     */
   double *u1flux = wincon->d2;  /* Flux in e1 direction              */
+  double *u1fluxs = wincon->d1; /* Stokes flux in e1 direction       */
   double d1;
 
   /*-----------------------------------------------------------------*/
@@ -1382,6 +1414,32 @@ void eta_step(geometry_t *window,   /* Window geometry               */
 	wincon->mdx[e] * windat->dt2d;
   }
 
+  /* Add Stokes drift if required. Adding stokes here includes       */
+  /* Stokes in the horizontal fluxes so that composite sea level is  */
+  /* computed (Uchiyama (2010), Eq. 21 (or Eq. 10).                  */
+  /* The pressure term is then computed using the composite sea      */
+  /* level; Uchiyama (2010), Eq. 22.                                 */
+  /* Note: do not include Stokes drift in the 3D averaged fluxes.    */
+  /* The velocity adjustment for 3D velocity should not include      */
+  /* Stokes drift.                                                   */
+  if(wincon->waves & STOKES_DRIFT) {
+    memset(u1fluxs, 0, window->szeS * sizeof(double));
+    /* Calculate the flux at e1 wet and boundary cells               */
+    for (ee = 1; ee <= window->b2_e1; ee++) {
+      e = window->w2_e1[ee];
+      u1fluxs[e] = wincon->uavs[e] * windat->depth_e1[e] * window->h1au1[e] *
+	wincon->mdx[e] * windat->dt2d;
+    }
+
+    /* Calculate the flux at auxiliary cells.                        */
+    for (ee = window->b2_e1 + 1; ee <= window->a2_e1; ee++) {
+      e = window->w2_e1[ee];
+      if (!u1fluxs[e])
+	u1fluxs[e] = wincon->uavs[e] * windat->depth_e1[e] * window->h1au1[e] *
+	  wincon->mdx[e] * windat->dt2d;
+    }
+  }
+
   /*-----------------------------------------------------------------*/
   /* Get the fluxes for correction of the 3D mode. These fluxes must */
   /* be such that eta(t+1)=oldeta+divergence(fluxes) otherwise the   */
@@ -1395,6 +1453,14 @@ void eta_step(geometry_t *window,   /* Window geometry               */
     for (ee = 1; ee <= window->b2_e1; ee++) {
       e = window->w2_e1[ee];
       windat->u1flux[e] += u1flux[e];
+    }
+  }
+  /* Add the Stokes fluxes for computation of sea level, including   */
+  /* the wave averaged sea state.                                    */
+  if(wincon->waves & STOKES_DRIFT) {
+    for (ee = 1; ee <= window->a2_e1; ee++) {
+      e = window->w2_e1[ee];
+      u1flux[e] += u1fluxs[e];
     }
   }
 
@@ -1472,6 +1538,68 @@ void eta_step(geometry_t *window,   /* Window geometry               */
 }
 
 /* END eta_step()                                                    */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to update the surface elevation due to Stokes drift       */
+/* divergence, Uchimaya 2010), Section 2.1.                          */
+/*-------------------------------------------------------------------*/
+void stokes_step(geometry_t *window,   /* Window geometry            */
+		 window_t *windat,     /* Window data                */
+		 win_priv_t *wincon    /* Window constants           */
+  )
+{
+  int c, cc;                    /* Sparse coordinate / counter       */
+  int n, ee, e;                 /* Edge coordinates, counters        */
+  double colflux;               /* Velocity transport divergence     */
+  double *u1flux = wincon->d2;  /* Flux in e1 direction              */
+  double d1;
+
+  /*-----------------------------------------------------------------*/
+  /* Get the fluxes at time t over the whole window                  */
+  memset(u1flux, 0, window->szeS * sizeof(double));
+  /* Calculate the flux at e1 wet and boundary cells                 */
+  for (ee = 1; ee <= window->b2_e1; ee++) {
+    e = window->w2_e1[ee];
+    u1flux[e] = wincon->uavs[e] * windat->depth_e1[e] * window->h1au1[e] *
+      wincon->mdx[e] * windat->dtf2;
+  }
+
+  /* Calculate the flux at auxiliary cells.                          */
+  for (ee = window->b2_e1 + 1; ee <= window->a2_e1; ee++) {
+    e = window->w2_e1[ee];
+    if (!u1flux[e])
+      u1flux[e] = wincon->uavs[e] * windat->depth_e1[e] * window->h1au1[e] *
+	wincon->mdx[e] * windat->dtf2;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Update the elevation.                                           */
+  /* Note : elevations are calculated on the boundaries here and     */
+  /* overwritten in the boundary routine. A boundary condition of    */
+  /* NOTHIN will use the elevations calculated here.                 */
+  /*set_map_eta(window);*/
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+
+    /*---------------------------------------------------------------*/
+    /* Get the divergence of velocity transport                      */
+    colflux = 0.0;
+    for (n = 1; n <= window->npe[c]; n++) {
+      e = window->c2e[n][c];
+      colflux += window->eSc[n][c] * u1flux[e];
+    }
+
+    /* Calculate new etat value                                      */
+    /*
+    wincon->etas[c] = max(wincon->etasb[c] - colflux / window->cellarea[c],
+			  window->botz[c]);
+    */
+  }
+}
+
+/* END stokes_step()                                                 */
 /*-------------------------------------------------------------------*/
 
 
@@ -1623,26 +1751,32 @@ void reset_bdry_eta(geometry_t *window, /* Window geometry           */
 		    )
 {
   int n, m, j, c, c1, cc, e, ee;
+  int *e2ee = wincon->i7;
 
   if (open->stagger & OUTFACE) {
+
     for (ee = 1; ee <= open->no2_e1; ee++) {
+      e = open->obc_e1[ee];
       c = open->ogc_t[ee];
       c1 = open->obc_e2[ee];
       eta[c] = eta[c1];
+      e2ee[e] = ee;
       for (m = 0; m < open->bgz; m++) {
 	c = open->omape[ee][c];
 	eta[c] = eta[c1];
       }
     }
+
     /* Set the elevation at auxiliary OBC cells                      */
     for (cc = 1; cc <= open->no2_a; cc++) {
       c = open->obc_a[cc];
       for (j = 1; j <= window->npe[c]; j++) {
 	if ((e = open->bec[j][cc])) {
-	  c1 = open->omape[e][c];
+	  ee = e2ee[e];
+	  c1 = open->omape[ee][c];
 	  for (m = 0; m < open->bgz; m++) {
-	    eta[c1] = eta[c];
-	    c1 = open->omape[e][c];
+	    eta[c] = eta[c1];
+	    c = open->nmape[ee][c];
 	  }
 	}
       }
@@ -1743,7 +1877,7 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 
   memcpy(u1av, windat->u1av, window->szeS * sizeof(double));
   memset(mask, 0, window->szcS * sizeof(int));
-  
+
   /* For sigma the total depth at time t+1 is not available until    */
   /* after eta_step(), hence the time filtering is done in terms of  */
   /* velocity*depth instead of velocity. Note that nu1av=vel*depth   */
@@ -1784,7 +1918,13 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	/* filtering at the start of the next time-step.             */
 	if (open->options & OP_TILED) open->d2[ee] = windat->u1avb[e];
       }
+      /* Tangential OBC auxiliary cells                              */
+      for (ee = 1; ee <= open->no2_ta; ee++) {
+	e = open->obc_ta[ee];
+	windat->u1av[e] = u1av[e];
+      }
     }
+
     if (open->bcond_nor2d & (VERTIN|FILEIN|CUSTOM|TIDALC)) {
       double f1, f2, df; 
       double nvel[window->npem+1], v1[window->npem+1], v2[window->npem+1];
@@ -1842,6 +1982,7 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	    }
 	    adjust_flux *= open->nepc[cc];
 	    rts = windat->dtb2 / adjust_flux;
+
 	    if (open->options & OP_FAS)
 	      rts /= fabs(open->adjust_flux);
 	    /*
@@ -2031,6 +2172,7 @@ void asselin(geometry_t *window,  /* Window geometry                 */
 	      /*if (open->bec[j][cc]) vel = nvel[j];*/
 	      f2 += window->eSc[j][c] * vel * windat->depth_e1[e] * 
 		window->h1au1[e] * wincon->mdx[e] * windat->dt2d;
+	      printf("  check %d(%d) before=%e after=%e\n",j, e, u1av[e], vel);
 	    }
 	    f1 = windat->etab[c] - f2 / window->cellarea[c];
 	    printf("check: %f %d[%f %f] actual=%f eta=%f tide=%f new=%f\n",windat->days, c, 
@@ -2362,6 +2504,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(c2cc=%d cg=%d [%f %f]) wn=%d t=%8.3f days\n",
 	       wincon->neweta[c], c, window->s2i[c], window->wsa[c], 
 	       window->cellx[c], window->celly[c], window->wn, windat->t / 86400);
+	  return(c);
 	} else {
 	  write_site(window, window->cellx[c], window->celly[c], "eta");
 	  crash_c(window, c, 0, "eta");
@@ -2375,7 +2518,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	      ("etastep: Surface exceeded ETAMAX (%5.2f) at c=%d(c2cc=%d cg=%d [%f %f]) t=%8.3f days\n",
 	       wincon->neweta[c], c, window->s2i[c], window->wsa[c],
 	       window->cellx[c], window->celly[c], windat->t / 86400);
-	  return(1);
+	  return(c);
 	}
       }
       if (wincon->fatal & NANF) {
@@ -2390,7 +2533,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	    hd_quit_and_dump("etastep: NaN at %d (%ld %d) t=%8.3f days : window %d\n",
 			     c, window->s2i[c], window->s2j[c], 
 			     windat->t / 86400, window->wn);
-	    return(1);
+	    return(c);
 	  }
 	}
       }
@@ -2407,7 +2550,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	hd_quit_and_dump
 	  ("vel2d: u1av velocity exceeded velmax (%f) at %d(%d %d) t=%8.3f days\n",
 	   windat->u1av[e], e, window->s2i[c], window->s2j[c], windat->t / 86400);
-	return(1);
+	return(c);
       }
       if (wincon->fatal & NANF) {
 	if(isnan(windat->u1av[e])) {
@@ -2416,13 +2559,13 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	    hd_quit_and_dump("vel2d: u1av NaN at %d(%d %d) t=%8.3f days\n",
 			     e, window->s2i[c], window->s2j[c], 
 			     windat->t / 86400);
-	    return(1);
+	    return(c);
 	  } else {
 	    write_site(window, window->u1x[e], window->u1y[e], "u1av NaN");
 	    hd_quit_and_dump("vel2d: u1av NaN at %d (%d %d) t=%8.3f days : window %d\n",
 			     e, window->s2i[c], window->s2j[c], 
 			     windat->t / 86400, window->wn);
-	    return(1);
+	    return(c);
 	  }
 	}
       }
@@ -2440,7 +2583,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	  ("vel3d: u1 velocity exceeded velmax (%f) at %d(%d %d %d) t=%8.3f days\n",
 	   windat->u1[e], e, window->s2i[c], window->s2j[c], window->s2k[c], 
 	   windat->t / 86400);
-	return(1);
+	return(window->m2d[c]);
       }
       if (wincon->fatal & NANF) {
 	if(isnan(windat->u1[e])) {
@@ -2448,12 +2591,12 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	    hd_quit_and_dump("vel3d: u1 NaN at %d(%d %d %d) t=%8.3f days\n",
 			     e, window->s2i[c], window->s2j[c], window->s2k[c], 
 			     windat->t / 86400);
-	    return(1);
+	    return(window->m2d[c]);
 	  } else {
 	    hd_quit_and_dump("vel3d: u1 NaN at %d(%d %d %d) t=%8.3f days : window %d\n",
 			     e, window->s2i[c], window->s2j[c], window->s2k[c], 
 			     windat->t / 86400, window->wn);
-	    return(1);
+	    return(window->m2d[c]);
 	  }
 	}
       }
@@ -2471,7 +2614,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	  ("wind1: Wind exceeded 100ms-1 (%f) at %d(%d %d) t=%8.3f days\n",
 	   windat->wind1[e], e, window->s2i[c], window->s2j[c],
 	   windat->t / 86400);
-	return(1);
+	return(c);
       }
     }
   }
@@ -2487,7 +2630,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	  ("temp: NaN found  at (%d %d %d) t=%8.3f days : window %d\n",
 	   window->s2i[c], window->s2j[c], window->s2k[c],
 	   windat->t / 86400, window->wn);
-	return(1);
+	return(window->m2d[c]);
       }
       if (isnan(windat->sal[c])) {
 	write_site(window, window->cellx[window->m2d[c]], window->celly[window->m2d[c]], "salt");
@@ -2495,7 +2638,7 @@ int check_unstable(geometry_t *window, /* Window geometry            */
 	  ("salt: NaN found  at (%d %d %d) t=%8.3f days : window %d\n",
 	   window->s2i[c], window->s2j[c], window->s2k[c],
 	   windat->t / 86400, window->wn);
-	return(1);
+	return(window->m2d[c]);
       }
     }
   }

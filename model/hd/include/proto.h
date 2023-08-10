@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 6762 2021-04-13 02:12:03Z riz008 $
+ *  $Id: proto.h 7355 2023-05-08 05:36:40Z riz008 $
  *
  */
 
@@ -25,7 +25,7 @@
 /* Version information                                              */
 /*------------------------------------------------------------------*/
 #define SHOC_MAJOR_VERSION 1
-#define SHOC_MINOR_VERSION 2
+#define SHOC_MINOR_VERSION 3
 #define SHOC_PATCH_VERSION 0
 
 /*------------------------------------------------------------------*/
@@ -56,7 +56,7 @@ void readparam(FILE * fp);
 void read_hdiff(parameters_t *params, FILE *fp, int mode);
 void read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj);
 void set_default_param(parameters_t *params);
-void params_write(parameters_t *params, dump_data_t *dumpdata);
+void params_write(parameters_t *params, dump_data_t *dumpdata, char *name);
 void z0_init(parameters_t *params);
 void create_avhrr_list(parameters_t *params);
 void create_ghrsst_list(parameters_t *params);
@@ -108,6 +108,10 @@ void vel_init(geometry_t *geom, parameters_t *params, master_t *master);
 void read_explicit_maps(parameters_t *params, FILE *fp);
 void create_code(parameters_t *params);
 double get_idcode(char *code, char *id);
+void get_idcodec(char *code, char *id, char *ret);
+void write_auto_atts(FILE *fp, tracer_info_t *tr, int mode);
+void render_manage(master_t *master);
+int get_rendered_hydroparams(char *name, parameters_t *params);
 
 /*------------------------------------------------------------------*/
 /* Window subroutines                                               */
@@ -817,7 +821,7 @@ void smooth(master_t *master, double *A, int *ctp, int nctp);
 /*------------------------------------------------------------------*/
 /* Tracer subroutines                                               */
 /*------------------------------------------------------------------*/
-int tracer_write(parameters_t *params, FILE *op, win_priv_t *wincon);
+int tracer_write(parameters_t *params, FILE *op);
 void tracer_write_3d(master_t *master, FILE *op, tracer_info_t *tracer, int n);
 void tracer_write_2d(master_t *master, FILE *op, tracer_info_t *tracer, int n);
 void tracer_step(master_t *master, geometry_t **window, window_t **windat,
@@ -1243,9 +1247,14 @@ int dump_progress(sched_event_t *event);
 void *df_sp_create(dump_data_t *dumpdata, dump_file_t *df);
 void df_sp_write(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_sp_close(dump_data_t *dumpdata, dump_file_t *df);
+void *df_ugrid_create(dump_data_t *dumpdata, dump_file_t *df);
+void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t);
+void df_ugrid_close(dump_data_t *dumpdata, dump_file_t *df);
+void df_ugrid_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
 void *df_mom_create(dump_data_t *dumpdata, dump_file_t *df);
 void df_mom_write(dump_data_t *dumpdata, dump_file_t *df, double t);
 void df_mom_close(dump_data_t *dumpdata, dump_file_t *df);
+void create_ugrid_maps(dump_data_t *dumpdata);
 int find_next_restart_record(dump_file_t *df, int cdfid,
 			     char *timevar, double tref);
 int read3d(geometry_t *geom, int id, char *name, double *p, int dump,
@@ -1394,6 +1403,8 @@ void nc_d_writesub_1d(int fid, int varid, size_t * start,
 		      size_t * count, double *values);
 void nc_d_writesub_2d(int fid, int varid, size_t * start,
 		      size_t * count, double **values);
+void nc_i_writesub_2d(int fid, int varid, size_t * start,
+		      size_t * count, int **values);
 void nc_d_writesub_3d(int fid, int varid, size_t * start,
 		      size_t * count, double ***values);
 void nc_i_writesub_3d(int fid, int varid, size_t * start,
@@ -1641,11 +1652,6 @@ void s2ijk(geometry_t *window, int c);
 /*------------------------------------------------------------------*/
 void i_set_error(void* hmodel, int col, int errorf, char *text);
 int i_get_error(void* hmodel, int col);
-void ginterface_moonvars(void *hmodel, int c,
-			 double *mlon, double *mlat,
-			 double *dist_earth_sun, double *dist_moon_earth,
-			 double *lunar_angle, double *sun_angle,double *moon_phase,double *lunar_dec);
-double ginterface_get_cloud(void *hmodel, int c);
 
 /*------------------------------------------------------------------*/
 /* Ecology                                                          */
@@ -1678,6 +1684,10 @@ double try_parameter_value(ecology* e, char* s);
 int ecology_write_tracerstat(master_t *master, FILE *fp, tracer_info_t *trinfo, int n);
 int ecology_count_tracerstats(tracer_info_t *trinfo);
 void ecology_set_reflectance_flag(ecology* e);
+int get_rendered_tracers(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
+			 tracer_info_t *trinfo, int ntr, int tn,
+			 int trinfo_type);
+void *private_data_copy_eco(void *src);
 #endif
 
 /*------------------------------------------------------------------*/
@@ -1721,6 +1731,7 @@ void print_tr_sed_atts(tracer_info_t *tr);
 int sed_get_obc(tracer_info_t *tracer);
 int is_sed_var(char *trname);
 void trans_write_sed(parameters_t *params, sediment_t *sediment, FILE *fp);
+void *private_data_copy_sed(void *src);
 #endif
 
 /*------------------------------------------------------------------*/

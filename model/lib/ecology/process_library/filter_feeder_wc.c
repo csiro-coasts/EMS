@@ -28,9 +28,12 @@
 #include "stringtable.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "filter_feeder_wc.h"
 
+double ginterface_getcellz(void *model, int b, int k);
+int ginterface_getwcbotk(void *model, int b);
+double ginterface_cellarea(void* hmodel, int b);
   
 typedef struct {
   int do_mb;                  /* flag */
@@ -252,7 +255,7 @@ void filter_feeder_wc_precalc(eprocess* p, void* pp)
         cv[ws->FF_mort_i] = ws->FF_mort_t0 * Tfactor;
  
     // Bail out if deeper than 24m - does this also have to be in calc??
-    double z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
+    double z_centre = ginterface_getcellz(c->col->model,c->b,c->k_wc);
     if (z_centre < -24.0)
       return;
 
@@ -337,9 +340,9 @@ void filter_feeder_wc_precalc(eprocess* p, void* pp)
   double DIC = y[ws->DIC_wc_i];
 
     int wcbotk; 
-    wcbotk = einterface_getwcbotk(c->col->model, c->b);
-    double z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
-    double farm_volume = einterface_cellarea(c->col->e->model, c->b) * -(max(-20,z_bot));
+    wcbotk = ginterface_getwcbotk(c->col->model, c->b);
+    double z_bot = ginterface_getcellz(c->col->model,c->b,wcbotk);
+    double farm_volume = ginterface_cellarea(c->col->e->model, c->b) * -(max(-20,z_bot));
 
  // Bail out if dry cell
     if (farm_volume <= 0)

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: precip.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: precip.c 7158 2022-07-07 02:32:03Z her127 $
  *
  */
 
@@ -43,6 +43,8 @@ int precip_init_single(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+
+  if (strlen(params->precip) == 0) return 0;
 
   data = (precip_data_t *)malloc(sizeof(precip_data_t));
   schedSetPrivateData(event, data);
@@ -100,9 +102,19 @@ int precip_init(sched_event_t *event)
 
   data = (precip_mdata_t *)malloc(sizeof(precip_mdata_t));
   schedSetPrivateData(event, data);
-  data->tsfiles = frc_read_cell_ts_mult(master, params->precip, params->precip_dt,
-					"precipitation", "mm day-1", &data->dt, data->varids, 
-					&data->ntsfiles, &master->precip, 1);
+  if (strlen(params->precip_interp))
+    data->tsfiles = frc_read_cell_ts_mult_us(master, params->precip, 
+					     params->precip_dt,
+					     params->precip_interp,
+					     "precipitation", "mm day-1", 
+					     &data->dt, data->varids, 
+					     &data->ntsfiles, &master->precip, 1);
+  else
+    data->tsfiles = frc_read_cell_ts_mult(master, params->precip, 
+					  params->precip_dt,
+					  "precipitation", "mm day-1", 
+					  &data->dt, data->varids, 
+					  &data->ntsfiles, &master->precip, 1);
 
   if (data->tsfiles == NULL) {
     free(data);

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 6649 2020-09-08 01:44:24Z her127 $
+ *  $Id: writeatts.c 7174 2022-07-07 02:37:47Z her127 $
  *
  */
 
@@ -382,7 +382,7 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
       write_text_att(cdfid, vid, "long_name",
 		     "East component of current at cell centre");
       write_text_att(cdfid, vid, "coordinates",
-		     "t, x_left, y_left, z_centre");
+		     "t, x_centre, y_centre, z_centre");
     }
 
     if ((vid = ncw_var_id(cdfid, "v")) >= 0) {
@@ -390,7 +390,7 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
       write_text_att(cdfid, vid, "long_name",
 		     "North component of current at cell centre");
       write_text_att(cdfid, vid, "coordinates",
-		     "t, x_back, y_back, z_centre");
+		     "t, x_centre, y_centre, z_centre");
     }
 
     if ((vid = ncw_var_id(cdfid, "w")) >= 0) {
@@ -677,7 +677,10 @@ static void write_grid_atts(dump_data_t *dumpdata, int fid, int ilower,
 
 void read_grid_atts(parameters_t *params, int fid)
 {
-  nc_get_att_text(fid, NC_GLOBAL, "gridtype", params->gridtype);
+  char buf[MAXSTRLEN];
+
+  nc_get_att_text(fid, NC_GLOBAL, "gridtype", buf);
+  strcpy(params->gridtype, buf);
 
   /* Read info for rectangular grid */
   if (strcasecmp(params->gridtype, "rectangular") == 0) {

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: globals.h 5915 2018-09-05 03:30:40Z riz008 $
+ *  $Id: globals.h 7231 2022-10-25 00:23:13Z her127 $
  *
  */
 
@@ -44,6 +44,7 @@ extern ts_point_t tsphist;
 extern ts_point_t tsalert;
 extern ts_point_t tstotal;
 extern ts_point_t tstrans;
+extern ts_point_t tserror;
 
 
 /* Fundamental values */
@@ -102,6 +103,18 @@ extern FILE *tfp;
 extern long tfp_pos;
 extern int timing_counter;
 extern int timing_level;
+
+/*-------------------------------------------------------------------*/
+/* Valid SST import URLs                                             */
+static char *sst_url[7][7] = {
+  {"GHRSST_L4a", "GHRSST L4 SST", "1 day", "https://data.nodc.noaa.gov/thredds/dodsC/ghrsst/L4/GLOB/UKMO/OSTIA/", "-UKMO-L4HRfnd-GLOB-v01-fv02-OSTIA.nc.bz2", "120000-UKMO-L4_GHRSST-SSTfnd-OSTIA-GLOB-v02.0-fv02.0.nc", NULL},
+  {"GHRSST_L4b", "GHRSST L4 SST", "1 day", "https://www.ncei.noaa.gov/thredds-ocean/dodsC/ghrsst/L4/GLOB/UKMO/OSTIA/", "-UKMO-L4HRfnd-GLOB-v01-fv02-OSTIA.nc.bz2", "120000-UKMO-L4_GHRSST-SSTfnd-OSTIA-GLOB-v02.0-fv02.0.nc", NULL},
+  {"BOM_L3", "BoM L3S SST", "1 day", "http://rs-data1-mel.csiro.au/thredds/dodsC/imos-srs/sst/ghrsst/L3S-6d/ngt/", "032000-ABOM-L3S_GHRSST-SSTskin-AVHRR_D-6d_night-v02.0-fv02.0.nc", NULL, "NODAY VARIABLES (ghrsst=sea_surface_temperature)(ghrsst_error=quality_level)"},
+  {"HIM_L3a", "HIMAWARI L3C SST", "1 hour", "https://www.star.nesdis.noaa.gov/thredds/dodsC/gridH08AHINRTL3CWW00/", "00-STAR-L3C_GHRSST-SSTsubskin-AHI_H08-ACSPO_V2.70-v02.0-fv01.0.nc", NULL, "VARIABLES (ghrsst=sea_surface_temperature)(ghrsst_error=quality_level)"},
+  {"HIM_L3b", "HIMAWARI L3C SST", "1 hour", "https://www.ncei.noaa.gov/thredds-ocean/dodsC/ghrsst/L3C/PACIFIC/H08/STAR/", "00-STAR-L3C_GHRSST-SSTsubskin-AHI_H08-ACSPO_V2.70-v02.0-fv01.0.nc", NULL, "VARIABLES (ghrsst=sea_surface_temperature)(ghrsst_error=quality_level)"},
+  {"HIM_L3c", "HIMAWARI BOM L3C SST", "1 hour", "https://dapds00.nci.org.au/thredds/dodsC/qm43/ghrsst/v02.0fv02/Continental/L3C-01hour/ABOM-L3C_GHRSST-SSTskin-AHI_H08/", "00-ABOM-L3C_GHRSST-SSTskin-AHI_H08-1h-v02.0-fv02.0.nc", NULL, "DOMON VARIABLES (ghrsst=sea_surface_temperature)(ghrsst_error=quality_level)"},
+  {NULL, NULL, NULL, NULL, NULL, NULL, NULL}
+};
 
 #endif
 

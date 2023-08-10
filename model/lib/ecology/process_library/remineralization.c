@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: remineralization.c 6758 2021-04-12 23:55:59Z bai155 $
+ *  $Id: remineralization.c 7260 2022-10-31 11:32:20Z bai155 $
  *
  */
 
@@ -49,6 +49,8 @@ typedef struct {
     double r_RD_NtoP;
     double r_DOM_NtoP;
     double tau_COD;
+    double r_COD_decay;
+    double COD_max;
 
     /*
      * tracers
@@ -73,7 +75,8 @@ typedef struct {
     int TP_i;
     int BOD_i;
     int COD_i;
-
+    int COD_flux_i;
+  
     /*
      * common variables
      */
@@ -179,6 +182,18 @@ void remineralization_init(eprocess* p)
       eco_write_setup(e,"Code default of tau_COD = %e \n",ws->tau_COD);
     }
 
+    ws->r_COD_decay = try_parameter_value(e, "r_COD_decay");
+    if (isnan(ws->r_COD_decay)){
+      ws->r_COD_decay = 0.0;
+      eco_write_setup(e,"Code default of r_COD_decay = %e \n",ws->r_COD_decay);
+    }
+
+    ws->COD_max = try_parameter_value(e, "COD_max");
+    if (isnan(ws->COD_max)){
+      ws->COD_max = 32000.0;
+      eco_write_setup(e,"Code default of COD_max = %e \n",ws->COD_max);
+    }
+
     /*
      * tracers
      */
@@ -200,7 +215,13 @@ void remineralization_init(eprocess* p)
     ws->TP_i = e->find_index(tracers, "TP", e);
     ws->BOD_i = e->find_index(tracers, "BOD", e);
 
+    ws->COD_i = -1;
+    ws->COD_flux_i = -1;
+    ws->NH4_pr_i = -1;
+    ws->Oxy_pr_i = -1;
+    
     ws->COD_i = e->try_index(tracers, "COD", e);
+    ws->COD_flux_i = e->try_index(tracers, "COD_flux", e);
 
     /*non essential diagnostic tracer*/
     
@@ -244,10 +265,13 @@ void remineralization_precalc(eprocess* p, void* pp)
     double DetBL_N = y[ws->DetBL_N_i];
     double DetR_N = y[ws->DetR_N_i];
 
-    cv[ws->r_DetPL_i] = Tfactor * ws->r_DetPL_t0;
-    cv[ws->r_DetBL_i] = Tfactor * ws->r_DetBL_t0;
-    cv[ws->r_RD_i] = Tfactor * ws->r_RD_t0;
-    cv[ws->r_DOM_i] = Tfactor * ws->r_DOM_t0;
+    // reduce remineralisation as COD approaches COD_max
+    double anaerobic_capacity = (y[ws->COD_i] < ws->COD_max) ? 1.0 - (y[ws->COD_i] / ws->COD_max) : 0.0;
+
+    cv[ws->r_DetPL_i] = Tfactor * ws->r_DetPL_t0 * anaerobic_capacity;
+    cv[ws->r_DetBL_i] = Tfactor * ws->r_DetBL_t0 * anaerobic_capacity;
+    cv[ws->r_RD_i] = Tfactor * ws->r_RD_t0 * anaerobic_capacity;
+    cv[ws->r_DOM_i] = Tfactor * ws->r_DOM_t0 * anaerobic_capacity;
 
     if(c->porosity == 0.0)
       p->ecology->quitfn("ecology:remineralization: porosity cannot be 0.0!");
@@ -288,6 +312,11 @@ void remineralization_calc(eprocess* p, void* pp)
      */
     double dz_pr = (c->type == CT_SED) ? c->dz_sed : 1.0;
 
+    /* exit if COD v.high and Oxygen v.low ie. >99% aerobic & anaerobic remin capacity has been used up (this doesn't work!!)
+
+    if (y[ws->Oxygen_i] < 80 && y[ws->COD_i] > (ws->COD_max * 0.99))
+    return; */
+ 
     double DetPL_N = y[ws->DetPL_N_i];
     double DetBL_N = y[ws->DetBL_N_i];
     double DetR_C = y[ws->DetR_C_i];
@@ -348,7 +377,7 @@ void remineralization_calc(eprocess* p, void* pp)
 
     double remin_oxy = (DetPL_N_remin * red_W_O + DetBL_N_remin * atk_W_O + (DetR_C_remin + DO_C_remin) * C_O_W);
 
-    double Oxy_pr = - remin_oxy * sigmoid;
+    double Oxy_pr = - remin_oxy * sigmoid; // this is bacterial respiration of oxygen effecting the breakdown of OM
 
     y1[ws->DetPL_N_i] -= DetPL_N_break;
     y1[ws->DetBL_N_i] -= DetBL_N_break;
@@ -363,8 +392,10 @@ void remineralization_calc(eprocess* p, void* pp)
     y1[ws->DIC_i] += (DetPL_N_remin * red_W_C + DetBL_N_remin * atk_W_C + DetR_C_remin + DO_C_remin) / porosity;
     y1[ws->DIP_i] += (DetPL_N_remin * red_W_P + DetBL_N_remin * atk_W_P + DetR_P_remin + DO_P_remin) / porosity;
 
-    if (ws->COD_i > -1){
+    if (ws-> Oxy_pr_i > -1)
+      y1[ws->Oxy_pr_i] += Oxy_pr * SEC_PER_DAY * dz_pr;
 
+    if (ws->COD_i > -1){
       y1[ws->COD_i] += remin_oxy * (1.0-sigmoid) / porosity;
 
     /* Now consume oxygen with COD */
@@ -374,15 +405,20 @@ void remineralization_calc(eprocess* p, void* pp)
       // y1[ws->COD_i] -= tau_oxy * y[ws->COD_i] * (y[ws->Oxygen_i] / 8000.0);
 
       double consume = ws->tau_COD * min(y[ws->COD_i],8000.0) * (y[ws->Oxygen_i] / 8000.0);
+      double decay = ws->r_COD_decay * y[ws->COD_i]; //*** if non-zero, this needs to be accounted for in Oxygen mass balance
+
       y1[ws->Oxygen_i] -= consume;
-      y1[ws->COD_i] -= consume;
+      y1[ws->COD_i] -= (consume + decay);
+      
+      if (ws->COD_flux_i > -1)
+	y1[ws->COD_flux_i] -= decay;
+
+      if (ws-> Oxy_pr_i > -1)
+	y1[ws->Oxy_pr_i] -= consume * SEC_PER_DAY * dz_pr;
     }
 
  if (ws-> NH4_pr_i > -1)
    y1[ws->NH4_pr_i] += NH4_pr * SEC_PER_DAY * dz_pr;
-
- if (ws-> Oxy_pr_i > -1)
-   y1[ws->Oxy_pr_i] += Oxy_pr * SEC_PER_DAY * dz_pr;
 
  if (p->type == PT_SED)
         cv[ws->NH4_remin_pr_i] = NH4_pr;

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6562 2020-06-18 03:19:06Z her127 $
+ *  $Id: ginterface.c 7317 2023-04-11 02:06:11Z her127 $
  *
  */
 
@@ -265,6 +265,13 @@ void i_get_names_tracers_3d(void* hmodel, char **trname) {
     }
 }
 
+/* Gets an array of 3D tracer names                                  */
+void i_get_tracerstats_3d(void* hmodel, char *trname, int tn) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    strcpy(trname, wincon->trinfo_3d[tn].tracerstat);
+}
+
 /* Returns the name of a 3D tracer i                                 */
 char* ginterface_gettracername(void* model, int i)
 {
@@ -311,6 +318,23 @@ tracer_info_t* i_get_tracer(void* hmodel, char* trname)
   for (n = 0; n < wincon->ntr; n++) {
     if(strcmp(trname,wincon->trinfo_3d[n].name) == 0)
       return &(wincon->trinfo_3d[n]);
+  }
+  return NULL;
+}
+
+/* Returns the tracer info for a epi with name 'trname'.       */
+/* Returns NULL if the tracer can't be found.                        */
+tracer_info_t* i_get_tracer2d(void* hmodel, char* trname)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  int n;
+  emstag(LTRACE,"hd:ginterface:i_get_tracer2d","looking for epi with name: %s",trname);
+
+
+  for (n = 0; n < wincon->ntrS; n++) {
+    if(strcmp(trname,wincon->trinfo_2d[n].name) == 0)
+      return &(wincon->trinfo_2d[n]);
   }
   return NULL;
 }
@@ -640,6 +664,351 @@ double ginterface_get_srf_flux(void* hmodel, char *name, int c)
     return 0;
 }
 
+/* Returns the size of tracers to transfer to SWAN                   */
+int i_get_swan_size(void* hmodel)
+{
+  return (0);
+}
+int i_get_swan_size_m(void* hmodel)
+{
+  return (0);
+}
+
+int i_get_swan_nobc_m(void* hmodel)
+{
+  return (0);
+}
+int *i_get_swan_obc_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Checks the status of the hotstart flag */
+int i_check_swan_hs_m(void* hmodel)
+{
+  return (0);
+}
+
+int i_check_swan_hs(void* hmodel)
+{
+  return (0);
+}
+
+/* Returns a poiner to the sea level tracer to transfer to SWAN      */
+double *i_get_swan_eta(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_eta_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the UAV tracer to transfer to SWAN            */
+double *i_get_swan_uav(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_uav_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the VAV tracer to transfer to SWAN            */
+double *i_get_swan_vav(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_vav_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a pointer to the east component of cell centered wind     */
+/* stress. Unstructured meshes only; assumes the centered u wind     */
+/* stress is in wincon->d2 via vel_cen().                            */
+double *i_get_swan_wx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wx_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a pointer to the north component of cell centered wind    */
+/* stress. Unstructured meshes only; assumes the centered v wind     */
+/* stress is in wincon->d3 via vel_cen().                            */
+double *i_get_swan_wy(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wy_m(void* hmodel)
+{
+  return (NULL);
+}
+
+
+/* Returns a poiner to the bathymetry to transfer to SWAN            */
+double *i_get_swan_dep(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_dep_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave amplitude tracer to get from SWAN    */
+double *i_get_swan_amp(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_amp_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave period tracer to get from SWAN       */
+double *i_get_swan_per(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_per_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave direction tracer to get from SWAN    */
+double *i_get_swan_dir(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_dir_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave orbital velocity tracer to get from  */
+/* SWAN.                                                             */
+double *i_get_swan_ub(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_ub_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the x wave induced force tracer to get from   */
+/* SWAN.                                                             */
+double *i_get_swan_Fx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_Fx_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the y wave induced force tracer to get from   */
+/* SWAN.                                                             */
+double *i_get_swan_Fy(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_Fy_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the x Stokes velocity tracer to get from      */
+/* SWAN.                                                             */
+double *i_get_swan_ste1(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_ste1_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the y Stokes velocity tracer to get from      */
+/* SWAN.                                                             */
+double *i_get_swan_ste2(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_ste2_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wavenumber tracer to get from SWAN         */
+double *i_get_swan_k(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_k_m(void* hmodel)
+{
+  return (NULL);
+}
+ /* Returns a poiner to the wave Bernoulli tracer to get from SWAN    */
+double *i_get_swan_Kb(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_Kb_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave whitecapping tracer to get from SWAN    */
+double *i_get_swan_fwcapx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fwcapx_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fwcapy(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fwcapy_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave depth-induced breaking tracer to get from SWAN    */
+double *i_get_swan_fbrex(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fbrex_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fbrey(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fbrey_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave bottom friction dissapation tracer to get from SWAN    */
+double *i_get_swan_fbotx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fbotx_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fboty(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fboty_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave surface streaming tracer to get from SWAN    */
+double *i_get_swan_fsurx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fsurx_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fsury(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_fsury_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave form drag tracer to get from SWAN    */
+double *i_get_swan_wfdx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wfdx_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wfdy(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wfdy_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave ocean viscous stress tracer to get from SWAN    */
+double *i_get_swan_wovsx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wovsx_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wovsy(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_wovsy_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the wave roller tracer to get from SWAN    */
+double *i_get_swan_frolx(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_frolx_m(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_froly(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_froly_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the dum1 tracer 1 to get from SWAN            */
+double *i_get_swan_dum1(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_dum1_m(void* hmodel)
+{
+  return (NULL);
+}
+
+/* Returns a poiner to the dum2 tracer 2 to get from SWAN            */
+double *i_get_swan_dum2(void* hmodel)
+{
+  return (NULL);
+}
+double *i_get_swan_dum2_m(void* hmodel)
+{
+  return (NULL);
+}
+
 /*-------------------------------------------------------------------*/
 /* 2D (benthic) tracers                                              */
 /*-------------------------------------------------------------------*/
@@ -694,6 +1063,13 @@ void i_get_names_tracers_2d(void* hmodel, char **trname) {
     for (n = 0; n < wincon->ntrS; n++) {
       strcpy(trname[n], wincon->trinfo_2d[n].name);
     }
+}
+
+/* Gets an 2D tracerstat name                                        */
+void i_get_tracerstats_2d(void* hmodel, char *trname, int tn) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    strcpy(trname, wincon->trinfo_2d[tn].tracerstat);
 }
 
 /* Returns the name of a 2D tracer i                                 */
@@ -792,6 +1168,40 @@ void ginterface_get_rsr_tracers(void* model, int *rtns)
       rtns[n++] = tn;
   }
 }
+
+/* Returns the number of 3D column tracers whos name is prefixed by  */
+ /* 'Ed_'.                                                             */
+ int ginterface_get_num_ed_tracers(void* model)
+ {
+   geometry_t *window = (geometry_t *)model;
+   win_priv_t *wincon = window->wincon;
+   int tn, n;
+ 
+   n = 0;
+   for(tn = 0; tn < wincon->ntr; tn++) {
+     char *trname = wincon->trinfo_3d[tn].name;
+     if (strncmp(trname, "Ed_", 3) == 0)
+       n++;
+   }
+   return(n);
+ }
+ 
+ /* Returns an array of 1D pointers to tracers whos name is prefixed  */
+ /* by 'Ed_'.                                                          */
+ void ginterface_get_ed_tracers(void* model, int *rtns)
+ {
+   geometry_t *window = (geometry_t *)model;
+   win_priv_t *wincon = window->wincon;
+   int tn, n;
+ 
+   n = 0;
+   for(tn = 0; tn < wincon->ntr; tn++) {
+     char *trname = wincon->trinfo_3d[tn].name;
+     if (strncmp(trname, "Ed_", 3) == 0)
+       rtns[n++] = tn;
+   }
+ }
+
 
 /* Returns the diagnostic flag of 2D tracer 'name'                   */
 int ginterface_getepidiagnflag(void* model, char* name)
@@ -1030,6 +1440,30 @@ double** ginterface_getsedtracers(void* model, int b)
   return sedtr;
 }
 
+double ginterface_get_svel(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+    
+    double v=0;
+    if (data)
+      v = data->svel;
+    return v;
+}
+
+void ginterface_get_svel_name(void* model, char *name, char *sname)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+    
+    if (data)
+      strcpy(sname, data->svel_name);
+}
+
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
 
@@ -1058,6 +1492,12 @@ char *ginterface_gettimeunits(void *model)
   geometry_t *window = (geometry_t *)model;
   win_priv_t *wincon = window->wincon;
   return wincon->timeunit;
+}
+
+/* Returns the output timeunit                                       */
+char *ginterface_getoutputtimeunits(void *model)
+{
+  return master->output_tunit;
 }
 
 /* Returns the model 3D time-step                                    */
@@ -2318,6 +2758,20 @@ void wave_interface_step(geometry_t *window)
 /* END wave_step()                                                   */
 /*-------------------------------------------------------------------*/
 
+/* Returns the wave forcing method                                   */
+int w_do_waves(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  if (wincon->do_wave & W_FILE)
+    return 1;
+  if (wincon->do_wave & W_COMP)
+    return 2;
+  if (wincon->do_wave & W_SWAN)
+    return 4;
+  return 0;
+}
+
 /* Returns the wave time-step                                        */
 double w_get_dt(void *hmodel) 
 {
@@ -2369,6 +2823,11 @@ int i_check_wave_period(void *hmodel)
     return(1);
 }
 
+int i_check_wave_period_m(void *hmodel) 
+{
+  return(0);
+}
+
 /* Returns the wave period at coordinate c                           */
 double i_get_wave_period(void *hmodel, int c) 
 {
@@ -2397,6 +2856,11 @@ int i_check_wave_dir(void *hmodel)
     return(0);
   else
     return(1);
+}
+
+int i_check_wave_dir_m(void *hmodel) 
+{
+  return(0);
 }
 
 /* Returns the wave direction at coordinate c                        */
@@ -2438,6 +2902,11 @@ double i_get_wave_amp(void *hmodel, int c)
   return NOTVALID;
 }
 
+int i_check_wave_amp_m(void *hmodel) 
+{
+  return(0);
+}
+
 /* Checks if the bottom orbital velociity vector is available        */
 int i_check_wave_ub(void *hmodel) 
 {
@@ -2448,6 +2917,11 @@ int i_check_wave_ub(void *hmodel)
     return(0);
   else
     return(1);
+}
+
+int i_check_wave_ub_m(void *hmodel) 
+{
+  return(0);
 }
 
 /* Returns the bottom orbital velocity                               */
@@ -2480,6 +2954,11 @@ int i_check_wave_Fx(void *hmodel)
     return(1);
 }
 
+int i_check_wave_Fx_m(void *hmodel) 
+{
+  return(0);
+}
+
 /* Returns the e1 component of radiation stress at coordinate c      */
 double i_get_wave_Fx(void *hmodel, int c) 
 {
@@ -2500,6 +2979,11 @@ int i_check_wave_Fy(void *hmodel)
     return(0);
   else
     return(1);
+}
+
+int i_check_wave_Fy_m(void *hmodel) 
+{
+  return(0);
 }
 
 /* Returns the e2 component of radiation stress at coordinate c      */
@@ -2524,6 +3008,11 @@ int i_check_wave_ste1(void *hmodel)
     return(1);
 }
 
+int i_check_wave_ste1_m(void *hmodel) 
+{
+  return(0);
+}
+
 /* Checks if surface Stokes e2 velocities are available              */
 int i_check_wave_ste2(void *hmodel) 
 {
@@ -2534,6 +3023,11 @@ int i_check_wave_ste2(void *hmodel)
     return(0);
   else
     return(1);
+}
+
+int i_check_wave_ste2_m(void *hmodel) 
+{
+  return(0);
 }
 
 /* Returns the e1 component of surface Stokes drift at coordinate c  */
@@ -2595,6 +3089,172 @@ double i_get_wave_wind2(void *hmodel, int c)
 double ginterface_getwind2(void* hmodel, int c)
 {
   return i_get_wave_wind2(hmodel, c);
+}
+
+/* Checks if the wavenumber is available                                  */
+int i_check_wave_k(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_k_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave Bernoulli head vector is available                  */
+int i_check_wave_Kb(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_Kb_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave whitecapping vector is available                  */
+int i_check_wave_fwcapx(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fwcapx_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fwcapy(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fwcapy_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave depth-induced breaking vector is available                  */
+int i_check_wave_fbrex(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fbrex_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fbrey(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fbrey_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave bottom friction dissapation vector is available                  */
+int i_check_wave_fbotx(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fbotx_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fboty(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fboty_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave surface streaming vector is available                  */
+int i_check_wave_fsurx(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fsurx_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fsury(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_fsury_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave form drag vector is available                  */
+int i_check_wave_wfdx(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_wfdx_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_wfdy(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_wfdy_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave ocean viscous stress vector is available                  */
+int i_check_wave_wovsx(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_wovsx_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_wovsy(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_wovsy_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave roller vector is available                  */
+int i_check_wave_frolx(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_frolx_m(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_froly(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_froly_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave dummy 1 tracer is available                    */
+int i_check_wave_dum1(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_dum1_m(void *hmodel) 
+{
+  return(0);
+}
+
+/* Checks if the wave dummy 2 tracer is available                    */
+int i_check_wave_dum2(void *hmodel) 
+{
+  return(0);
+}
+int i_check_wave_dum2_m(void *hmodel) 
+{
+  return(0);
 }
 
 /* Checks if fetch has been computed                                 */
@@ -2660,7 +3320,7 @@ void w_get_brsm(void *hmodel, int *brsm)
 /*
  * Moon angle interface
  */
-void ginterface_moonvars(void *hmodel, int c,
+void ginterface_moonvars(void *hmodel, int b,
 			 double *mlon, double *mlat,
 			 double *dist_earth_sun, double *dist_moon_earth,
 			 double *lunar_angle, double *sun_angle,
@@ -2669,6 +3329,7 @@ void ginterface_moonvars(void *hmodel, int c,
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
   int cs = window->m2d[c];
   double Al, dec;
   int yr, mon, nday, jd; /* Year, month, day, Julian date            */
@@ -2741,10 +3402,10 @@ void ginterface_moonvars(void *hmodel, int c,
    */
   *dist_moon_earth = radius[0];
   *dist_earth_sun  = radius[1];
-  *lunar_angle = hrang[0];
-  *sun_angle   = hrang[1];
-  *moon_phase = moonphase*M_PI;
-  *lunar_dec = dec;
+  *lunar_angle = hrang[0]; // radians
+  *sun_angle   = hrang[1]; // radians
+  *moon_phase = moonphase*M_PI; // radians
+  *lunar_dec = dec;  //radians
 
   return;
 }
@@ -2752,10 +3413,11 @@ void ginterface_moonvars(void *hmodel, int c,
 /*
  * Fractional cloud cover
  */
-double ginterface_get_cloud(void *hmodel, int c)
+double ginterface_get_cloud(void *hmodel, int b)
 {
   geometry_t* window = (geometry_t*) hmodel;
   window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
   int cs = window->m2d[c];
   double tcld;
 
@@ -2764,5 +3426,58 @@ double ginterface_get_cloud(void *hmodel, int c)
   return(tcld);
 }
 
+void ginterface_get_windspeed_and_cloud_and_mslp_and_rh(void *hmodel, int b, double *windspeed, double *tcld, double *mslp, double *rh)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
 
+  *windspeed = windat->windspeed[cs];
+  *tcld = min(max((windat->cloud) ? windat->cloud[cs] : 0.0, 0.0), 1.0);
+  *mslp = (windat->patm) ? windat->patm[cs] : 0.0;
+  *rh =   (windat->rh) ? windat->rh[cs] : 0.0;
+  
+  return;
+}
+
+void ginterface_get_cloud_and_wind(void *hmodel, int b, double *tcld, double *wind)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+
+  *tcld = min(max((windat->cloud) ? windat->cloud[cs] : 0.0, 0.0), 1.0);
+
+  double wind1 = windat->wind1[cs];
+  double wind2 = windat->wind2[cs];
+
+  *wind = 1000.0 * sqrt(wind1*wind1 + wind2*wind2);
+    
+  return;
+}
+
+void ginterface_get_lat_lon(void *hmodel, int b, double *lat, double *lon)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+  
+  *lon = window->cellx[cs];  /* Longitude (degrees) */
+  *lat = window->celly[cs];  /* Latitude  (degrees) */
+  return;
+}
 #endif
+
+/* Returns the sea surface height                                    */
+double ginterface_get_eta(void* hmodel, int b)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c = i_get_c(hmodel, b);
+    int c2 = window->m2d[c];
+    double v = windat->eta[c2];
+    return v;
+}

@@ -13,12 +13,16 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_tracer_defaults.h 5845 2018-06-29 04:08:51Z riz008 $
+ *  $Id: ecology_tracer_defaults.h 7053 2022-03-16 01:54:34Z her127 $
  *
  */
 
 #if !defined(_ECOLOGY_TRACER_DEFAULTS_H)
 #include "ems.h"
+#include "parameter_info.h"
+
+#define ECO_MAXNUMARGS 400
+
 /*
  * Ecology tracers are defined using the following fields 
  */
@@ -62,14 +66,6 @@ typedef struct {
   char   *trstat;
   char   *trdt;
 } eco_def_trstat_t;
-
-/* Ecology tracer attribute private dtat structure */
-typedef struct {
-  int type;              /* Private data type */
-  char name[MAXSTRLEN];  /* Name of the default list */
-  int obc;               /* Open boundary condition */
-  int flag;              /* General purpose flag */
-} trinfo_priv_eco_t;
 
 trinfo_priv_eco_t *get_private_data_eco(tracer_info_t *tr);
 void init_tracer_atts_eco(tracer_info_t *tracer, char *trname, 

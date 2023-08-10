@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: eprocess.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: eprocess.c 6770 2021-06-04 01:49:23Z riz008 $
  *
  */
 
@@ -35,7 +35,8 @@ char* eprocess_type_tags[] = {
     "generic",
     "water",
     "sediment",
-    "epibenthos"
+    "epibenthos",
+    "column"
 };
 
 /** Removes heading and trailing garbage.

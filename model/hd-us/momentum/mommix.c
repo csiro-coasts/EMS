@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: mommix.c 6739 2021-03-30 00:41:13Z her127 $
+ *  $Id: mommix.c 7002 2022-02-27 23:54:07Z her127 $
  *
  */
 
@@ -531,11 +531,9 @@ void hvisc_setup(geometry_t *window,  /* Window geometry             */
 
     /* Set the sponge zone                                           */
     if (sf) {
-      /*
-      reset_sponge_zone(window);
-      set_sponge(window, wincon->u1vh, windat->dt, wincon->w1);
-      */
+      /* reset_sponge_zone(window);*/
       set_sponge_c(window, wincon->u1kh, windat->dt);
+      set_sponge_e(window, wincon->u2kh, windat->dt);
       set_sponge_e(window, wincon->u1vh, windat->dt);
     }
 
@@ -1762,7 +1760,7 @@ void reset_hor_diff(master_t *master, double u1vh, int flag)
     int u1khf = 0, u1vhf = 0, i1, cs;
     if (u1vh <= 0.0) u1vhf = 1;      
     for (ee = 1; ee <= geom->n3_e1; ee++) {
-      e = geom->w3_t[ee];
+      e = geom->w3_e1[ee];
       es = geom->m2de[e];
       hmax = 1.0 / ((2.0 / geom->edgearea[es]) * 4.0 * params->grid_dt);
       i1 = (int)hmax / (int)step;
@@ -1810,4 +1808,466 @@ void reset_hor_diff(master_t *master, double u1vh, int flag)
 }
 
 /* END reset_hor_diff()                                             */
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Sets the horizontal viscosity and diffusion.                     */
+/*------------------------------------------------------------------*/
+void set_hor_diff(master_t *master)
+{
+  int n, ns, m, c1, c2;
+  int cc, c, cs;
+  int ee, e, e2, es;
+  double d1, dh;
+  char buf[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+
+  /* Horizontal viscosity                                          */
+  if (master->u1vh0 > 0.0 || master->bsue1 > 0.0 || master->diff_scale & VH_REG) {
+    double vh, smag;
+    int etype = 1;   /* 0 : use h1au1 as the edge length           */
+                     /* 1 : use sqrt(edgearea) as the edge length  */
+                     /* 2 : use sqrt(cellarea) of common cells     */
+    double *u1vh = d_alloc_1d(geom->szeS);
+    if (master->diff_scale & H_LEN)
+      etype = 0;
+    else if (master->diff_scale & E_LEN)
+      etype = 1;
+    else if (master->diff_scale & C_LEN)
+      etype = 2;
+    /* Regionalised or file input of u1vh                            */
+    if (master->diff_scale & VH_REG) {
+      double *u1vhc = d_alloc_1d(geom->szeS);
+      double *smagc = d_alloc_1d(geom->szcS);
+      memset(smagc, 0, geom->szcS * sizeof(double));
+      strcpy(buf, master->u1vhci);
+      value_init_2d(master, u1vhc, master->prmfd, buf,
+		    "u1vh", "U1VH", master->u1vh0, "linear"); 
+      strcpy(buf, master->u1vhci);
+      if (master->vhreg) set_regions(master, buf, master->vhreg);
+
+      if (master->u1vh0 == 0.0) {
+	smag = 1.0;
+	for (cc = 1; cc < geom->b2_t; cc++) {
+	  c = geom->w2_t[cc];
+	  if (u1vhc[c] < 0.0) {
+	    vh = fabs(u1vhc[c]);
+	    smag = -1.0;
+	    u1vhc[c] = floor(vh);
+	    smagc[c] = vh - u1vhc[c];
+	  }
+	  master->u1vhi += fabs(u1vhc[c]);
+	}
+	master->u1vhi *= (smag / (double)geom->b2_t);
+      }
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	c1 = geom->e2c[e][0];
+	c2 = geom->e2c[e][1];
+	vh = 0.5 * (u1vhc[c1] + u1vhc[c2]);
+	u1vh[e] = floor(vh);
+	master->smagv[e] = 0.5 * (smagc[c1] + smagc[c2]);
+      }
+      d_free_1d(u1vhc);
+      d_free_1d(smagc);
+    } else {
+      vh = (master->u1vh0 > 0.0) ? master->u1vh0 : master->bsue1;
+      smag = 0.0;
+      if (master->smagorinsky < 1.0) smag = master->smagorinsky;
+      if (master->smagorinsky == 1.0 && master->sue1) smag = master->sue1;
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	u1vh[e] = vh;
+	master->smagv[e] = smag;
+      }
+    }
+    memset(master->u1vh, 0, geom->sze * sizeof(double));
+    memset(master->u2kh, 0, geom->sze * sizeof(double));
+    for (ee = 1; ee <= geom->n3_e1; ee++) {
+      e = geom->w3_e1[ee];
+      es = geom->m2de[e];
+      c1 = geom->e2c[e][0];
+      c2 = geom->e2c[e][1];
+      vh = u1vh[es];
+      if (etype == 0) {
+	d1 = geom->h1au1[es];
+	dh = master->hmean1;
+      } else if (etype == 1) {
+	d1 = sqrt(geom->edgearea[es]);
+	dh = sqrt(master->edmean);
+      } else if (etype == 2) {
+	d1 = 0.5 * (sqrt(geom->cellarea[geom->m2d[c1]]) + 
+		    sqrt(geom->cellarea[geom->m2d[c2]]));
+	dh = sqrt(master->amean);
+      }
+
+      if (master->diff_scale & NONE)
+	master->u1vh[e] = fabs(vh);
+      /* Note : horizontal diffusion coeffients are scaled to the grid */
+      if (master->diff_scale & LINEAR)
+	master->u1vh[e] = fabs(vh * d1 / dh);
+      if (master->diff_scale & NONLIN)
+	master->u1vh[e] = fabs(vh * d1 * d1 / (dh * dh));
+      if (master->diff_scale & CUBIC)
+	master->u1vh[e] = fabs(vh * d1 * d1 * d1 / (dh * dh * dh));
+      if (master->diff_scale & AREAL) {
+	master->u1vh[e] = fabs(vh * geom->edgearea[es] / master->edmean);
+      }
+
+      /* Scale the Laplacian viscosity to a biharmonic value, see    */
+      /* Griffies and Hallberg (2000) Mon. Wea. Rev. 128. Section 2a */
+      /* where we use edge area for del^2.                           */
+      if (master->diff_scale & SCALEBI)
+	master->u1vh[e] *= (0.125 * geom->edgearea[es]);
+    }
+    for (ee = 1; ee <= geom->n2_e1; ee++) {
+      e = geom->w2_e1[ee];
+      master->basev[e] = master->u1vh[e];
+      /* Save base rates un-scaled for bi-harmonic viscosity         */
+      if (master->diff_scale & SCALEBI)
+	master->basev[e] /= (0.125 * geom->edgearea[e]);
+    }
+    d_free_1d(u1vh);
+
+    /* Cell centered horizontal viscosity diagnostic                 */
+    if (master->u1vhc) {
+      for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      c2 = geom->m2d[c];
+      master->u1vhc[c] = 0.0;
+      d1 = 0.0;
+      for (ee = 1; ee <= geom->npe[c2]; ee++) {
+	e = geom->c2e[ee][c];
+	es = geom->m2de[e];
+	dh = geom->edgearea[es];
+	if (master->diff_scale & LINEAR) dh = sqrt(dh);
+	if (master->diff_scale & CUBIC) dh = dh * sqrt(dh);
+	master->u1vhc[c] += (dh * master->u1vh[e]);
+	d1 += dh;
+      }
+      master->u1vhc[c] /= d1;
+      if (master->diff_scale & SCALEBI)
+	master->u1vhc[c] /= (0.125 * geom->cellarea[c2]);
+      }
+    }
+
+    /* Smoothing                                                     */
+    if (master->diff_scale & CUBIC) {
+      int cs, j, eoe;
+      double *u1vh = d_alloc_1d(geom->szm);
+      double a1, a2;
+
+      for (cc = 1; cc <= geom->b3_t; cc++) {
+	c = geom->w3_t[cc];
+	cs = geom->m2d[c];
+	d1 = sqrt(geom->cellarea[cs]);
+	dh = sqrt(master->amean);
+	u1vh[c] = fabs(vh * d1 * d1 / (dh * dh));
+	if (master->diff_scale & SCALEBI)
+	  u1vh[c] *= (0.125 * d1 * d1);
+      }
+      smooth3(master, u1vh, geom->w3_t, geom->b3_t, geom->sze, -1);
+
+      for (ee = 1; ee <= geom->n3_e1; ee++) {
+	e = geom->w3_e1[ee];
+	c1 = geom->wgst[geom->e2c[e][0]] ? geom->e2c[e][1] : geom->e2c[e][0];
+	c2 = geom->wgst[geom->e2c[e][1]] ? geom->e2c[e][0] : geom->e2c[e][1];
+	master->u1vh[e] = 0.5 * (u1vh[c1] + u1vh[c2]);
+      }
+
+      for (m = 0; m < 6; m++) {
+	memcpy(u1vh, master->u1vh, geom->sze * sizeof(double));
+	memset(master->u1vh, 0, geom->sze * sizeof(double));
+	for (ee = 1; ee <= geom->b3_e1; ee++) {
+	  e = geom->w3_e1[ee];
+	  es = geom->m2de[e];
+	  d1 = 0.0;
+	  for (j = 1; j <= geom->nee[es]; j++) {
+	    eoe = geom->eSe[j][e];
+	    if (eoe) {
+	      master->u1vh[e] += u1vh[eoe];
+	      d1 += 1.0;
+	    }
+	  }
+	  master->u1vh[e] /= d1;
+	}
+      }
+      d_free_1d(u1vh);
+    }
+  }
+
+  /* Set the edge centered horizontal diffusivity                    */
+  memset(master->u1kh, 0, geom->szc * sizeof(double));
+  if (master->u1kh0 > 0.0 || master->bkue1 > 0.0 || master->diff_scale & KH_REG) {
+    double kh, smag;
+    double *u2kh = d_alloc_1d(geom->szeS);
+    double *smagc = d_alloc_1d(geom->szcS);
+    char buf[MAXSTRLEN];
+    memset(smagc, 0, geom->szcS * sizeof(double));
+    /* Regionalised or file input of u1kh                            */
+    if (master->diff_scale & KH_REG) {
+      strcpy(buf, master->u1khci);
+      value_init_2d(master, master->u1kh, master->prmfd, buf,
+		    "u1kh", "U1KH", master->u1kh0, "linear"); 
+      if (master->u1kh0 == 0.0) {
+	smag = 1.0;
+	for (cc = 1; cc < geom->b2_t; cc++) {
+	  c = geom->w2_t[cc];
+	  if (master->u1kh[c] < 0.0) {
+	    kh = fabs(master->u1kh[c]);
+	    smag = -1.0;
+	    master->u1kh[c] = floor(kh);
+	    smagc[c] = kh - master->u1kh[c];
+	  }
+	  master->u1khi += fabs(master->u1kh[c]);
+	}
+	master->u1khi *= (smag / (double)geom->b2_t);
+      }
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	c1 = geom->e2c[e][0];
+	c2 = geom->e2c[e][1];
+	kh = 0.5 * (master->u1kh[c1] + master->u1kh[c2]);
+	u2kh[e] = floor(kh);
+	master->smagk[e] = 0.5 * (smagc[c1] + smagc[c2]);
+      }
+      d_free_1d(smagc);
+    } else {
+      kh = (master->u1kh0 > 0.0) ? master->u1kh0 : master->bkue1;
+      smag = 0.0;
+      if (master->smagorinsky < 1.0) smag = master->smagorinsky;
+      if (master->smagorinsky == 1.0 && master->kue1) smag = master->kue1;
+      for (ee = 1; ee <= geom->n2_e1; ee++) {
+	e = geom->w2_e1[ee];
+	u2kh[e] = kh;
+	master->smagk[e] = smag;
+      }
+      for (cc = 1; cc <= geom->n2_t; cc++) {
+	c = geom->w2_t[cc];
+	master->u1kh[c] = kh;
+      }
+    }
+    for (ee = 1; ee <= geom->n3_e1; ee++) {
+      int etype = 1;
+      e = geom->w3_e1[ee];
+      es = geom->m2de[e];
+      c1 = geom->e2c[e][0];
+      c2 = geom->e2c[e][1];
+      kh = u2kh[es];
+      if (etype == 0) {
+	d1 = geom->h1au1[es];
+	dh = master->hmean1;
+      } else if (etype == 1) {
+	d1 = sqrt(geom->edgearea[es]);
+	dh = sqrt(master->edmean);
+      } else if (etype == 2) {
+	d1 = 0.5 * (sqrt(geom->cellarea[geom->m2d[c1]]) + 
+		    sqrt(geom->cellarea[geom->m2d[c2]]));
+	dh = sqrt(master->amean);
+      }
+      if (master->diff_scale & NONE)
+	master->u2kh[e] = fabs(kh);
+      /* Note : horizontal diffusion coeffients are scaled to the grid */
+      if (master->diff_scale & LINEAR)
+	master->u2kh[e] = fabs(kh * d1 / dh);
+      if (master->diff_scale & (NONLIN|CUBIC))
+	master->u2kh[e] = fabs(kh * d1 * d1 / (dh * dh));
+      if (master->diff_scale & AREAL) {
+	master->u2kh[e] = fabs(kh * geom->edgearea[es] / master->edmean);
+      }
+    }
+    for (ee = 1; ee <= geom->n2_e1; ee++) {
+      e = geom->w2_e1[ee];
+      master->basek[e] = master->u2kh[e];
+    }
+    d_free_1d(u2kh);
+  }
+
+  /* Cell centered horizontal diffusivity.                           */
+  for (cc = 1; cc <= geom->n3_t; cc++) {
+    double kh;
+    c = geom->w3_t[cc];
+    c2 = geom->m2d[c];
+    kh = master->u1kh[c2];
+    if (master->u1kh0 > 0.0) {
+      if (master->diff_scale & NONE)
+	master->u1kh[c] = fabs(kh);
+      if (master->diff_scale & LINEAR) {
+	master->u1kh[c] = fabs(kh * sqrt(geom->cellarea[c2]) /
+			       sqrt(master->amean));
+      }
+      if (master->diff_scale & (NONLIN|CUBIC|AREAL))
+	master->u1kh[c] = fabs(kh * geom->cellarea[c2] / master->amean);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Optimised horizontal mixing. This is based on Kowalik and Murty */
+  /* (1993), Eq. 3.146, where the h**2 term is replaced with edge or */
+  /* cell area.                                                      */
+  if(master->diff_scale & AUTO) {
+    double hf = 0.0;              /* Factor for horizontal diffusion */
+    double step = 1;              /* Integral step of diffusion > 1  */
+    double hmax = 1e10;
+    double d1, d2;
+    int u1khf = 0, u1vhf = 0, u2khf = 0, i1, cs;
+    if (master->u1vh0 > 0.0 || master->bsue1 > 0.0 || master->diff_scale & VH_REG)
+      u1vhf = 1;
+    if (master->u1kh0 > 0.0 || master->bkue1 > 0.0 || master->diff_scale & KH_REG)
+      u1khf = u2khf = 1;
+
+    for (cc = 1; cc <= geom->n3_t; cc++) {
+      c = geom->w3_t[cc];
+      cs = geom->m2d[c];
+      /* Note: Stability criterion for a quad is:                    */
+      /* 1/[(1/h1*h1 + 1/h2*h2) * 4 * dt]. For arbitary polgons      */
+      /* assume h1 = h2 = sqrt(area), then the stability criterion   */
+      /* is 1/[2/area] * 4 * dt.                                     */
+      hmax = 1.0 / ((2.0 / geom->cellarea[cs]) * 4.0 * master->grid_dt);
+      i1 = (int)hmax / (int)step;
+      hmax = step * (double)i1;
+      d2 = 0.01 * geom->cellarea[cs] / master->grid_dt;
+      d1 = d2 * (master->u1kh[c] / 100.0);        /* Scaling             */
+      i1 = (int)d1 / (int)step;
+      if (u1khf)
+	master->u1kh[c] = step * (double)i1;
+      if (master->u1kh[c] == 0.0) master->u1kh[c] = d1;
+      /* Set limits                                                  */
+      if (u1khf) {
+	if (master->u1kh[c] > hmax)
+	  master->u1kh[c] = hmax;
+	if (master->u1kh[c] < hf * hmax) {
+	  i1 = (int)(hf * hmax) / (int)step;
+	  master->u1kh[c] = step * (double)i1;
+	  if (master->u1kh[c] == 0.0) master->u1kh[c] = hf * hmax;
+	}
+      }
+    }
+
+    for (ee = 1; ee <= geom->n3_e1; ee++) {
+      e = geom->w3_e1[ee];
+      es = geom->m2de[e];
+      /* Input viscosities are percentages: if scaling for bi-       */
+      /* harmonic viscoity has taken place, then revert to the       */
+      /* original percent value.                                     */
+      if (master->diff_scale & SCALEBI)
+	master->u1vh[e] /= (0.125 * geom->edgearea[es]);
+
+      /* Use the same stability approach as for centres above. Could */
+      /* also assume h1 = h1au1 and h2 = h2au1 for edges and use the */
+      /* criterion for quads.                                        */
+      hmax = 1.0 / ((2.0 / geom->edgearea[es]) * 4.0 * master->grid_dt);
+      i1 = (int)hmax / (int)step;
+      hmax = step * (double)i1;
+      d2 = 0.01 * geom->edgearea[es] / master->grid_dt;
+      d1 = d2 * (master->u1vh[e] / 100.0);    /* Scaling u1vh        */
+      i1 = (int)d1 / (int)step;
+      if (u1vhf) master->u1vh[e] = step * (double)i1;
+      if (master->u1vh[e] == 0.0) master->u1vh[e] = d1;
+      d1 = d2 * (master->u2kh[e] / 100.0);    /* Scaling u2kh        */
+      i1 = (int)d1 / (int)step;
+      if (u1khf) master->u2kh[e] = step * (double)i1;	
+      if (master->u2kh[e] == 0.0) master->u2kh[e] = d1;
+      /* Set limits */
+      if (u1vhf) {
+	if (master->u1vh[e] > hmax)
+	  master->u1vh[e] = hmax;
+	if (master->u1vh[e] < hf * hmax) {
+	  i1 = (int)(hf * hmax) / (int)step;
+	  master->u1vh[e] = step * (double)i1;
+	  if (master->u1vh[e] == 0.0) master->u1vh[e] = hf * hmax;
+	}
+
+	if (master->diff_scale & SCALEBI || master->visc_method & US_BIHARMONIC)
+	  master->u1vh[e] *= (0.125 * geom->edgearea[es]);
+      }
+      if (u2khf) {
+	if (master->u2kh[e] > hmax)
+	  master->u2kh[e] = hmax;
+	if (master->u2kh[e] < hf * hmax) {
+	  i1 = (int)(hf * hmax) / (int)step;
+	  master->u2kh[e] = step * (double)i1;
+	  if (master->u2kh[e] == 0.0) master->u2kh[e] = hf * hmax;
+	}
+      }
+
+      master->basev[es] = master->u1vh[es];
+      master->basek[es] = master->u2kh[es];
+      /* Save base rates un-scaled for bi-harmonic viscosity         */
+      if (master->diff_scale & SCALEBI)
+	master->basev[es] /= (0.125 * geom->edgearea[es]);
+    }
+  }
+
+  /* Scale horizontal mixing                                         */
+  if ((d1 = get_scaling(master->scale_v, "U1VH")) != 1.0) {
+    for (ee = 1; ee <= geom->n3_e1; ee++) {
+      e = geom->w3_e1[ee];
+      master->u1vh[e] *= d1;
+    }
+  }
+  if ((d1 = get_scaling(master->scale_v, "U1KH")) != 1.0) {
+    for (cc = 1; cc <= geom->n3_t; cc++) {
+      c = geom->w3_t[cc];
+      master->u1kh[c] *= d1;
+    }
+    for (ee = 1; ee <= geom->n3_e1; ee++) {
+      e = geom->w3_e1[ee];
+      master->u2kh[e] *= d1;
+    }
+  }
+
+  for (ee = 1; ee <= geom->n2_e1; ee++) {
+    e = geom->w2_e1[ee];
+    if (master->u1vhin)
+      master->u1vhin[e] = master->u1vh[e];
+  }
+
+  /* Smooth horizontal mixing                                        */
+  ns = get_smoothing(master->smooth_v, "U1VH");
+  for (n = 0; n < ns; n++) {
+    /*smooth3(master, master->u1vh, geom->w3_t, geom->b3_t, geom->sze, -1);*/
+    smooth3e(master, master->u1vh, geom->w3_e1, geom->b3_e1, geom->sze);
+  }
+  ns = get_smoothing(master->smooth_v, "U1KH");
+  for (n = 0; n < ns; n++) {
+    smooth3(master, master->u1kh, geom->w3_t, geom->n3_t, geom->szc, 0);
+    smooth3(master, master->u2kh, geom->w3_t, geom->b3_t, geom->sze, -1);
+  }
+
+  /* Set the ghost cells                                             */
+  for (ee = 1; ee <= geom->nbpte1; ee++) {
+    e = geom->bpte1[ee];
+    c2 = geom->bine1[ee];
+    master->u1vh[e] = master->u1vh[c2];
+    master->u2kh[e] = master->u2kh[c2];
+  }
+}
+
+/* END set_hor_diff()                                               */
+/*------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/*------------------------------------------------------------------*/
+void ramp_vdiff(master_t *master, geometry_t **window)
+{
+  int n;
+  double rf = 5.0;
+  double vho = master->u1vh0;
+  double vhr = rf * master->u1vh0;
+  double ramp = (master->rampf & WIND) ? master->rampval : 1.0;
+
+  if (ramp == 1.0) return;
+
+  master->u1vh0 = ramp * (vho - vhr) + vhr;
+  set_hor_diff(master);
+  reset_obc_adjust(master->geom, master->grid_dt / master->iratio);
+  master->u1vh0 = vho;
+
+  for (n = 1; n <= master->nwindows; n++)
+    window_reset(master, window[n], window[n]->windat, window[n]->wincon, RS_VH);
+}
+
 /*------------------------------------------------------------------*/

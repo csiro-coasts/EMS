@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: column.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: column.h 6770 2021-06-04 01:49:23Z riz008 $
  *
  */
 
@@ -48,6 +48,14 @@ struct column {
     double* dz_sed;
     double* porosity;
 
+    /* Column based view of tracers */
+    double **y;
+    double *zc;
+    double *dz;
+
+    double *y_epi;
+    double *y_sed0;
+  
     /*
      * process communication: common column variables 
      */

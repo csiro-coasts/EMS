@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 6716 2021-03-29 00:57:22Z her127 $
+ *  $Id: load_tracer.c 7067 2022-03-16 01:59:27Z her127 $
  *
  */
 
@@ -62,7 +62,7 @@ int value_init_sparse3d(master_t *master, double *ret, char *fname, char *vname,
 			char *in_rule, double t, int *rask);
 void decode_indata(char *in, char *fname, char *iname, double *t);
 poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts);
-
+void typename(int code, char *name);
 
 /*------------------------------------------------------------------*/
 /* Loads 3D tracer values                                           */
@@ -997,7 +997,6 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     master->trinfo_2d[tn].valid_range_wc[1] = 2000;
     master->trinfo_2d[tn].n = tn;
     tn++;
-
     master->lwrd = master->tr_wcS[tn];
     strcpy(master->trinfo_2d[tn].name, "lwr");
     strcpy(master->trinfo_2d[tn].long_name, "Long wave radiation");
@@ -1654,7 +1653,10 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     strcpy(master->trinfo_2d[tn].units, "m-1");
     master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
     /*tr_dataset(params->swr_attn, &master->trinfo_2d[tn], 0.073);*/
-    trf_dataset(params->swr_attn, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.073);
+    if (strlen(params->swr_regions))
+      trf_dataset(params->swr_attn, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.073);
+    else
+      trn_dataset(params->swr_attn, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.073);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 10;
     master->trinfo_2d[tn].n = tn;
@@ -1680,7 +1682,10 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     strcpy(master->trinfo_2d[tn].units, "");
     master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
     /*tr_dataset(params->swr_tran, &master->trinfo_2d[tn], 0.26);*/
-    trf_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
+    if (strlen(params->swr_regions))
+      trf_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
+    else
+      trn_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
     master->trinfo_2d[tn].valid_range_wc[0] = 0;
     master->trinfo_2d[tn].valid_range_wc[1] = 1;
     master->trinfo_2d[tn].n = tn;
@@ -2452,7 +2457,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].advect = 1;
       master->trinfo_3d[tn].diffuse = 1;
       master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1;
+      master->trinfo_3d[tn].valid_range_wc[1] = 2;
       master->trinfo_3d[tn].m = -1;
       master->trinfo_3d[tn].n = tn;
       tn++;
@@ -3823,6 +3828,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->trinfo_3d[tn].diffuse = 0;
       master->trinfo_3d[tn].inwc = 1;
       master->trinfo_3d[tn].insed = 0;
+      /* Set DA_ tag for dhw so that slave-master transfers don't occur. */
       strcpy(master->trinfo_3d[tn].tag, "DA_");
       master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
       master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
@@ -4450,7 +4456,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
       trinfo[tn].advect = 1;
       trinfo[tn].diffuse = 1;
       trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1;
+      trinfo[tn].valid_range_wc[1] = 2;
       trinfo[tn].m = tn;
       tn++;
     }
@@ -9528,5 +9534,147 @@ void interp_data_us(master_t *master, /* Master data                 */
 }
 
 /* END interp_data_us()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Writes tracer attributes to the autotracerlist file               */
+/*-------------------------------------------------------------------*/
+void write_auto_atts(FILE *fp, tracer_info_t *tr, int mode)
+{
+  char tname[MAXSTRLEN];
+
+  fprintf(fp, "  {\n");
+  fprintf(fp, "    .name = \"%s\",\n", tr->name);
+  fprintf(fp, "    .long_name = \"%s\",\n", tr->long_name);
+  if (strlen(tr->std_name))
+    fprintf(fp, "    .std_name = \"%s\",\n", tr->std_name);
+  fprintf(fp, "    .units = \"%s\",\n", tr->units);
+  fprintf(fp, "    .valid_range_wc[0] = %4.2e,\n", tr->valid_range_wc[0]);
+  fprintf(fp, "    .valid_range_wc[1] = %4.2e,\n", tr->valid_range_wc[1]);
+  fprintf(fp, "    .fill_value_wc = %4.2f,\n", tr->fill_value_wc);
+  if (tr->type & SEDIMENT) {
+    fprintf(fp, "    .fill_value_sed = %4.2f,\n", tr->fill_value_sed);
+    fprintf(fp, "    .valid_range_sed[0] = %4.2e,\n", tr->valid_range_sed[0]);
+    fprintf(fp, "    .valid_range_sed[1] = %4.2e,\n", tr->valid_range_sed[1]);
+  }
+  typename(tr->type, tname);
+  fprintf(fp, "    .type = %s,\n", tname);
+  /*fprintf(fp, "    .type = 0x%x,\n", tr->type);*/
+  fprintf(fp, "    .inwc = %d,\n", tr->inwc);
+  if (tr->insed)
+    fprintf(fp, "    .insed = %d,\n", tr->insed);
+  if (tr->dissol)
+    fprintf(fp, "    .dissol = %d,\n", tr->dissol);
+  if (tr->partic)
+    fprintf(fp, "    .partic = %d,\n", tr->partic);
+  fprintf(fp, "    .advect = %d,\n", tr->advect);
+  fprintf(fp, "    .diffuse = %d,\n", tr->diffuse);
+  fprintf(fp, "    .diagn = %d,\n", tr->diagn);
+  if (strlen(tr->decay))
+    fprintf(fp, "    .decay = \"%s\",\n", tr->decay);
+  /*fprintf(fp, "    .m = %d,\n", tr->m);*/
+  fprintf(fp, "    .m = -1,\n");
+  if (strlen(tr->tag) && strcmp(tr->tag, "auto_add") != 0 && strcmp(tr->tag, "auto_update") != 0)
+    fprintf(fp, "    .tag = \"%s\",\n", tr->tag);
+  if (tr->flag)
+    fprintf(fp, "    .flag = %d,\n", tr->flag);
+  if (strlen(tr->data))
+    fprintf(fp, "    .data = \"%s\",\n", tr->data);
+  if (strlen(tr->i_rule))
+    fprintf(fp, "    .i_rule = \"%s\",\n", tr->i_rule);
+  if (tr->scale)
+    fprintf(fp, "    .scale = %5.2f,\n", tr->scale);
+  if (strlen(tr->relax_file)) {
+    fprintf(fp, "    .relax_file = \"%s\",\n", tr->relax_file);
+    fprintf(fp, "    .relax_dt = \"%s\",\n", tr->relax_dt);
+    fprintf(fp, "    .r_rate = \"%s\",\n", tr->r_rate);
+    fprintf(fp, "    .tctype = \"%d\",\n", tr->tctype);
+  }
+  if (strlen(tr->reset_file)) {
+    fprintf(fp, "    .reset_file = \"%s\",\n", tr->reset_file);
+    fprintf(fp, "    .reset_dt = \"%s\",\n", tr->reset_dt);
+  }
+  if (strlen(tr->reset_interp))
+    fprintf(fp, "    .reset_interp = \"%s\",\n", tr->reset_interp);
+  if (strlen(tr->vector_name))
+    fprintf(fp, "    .vector_name = \"%s\",\n", tr->vector_name);
+  if (strlen(tr->vector_components))
+    fprintf(fp, "    .vector_components = \"%s\",\n", tr->vector_components);
+  if (strlen(tr->tracerstat))
+    fprintf(fp, "    .tracerstat = \"%s\",\n", tr->tracerstat);
+  if (strlen(tr->trstat_tag))
+    fprintf(fp, "    .dt = \"%s\",\n", tr->trstat_tag);
+  if (strlen(tr->groupkey))
+    fprintf(fp, "    .groupkey = \"%s\"\n", tr->groupkey);
+  else
+    fprintf(fp, "    .groupkey = \"NONE\"\n");
+  if (mode)
+    fprintf(fp, "  },\n");
+  else
+    fprintf(fp, "  }\n");
+}
+
+/* END write_auto_atts()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Converts a tracer type to a string                                */
+/*-------------------------------------------------------------------*/
+void typename(int code, char *name)
+{
+  int found = 0;
+
+  if (code & WATER) {
+    strcpy(name, "WATER");
+    found = 1;
+  }
+  if (code & SEDIM) {
+    if (found)
+      sprintf(name, "%s|SEDIM", name);
+    else {
+      strcpy(name, "SEDIM");
+      found = 1;
+    }
+  }
+  if (code & INTER) {
+    if (found)
+      sprintf(name, "%s|INTER", name);
+    else {
+      strcpy(name, "INTER");
+      found = 1;
+    }
+  }
+  if (code & HYDRO)
+    sprintf(name, "%s|HYDRO", name);
+  if (code & SEDIMENT)
+    sprintf(name, "%s|SEDIMENT", name);
+  if (code & ECOLOGY)
+    sprintf(name, "%s|ECOLOGY", name);
+  if (code & WAVE)
+    sprintf(name, "%s|WAVE", name);
+  if (code & TRACERSTAT)
+    sprintf(name, "%s|TRACERSTAT", name);
+  if (code & PROGNOSTIC)
+    sprintf(name, "%s|PROGNOSTIC", name);
+  if (code & DIAGNOSTIC)
+    sprintf(name, "%s|DIAGNOSTIC", name);
+  if (code & PARAMETER)
+    sprintf(name, "%s|PARAMETER", name);
+  if (code & FORCING)
+    sprintf(name, "%s|FORCING", name);
+  if (code & E1VAR)
+    sprintf(name, "%s|E1VAR", name);
+  if (code & E2VAR)
+    sprintf(name, "%s|E2VAR", name);
+  if (code & CLOSURE)
+    sprintf(name, "%s|CLOSURE", name);
+  if (code & OPTICAL)
+    sprintf(name, "%s|OPTICAL", name);
+
+}
+
+/* END typename()                                                    */
 /*-------------------------------------------------------------------*/
 

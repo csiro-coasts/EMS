@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 6718 2021-03-29 00:58:36Z her127 $
+ *  $Id: reset.c 6964 2021-12-17 03:18:45Z her127 $
  *
  */
 
@@ -724,14 +724,16 @@ static double trans_reset_event(sched_event_t *event, double t)
     }
     /* Read in additional specified variabes if required             */
     for (tn = 0; tn < master->ntrvars; tn++) {
+      int trn = master->trvm[tn];
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, master->trvars[tn], 
-			      tp->tpd->tr_wc[2+tn], tsin, tec, ts3, mode);
+			      tp->tpd->tr_wc[trn], tsin, tec, ts3, mode);
     }
     for (tn = 0; tn < master->ntrvarsS; tn++) {
+      int trn = master->trvm[tn];
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, master->trvarsS[tn], 
-			      tp->tpd->tr_wcS[tn], tsin, tec, ts2, (mode|VEL2D));
+			      tp->tpd->tr_wcS[trn], tsin, tec, ts2, (mode|VEL2D));
     }
     if (master->tmode & DO_SWR) {
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,

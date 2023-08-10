@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tide.c 6724 2021-03-30 00:32:52Z her127 $
+ *  $Id: tide.c 7321 2023-04-11 02:17:43Z her127 $
  *
  */
 
@@ -70,6 +70,7 @@ double mjd2gmst_d(double mjd);
 void lunar_angles(double mjd, double *A, double *dec);
 void moon_pos(double mjd, double *L, double *B);
 double frac(double a);
+void get_win_tide(int fid, int id, int wn, int nb, int vs, int vc, double *d1);
 
 double c_b13 = -999.0;
 double c_b129 = 360.0;
@@ -114,23 +115,30 @@ void custom_tide_init(master_t *master,
   char buf[MAXSTRLEN], name[5];
   int have_tide_files = 0;
   timeseries_t *tsa, *tsp;
+  timeseries_t *tsa2;
   int tsp_id, tsa_id;
+  int tsp_id2, tsa_id2;
   int fid, ncerr;
   int y1;
   double stime = master->t;
   double tzi = 0.0, tz = tm_tz_offset(master->timeunit);
   double d1, d2 = 0.0;
   int bcond = 0;
+  int winf = 0;
   char units[MAXSTRLEN], ampunits[MAXSTRLEN], type[MAXSTRLEN];
-  int vs;
+  int vs, cos, coe;
   int bs, be, *bec;
   int botzf, fw;
   double *xloc, *yloc;
   char files[MAXNUMTSFILES][MAXSTRLEN];
-
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  char infile[MAXSTRLEN];
+  char i_rule[MAXSTRLEN];
+  int domult = 0;
   datafile_t *df;
   df_variable_t *v;
   df_attribute_t *a;
+  ugrid_t *ug = NULL;
 
   char *tname[MAXCONSTIT + 1] = {
     /* long period */
@@ -168,19 +176,44 @@ void custom_tide_init(master_t *master,
     "285 285.455"
   };                            /* 30 */
 
+  if(strlen(master->tide_con_file) == 0) return;
+  strcpy(buf, master->tide_con_file);
+  if ((n = parseline(buf, fields, MAXNUMARGS)) > 1) {
+    strcpy(infile, fields[0]);
+    strcpy(master->tide_con_file, fields[1]);
+    if (n == 3)
+      tsa2 = hd_ts_read_us(master, infile, 0, fields[2]);
+    else
+      tsa2 = hd_ts_read_us(master, infile, 0, NULL);
+    ug = ugrid_open(infile, 0);
+    domult = 1;
+  } else {
+    /* Check if the file is a window map netCDF file                 */
+    /*ncw_open(fields[0], NC_NOWRITE, &fid);*/
+    if ((ncerr = nc_open(fields[0], NC_NOWRITE, &fid)) != NC_NOERR) {
+      hd_quit("custom_tide_init: Can't find map file %s for tide constituents.", fields[0]);
+    } else {
+      nc_get_att_text(fid, NC_GLOBAL, "Conventions", type);
+      if (strncmp(type,"WINMAP",6) == 0)
+	winf = 1;
+      else
+	nc_close(fid);
+    }
+  }
+
   /* Check to see if the CSR tides have been initialised.            */
   if(strlen(master->nodal_dir) > 0)
     have_tide_files = 1;
 
   /* Get the timezone                                                */
-  if (strlen(master->tide_con_file)) {
+  if (!winf && strlen(master->tide_con_file)) {
     tsp = (timeseries_t *)malloc(sizeof(timeseries_t));
     memset(tsp, 0, sizeof(timeseries_t));
     ts_read(master->tide_con_file, tsp);
     tzi = tm_tz_offset(tsp->t_units);
     ts_free(tsp);
     free(tsp);
-    tsa = hd_ts_read(master, master->tide_con_file, 0);
+    tsa = hd_ts_read_us(master, master->tide_con_file, 0, NULL);
   }
 
   /*-----------------------------------------------------------------*/
@@ -188,6 +221,7 @@ void custom_tide_init(master_t *master,
   for (n = 1; n <= geom->nwindows; n++) {
     ncmax = 0;
     fw = 0;
+
     for (nn = 0; nn < window[n]->nobc; nn++) {
       open = window[n]->open[nn];
       vs = 0;
@@ -218,12 +252,13 @@ void custom_tide_init(master_t *master,
       /* Get the cells to prescribe tidal harmonics for              */
       if (mode & (TD_NU|TD_NV)) {
 	if (open->bcond_nor & TIDALC || open->bcond_nor2d & TIDALC) {
-	  vs = open->no2_e1;
+	  vs = coe = open->no2_e1;
 	  bs = 1;
 	  be = open->no2_e1;
 	  bec = open->obc_e1;
 	  size = open->no3_e1;
 	  bcond = open->bcond_nor;
+	  cos = 0;
 	}
 	strcpy(units, "ms-1");
 	xloc = window[n]->u1x;
@@ -236,17 +271,20 @@ void custom_tide_init(master_t *master,
 	  bec = open->obc_e1;
 	  size = open->to3_e1;
 	  bcond = open->bcond_tan;
+	  cos = open->no3_e1;
+	  coe = open->to2_e1;
 	}
 	strcpy(units, "ms-1");
 	xloc = window[n]->u1x;
 	yloc = window[n]->u1y;
       } else {
 	if (open->bcond_ele & TIDALC) {
-	  vs = open->no2_t;
+	  vs = coe = open->no2_t;
 	  bs = 1;
 	  be = open->no2_t;
 	  bec = open->obc_t;
 	  size = open->no2_t;
+	  cos = 0;
 	}
 	strcpy(units, "m");
 	xloc = window[n]->cellx;
@@ -400,21 +438,20 @@ void custom_tide_init(master_t *master,
 	/* Read the amplitude and phase files and check they contain */
 	/* the specified constituents. */
 	for (i = 1; i <= tc->nt; i++) {
-
 	  size = strlen(tc->tname[i]) - strlen(strpbrk(tc->tname[i], " "));
 	  strncpy(name, tc->tname[i], size);
 	  name[size] = '\0';
 	  if (mode &  (TD_NU|TD_TU)) {
 	    sprintf(buf,"%s_amp",name);
 	    botzf = check_tidefile_type(buf, master->tide_con_file, mode);
-	    if (params->tidef & TD_VEL) botzf = 0;
+	    if (winf || params->tidef & TD_VEL) botzf = 0;
 	    if (params->tidef & TD_TRAN) botzf = 1;
 	    if (botzf == -1) 
 	      hd_quit("Can't find units ms-1 or m2s-1 for %s in %s\n", buf, master->tide_con_file);
 	  } else if (mode &  (TD_NV|TD_TV)) {
 	    sprintf(buf,"%s_amp",name);
 	    botzf = check_tidefile_type(buf, master->tide_con_file, mode);
-	    if (params->tidef & TD_VEL) botzf = 0;
+	    if (winf || params->tidef & TD_VEL) botzf = 0;
 	    if (params->tidef & TD_TRAN) botzf = 1;
 	    if (botzf == -1) 
 	      hd_quit("Can't find units ms-1 or m2s-1 for %s in %s\n", buf, master->tide_con_file);
@@ -428,14 +465,17 @@ void custom_tide_init(master_t *master,
 	    master->tidef |= TD_VEL;
 	  }
 
-	  /*
-	  tsa = frcw_read_cell_ts(master, master->tide_con_file, stime,
-				  buf, units, &d2, &tsa_id, NULL);
-	  */
-	  
-	  if ((tsa_id = ts_get_index(tsa, buf)) < 0)
-	    hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
-	  
+	  /* Get the constituent amplitude id                        */
+	  if (winf) {
+	    tsa_id = ncw_var_id(fid, buf);
+	  } else {
+	    if ((tsa_id = ts_get_index(tsa, buf)) < 0)
+	      hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+	    if (domult && (tsa_id2 = ts_get_index(tsa2, buf)) < 0)
+	      hd_quit("Can't find variable %s in file %s\n", buf, infile);
+	  }
+
+	  /* Get the constituent phase id                            */
 	  if (mode &  (TD_NU|TD_TU)) {
 	    if (botzf)
 	      sprintf(buf,"%s_phase_U",name);
@@ -449,37 +489,51 @@ void custom_tide_init(master_t *master,
 	  } else
 	    sprintf(buf,"%s_phase",name);	  
 
-	  /*
-	  tsp = frc_read_cell_ts(master, master->tide_con_file, stime,
-				 buf, "degrees", &d2, &tsp_id, NULL);
-	  */
-	  if ((tsp_id = ts_get_index(tsa, buf)) < 0)
-	    hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
-	  
-	  /* Get the tidal harmonics for each cell on the boundary */
-	  vs = 1;
-	  for (cc = bs; cc <= be; cc++) {
-	    c = bec[cc];
-	    tc->amp[vs][i] = ts_eval_xy(tsa, tsa_id, stime, xloc[c], yloc[c]);
-	    tc->pha[vs][i] = ts_eval_xy(tsa, tsp_id, stime, xloc[c], yloc[c]);
-	    tc->pha[vs][i] = zoneshift(name, tc->pha[vs][i], (int)tzi/3600, 0); 
-	    tc->map[cc] = vs;
-	    set_tmaps_3d(window[n], bcond, c, vs, tc->map, bs, be, bec);
-	    /* Velocity amplitudes from file are transports; divide  */
-	    /* by model depth to get velocity.                       */
-	    if (botzf) {
-	      int c1 = window[n]->e2c[c][0];
-	      int c2 = window[n]->e2c[c][1];
-	      /*double depth = 0.5 * fabs(window[n]->botz[c1] + window[n]->botz[c2])*/
-	      double depth = fabs(window[n]->botzu1[c]);
-	      tc->amp[vs][i] /= depth;
-	    }
-	    vs++;
+	  if (winf) {
+	    tsp_id = ncw_var_id(fid, buf);
+	  } else {
+	    if ((tsp_id = ts_get_index(tsa, buf)) < 0)
+	      hd_quit("Can't find variable %s in file %s\n", buf, master->tide_con_file);
+	    if (domult && (tsp_id2 = ts_get_index(tsa2, buf)) < 0)
+	      hd_quit("Can't find variable %s in file %s\n", buf, infile);
 	  }
+
+	  /* Get the tidal harmonics for each cell on the boundary */
+	  if (winf) {
+	    get_win_tide(fid, tsa_id, n, nn, cos, coe, master->d2);
+	    for (cc = 1; cc <= vs; cc++) {
+	      tc->amp[cc][i] = master->d2[cc - 1];
+	    }
+	  } else {
+	    vs = 1;
+	    for (cc = bs; cc <= be; cc++) {
+	      c = bec[cc];
+	      if (domult && poly_contains_point(ug->meshs->ppl, xloc[c], yloc[c])) {
+		tc->amp[vs][i] = ts_eval_xy(tsa2, tsa_id2, stime, xloc[c], yloc[c]);
+		tc->pha[vs][i] = ts_eval_xy(tsa2, tsp_id2, stime, xloc[c], yloc[c]);
+	      } else {
+		tc->amp[vs][i] = ts_eval_xy(tsa, tsa_id, stime, xloc[c], yloc[c]);
+		tc->pha[vs][i] = ts_eval_xy(tsa, tsp_id, stime, xloc[c], yloc[c]);
+	      }
+	      tc->pha[vs][i] = zoneshift(name, tc->pha[vs][i], (int)tzi/3600, 0); 
+	      tc->map[cc] = vs;
+	      set_tmaps_3d(window[n], bcond, c, vs, tc->map, bs, be, bec);
+	      /* Velocity amplitudes from file are transports; divide  */
+	      /* by model depth to get velocity.                       */
+	      if (botzf) {
+		int c1 = window[n]->e2c[c][0];
+		int c2 = window[n]->e2c[c][1];
+		/*double depth = 0.5 * fabs(window[n]->botz[c1] + window[n]->botz[c2])*/
+		double depth = fabs(window[n]->botzu1[c]);
+		tc->amp[vs][i] /= depth;
+	      }
+	      vs++;
+	    }
 	  
-	  /*hd_ts_free(master, tsa);*/
-	  /*hd_ts_free(master, tsp);*/
-	  
+	    /*hd_ts_free(master, tsa);*/
+	    /*hd_ts_free(master, tsp);*/
+	    
+	  }
 	}
 	if (DEBUG("init_m")) {
 	  cc = 1;
@@ -500,13 +554,33 @@ void custom_tide_init(master_t *master,
       }
     }
   }
-  hd_ts_free(master, tsa);
-  /*hd_ts_free(master, tsp);*/
+  if (winf) {
+    nc_close(fid);
+  } else {
+    hd_ts_free(master, tsa);
+    if (domult) hd_ts_free(master, tsa2);
+    if (ug != NULL) ugrid_free(ug);
+    /*hd_ts_free(master, tsp);*/
+  }
 }
 
 /* END custom_tide_init()                                            */
 /*-------------------------------------------------------------------*/
 
+void get_win_tide(int fid, int id, int wn, int nb, int vs, int ve, double *d1)
+{
+  size_t start[4] = {0, 0, 0, 0};
+  size_t count[4] = {0, 0, 0, 0};
+
+  start[0] = wn;
+  count[0] = 1L;
+  start[1] = nb;
+  count[1] = 1L;
+  start[2] = vs;
+  count[2] = ve;
+  nc_get_vara_double(fid, id , start, count, d1);
+
+}
 
 /*-------------------------------------------------------------------*/
 /* Routine to check if a tide file contains transports (with units   */
@@ -813,6 +887,7 @@ void custom_tide_grid_init(master_t *master,
 	sprintf(buf,"%s_amp",name);
 	tsa = frc_read_cell_ts(master, master->tide_con_file, stime,
 			       buf, "m", &d2, &tsa_id, NULL);
+	strcpy(tsa->i_rule, "nearest");
 	sprintf(buf,"%s_phase",name);	  
 	tsp = frc_read_cell_ts(master, master->tide_con_file, stime,
 			       buf, "degrees", &d2, &tsp_id, NULL);

@@ -115,6 +115,8 @@ void init_means(master_t *master, parameters_t *params)
 
   /* Set the mean step                                               */
   if (strlen(params->means_dt)) {
+    if (!forced_restart && master->meanc)
+      memset(master->meanc, 0, geom->szcS * sizeof(double));
     if (tm_scale_to_secs(params->means_dt, &master->means_dt))
       master->means_next = master->t + master->means_dt;
     else if (contains_token(params->means_dt, "YEARLY")) {

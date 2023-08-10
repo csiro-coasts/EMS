@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_sed.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_sed.c 7211 2022-09-16 21:12:57Z bai155 $
  *
  */
 
@@ -26,9 +26,10 @@
 #include "eprocess.h"
 #include "column.h"
 #include "cell.h"
-#include "einterface.h"
 #include "light_sed.h"
 #include "constants.h"
+
+double ginterface_getlighttop(void *model, int b);
 
 #define EPS_KD 1.0e-10
 
@@ -92,7 +93,7 @@ void light_sed_precalc(eprocess* p, void* pp)
     double *cv_lighttop = col->cv[ws->lighttop_i];
 
     if (isnan(cv_lighttop[0]))
-        cv_lighttop[0] = einterface_getlighttop(col->model, col->b) * ws->k_swr_par;
+        cv_lighttop[0] = ginterface_getlighttop(col->model, col->b) * ws->k_swr_par;
     lighttop = cv_lighttop[0];
 
 
@@ -101,7 +102,7 @@ void light_sed_precalc(eprocess* p, void* pp)
     we are drying */
     /*
     if(col->topk_wc-col->botk_wc == 0)
-      y[ws->Light_i] = einterface_getlighttop(col->model, col->b) * ws->k_swr_par * exp(-Kd * c->col->dz_wc[c->col->botk_wc]);
+      y[ws->Light_i] = ginterface_getlighttop(col->model, col->b) * ws->k_swr_par * exp(-Kd * c->col->dz_wc[c->col->botk_wc]);
     else */
     y[ws->Light_i] = lighttop;
 

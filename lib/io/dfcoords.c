@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfcoords.c 6590 2020-09-03 00:56:55Z her127 $
+ *  $Id: dfcoords.c 7358 2023-05-10 02:57:59Z riz008 $
  */
 
 #include <stdlib.h>
@@ -242,7 +242,6 @@ int df_set_coord_system(datafile_t *df, df_variable_t *v,
     return 0;
   }
 
-
   /* Confirm that for each coordinate map requests, the coordinates have
      the same number of dimensions and that all dimensions are same and in
      the same order. */
@@ -322,7 +321,6 @@ int df_set_coord_system(datafile_t *df, df_variable_t *v,
   v->csystem->cmaps =
     (df_coord_mapping_t *)malloc(sizeof(df_coord_mapping_t) * ncm);
   memset(v->csystem->cmaps, 0, sizeof(df_coord_mapping_t) * ncm);
-
   for (i = 0; i < ncm; ++i) {
     df_coord_mapping_t *cm = &v->csystem->cmaps[i];
     cm->nc = cmaps[i].nc;
@@ -353,7 +351,7 @@ int df_set_coord_system(datafile_t *df, df_variable_t *v,
         break;
 
       case 2:
-        set_2d_coords(df, v, cm);
+	set_2d_coords(df, v, cm);
         break;
 
       default:
@@ -597,13 +595,40 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
   /* Are there the same number of coordinates as dimensions. We shall
      assume a regular grid. */
   if (nc == nd) {
-    if ((v->lflag && v->lflag != v->add_offset) || 
+    if (df_is_irule(df)) {
+      if (strcmp(df->i_rule, "nearest_eps") == 0) {
+	/* Nearest neighbour for 'simple' files */
+	if (df_get_num_coords(df, v) == 2 )
+	  v->interp = interp2d_nearest_within_eps;
+	else if (df_get_num_coords(df, v) == 3 )
+	  v->interp = interp3d_nearest_within_eps;
+      } else {
+	if (df_get_num_coords(df, v) == 2 ) {	
+	  v->gs0_master_2d = v->gs1_master_2d = NULL;
+	  if (v->type & VT_INFERRED)
+	    v->interp = interp_us_2d_i;
+	  else
+	    v->interp = interp_us_2d_c;
+	} else if (df_get_num_coords(df, v) == 3 ) {
+	  v->gs0_master_3d = v->gs1_master_3d = NULL;
+	  if (v->type & VT_INFERRED)
+	    v->interp = interp_us_3d_i;
+	  else
+	    v->interp = interp_us_3d_c;
+	}
+      }
+    } else if ((v->lflag && v->lflag != v->add_offset) || 
 	(v->cflag && v->cflag != v->add_offset))
       /* land or cloud flags exist */  
       v->interp = interp_linear_flagged;
     else if (v->type & VT_BATHY)
       v->interp = interp_linear_bathy;
-    else if (v->type & VT_INFERRED && v->missing && v->missing != v->add_offset)
+    /*else if (v->type & VT_INFERRED && v->missing && v->missing != v->add_offset)*/
+    else if (v->type & VT_INFERRED && v->type & (VT_MV|VT_FV))
+      /*else if (inferred == nc && v->missing && v->missing != v->add_offset)*/
+      /* missing or fill_value exists */
+      v->interp = interp_linear_filled;
+    else if (v->type & VT_INFERRED && v->fillvalue && v->fillvalue != v->add_offset)
       /*else if (inferred == nc && v->missing && v->missing != v->add_offset)*/
       /* missing_value exists */
       v->interp = interp_linear_filled;
@@ -613,8 +638,9 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
     /*v->interp = interp_linear;*/
     else if (v->units && strcmp(v->units, "degrees") == 0)
       v->interp = interp_linear_degrees;
-    else
+    else {
       v->interp = interp_linear;
+    }
   }
   /* 
    * Are there more coordinate than dimensions, and is there only one
@@ -637,6 +663,7 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
 	  (coordtypes[0]|coordtypes[1]) == (VT_LONGITUDE|VT_LATITUDE) ) {
 	v->interp = interp_nearest_within_eps;
       */
+
       if (df_get_num_coords(df, v) == 2 ) {
 	    v->gs0_master_2d = v->gs1_master_2d = NULL;
 	    v->interp = interp_us_2d;
@@ -1158,7 +1185,7 @@ int search_for_coord(datafile_t *df, VariableType type, int nc,
   int i;
 
   for (i = 0; i < nc; ++i) {
-    if (df->variables[coordids[i]].type == type)
+    if (df->variables[coordids[i]].type & type)
       return coordids[i];
   }
 
@@ -1626,7 +1653,7 @@ void set_2d_coords(datafile_t *df, df_variable_t *v,
 	  gy = VAR_2D(vid_y)[0];
 	  nx = df->dimensions[vid_x->dimids[1]].size - 1;
 	  ny = df->dimensions[vid_x->dimids[0]].size - 1;
-	  
+
 	} else {
 	/* Assume regular grid. This may fail for complex curvilinear grids */
 	df_read_record(df, coordvar0, 0);
@@ -1639,8 +1666,8 @@ void set_2d_coords(datafile_t *df, df_variable_t *v,
       }
       
       /* Initialise the xytoij mapping */
-      cm->special_data = grid_xytoij_init_hash(gx,gy,nx,ny,df_default_hashtable_size);
-      
+      if (!df_is_irule(df))
+	cm->special_data = grid_xytoij_init_hash(gx,gy,nx,ny,df_default_hashtable_size);
       cm->free = cm_bilinear_2d_free;
       set_geo_transform(df, cm);
     } else

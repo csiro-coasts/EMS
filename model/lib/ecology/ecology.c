@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 6534 2020-05-01 01:21:36Z bai155 $
+ *  $Id: ecology.c 7197 2022-09-13 10:41:09Z bai155 $
  *
  */
 
@@ -47,6 +47,10 @@
 
 // defined in ecology interface
 void einterface_log_error(ecology *e, void *model, int b);
+extern int get_rendered_processes(char *name, int type, const char **procs[], int *nprocs);
+
+char * ginterface_get_output_path(void);
+int ginterface_transport_mode(void);
 
 /*
  * Prototypes
@@ -168,9 +172,11 @@ static stringtable* read_process_group_from_defaults(char* fname, int type)
 
     /* Call out to the gateway function in process_defaults.c */
     if (get_eco_processes(fname, type, &procs, &nprocs))
-      e_quit("ecology: Unknown default processes type '%s' specified\n", fname);
+      if (get_rendered_processes(fname, type, &procs, &nprocs))
+	e_quit("ecology: Unknown default processes type '%s' specified\n", fname);
     
     for (i=0; i<nprocs; i++) {
+
       /* Create stringtable on the first iteration */
       if (st == NULL)
 	st = stringtable_create(eprocess_type_tags[type]);
@@ -231,7 +237,7 @@ void create_processes(ecology* e, char* fname)
     /*
      * Loop through and initialise all processes
      */
-    for (type = PT_WC; type <= PT_EPI; ++type) {
+    for (type = PT_WC; type <= PT_COL; ++type) {
         char* key = eprocess_type_tags[type];
         stringtable* st;
 
@@ -256,7 +262,7 @@ void create_processes(ecology* e, char* fname)
     /*
      * Now loop through and run post_init
      */
-    for (type = PT_WC; type <= PT_EPI; ++type) {
+    for (type = PT_WC; type <= PT_COL; ++type) {
       for (i = 0; i < e->npr[type]; ++i) {
 	eprocess* p = e->processes[type][i];
 	if (p->postinit != NULL) {
@@ -523,6 +529,45 @@ void ecology_find_rsr_waves(ecology *e)
   i_free_1d(rtns);
 }
 
+/*
+ * Collects the downwelling irradiance (Ed) wavelengths from the model
+ */
+void ecology_find_ed_waves(ecology *e)
+{
+  int n, ed_count;
+  int *rtns;
+
+  ed_count = einterface_get_num_ed_tracers(e->model);
+  /* Check if found any */
+  if (!ed_count) return;
+
+  /* Allocate temp buffer */
+  rtns = i_alloc_1d(ed_count);
+
+  /* Grab ed tracer indicies */
+  einterface_get_ed_tracers(e->model, rtns);
+
+  e->num_ed_waves = ed_count;
+  e->ed_waves = d_alloc_1d(ed_count);
+
+  /* Get the names and tease out the actual wavelengths */
+  for (n = 0; n < ed_count; n++) {
+    char *trname = einterface_gettracername(e->model, rtns[n]);
+    if (strncmp(trname, "Ed_", 3) == 0) {
+      int w2;
+      if (sscanf(trname, "Ed_%d", &w2) != 1)
+	e_quit("Unable to retrieve wavelength from '%s'\n", trname);
+
+      /* Cache this wavelenth */
+      e->ed_waves[n] = (double)w2;
+
+      /* Add to epi stringtable */
+      // stringtable_add(e->epis, trname, -1);
+    }
+  }
+  i_free_1d(rtns);
+}
+
 /** Ecology pre-constructor
  *
  */
@@ -746,7 +791,7 @@ ecology* ecology_build(void* model, char* prmfname)
     e->eco_setup = e_fopen("ecology_setup.txt", "w");
     {
       /* Open file in the outputs area */
-      char *opath = einterface_get_output_path();
+      char *opath = ginterface_get_output_path();
       if (opath) {
 	sprintf(buf, "%s/ecology_setup.txt", opath);
 	e->eco_osetup = e_fopen(buf, "w");
@@ -915,7 +960,7 @@ ecology* ecology_build(void* model, char* prmfname)
      * Check openmp consistency
      */
     if ( (e->omp_num_threads != OMP_NUM_THREADS_DEF) && 
-	 (einterface_transport_mode() == 0)              ) {
+	 (ginterface_transport_mode() == 0)              ) {
       // Running ecology with OMP is currently only supported for the
       // transport mode for now
       e_quit("ecology : eco_omp_num_threads is only supported for the transport mode");

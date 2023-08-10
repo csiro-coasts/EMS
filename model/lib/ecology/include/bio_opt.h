@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bio_opt.h 6580 2020-07-29 03:58:50Z bai155 $
+ *  $Id: bio_opt.h 7195 2022-09-13 10:34:31Z bai155 $
  *
  */
 
@@ -82,6 +82,7 @@ typedef struct {
   double *yC_echinenone;
   double *yC_PE;
   double *yC_PC;
+  double *yC_allophycocyanin;
   double *yC_picoplankton;
   double *yC_rhodomonas_duplex;
   double *yC_microplankton;
@@ -104,6 +105,7 @@ typedef struct {
   double *yC_echinenone_rsr;
   double *yC_PE_rsr;
   double *yC_PC_rsr;
+  double *yC_allophycocyanin_rsr;
   double *yC_picoplankton_rsr;
   double *yC_rhodomonas_duplex_rsr;
   double *yC_microplankton_rsr;

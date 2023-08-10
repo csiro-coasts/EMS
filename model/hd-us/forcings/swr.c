@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: swr.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: swr.c 6986 2022-02-27 23:41:47Z her127 $
  *
  */
 
@@ -47,6 +47,8 @@ int swr_init(sched_event_t *event)
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
 
+  if (strlen(params->swr) == 0) return 0;
+
   data = (swr_data_t *)malloc(sizeof(swr_data_t));
   schedSetPrivateData(event, data);
   data->ts = frc_read_cell_ts(master, params->swr, params->swr_dt,
@@ -58,7 +60,8 @@ int swr_init(sched_event_t *event)
     if (master->heatflux & NET_HEAT && master->swr_attn)
       hd_quit("Attenuation of swr requires RADIATION file.\n");
     return 0;
-  }
+  } else
+    master->heatflux |= COMP_SW;
 
   if (master->albedo < -1.0 || master->albedo > 1.0)
     hd_quit("RADIATION requires ALBEDO parameter.\n");

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 6732 2021-03-30 00:37:56Z her127 $
+ *  $Id: meshes.c 7372 2023-07-26 04:33:55Z her127 $
  *
  */
 
@@ -54,9 +54,10 @@ typedef enum {
 
 /*------------------------------------------------------------------*/
 /* Valid bathymetry netCDF dimension names                          */
-static char *bathy_dims[3][6] = {
+static char *bathy_dims[4][6] = {
   {"botz", "i_centre", "j_centre", "x_centre", "y_centre", "standard"},
   {"height", "lon", "lat", "lon", "lat", "nc_bathy"},
+  {"height", "longitude", "latitude", "longitue", "latitude", "nc_bathy"},
   {NULL, NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -116,7 +117,9 @@ void xyz_to_lonlat(double *ee, double *pp, double rr);
 void tri_cen(int centref, int geogf, double *p1, double *p2, double *p3, double *po);
 void edge_cen(int centref, int geogf, double *v1, double *v2, double *po);
 int in_tri(double *po, double *p0, double *p1, double *p2);
-void add_quad_grid(parameters_t *params, char *iname);
+void add_quad_grido(parameters_t *params, char *iname);
+void add_quad_grid(parameters_t *params, char *iname, int mode);
+void reorder_mesh(parameters_t *params, mesh_t *mesh, double *bathy);
 void create_bounded_mesh(int npts,     /* Number of perimeter points */
 			 double *x,    /* Perimeter x coordinates    */
 			 double *y,    /* Perimeter y coordinates    */
@@ -2510,6 +2513,25 @@ void meshstruct_us(parameters_t *params)
     }
     if (params->runmode & (AUTO | DUMP)) set_bathy_us(params);
     i_free_1d(cmap);
+
+    /* Print any added curvilinear qrids if required                 */
+    if (strlen(params->addquad)) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      n = parseline(params->addquad, fields, MAXNUMARGS);
+      if (n == 1 && atoi(fields[0]) > 0) {
+	for (i = 0; i < atoi(fields[0]); i++) {
+	  sprintf(key, "QUAD%d", i);
+	  prm_read_char(params->prmfd, key, buf);
+	  add_quad_grid(params, buf, 0);
+	  hd_warn("ADD_QUAD %s tested.\n", buf);
+	}
+      } else {
+	for (i = 0; i < n; i++) {
+	  add_quad_grid(params, fields[i], 0);
+	  hd_warn("ADD_QUAD %s tested.\n", fields[i]);
+	}
+      }
+    }
     return;
   }
 
@@ -2522,11 +2544,11 @@ void meshstruct_us(parameters_t *params)
       for (i = 0; i < atoi(fields[0]); i++) {
 	sprintf(key, "QUAD%d", i);
 	prm_read_char(params->prmfd, key, buf);
-	add_quad_grid(params, buf);
+	add_quad_grid(params, buf, 1);
       }
     } else {
       for (i = 0; i < n; i++) {
-	add_quad_grid(params, fields[i]);
+	add_quad_grid(params, fields[i], 1);
       }
     }
   }
@@ -2909,7 +2931,9 @@ int get_mesh_obc(parameters_t *params,
   int isclosed = 0;     /* Set for closed perimeters                 */
   mesh_t *mesh = params->mesh;
   double x, y, d, dist = HUGE;
-
+  int typef = 1;        /* START_LOC only supplied. typef = 0; set   */
+                        /* the obc to all unconnected edges.         */
+                        /* typef = 1; set obc to the middle edge.    */
   if (!params->nobc) return(0);
 
   for (n = 0; n < params->nobc; n++) {
@@ -3131,15 +3155,21 @@ int get_mesh_obc(parameters_t *params,
       hd_quit("get_mesh_obc: Can't find OBC mid-point (%f %f) in boundary %d\n", 
 	      open->mlon, open->mlat, m);
     /* Count the boundary edges along the segment                    */
+    i = 0;
     n = si[m];
-    for (i = si[m]; i <= ei[m]; i++) {
+    while (i <= np) {
+      /* This can fail for closed OBCs depending on start and end
+         indices.
+	 for (i = si[m]; i <= ei[m]; i++) { */
       cc = perm[n];
-      for (j = 1; j <= mesh->npe[cc]; j++)
+      for (j = 1; j <= mesh->npe[cc]; j++) {
 	if (!neic[j][cc]) mesh->npts[m]++;
+      }
       if (n == ei[m]) break;
       n += dir[m];
       if (n <= 0 && dir[m] == -1) n = np;
       if (n > np && dir[m] == 1) n = 1;
+      i++;
     }
     if (mesh->npts[m] > mobc) mobc = mesh->npts[m];
   }
@@ -3210,19 +3240,42 @@ int get_mesh_obc(parameters_t *params,
       mesh->obc[m][2][0] = mesh->eloc[0][cn][jn];
       mesh->obc[m][2][1] = mesh->eloc[1][cn][jn];
     }
-    /* Set the obc to all edges that map outside the domain if only  */
-    /* the start coordinate was supplied.                            */
+    /* The start coordinate only was supplied.                         */
     if (donef[m] == 1) {
-      mesh->npts[m] = 1;
-      for (j = 1; j <= mesh->npe[cs]; j++) {
-	if (!neic[j][cs]) {
-	  mesh->loc[m][mesh->npts[m]] = cs;
-	  mesh->obc[m][mesh->npts[m]][0] = mesh->eloc[0][cs][j];
-	  mesh->obc[m][mesh->npts[m]][1] = mesh->eloc[1][cs][j];
-	  mesh->npts[m]++;
+      /* Set the obc to all edges that map outside the domain          */
+      if (typef == 0) {
+	mesh->npts[m] = 1;
+	for (j = 1; j <= mesh->npe[cs]; j++) {
+	  if (!neic[j][cs]) {
+	    mesh->loc[m][mesh->npts[m]] = cs;
+	    mesh->obc[m][mesh->npts[m]][0] = mesh->eloc[0][cs][j];
+	    mesh->obc[m][mesh->npts[m]][1] = mesh->eloc[1][cs][j];
+	    mesh->npts[m]++;
+	  }
+	}
+	mesh->npts[m]--;
+      } else {
+	/* Set the obc to the middle (central) edge of all edges     */
+	/* that map outside the domain (e.g. for a quad with three   */
+	/* edges mapping outside, the obc is the second edge that    */
+	/* maps out.                                                 */
+	n = 0;
+	for (j = 1; j <= mesh->npe[cs]; j++)
+	  if (!neic[j][cs]) n++;
+	jj = (n + 1) / 2;
+	n = 0;
+	mesh->npts[m] = 1;
+	for (j = 1; j <= mesh->npe[cs]; j++) {
+	  if (!neic[j][cs]) {
+	    n++;
+	    if (n == jj) {
+	      mesh->loc[m][mesh->npts[m]] = cs;
+	      mesh->obc[m][mesh->npts[m]][0] = mesh->eloc[0][cs][j];
+	      mesh->obc[m][mesh->npts[m]][1] = mesh->eloc[1][cs][j];
+	    }
+	  }
 	}
       }
-      mesh->npts[m]--;
       if (!mesh->npts[m]) hd_warn("get_mesh_obc(): Can't find boundary cell for OBC%d %s\n", m, open->name);
     }
     if (donef[m]) {
@@ -3259,9 +3312,10 @@ int get_mesh_obc(parameters_t *params,
     if (donef[m]) continue;
 
     /* Save to mesh                                                  */
+    i = 0;
     n = si[m];
     mesh->npts[m] = 1;
-    for (i = si[m]; i <= ei[m]; i++) {
+    while (i <= np) {
       cc = perm[n];
       for (j = 1; j <= mesh->npe[cc]; j++) {
 	if (!neic[j][cc]) {
@@ -3275,6 +3329,7 @@ int get_mesh_obc(parameters_t *params,
       n += dir[m];
       if (n <= 0 && dir[m] == -1) n = np;
       if (n > np && dir[m] == 1) n = 1;
+      i++;
     }
     mesh->npts[m]--;
 
@@ -3761,6 +3816,10 @@ int read_mesh_us(parameters_t *params)
     }
   }
 
+  /* Reorder the input coordinates if required                       */
+  if (params->mrf & MR_READ)
+    reorder_mesh(params, mesh, params->bathy);
+
   /* Reconstruct the parameter coordinate arrays                     */
   if (params->x == NULL && params->y == NULL) {
     params->x = d_alloc_2d(mesh->mnpe+1, mesh->ns2+1);
@@ -3794,6 +3853,164 @@ int read_mesh_us(parameters_t *params)
 
 /* END read_mesh_us()                                                */
 /*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Re-orders the input mesh indices to those supplied by file.       */
+/*-------------------------------------------------------------------*/
+void reorder_mesh(parameters_t *params, mesh_t *mesh, double *bathy)
+{
+  FILE *fp;
+  mesh_t *nmesh;
+  double *nbathy;
+  int *order;
+  int mnpe, npe = params->npe;
+  int ns;
+  int ns2;
+  int c, cc, j;
+
+  /* Read the re-mapping                                             */
+  if (strlen(params->mesh_reorder)) {
+    if ((fp = fopen(params->mesh_reorder, "r")) == NULL) {
+      hd_warn("Can't open reorder read file %s\n", params->mesh_reorder);
+      return;
+    }
+    prm_read_int(fp, "nMaxMesh2_face_nodes", &mnpe);
+    prm_read_int(fp, "nMesh2_face", &ns2);
+    prm_read_int(fp, "nMesh2_face_indices", &ns);
+    if (mnpe != mesh->mnpe || ns2 != mesh->ns2 || ns != mesh->ns) {
+      hd_warn("Index reorder file has incompatible dimensions\n");
+      hd_warn("mnpe = %d & %d\n", mnpe, mesh->mnpe);
+      hd_warn("ns2 = %d & %d\n", ns2, mesh->ns2);
+      hd_warn("ns2 = %d & %d\n", ns, mesh->ns);
+      return;
+    }
+    order = i_alloc_1d(ns2 + 1);
+    for (c = 1; c <= ns2; c++) {
+      fscanf(fp, "%d", &order[c]);
+    }
+    fclose(fp);
+  }
+
+  /* Initialise a mesh copy                                          */
+  nmesh = mesh_init(params, ns2, npe);
+  nbathy = d_alloc_1d(ns2 + 1);
+
+  /* Copy mesh information                                           */
+  for (c = 1; c <= ns2; c++) {
+    nmesh->npe[c] = mesh->npe[c];
+    nmesh->eloc[0][c][0] = mesh->eloc[0][c][0];
+    if (params->us_type & US_IJ) {
+      nmesh->iloc[c] = mesh->iloc[c];
+      nmesh->jloc[c] = mesh->jloc[c];
+    }
+    nmesh->eloc[1][c][0] = mesh->eloc[0][c][0];
+    for (j = 1; j <= mesh->npe[c]; j++) {
+      nmesh->eloc[0][c][j] = mesh->eloc[0][c][j];
+      nmesh->eloc[1][c][j] = mesh->eloc[1][c][j];
+    }
+    nbathy[c] = bathy[c];
+  }
+
+  /* Reorder                                                         */
+  for (cc = 1; cc <= ns2; cc++) {
+    c = order[cc];
+    mesh->npe[cc] = nmesh->npe[c];
+    mesh->eloc[0][cc][0] = nmesh->eloc[0][c][0];
+    if (params->us_type & US_IJ) {
+      mesh->iloc[cc] = nmesh->iloc[c];
+      mesh->jloc[cc] = nmesh->jloc[c];
+    }
+    mesh->eloc[1][cc][0] = nmesh->eloc[0][c][0];
+    for (j = 1; j <= nmesh->npe[c]; j++) {
+      mesh->eloc[0][cc][j] = nmesh->eloc[0][c][j];
+      mesh->eloc[1][cc][j] = nmesh->eloc[1][c][j];
+    }
+    bathy[cc] = nbathy[c];
+  }
+
+  /* Free mesh                                                       */
+  d_free_1d(nmesh->yloc);
+  d_free_1d(nmesh->xloc);
+  i_free_3d(nmesh->eloc);
+  if (params->us_type & US_IJ) {
+    i_free_1d(nmesh->iloc);
+    i_free_1d(nmesh->jloc);
+  }
+  if(params->nobc) {
+    i_free_1d(nmesh->npts);
+    i_free_2d(nmesh->loc);
+    i_free_3d(nmesh->obc);
+  }
+  free((mesh_t *)nmesh);
+  d_free_1d(nbathy);
+  i_free_1d(order);
+}
+
+/* END reorder_mesh()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Re-orders the input mesh indices to those supplied by file.       */
+/*-------------------------------------------------------------------*/
+void reorder_bathy(parameters_t *params)
+{
+  FILE *fp;
+  mesh_t *mesh = params->mesh;
+  double *bathy = params->bathy;
+  double *nbathy;
+  int *order;
+  int mnpe, npe = params->npe;
+  int ns;
+  int ns2;
+  int c, cc;
+
+  /* Read the re-mapping                                             */
+  if (strlen(params->mesh_reorder)) {
+    if ((fp = fopen(params->mesh_reorder, "r")) == NULL) {
+      hd_warn("Can't open reorder read file %s\n", params->mesh_reorder);
+      return;
+    }
+    prm_read_int(fp, "nMaxMesh2_face_nodes", &mnpe);
+    prm_read_int(fp, "nMesh2_face", &ns2);
+    prm_read_int(fp, "nMesh2_face_indices", &ns);
+    if (mnpe != mesh->mnpe || ns2 != mesh->ns2 || ns != mesh->ns) {
+      hd_warn("Index reorder file has incompatible dimensions\n");
+      hd_warn("mnpe = %d & %d\n", mnpe, mesh->mnpe);
+      hd_warn("ns2 = %d & %d\n", ns2, mesh->ns2);
+      hd_warn("ns2 = %d & %d\n", ns, mesh->ns);
+      return;
+    }
+    order = i_alloc_1d(ns2 + 1);
+    for (c = 1; c <= ns2; c++) {
+      fscanf(fp, "%d", &order[c]);
+    }
+    fclose(fp);
+  }
+
+  /* Initialise a mesh copy                                          */
+  nbathy = d_alloc_1d(ns2 + 1);
+
+  /* Copy mesh information                                           */
+  for (c = 1; c <= ns2; c++) {
+    nbathy[c] = bathy[c];
+  }
+
+  /* Reorder                                                         */
+  for (cc = 1; cc <= ns2; cc++) {
+    c = order[cc];
+    bathy[cc] = nbathy[c];
+  }
+
+  /* Free mesh                                                       */
+  d_free_1d(nbathy);
+  i_free_1d(order);
+}
+
+/* END reorder_bathy()                                               */
+/*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Creates a circular coastline msh and resolution hfun file         */
@@ -4393,6 +4610,47 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   }
 
   /*-----------------------------------------------------------------*/
+  /* Gravity wave speed conversion if required.                      */
+  if (mode & H_GWS && imeth & (I_NC|I_BTY)) {
+    for (n = 0; n < nhfun; n++) {
+      b[n] = sqrt(g * fabs(b[n]));
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Gradient conversion if required.                                */
+  if (mode & H_GRAD && imeth & (I_NC|I_BTY)) {
+    double **bg;
+
+    if (!(imeth & I_GRID))
+      hd_quit("Can't create a bathy gradient: Use HFUN_GRID.\n");
+
+    n = 0;
+    bg = d_alloc_2d(nce1, nce2);
+    /* Map the bathy to Cartesian coordinates                        */
+    for (i = 0; i < nce1; i++) {
+      for (j = 0; j < nce2; j++) {
+	bg[j][i] = b[n++];
+      }
+    }
+    /* Get the gradient                                              */
+    n = 0;
+    for (i = 0; i < nce1; i++) {
+      for (j = 0; j < nce2; j++) {
+	double dx, dy;
+	int im = (i == 0) ? i : i-1;
+	int ip = (i == nce1 - 1) ? i : i+1;
+	int jm = (j == 0) ? j : j-1;
+	int jp = (j == nce2 - 1) ? j : j+1;
+	dx = (bg[ip] - bg[im]) / (deg2m * (hfx->_data[ip] - hfx->_data[im]));
+	dy = (bg[jp] - bg[jm]) / (deg2m * (hfy->_data[jp] - hfy->_data[jm]));
+	b[n++] = 0.5 * fabs(dx + dy);
+      }
+    }
+    d_free_2d(bg);
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Over-ride bathymetry values if required                         */
   if (orf) {
 
@@ -4854,6 +5112,8 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   int *pmask;
   double *hmx, *hmn, *bmx, *bmn, *exf;
   msh_t *msh = cm->msh;
+  int nord, orf = 0;
+  double *exclat, *exclon, *excrad, *exccst;
 
   filef = (params->meshinfo) ? 1 : 0;
   /*-----------------------------------------------------------------*/
@@ -4960,6 +5220,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
     prm_read_double(fp, "HFUN_TYPE", &expf);
   }
   prm_read_int(fp, "HFUN_SMOOTH", &smooth);
+
   nexp = 0;
   if (prm_read_int(fp, "HFUN_EXCLUDE", &nexp)) {
     exlon = d_alloc_1d(nexp);
@@ -5021,6 +5282,21 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
   jigsaw_alloc_reals(hfvals, nhfun);
 
   /*-----------------------------------------------------------------*/
+  /* Read coastal over-ride values                                   */
+  if (prm_read_int(fp, "HFUN_OVERRIDE", &nord)) {
+    exclon = d_alloc_1d(nord);
+    exclat = d_alloc_1d(nord);
+    excrad = d_alloc_1d(nord);
+    exccst = d_alloc_1d(nord);
+    for (n = 0; n < nord; n++) {
+      if (fscanf(fp, "%lf %lf %lf %lf", &exclon[n], &exclat[n], &excrad[n], &exccst[n]) != 4)
+	hd_quit("hfun_from_coast: Format for HFUN_OVERRIDE is 'lon lat radius value'.\n");
+      exccst[n] /= deg2m;
+    }
+    orf = 1;
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Make a gridded distance to coast array                          */
   b = d_alloc_1d(nhfun);
   if (mode & H_POLY) pmask = i_alloc_1d(nhfun);
@@ -5032,7 +5308,7 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
       for (j = 0; j < nce2; j++) {
 	yloc = hfy->_data[j];
 	b[n] = HUGE;
-	if (mode & H_CST) 
+	if (mode & H_CST)
 	  b[n] = min(b[n], coast_dist(msh, xloc, yloc));
 	if (mode & H_POINT)
 	  b[n] = min(b[n], point_dist(npoints, p, xloc, yloc));
@@ -5057,6 +5333,60 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
       if (verbose) printf("%d %f %f : %f\n",n, xloc, yloc, b[n]);
     }
     J_hfun->_flags = JIGSAW_EUCLIDEAN_MESH;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Over-ride distances values if required                          */
+  if (orf) {
+
+    if (imeth & I_GRID) {
+      double *val = (imeth & I_USR) ? hfvals->_data : b;
+      double smin[nord];
+      int imin[nord], jmin[nord], nmin[nord];
+      n = 0;
+      for (m = 0; m < nord; m++) {
+	smin[m] = HUGE;
+	nmin[m] = -1;
+      }
+      for (i = 0; i < nce1; i++) {
+	for (j = 0; j < nce2; j++) {
+	  for (m = 0; m < nord; m++) {
+	    if (exccst[m] > 0.0) continue;
+	    xloc = exclon[m] - hfx->_data[i];
+	    yloc = exclat[m] - hfy->_data[j];
+	    s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
+	    if (s < excrad[m]) {
+	      val[n] = (val[n] - fabs(exccst[m])) * s / excrad[m] + fabs(exccst[m]);
+	      printf("%f\n",val[n]);
+	      if (s < smin[m]) {
+		smin[m] = s;
+		imin[m] = i;
+		jmin[m] = j;
+		nmin[m] = n;
+	      }
+	    }
+	  }
+	  n++;
+	}
+      }
+      for (m = 0; m < nord; m++) {
+	if (nmin[m] >= 0 && exccst[m] <= 0.0) {
+	  val[nmin[m]] = fabs(exccst[m]);
+	  hd_warn("HFUN_OVERRIDE%d minimum dist @ %f %f\n", m,
+		  hfx->_data[imin[m]],hfy->_data[jmin[m]]);
+	}
+      }
+    } else {
+      for (n = 0; n < nhfun; n++) {
+	for (m = 0; m < nord; m++) {
+	  if (exccst[m] > 0.0) continue;
+	  xloc = exclon[m] - J_hfun->_vert2._data[n]._ppos[0];
+	  yloc = exclat[m] - J_hfun->_vert2._data[n]._ppos[1];
+	  s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
+	  if (s < excrad[m]) b[n] = (b[n] - fabs(exccst[m])) * s / excrad[m] + fabs(exccst[m]);
+	}
+      }
+    }
   }
 
   /* Get the minimum and maximum distances                           */
@@ -5142,6 +5472,66 @@ void hfun_from_coast(parameters_t *params, coamsh_t *cm, jigsaw_msh_t *J_hfun, i
 	hfvals->_data[n] = polyres[m];
       }
     }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Over-ride resolution values if required                         */
+  if (orf) {
+    double *val = hfvals->_data;
+    if (imeth & I_GRID) {
+      double smin[nord];
+      int imin[nord], jmin[nord], nmin[nord];
+      n = 0;
+      for (m = 0; m < nord; m++) {
+	smin[m] = HUGE;
+	nmin[m] = -1;
+      }
+      for (i = 0; i < nce1; i++) {
+	for (j = 0; j < nce2; j++) {
+	  for (m = 0; m < nord; m++) {
+	    if (exccst[m] <= 0.0) continue;
+	    xloc = exclon[m] - hfx->_data[i];
+	    yloc = exclat[m] - hfy->_data[j];
+	    s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
+	    if (s < excrad[m]) {
+	      val[n] = (val[n] - exccst[m]) * s / excrad[m] + exccst[m];
+	      if (s < smin[m]) {
+		smin[m] = s;
+		imin[m] = i;
+		jmin[m] = j;
+		nmin[m] = n;
+	      }
+	    }
+	  }
+	  n++;
+	}
+      }
+      for (m = 0; m < nord; m++) {
+	if (nmin[m] >= 0 && exccst[m] > 0.0) {
+	  val[nmin[m]] = exccst[m];
+	  hmin = min(hmin, exccst[m]);
+	  hmax = max(hmax, exccst[m]);
+	  cm->hfun_min = hmin * deg2m;
+	  cm->hfun_max = hmax * deg2m;
+	  hd_warn("HFUN_OVERRIDER%d minimum dist @ %f %f\n", m,
+		  hfx->_data[imin[m]],hfy->_data[jmin[m]]);
+	}
+      }
+    } else {
+      for (n = 0; n < nhfun; n++) {
+	for (m = 0; m < nord; m++) {
+	  if (exccst[m] <= 0.0) continue;
+	  xloc = exclon[m] - J_hfun->_vert2._data[n]._ppos[0];
+	  yloc = exclat[m] - J_hfun->_vert2._data[n]._ppos[1];
+	  s = sqrt(xloc * xloc + yloc * yloc) * deg2m;
+	  if (s < excrad[m]) val[n] = (val[n] - exccst[m]) * s / excrad[m] + exccst[m];
+	}
+      }
+    }
+    if (exclon) d_free_1d(exclon);
+    if (exclat) d_free_1d(exclat);
+    if (excrad) d_free_1d(excrad);
+    if (exccst) d_free_1d(exccst);
   }
 
   /*-----------------------------------------------------------------*/
@@ -7868,6 +8258,18 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
   /*-----------------------------------------------------------------*/
   /* Expand inwards from open boundaries to remove 'lakes'           */
   if (params->mlon != NOTVALID && params->mlat != NOTVALID) {
+    /* Open file                                                       */
+    FILE *fp;
+    if (params->mrf & MR_WRITEX) {
+      if ((fp = fopen(params->mesh_reorder, "w")) == NULL) {
+	hd_warn("Can't open mesh reorder write file %s\n", params->mesh_reorder);
+	params->mrf &= ~MR_WRITEX;
+      } else {
+	fprintf(fp, "nMaxMesh2_face_nodes %d\n", mesh->mnpe);
+	fprintf(fp, "nMesh2_face          %d\n", mesh->ns2);
+	fprintf(fp, "nMesh2_face_indices  %d\n", mesh->ns);
+      }
+    }
 
     /* Get the index of the closest cell to the interior coordinate  */
     dmin = HUGE;
@@ -7891,6 +8293,7 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
     memset(filla, 0, ns * sizeof(int));
     found = 1;
     ni = 1;
+    if (params->mrf & MR_WRITEX) fprintf(fp, "%d\n", ci);
     film[ni++] = ci;
     filla[ci] = 1;
     while (found) {
@@ -7904,6 +8307,7 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
 	    filla[cn] = 1;
 	    filla[c] = 2;
 	    film[ni] = cn;
+	    if (cn && params->mrf & MR_WRITEX) fprintf(fp, "%d\n", cn);
 	    found = 1;
 	    ni++;
 	  }
@@ -7971,6 +8375,7 @@ void mesh_expand(parameters_t *params, double *bathy, double **xc, double **yc)
     }
     i_free_1d(film);
     i_free_1d(filla);
+    if (params->mrf & MR_WRITEX) fclose(fp);
   }
 }
 
@@ -8323,7 +8728,7 @@ void mesh_ofile_name(parameters_t *params, char *key)
 /*-------------------------------------------------------------------*/
 void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
 {
-  FILE *op;
+  FILE *op, *ef;
   char buf[MAXSTRLEN], key[MAXSTRLEN], key1[MAXSTRLEN];
   int n, i;
 
@@ -8423,7 +8828,7 @@ void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
     fprintf(op, "May be used for plotting.\n\n");
     sprintf(buf,"%s_c.txt", key);
     fprintf(op, "FILE %s contains the Voronoi centres.\n", buf);
-    fprintf(op, "May be used for plotting.\n\n");
+    fprintf(op, "May be used for plotting (e.g. using Matlab script 'plot_%s.m').\n\n", key);
     if (params->nobc) {
       sprintf(buf,"%s_b.txt", key);
       fprintf(op, "FILE %s contains the open boundary perimeter.\n", buf);
@@ -8432,6 +8837,24 @@ void write_mesh_desc(parameters_t *params, coamsh_t *cm, FILE *fp, int mode)
     sprintf(buf,"%s_us.txt", key);
     fprintf(op, "FILE %s contains the COMPAS specification of the mesh.\n", buf);
     fprintf(op, "May be used to define a grid in the input file.\n\n");
+
+    sprintf(buf,"plot_%s.m", key);
+    if ((ef = fopen(buf, "w")) != NULL) {
+      fprintf(ef,"%% Matlab script to plot an unstructured mesh using files\n");
+      fprintf(ef,"%% %s_e.txt and %s_c.txt output.\n\n", key, key);
+      fprintf(ef,"close all;\n");
+      fprintf(ef,"load('%s_e.txt');\n", key);
+      fprintf(ef,"plot(%s_e(:,1), %s_e(:,2), 'b-');\n", key, key);
+      fprintf(ef,"hold on;\n");
+      fprintf(ef,"load('%s_c.txt');\n", key);
+      fprintf(ef,"plot(%s_c(:,1), %s_c(:,2), 'r.');\n", key, key);
+      if (params->nobc) {
+	fprintf(ef,"load('boundary.txt');\n");
+	fprintf(ef,"plot(boundary(:,1), boundary(:,2), 'g-');\n");
+      }
+      fprintf(ef,"\nprint -djpeg90 o1.jpg\n");
+      fclose(ef);
+    }
   }
   fclose(op);
 }
@@ -8631,12 +9054,427 @@ delaunay*  make_dual(geometry_t *geom, int kin)
 /*-------------------------------------------------------------------*/
 
 
+/*-------------------------------------------------------------------*/
+/* Merges a quadrilateral grid with an unstructured mesh at a user   */
+/* defined location.                                                 */
+/*-------------------------------------------------------------------*/
+void add_quad_grid(parameters_t *params, char *iname, int mode)
+{
+  FILE *fp, *dp, *op, *pp = NULL;
+  mesh_t *mesh;
+  char buf[MAXSTRLEN];
+  char polyr[MAXSTRLEN];
+  int i, j, n, nc, ns2, npe, ncells, nce1, nce2, ice1, ice2;
+  int si, ei, sj, ej, prmf = 0;
+  double *x, *y;
+  double **lat, **lon;
+  double **xc, **yc;
+  double **xm, **ym;
+  double *bathy, *bathyin = NULL, nbathy = NOTVALID, *b1 = NULL;
+  double *x1 = NULL, *y1 = NULL;
+  int *mpe;
+  double xr1, yr1, xr2, yr2, d, dist1, dist2;
+  int *npe2, ir, jr1, jr2, *mask;
+  int verbose = 0;
+  int dirf = 1;    /* Coordinates are ordered across the river       */
+  int sortdir = 1; /* Sort verices; 1=clockwise, -1=anticlockwise    */
+
+  if (mode) {
+    ns2 = params->ns2;
+    npe = params->npe;
+    mpe = params->npe2;
+  } else {
+    mesh = params->mesh;
+    ns2 = mesh->ns2;
+    npe = mesh->mnpe;
+    mpe = mesh->npe;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Open the file to merge and read the merge location              */
+  if ((fp = fopen(iname, "r")) == NULL) {
+    hd_warn("Can't open merge grid '%s'\n", iname);
+    return;
+  }
+
+  if (prm_read_char(fp, "MERGE_LOC", buf))
+    sscanf(buf, "(%lf %lf)-(%lf %lf)", &xr1, &yr1, &xr2, &yr2);
+  else {
+    hd_warn("Can't find MERGE_LOC for %s: no mesh merging.\n", iname);
+    return;
+  }
+
+  /* Dimensions                                                      */
+  prm_read_int(fp, "NCE1", &nce1);
+  prm_read_int(fp, "NCE2", &nce2);
+  if (nce1 != 1 && nce2 != 1) hd_warn("One of NCE1 or NCE2 must = 1: no mesh merging.\n");
+
+  /* Cookie cut from structured .prm file                            */
+  if (prm_read_char(fp, "PRM_FILE", buf)) {
+    if ((pp = fopen(buf, "r")) == NULL)
+      hd_quit("add_quad_grid: Can't open prm file %s\n", buf);
+    prmf = 1;
+    prm_read_int(pp, "NCE1", &ice1);
+    prm_read_int(pp, "NCE2", &ice2);
+    if (prm_read_char(fp, "SUBSECTION", buf))
+    sscanf(buf, "(%d,%d)-(%d,%d)", &si, &sj, &ei, &ej);
+    nce1 = ei - si + 1;
+    nce2 = ej - sj + 1;
+
+    if (!prm_read_double(fp, "BATHYVAL", &nbathy)) {
+      prm_read_darray(pp, "BATHY", &b1, &i);
+      bathyin = d_alloc_1d(nce1 * nce2 + 1);
+      nc = 0;
+      for (j = sj; j <= ej; j++)
+	for (i = si; i <= ei; i++) {
+	  n = j * ice1 + (i);
+	  bathyin[nc++] = b1[n];
+	}
+      d_free_1d(b1);
+    }
+  }
+  ncells = nce1 * nce2;
+
+  /* Bathymetry                                                      */
+  if (prm_read_darray(fp, "BATHY", &bathyin, &i)) {
+    if (i != nce1 && i != nce2)
+      hd_quit("add_quad_grid: number of bathy values != NCE1 or NCE2 (%d!=%d,%d)\n",
+	      i, nce1, nce2);
+  } else {
+    prm_read_double(fp, "BATHYVAL", &nbathy);
+  }
+
+  if (prm_read_char(fp, "MERGE_DIR", buf))
+    dirf = is_true(buf);
+  sprintf(polyr, "%c", '\0');
+  prm_read_char(fp, "REMOVE", polyr);
+
+  /* The merge location is set to the closest vertices in the mesh.  */
+  /* Also make a copy of the current mesh.                           */
+  dist1 = dist2 = HUGE;
+  npe2 = i_alloc_1d(ns2+1);
+  bathy = d_alloc_1d(ns2+1);
+  xc = d_alloc_2d(npe+1, ns2+1);
+  yc = d_alloc_2d(npe+1, ns2+1);
+  mask = i_alloc_1d(ns2+1);
+  memset(mask, 0, (ns2+1) * sizeof(int));
+  for (i = 1; i <= ns2; i++) {
+    npe2[i] = mpe[i];
+    if (mode) bathy[i] = params->bathy[i];
+    for (j = 0; j <= mpe[i]; j++) {
+      if (mode) {
+	xc[i][j] = params->x[i][j];
+	yc[i][j] = params->y[i][j];
+      } else {
+	xc[i][j] = mesh->xloc[mesh->eloc[0][i][j]];
+	yc[i][j] = mesh->yloc[mesh->eloc[0][i][j]];
+      }
+      d = sqrt((xc[i][j] - xr1) * (xc[i][j] - xr1) + (yc[i][j] - yr1) * (yc[i][j] - yr1));
+      if (j > 0 && d < dist1) {
+	dist1 = d;
+	ir = i;
+	jr1 = j;
+      }
+    }
+  }
+  xr1 = xc[ir][jr1];
+  yr1 = yc[ir][jr1];
+  for (i = 1; i <= ns2; i++) {
+    for (j = 1; j <= mpe[i]; j++) {
+      d = sqrt((xc[i][j] - xr2) * (xc[i][j] - xr2) + (yc[i][j] - yr2) * (yc[i][j] - yr2));
+      if (j > 0 && d < dist2) {
+	dist2 = d;
+	ir = i;
+	jr2 = j;
+      }
+    }
+  }
+  xr2 = xc[ir][jr2];
+  yr2 = yc[ir][jr2];
+  if (verbose) {
+    printf("%f %f s r\n", xr1, yr1);
+    printf("%f %f e r\n", xr2, yr2);
+  }
+  if (nbathy == NOTVALID) nbathy = bathy[ir];
+  hd_warn("Adding QUAD grid %s into mesh at locations (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
+ 
+  /*-----------------------------------------------------------------*/
+  /* Read and save the vertices and centre of the quadrilateral grid */
+  if (prmf) {
+    int mm = 2 * ice1 + 1;
+    prm_read_darray(pp, "XCOORDS", &x1, &nc);
+    prm_read_darray(pp, "YCOORDS", &y1, &nc);
+    x = d_alloc_1d(nc);
+    y = d_alloc_1d(nc);
+    nc = 0;
+    for (j = 2*sj; j <= 2*ej+2; j++)
+      for (i = 2*si+1; i <= 2*ei+1; i++) {
+	n = (j) * mm + i;
+        x[nc] = x1[n-1];
+        y[nc++] = y1[n-1];
+      }
+    d_free_1d(x1);
+    d_free_1d(y1);
+    fclose(pp);
+  } else {
+    prm_read_int(fp, "XCOORDS", &nc);
+    if (nc != (2 * nce1 + 1) * (2 * nce2 + 1)) hd_quit("add_quad_grid: %s wrong grid size: (%d,%d) != %d\n", iname, i, j, nc);
+    x = d_alloc_1d(nc);
+    for (i = 0; i < nc; i++) fscanf(fp, "%lf", &x[i]);
+    prm_read_int(fp, "YCOORDS", &nc);
+    y = d_alloc_1d(nc);
+    for (i = 0; i < nc; i++) fscanf(fp, "%lf", &y[i]);
+  }
+  lon = d_alloc_2d(5, ncells);
+  lat = d_alloc_2d(5, ncells);
+  n = 0;
+  dist1 = dist2 = HUGE;
+  if (verbose) printf("file=%s ncells=%d nc=%d dir=%d\n", iname, ncells, nc, dirf);
+
+  /* If dirf = 1 then the orthogonal grid coordinates are ordered    */
+  /* with values increasing sequentially across the channel. If      */
+  /* dirf = 0 then the coordinates are ordered such that values      */
+  /* sequentially increase along the channel. The user must discern  */
+  /* which is the case and set MERGE_DIR accordingly.                */
+  if (dirf) {
+    for (i = 0; i < ncells; i++) {
+      n = i * 6;
+      lon[i][0] = x[n+4];
+      lat[i][0] = y[n+4];
+      lon[i][1] = x[n];
+      lat[i][1] = y[n];
+      lon[i][2] = x[n+2];
+      lat[i][2] = y[n+2];
+      lon[i][3] = x[n+6];
+      lat[i][3] = y[n+6];
+      lon[i][4] = x[n+8];
+      lat[i][4] = y[n+8];
+      if(verbose && i==0)for(n=0; n<=4; n++)printf("%f %f y%d\n",lon[i][n],lat[i][n],n);
+    }
+  } else {
+    for (i = 0; i < ncells; i++) {
+      n = i * 2;
+      lon[i][0] = x[nc/3+n+1];
+      lat[i][0] = y[nc/3+n+1];
+      lon[i][1] = x[n];
+      lat[i][1] = y[n];
+      lon[i][2] = x[n+2];
+      lat[i][2] = y[n+2];
+      lon[i][3] = x[2*nc/3+n];
+      lat[i][3] = y[2*nc/3+n];
+      lon[i][4] = x[2*nc/3+n+2];
+      lat[i][4] = y[2*nc/3+n+2];
+      if(verbose && i==0)for(n=0; n<=4; n++)printf("%f %f a%d\n",lon[i][n],lat[i][n],n);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Set the merge location to the closest vertices in the grid      */
+  if (verbose) printf("Old start merge: i=%d j=%d [%f %f]\n", ir, jr1, xr1, yr1);
+  for (i = 0; i < ncells; i++) {
+    sort_circle_g(lon[i], lat[i], 4, sortdir);
+    for (j = 1; j <= 4; j++) {
+      d = sqrt((lon[i][j] - xr1) * (lon[i][j] - xr1) + (lat[i][j] - yr1) * (lat[i][j] - yr1));
+      if (d < dist1) {
+	dist1 = d;
+	ir = i;
+	jr1 = j;
+      }
+    }
+  }
+  lon[ir][jr1] = xr1;
+  lat[ir][jr1] = yr1;
+  if (verbose) {
+    printf("New start merge: i=%d j=%d\n", ir, jr1);
+    printf("Old end merge: j=%d [%f %f]\n", jr2, xr2, yr2);
+  }
+  for (j = 0; j <= 4; j++) {
+    d = sqrt((lon[ir][j] - xr2) * (lon[ir][j] - xr2) + (lat[ir][j] - yr2) * (lat[ir][j] - yr2));
+    if (j > 0 && j != jr1 && d < dist2) {
+      dist2 = d;
+      jr2 = j;
+    }
+  }
+  lon[ir][jr2] = xr2;
+  lat[ir][jr2] = yr2;
+  if(verbose) {
+    printf("New end merge: j=%d\n", jr2);
+    for(n=0; n<=4; n++)printf("%f %f b%d\n",lon[0][n],lat[0][n],n);
+  }
+  hd_warn("Curvilinear grid %s added at (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
+
+  /*-----------------------------------------------------------------*/
+  /* Merge a second set of coordinates if required (e.g. for two     */
+  /* ends of a channel.                                              */
+  if (prm_read_char(fp, "MERGE_LOC2", buf)) {
+    sscanf(buf, "(%lf %lf)-(%lf %lf)", &xr1, &yr1, &xr2, &yr2);
+
+    /* The merge location is set to the closest vertices in the      */
+    /* mesh.                                                         */
+    dist1 = dist2 = HUGE;
+    for (i = 1; i <= ns2; i++) {
+      for (j = 0; j <= mpe[i]; j++) {
+	d = sqrt((xc[i][j] - xr1) * (xc[i][j] - xr1) + (yc[i][j] - yr1) * (yc[i][j] - yr1));
+	if (j > 0 && d < dist1) {
+	  dist1 = d;
+	  ir = i;
+	  jr1 = j;
+	}
+      }
+    }
+    xr1 = xc[ir][jr1];
+    yr1 = yc[ir][jr1];
+    for (i = 1; i <= ns2; i++) {
+      for (j = 0; j <= mpe[i]; j++) {
+	d = sqrt((xc[i][j] - xr2) * (xc[i][j] - xr2) + (yc[i][j] - yr2) * (yc[i][j] - yr2));
+	if (j > 0 && d < dist2) {
+	dist2 = d;
+	ir = i;
+	jr2 = j;
+	}
+      }
+    }
+    xr2 = xc[ir][jr2];
+    yr2 = yc[ir][jr2];
+    hd_warn("  Second coordinates to merge are (%f %f)-(%f %f)\n", xr1, yr1, xr2, yr2);
+
+    /* Set the merge location to the closest vertices in the grid    */
+    dist1 = dist2 = HUGE;
+    for (i = 0; i < ncells; i++) {
+      /*sort_circle_g(lon[i], lat[i], 4, sortdir);*/
+      for (j = 1; j <= 4; j++) {
+	d = sqrt((lon[i][j] - xr1) * (lon[i][j] - xr1) + (lat[i][j] - yr1) * (lat[i][j] - yr1));
+	if (d < dist1) {
+	  dist1 = d;
+	  ir = i;
+	  jr1 = j;
+	}
+      }
+    }
+    lon[ir][jr1] = xr1;
+    lat[ir][jr1] = yr1;
+    for (j = 0; j <= 4; j++) {
+      d = sqrt((lon[ir][j] - xr2) * (lon[ir][j] - xr2) + (lat[ir][j] - yr2) * (lat[ir][j] - yr2));
+      if (j > 0 && j != jr1 && d < dist2) {
+	dist2 = d;
+	jr2 = j;
+      }
+    }
+    lon[ir][jr2] = xr2;
+    lat[ir][jr2] = yr2;
+    if(verbose)for(n=0; n<=4; n++)printf("%f %f c%d\n",lon[0][n],lat[0][n],n);
+    hd_warn("Curvilinear grid %s added at second location (%f %f)-(%f %f)\n", iname, xr1, yr1, xr2, yr2);
+  }
+
+  if (mode) {
+    ns2 = params->ns2;
+    /* Sometimes a few cells from the mesh should be removed so that */
+    /* the quad grid can seamlessly interface with the mesh.         */
+    /* Read polygons to remove some cells if required                */
+    if (strlen(polyr)) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      int npoly = parseline(polyr, fields, MAXNUMARGS);
+      FILE *pf;
+      poly_t *pl;
+      ns2 = params->ns2;
+      for (n = 0; n < npoly; n++) {
+	if ((pf = fopen(fields[n], "r")) == NULL) {
+	  hd_warn("Can't find file %s to remove from quad addition %s\n", 
+		  fields[0], iname);
+	  continue;
+	}
+	pl = poly_create();
+	j = poly_read(pl, pf);
+	for (i = 1; i <= ns2; i++) {
+	  if (poly_contains_point(pl, params->x[i][0], params->y[i][0])) {
+	    mask[i] = i;
+	    params->ns2--;
+	  }
+	}
+	fclose(pf);
+	poly_destroy(pl);
+      }
+    }
+    
+    /* Reallocate and reset the (x,y) arrays, including the points in  */
+    /* the grid.                                                       */
+    params->ns2 += ncells;
+    i_free_1d(params->npe2);
+    d_free_1d(params->bathy);
+    d_free_2d(params->x);
+    d_free_2d(params->y);
+    params->npe2 = i_alloc_1d(params->ns2+1);
+    params->bathy = d_alloc_1d(params->ns2+1);
+    params->x = d_alloc_2d(params->npe+1, params->ns2+1);
+    params->y = d_alloc_2d(params->npe+1, params->ns2+1);
+    n = 1;
+    for (i = 1; i <= ns2; i++) {
+      if (mask[i]) continue;
+      params->npe2[n] = npe2[i];
+      params->bathy[n] = bathy[i];
+      for (j = 0; j <= params->npe2[n]; j++) {
+	params->x[n][j] = xc[i][j];
+	params->y[n][j] = yc[i][j];
+      }
+      n++;
+    }
+    for (i = 0; i < ncells; i++) {
+      params->npe2[n] = 4;
+      if (bathyin)
+	params->bathy[n] = -fabs(bathyin[i]);
+      else
+	params->bathy[n] = -fabs(nbathy);
+      for (j = 0; j <= params->npe2[n]; j++) {
+	params->x[n][j] = lon[i][j];
+	params->y[n][j] = lat[i][j];
+      }
+      n++;
+    }
+  } else {
+    /* Create ascii files with the added quad grid locations         */
+    dp = fopen("quad_c.xy", "w");
+    op = fopen("quad.site", "w");
+    for (i = 0; i < ncells; i++) {
+      fprintf(dp, "%f %f\n",lon[i][0], lat[i][0]);
+      fprintf(op, "%f %f c%d r\n",lon[i][0], lat[i][0], i);
+    }
+    fclose(dp);
+    dp = fopen("quad_e.xy", "w");
+    n = 0;
+    for (i = 0; i < ncells; i++) {
+      for (j = 1; j <= 4; j++) {
+	fprintf(dp, "%f %f\n",lon[i][j], lat[i][j]);
+	fprintf(op, "%f %f e%d\n",lon[i][j], lat[i][j], n);
+	n++;
+      }
+      fprintf(dp, "%f %f\n",lon[i][1], lat[i][1]);
+      fprintf(dp, "NaN NaN\n");
+    }
+    fclose(dp);
+    fclose(op);
+  }
+
+  fclose(fp);
+  d_free_1d(x);
+  d_free_1d(y);
+  i_free_1d(npe2);
+  d_free_2d(lon);
+  d_free_2d(lat);
+  d_free_2d(xc);
+  d_free_2d(yc);
+  i_free_1d(mask);
+  if (bathyin) d_free_1d(bathyin);
+}
+
+/* END add_quad_grid()                                               */
+/*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Merges a quadrilateral grid with an unstructured mesh at a user   */
 /* defined location.                                                 */
 /*-------------------------------------------------------------------*/
-void add_quad_grid(parameters_t *params, char *iname)
+void add_quad_grido(parameters_t *params, char *iname)
 {
   FILE *fp;
   char buf[MAXSTRLEN];
@@ -8695,11 +9533,14 @@ void add_quad_grid(parameters_t *params, char *iname)
   }
   xr1 = xc[ir][jr1];
   yr1 = yc[ir][jr1];
-  for (j = 0; j <= params->npe2[ir]; j++) {
-    d = sqrt((xc[ir][j] - xr2) * (xc[ir][j] - xr2) + (yc[ir][j] - yr2) * (yc[ir][j] - yr2));
-    if (j > 0 && j != jr1 && d < dist2) {
-      dist2 = d;
-      jr2 = j;
+  for (i = 1; i <= params->ns2; i++) {
+    for (j = 1; j <= params->npe2[i]; j++) {
+      d = sqrt((xc[i][j] - xr2) * (xc[i][j] - xr2) + (yc[i][j] - yr2) * (yc[i][j] - yr2));
+      if (j > 0 && d < dist2) {
+	dist2 = d;
+	ir = i;
+	jr2 = j;
+      }
     }
   }
   xr2 = xc[ir][jr2];
@@ -8776,9 +9617,12 @@ void add_quad_grid(parameters_t *params, char *iname)
       }
     }
   }
-
   lon[ir][jr1] = xr1;
   lat[ir][jr1] = yr1;
+  if (verbose) {
+    printf("New start merge: i=%d j=%d\n", ir, jr1);
+    printf("Old end merge: j=%d [%f %f]\n", jr2, xr2, yr2);
+  }
   /*
   xr1 = xc[ir][jr1];
   yr1 = yc[ir][jr1];
@@ -8805,8 +9649,6 @@ void add_quad_grid(parameters_t *params, char *iname)
     dist1 = dist2 = HUGE;
     for (i = 1; i <= params->ns2; i++) {
       for (j = 0; j <= params->npe2[i]; j++) {
-	xc[i][j] = params->x[i][j];
-	yc[i][j] = params->y[i][j];
 	d = sqrt((xc[i][j] - xr1) * (xc[i][j] - xr1) + (yc[i][j] - yr1) * (yc[i][j] - yr1));
 	if (j > 0 && d < dist1) {
 	  dist1 = d;
@@ -8817,11 +9659,14 @@ void add_quad_grid(parameters_t *params, char *iname)
     }
     xr1 = xc[ir][jr1];
     yr1 = yc[ir][jr1];
-    for (j = 0; j <= params->npe2[ir]; j++) {
-      d = sqrt((xc[ir][j] - xr2) * (xc[ir][j] - xr2) + (yc[ir][j] - yr2) * (yc[ir][j] - yr2));
-      if (j > 0 && j != jr1 && d < dist2) {
+    for (i = 1; i <= params->ns2; i++) {
+      for (j = 0; j <= params->npe2[i]; j++) {
+	d = sqrt((xc[i][j] - xr2) * (xc[i][j] - xr2) + (yc[i][j] - yr2) * (yc[i][j] - yr2));
+	if (j > 0 && d < dist2) {
 	dist2 = d;
+	ir = i;
 	jr2 = j;
+	}
       }
     }
     xr2 = xc[ir][jr2];
@@ -8831,7 +9676,7 @@ void add_quad_grid(parameters_t *params, char *iname)
     /* Set the merge location to the closest vertices in the grid    */
     dist1 = dist2 = HUGE;
     for (i = 0; i < ncells; i++) {
-      sort_circle_g(lon[i], lat[i], 4, sortdir);
+      /*sort_circle_g(lon[i], lat[i], 4, sortdir);*/
       for (j = 1; j <= 4; j++) {
 	d = sqrt((lon[i][j] - xr1) * (lon[i][j] - xr1) + (lat[i][j] - yr1) * (lat[i][j] - yr1));
 	if (d < dist1) {
@@ -8931,7 +9776,7 @@ void add_quad_grid(parameters_t *params, char *iname)
   i_free_1d(mask);
 }
 
-/* END add_quad_grid()                                               */
+/* END add_quad_grido()                                              */
 /*-------------------------------------------------------------------*/
 
 /*
@@ -9286,112 +10131,85 @@ point *convex_hull(point *v,  int *count)
   return stack;
 }
 
-
 /*-------------------------------------------------------------------*/
-/* Prints the dual of the COMPAS mesh (i.e. the triangulation) to    */
-/* files with format compatible for input into SWAN.                 */
+/* Finds concave hull of a set of n points by finding the perimeter  */
+/* of a Delaunay triangulation of those points.                      */
 /*-------------------------------------------------------------------*/
-void write_swan_mesh(master_t *master)
+point *concave_hull_c(point *v,  int *count)
 {
-  geometry_t *geom = master->geom;
-  parameters_t *params = master->params;
-  FILE *np, *ep, *bp, *op;
-  char buf[MAXSTRLEN], key[MAXSTRLEN];
-  int c, cc, c1, v, vv, nc, n;
-  int *c2cc, *mask;
-  int mk;
-  int checkf = 1;
+  int n = *count;
+  delaunay *d;
+  int **nei, *pe;
+  int i, npe = 0;
+  int *index, *mask;
+  point *stack;
 
-  if (!params->doswan) return;
-  c2cc = i_alloc_1d(geom->szcS);
-  memset(c2cc, 0, geom->szcS * sizeof(int));
-  mask = i_alloc_1d(geom->szcS);
-  memset(mask, 0, geom->szcS * sizeof(int));
+  d = delaunay_build(n, v, 0, NULL, 0, NULL);
+  neighbour_finder_b(d, &nei);
 
-  mesh_ofile_name(params, key);
-
-  /* Get the mask for valid centres                                  */
-  nc = 0;
-  for (vv = 1; vv <= geom->v2_e2; vv++) {
-    v = geom->w2_e2[vv];
-    for (cc = geom->nvc[v]; cc >= 1; cc--) {
-      c = geom->v2c[v][cc];
-      if (!mask[c]) nc++;
-      mask[c] = 1;
+  /* Count the perimeter edges. These will always be less than the   */
+  /* number of trianges.                                             */
+  npe = 0;
+  pe = i_alloc_1d(d->ntriangles); 
+  for (i = 0; i < d->ntriangles; ++i) {
+    for (n = 0; n < 3; n++) {
+      if (nei[n][i] == -1) pe[npe++] = i;
     }
   }
-
-  /* Print the triangulation of non-boundary cells                   */
-  sprintf(buf, "%s.node", key);
-  np = fopen(buf, "w");
-  sprintf(buf, "%s.bth", key);
-  bp = fopen(buf, "w");
-  fprintf(np, "%d 2 0 1\n", nc);
-  nc = 1;
-  for (cc = 1; cc <= geom->v2_t; cc++) {
-    c = geom->w2_t[cc];
-    if (mask[c]) {
-      mk = 0;
-      for (n = 1; n <= geom->npe[c]; n++) {
-	c1 = geom->c2c[n][c];
-	if (geom->wgst[c1]) {
-	  mk = 1;
-	  break;
-	}
-      }
-      fprintf(np, "%d %f %f %d\n", nc, geom->cellx[c], geom->celly[c], mk);
-      fprintf(bp, "%f\n", geom->botz[c]);
-      c2cc[c] = nc++;
-    }
-  }
-  /* Print the triangulation of boundary cells                       */
-  for (n = 0; n < geom->nobc; n++) {
-    open_bdrys_t *open = geom->open[n];
-    for (cc = 1; cc <= open->no2_t; cc++) {
-      c = open->obc_t[cc];
-      if (mask[c]) {
-	fprintf(np, "%d %f %f %d\n", nc, geom->cellx[c], geom->celly[c], open->id+2);
-	fprintf(bp, "%f\n", geom->botz[c]);
-	c2cc[c] = nc++;
+  /* Get the indices of the perimeter edge points. A mapping == -1   */
+  /* indicates that triange lies on the perimeter of the             */
+  /* triangulation (an interior triangle should have 3 valid maps).  */
+  index = i_alloc_1d(2 * npe);
+  for (i = 0; i < npe; i++) {
+    triangle* t = &d->triangles[pe[i]];
+    for (n = 0; n < 3; n++) {
+      if (nei[n][i] == -1) {
+	int nn = (n == 2) ? 0 : n + 1;
+	index[2*i] = t->vids[n];
+	index[2*i+1] = t->vids[nn];
       }
     }
   }
-  fclose(np);
-  fclose(bp);
+  /* Remove duplicates and make a continuous polygon                 */
+  mask = i_alloc_1d(2 * npe);
+  memset(mask, 0, 2 * npe * sizeof(int));
+  n = 0;
+  pe[n] = -1;
+  mask[n++] = index[0];
+  mask[n++] = index[1];
+  for (i = 0; i < npe; i++) {
+    if (pe[i] != -1) {
+      if (mask[n-1] == index[2*i]) {
+	mask[n++] = index[2*i+1];
+	pe[i] = -1;
+	break;
+      }
+      if (mask[n-1] == index[2*i+1]) {
+	mask[n++] = index[2*i];
+	pe[i] = -1;
+	break;
+      }
+    }
+  }
+  n--;
+
+  /* Save the point locations                                        */
+  stack = (point *)malloc((n + 1)* sizeof(point));
+  for (i = 0; i < n; i++) {
+    stack[i].x = d->points[mask[i]].x;
+    stack[i].y = d->points[mask[i]].y;
+  }
+  n++;
+  stack[n].x = stack[0].x;    /* Close the polygon                   */
+  stack[n].y = stack[0].y;
+  *count = n;
+  i_free_1d(pe);
+  i_free_1d(index);
   i_free_1d(mask);
-
-  /* Print the triangle connectivity                                 */
-  sprintf(buf, "%s.ele", key);
-  ep = fopen(buf, "w");
-  fprintf(ep, "%d 3 0\n", geom->v2_e2);
-  if (checkf) {
-    sprintf(buf, "%s_swan.txt", key);
-    op = fopen(buf, "w");
-  }
-  for (vv = 1; vv <= geom->v2_e2; vv++) {
-    v = geom->w2_e2[vv];
-    fprintf(ep, "%d ", vv);
-    if (geom->nvc[v] != 3) hd_warn("swan_mesh(): found more than 3 v2c maps at v=%d[%f %f]\n", v,
-				   geom->gridx[v], geom->gridy[v]);
-    for (cc = geom->nvc[v]; cc >= 1; cc--) {
-      c = geom->v2c[v][cc];
-      if (c == 0) hd_warn("swan_mesh(): zero centre found at v=%d, cc=%d\n", v, cc);
-      fprintf(ep, "%d ", c2cc[c]);
-      if (checkf) fprintf(op, "%f %f\n", geom->cellx[c], geom->celly[c]);
-    }
-    fprintf(ep, "\n");
-    if (checkf) {
-      cc = geom->nvc[v];
-      c = geom->v2c[v][cc];
-      fprintf(op, "%f %f\n", geom->cellx[c], geom->celly[c]);
-      fprintf(op, "NaN NaN\n");
-    }
-  }
-  fclose(ep);
-  if (checkf) fclose(op);
-
-  i_free_1d(c2cc);
+  i_free_2d(nei);
+  return stack;
 }
 
-/* END swan_mesh()                                                   */
-/*-------------------------------------------------------------------*/
+
+
+

@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: recom_extras.c 6722 2021-03-29 05:00:58Z bai155 $
+ *  $Id: recom_extras.c 7202 2022-09-15 04:49:43Z bai155 $
  *
  */
 
@@ -32,7 +32,6 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "recom_extras.h"
 
 typedef struct {

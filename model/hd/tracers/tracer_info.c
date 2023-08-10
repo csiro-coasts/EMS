@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracer_info.c 6662 2020-09-08 06:09:29Z her127 $
+ *  $Id: tracer_info.c 7115 2022-05-25 00:12:28Z her127 $
  *
  */
 
@@ -25,8 +25,8 @@
 #include "netcdf.h"
 #include "hd.h"
 
-errfn keyprm_errfn;
 int get_type(char *buf, int type);
+int is_tracer_type_optical(int type);
 
 /** Creates a `tracer_info' array from a PRM file.
  * @param fp parameter file
@@ -494,7 +494,8 @@ void tracer_read(FILE * fpp, char *prefix, int type, errfn quitfn,
 #endif
 
 #if defined(HAVE_ECOLOGY_MODULE)
-    if (is_tracer_type_ecology(tr->type) || is_eco_var(tr->name)) {
+
+    if (is_tracer_type_ecology(tr->type) || is_tracer_type_optical(tr->type) || is_eco_var(tr->name)) {
       if (tracer_read_attribute
 	  (fpt, prefix, keyname, tr->name, m, "eco_default", emptyfn, buf))
 	eco_set_tracer_defaults(tr, tr->name, buf, NULL);
@@ -824,7 +825,7 @@ void tracer_write_2d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
     fprintf(op, "TRACER%1.1d.valid_range     %-6.1f %-6.1f\n", n,
 	    tracer->valid_range_wc[0], tracer->valid_range_wc[1]);
   fprintf(op, "TRACER%1.1d.diagn           %d\n", n, tracer->diagn);
-  fprintf(op, "TRACER%1.1d.type           %s\n", n, trtypename(tracer->type, key));
+  fprintf(op, "TRACER%1.1d.type            %s\n", n, trtypename(tracer->type, key));
   fprintf(op, "\n");
   
 }
@@ -849,6 +850,8 @@ int get_type(char *buf, int type)
     type |= PARAMETER;
   if (contains_token(buf, "FORCING") != NULL)
     type |= FORCING;
+  if (contains_token(buf, "OPTICAL") != NULL)
+    type |= OPTICAL;
   return (type);
 }
 
@@ -859,6 +862,15 @@ int is_tracer_type_ecology(int type)
     result = 1;
   return(result);
 }
+
+int is_tracer_type_optical(int type)
+{
+  int result = 0;
+  if (type & OPTICAL)
+    result = 1;
+  return(result);
+}
+
 
 /*
  * Helper function to write out 3D tracer attributes
@@ -916,7 +928,7 @@ void tracer_write_3d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
   else 
 #endif
     if(tracer->type && (tracer->type & (WATER|SEDIM) || tracer->type & INTER))
-      fprintf(op, "TRACER%1.1d.type           %s\n", n, trtypename(tracer->type, key));
+      fprintf(op, "TRACER%1.1d.type            %s\n", n, trtypename(tracer->type, key));
   
   if (strlen(tracer->tracerstat))
     fprintf(op, "TRACER%1.1d.tracerstat      %s\n", n, tracer->tracerstat);
@@ -954,12 +966,12 @@ void tracer_write_3d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
 /*-------------------------------------------------------------------*/
 /* Writes a tracer list to ascii file                                */
 /*-------------------------------------------------------------------*/
-int tracer_write(parameters_t *params, FILE *op, win_priv_t *wincon)
+int tracer_write(parameters_t *params, FILE *op)
 {
   int n, tn, ntr = 0;
 
   /* Only print salt and temp for RECOM and PRE_MARVL */
-  if (params->roammode & (A_RECOM_R1|A_RECOM_R2) || params->runmode & PRE_MARVL) {
+  if (params->roammode >= A_RECOM_R1|A_RECOM_R2 || params->runmode & PRE_MARVL) {
     int num_tr = 2;
 #if defined(HAVE_ECOLOGY_MODULE)
     /* Count any ecology 2D tracerstats */

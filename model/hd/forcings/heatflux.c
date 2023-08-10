@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: heatflux.c 6424 2019-11-22 00:23:49Z her127 $
+ *  $Id: heatflux.c 6953 2021-12-17 03:14:49Z her127 $
  *
  */
 
@@ -276,11 +276,11 @@ int longout_init(sched_event_t *event)
 				"lwr", "W m-2", &data->dt, &data->id,
 				&master->lwro);
 
-
   if (data->ts == NULL) {
     free(data);
     return 0;
-  }
+  } else
+    master->heatflux |= COMP_LWO;
 
   return 1;
 }
@@ -347,14 +347,20 @@ int longin_init(sched_event_t *event)
 
   data = (longin_data_t *)malloc(sizeof(longin_data_t));
   schedSetPrivateData(event, data);
-  data->ts = frc_read_cell_ts(master, params->hf, params->hf_dt,
-                              "lwr_in", "W m-2", &data->dt, &data->id,
-                              &master->lwrd);
+  if (params->heatflux & ADVANCED) 
+    data->ts = frc_read_cell_ts(master, params->lwri, params->lwri_dt,
+				"lwr_in", "W m-2", &data->dt, &data->id,
+				&master->lwri);
+  else
+    data->ts = frc_read_cell_ts(master, params->hf, params->hf_dt,
+				"lwr_in", "W m-2", &data->dt, &data->id,
+				&master->lwrd);
 
   if (data->ts == NULL) {
     free(data);
     return 0;
-  }
+  } else
+    master->heatflux |= COMP_LWI;
 
   return 1;
 }
@@ -374,8 +380,12 @@ double longin_event(sched_event_t *event, double t)
 
   if (t >= (event->next_event - 2 * SEPS)) {
     /* Convert surface heat flux ms-1K */
-    frc_ts_eval_grid(master, t, data->ts, data->id, master->lwrd,
-                     -1.0 / (4.0e3 * 1025.0));
+    if (params->heatflux & ADVANCED)
+      frc_ts_eval_grid(master, t, data->ts, data->id, master->lwri, 1.0);		       
+    else
+      frc_ts_eval_grid(master, t, data->ts, data->id, master->lwrd,
+		       -1.0 / (4.0e3 * 1025.0));
+
     event->next_event += data->dt;
   }
 
@@ -394,7 +404,10 @@ void longin_cleanup(sched_event_t *event, double t)
   longin_data_t *data = (longin_data_t *)schedGetPrivateData(event);
 
   if (data != NULL) {
-    free(master->lwrd);
+    if (params->heatflux & ADVANCED)
+      free(master->lwri);
+    else
+      free(master->lwrd);
     hd_ts_free(master, data->ts);
     free(data);
   }
@@ -1075,8 +1088,10 @@ void surf_heat_flux(geometry_t *window,
       bow = 0.62 * (wt - at) / (ew - es);
 
     /* Get the long wave radiation */
-    lg = lwrad(wt, at, tcld);
-    /*lg = lwrado(wt);*/
+    if (wincon->heatflux & COMP_LWI) {
+      lg = lwrado(wt) + windat->lwri[c];
+    } else
+      lg = lwrad(wt, at, tcld);
 
     /* Get the short wave radiation */
     if (fabs(wincon->albedo) <= 1.0) {
@@ -1232,6 +1247,13 @@ double get_vapour_press(window_t   *windat,
   } else if (wincon->sh_f & DEWPOINT) {
     dtw = windat->wetb[c];
     *es = dewe(dtw, pres);
+    *esat = dewe(at, pres);
+    *rh = 100.0 * (*es / *esat);
+    dtw = estt(at, pres, *rh);
+  } else if (wincon->sh_f & SPECHUM) {
+    double q = windat->rh[c];
+    /* Back out es from q = 0.622 * es / (pres - (0.378 * es)) */
+    *es = (q * pres) / (0.622 + q * 0.378);
     *esat = dewe(at, pres);
     *rh = 100.0 * (*es / *esat);
     dtw = estt(at, pres, *rh);

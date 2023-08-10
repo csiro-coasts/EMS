@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 6726 2021-03-30 00:33:54Z her127 $
+ *  $Id: monitor.c 7117 2022-05-25 02:06:01Z her127 $
  *
  */
 
@@ -99,6 +99,8 @@ void monitor(master_t *master,     /* Master data                    */
   } else {
     if (master->totals)
       print_total_mass(master);
+    if (master->errornorm & N_ERRN)
+      print_error_norms(master);
     if (!(master->decf & NONE)) {
       int dim = (master->decf == DEC_ETA) ? 2 : 3;
       calc_decorr(geom, master->decv, master->decv1, master->decorr, 
@@ -304,7 +306,8 @@ void debug_c(geometry_t *window, int var, int mode)
       fprintf(wincon->dbf, "e = %d : e1s = %d, dir=%d\n", e, es, j);
     }
     for (j = 1; j <= window->npe[cs]; j++) {
-      fprintf(wincon->dbf, "c2c[%d] = %d\n", j, window->c2c[j][c]);
+      fprintf(wincon->dbf, "c2c[%d] = %d (cg=%d)\n", j, window->c2c[j][c],
+	      window->wsa[window->c2c[j][c]]);
     }
     fprintf(wincon->dbf, "depth = %5.2f\n", window->botz[cs]);
     for (cc = 1; cc <= wincon->vcs; cc++) {
@@ -1888,7 +1891,7 @@ void shapiro_smooth(geometry_t *window,   /* Window geometry         */
 
 /*-------------------------------------------------------------------*/
 /* Routine to implement a Shapiro type smoothing on an array. Taken  */
-/* Sapiro, R. (1975) Linear Filtering. Mathematics of Computation,   */
+/* Shapiro, R. (1975) Linear Filtering. Mathematics of Computation,  */
 /* 29, 1094-1097. Stencils are taken from Table 2. For 3D arrays.    */
 /*-------------------------------------------------------------------*/
 void shapiro(geometry_t *window,     /* Window geometry              */
@@ -2494,7 +2497,7 @@ void calc_cfl(geometry_t *window,   /* Window geometry               */
     }
 
     /* Get the grid spacing                                          */
-    dh = sqrt((double)geom->npe[c] / (2.0 * geom->cellarea[c]));
+    dh = sqrt((double)window->npe[c] / (2.0 * window->cellarea[c]));
 
     /* Total 3D speed                                                */
     spd = 2.0 * iws + cspd;
@@ -2724,28 +2727,7 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
   double d1, d2;
 
   /* Cell centered horizontal viscosity                              */
-  if (windat->u1vhc) {
-    for (cc = 1; cc <= window->b3_t; cc++) {
-      c = window->w3_t[cc];
-      cs = window->m2d[c];
-      windat->u1vhc[c] = 0.0;
-      d1 = 0.0;
-      for (ee = 1; ee <= window->npe[cs]; ee++) {
-	e = window->c2e[ee][c];
-	es = window->m2de[e];
-	d2 = window->edgearea[es];
-	if (wincon->diff_scale & NONE)  d2 = 1.0;
-	if (wincon->diff_scale & LINEAR) d2 = sqrt(d2);
-	if (wincon->diff_scale & CUBIC) d2 = d2 * sqrt(d2);
-	windat->u1vhc[c] += (d2 * wincon->u1vh[e]);
-	/*windat->u1vhc[c] += (d2 * wincon->u2kh[e]);*/
-	d1 += d2;
-      }
-      windat->u1vhc[c] /= d1;
-      if (wincon->diff_scale & SCALEBI)
-	windat->u1vhc[c] /= (0.125 * window->cellarea[cs]);
-    }
-  }
+  get_u1vhc(window, windat, wincon);
 
   /* Tidal elevation from TPXO model                                 */
   if (windat->tpxotide) {
@@ -2911,8 +2893,13 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     if (windat->brunt) windat->brunt[c] = N;
 
     /* Simpson-Hunter tidal front                                    */
-    if (windat->tfront) {
-      d1 = depth / (windat->dens_0[c] * wincon->Cd[c] * pow(windat->speed_2d[cs], 3.0));
+    /* Hearn (1985) On the value of the mixing efficiency in the     */
+    /* Simpson-Hunter h/u3 criterion. eps=3e-3                       */
+    /* Pingree and Griffiths (1978) Tidal Fronts on the Shelf Seas   */
+    /* Around the British Isles. JGR, 83 C9.                         */
+    /* S=log10(H/Cd.U^3) = 1.5 [cgs]. S > 2 stratified & S <1 mixed. */
+    if (windat->tfront && c == cs) {
+      d1 = depth / (wincon->Cd[c] * pow(windat->speed_2d[cs], 3.0));
       windat->tfront[c] = log10(d1);
     }
 
@@ -3011,6 +2998,47 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
 }
 
 /* END diag_numbers()                                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Computs the cell centered horizontal viscosity diagnostic         */
+/*-------------------------------------------------------------------*/
+void get_u1vhc(geometry_t *window,   /* Window geometry              */
+	       window_t *windat,     /* Window data                  */
+	       win_priv_t *wincon    /* Window constants             */
+	       )
+{
+  int cc, c, cs;
+  int ee, e, es;
+  double d1, d2;
+
+  if (windat->u1vhc) {
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      cs = window->m2d[c];
+      windat->u1vhc[c] = 0.0;
+      d1 = 0.0;
+      for (ee = 1; ee <= window->npe[cs]; ee++) {
+	e = window->c2e[ee][c];
+	es = window->m2de[e];
+	d2 = window->edgearea[es];
+	if (wincon->diff_scale & NONE)  d2 = 1.0;
+	if (wincon->diff_scale & LINEAR) d2 = sqrt(d2);
+	if (wincon->diff_scale & CUBIC) d2 = d2 * sqrt(d2);
+	if (wincon->diff_scale & SCALEBI)
+	  windat->u1vhc[c] += (d2 * wincon->u1vh[e] / (0.125 * window->edgearea[es]));
+	else
+	  windat->u1vhc[c] += (d2 * wincon->u1vh[e]);
+	/*windat->u1vhc[c] += (d2 * wincon->u2kh[e]);*/
+	d1 += d2;
+      }
+      windat->u1vhc[c] /= d1;
+    }
+  }
+}
+
+/* END get_u1vhc()                                                   */
 /*-------------------------------------------------------------------*/
 
 
@@ -4083,6 +4111,169 @@ void print_total_mass(master_t *master) /* Model grid data structure */
 }
 
 /* END print_total_mass()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to set up the error norms output timeseries file.         */
+/*-------------------------------------------------------------------*/
+void init_error_norms(master_t *master)    /* Master data            */
+{
+  int n, m, nn, trn;
+
+  /*---------------------------------------------------------------*/
+  /* Initialize the output file                                    */
+  if (master->errornorm & N_ERRN && tserror.fp == NULL) {
+    if (strlen(master->opath))
+      sprintf(tserror.pname, "%serrornorm.ts", master->opath);
+    else
+      sprintf(tserror.pname, "errornorm.ts");
+    if ((tserror.fp = fopen(tserror.pname, "w")) == NULL)
+      hd_quit("init_error_norms: Can't open file %s\n", tserror.pname);
+    tserror.tsdt = master->enorm_dt;
+    tserror.master = master;
+    tserror.i = 1;
+    tserror.j = 1;
+    tserror.k = 1;
+    tserror.tsout = master->t;
+    fprintf(tserror.fp, "## COLUMNS %d\n", 4);
+    fprintf(tserror.fp, "##\n");
+    fprintf(tserror.fp, "## COLUMN1.name  Time\n");
+    fprintf(tserror.fp, "## COLUMN1.long_name  Time\n");
+    fprintf(tserror.fp,
+	    "## COLUMN1.units  days since 1990-01-01 00:00:00 +10\n");
+    fprintf(tserror.fp, "## COLUMN1.missing_value -999\n");
+    fprintf(tserror.fp, "##\n");
+    fprintf(tserror.fp, "## COLUMN2.name  cells\n");
+    fprintf(tserror.fp, "## COLUMN2.long_name  Number of cells\n");
+    fprintf(tserror.fp, "## COLUMN2.units  \n");
+    fprintf(tserror.fp, "## COLUMN2.missing_value  0.000000\n");
+    fprintf(tserror.fp, "##\n");
+    fprintf(tserror.fp, "## COLUMN3.name  L1\n");
+    fprintf(tserror.fp, "## COLUMN3.long_name  L1 error loss norm\n");
+    fprintf(tserror.fp, "## COLUMN3.units  \n");
+    fprintf(tserror.fp, "## COLUMN3.missing_value  0.000000\n");
+    fprintf(tserror.fp, "##\n");
+    fprintf(tserror.fp, "## COLUMN4.name  L2\n");
+    fprintf(tserror.fp, "## COLUMN4.long_name  L2 error loss norm\n");
+    fprintf(tserror.fp, "## COLUMN4.units  \n");
+    fprintf(tserror.fp, "## COLUMN4.missing_value  0.000000\n");
+    fprintf(tserror.fp, "##\n");
+    fprintf(tserror.fp, "## COLUMN5.name  Linf\n");
+    fprintf(tserror.fp, "## COLUMN5.long_name  L-infinity error loss norm\n");
+    fprintf(tserror.fp, "## COLUMN5.units  \n");
+    fprintf(tserror.fp, "## COLUMN5.missing_value  0.000000\n");
+    fprintf(tserror.fp, "##\n");
+  }
+}
+
+/* END init_error_norms()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Prints the error norms to file. These are relative error norms    */
+/* computed as in Ringler et al (2010), Eq. 74 and 75.               */
+/*-------------------------------------------------------------------*/
+void print_error_norms(master_t *master) /* Global data              */
+{
+  geometry_t *geom = master->geom;
+  double L1, L2, Linf;
+  int n;
+
+  if (master->t >= tserror.tsout - DT_EPS) {
+    n = (master->errornorm & N_TRA2D) ? geom->b2_t : geom->b3_t;
+    L1 = master->enorm[1] / master->enorm[2];
+    L2 = sqrt(master->enorm[3] / master->enorm[0]) / 
+      sqrt(master->enorm[4] / master->enorm[0]);
+    Linf = master->enorm[5] / master->enorm[6];
+    fprintf(tserror.fp, "%f %d %f %f %f\n",
+	    master->t/86400, n, L1, L2, Linf);
+    fflush(tserror.fp);
+    tserror.tsout += tserror.tsdt;
+    memset(master->enorm, 0, 9 * sizeof(double));
+  }
+}
+
+/* END print_error_norms()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Computs the error norm loss diagnostic on the windows             */
+/*-------------------------------------------------------------------*/
+void error_norms_w(geometry_t *window,   /* Window geometry          */
+		   window_t *windat,     /* Window data              */
+		   win_priv_t *wincon    /* Window constants         */
+  )
+{
+  int c, cc, cs;
+  double *tr1, *tr2;
+  double vol, dif, *dz;
+  int vc, *cells;
+
+  if (wincon->errornorm & N_TRA2D) {
+    vc = window->b2_t;
+    cells = window->w2_t;
+    dz = wincon->one;
+    tr1 = windat->tr_wcS[wincon->normt1];
+    tr2 = windat->tr_wcS[wincon->normt2];
+  } else {
+    vc = window->b3_t;
+    cells = window->w3_t;
+    dz = wincon->dz;
+    if (wincon->errornorm & N_SURF) {
+      vc = window->b2_t;
+      cells = window->w2_t;
+      dz = wincon->one;
+    }
+    tr1 = windat->tr_wc[wincon->normt1];
+    tr2 = windat->tr_wc[wincon->normt2];
+  }
+
+  memset(wincon->enorm, 0, 9 * sizeof(double));
+  for (cc = 1; cc <= vc; cc++) {
+    c = cells[cc];
+    cs = window->m2d[c];
+    vol = window->cellarea[cs] * dz[c];
+    dif = fabs(tr1[c] - tr2[c]);
+    wincon->enorm[0] += vol;
+    /* L1 norm                                                       */
+    wincon->enorm[1] += dif * vol;
+    wincon->enorm[2] += tr1[c] * vol;
+    /* L2 norm                                                       */
+    wincon->enorm[3] += dif * dif * vol;
+    wincon->enorm[4] += tr1[c] * tr1[c] * vol;
+    /* L infinity norm                                               */
+    if (dif > wincon->enorm[5]) wincon->enorm[5] = dif;
+    if (tr1[c] > wincon->enorm[6]) wincon->enorm[6] = tr1[c];
+  }
+}
+
+/* END error_norms_w()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Computs the error norm loss diagnostic on the master              */
+/*-------------------------------------------------------------------*/
+void error_norms_m(master_t *master,     /* Master data              */
+		   geometry_t *window,   /* Window geometry          */
+		   window_t *windat,     /* Window data              */
+		   win_priv_t *wincon    /* Window constants         */
+  )
+{
+  master->enorm[0] += wincon->enorm[0];
+  master->enorm[1] += wincon->enorm[1];
+  master->enorm[2] += wincon->enorm[2];
+  master->enorm[3] += wincon->enorm[3];
+  master->enorm[4] += wincon->enorm[4];
+  if (wincon->enorm[5] > master->enorm[5]) master->enorm[5] = wincon->enorm[5];
+  if (wincon->enorm[6] > master->enorm[6]) master->enorm[6] = wincon->enorm[6];
+}
+
+
+/* END error_norms_m()                                               */
 /*-------------------------------------------------------------------*/
 
 
@@ -5358,13 +5549,18 @@ void calc_monotonic(geometry_t *window,
   int c, cc;
   int tn = wincon->monon;
   double d1;
+  int don = 0;
+
+  if (wincon->trasc & FFSL) {
+    return;
+  }
 
   for (cc = 1; cc <= window->b3_t; cc++) {
     c = window->w3_t[cc];
     if (windat->tr_wc[tn][c] < wincon->monomn ||
 	windat->tr_wc[tn][c] > wincon->monomx) {
       d1 = 0.0;
-      /*
+
       if (wincon->lw) {
 	qweights *lw = &wincon->lw[c];
 	double mx = lw->tmx;
@@ -5374,7 +5570,7 @@ void calc_monotonic(geometry_t *window,
 	if (windat->tr_wc[tn][c] > mx)
 	  d1 = fabs(windat->tr_wc[tn][c] - mx);
       } else {
-      */
+
 	/*
 	  d1 = windat->mono[c] * 100.0 * (double)windat->nstep;
 	  windat->mono[c]  = 100.0 * (d1 + 1.0) / (double)(windat->nstep + 1);
@@ -5386,7 +5582,12 @@ void calc_monotonic(geometry_t *window,
 	d1 = fabs(windat->tr_wc[tn][c] - wincon->monomn);
       if (windat->tr_wc[tn][c] > wincon->monomx)
 	d1 = fabs(windat->tr_wc[tn][c] - wincon->monomx);
-      
+      /*
+      if (windat->tr_wc[tn][c] > wincon->monomx) d1 = windat->tr_wc[tn][c];
+      if (windat->tr_wc[tn][c] < wincon->monomn) d1 = windat->tr_wc[tn][c];
+      windat->mono[c] = d1;
+      */
+      }
       windat->mono[c] = max(windat->mono[c], d1);
     }
   }

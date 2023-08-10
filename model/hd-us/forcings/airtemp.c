@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: airtemp.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: airtemp.c 7154 2022-07-07 02:31:14Z her127 $
  *
  */
 
@@ -43,6 +43,8 @@ int airtemp_init_single(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+
+  if (strlen(params->airtemp) == 0) return 0;
 
   data = (airtemp_data_t *)malloc(sizeof(airtemp_data_t));
   schedSetPrivateData(event, data);
@@ -103,12 +105,34 @@ int airtemp_init(sched_event_t *event)
 
   data = (airtemp_mdata_t *)malloc(sizeof(airtemp_mdata_t));
   schedSetPrivateData(event, data);
-  if((data->tsfiles = frc_read_cell_ts_mult(master, params->airtemp, params->airtemp_dt,
-					   "air_temp", "degrees C", &data->dt, data->varids, 
-					    &data->ntsfiles, &master->airtemp, 0)) == NULL)
-    data->tsfiles = frc_read_cell_ts_mult(master, params->airtemp, params->airtemp_dt,
-					  "air_temp", "degrees_C", &data->dt, data->varids, 
+  if (strlen(params->patm_interp)) {
+    if((data->tsfiles = frc_read_cell_ts_mult_us(master, params->airtemp, 
+						 params->airtemp_dt, 
+						 params->airtemp_interp,
+						 "air_temp", "degrees C", 
+						 &data->dt, data->varids, 
+						 &data->ntsfiles, &master->airtemp, 0)
+	) == NULL)
+      data->tsfiles = frc_read_cell_ts_mult_us(master, params->airtemp,
+					       params->airtemp_dt,
+					       params->airtemp_interp,
+					       "air_temp", "degrees_C", 
+					       &data->dt, data->varids, 
+					       &data->ntsfiles, &master->airtemp, 1);
+
+  } else {
+  if((data->tsfiles = frc_read_cell_ts_mult(master, params->airtemp, 
+					    params->airtemp_dt,
+					    "air_temp", "degrees C", 
+					    &data->dt, data->varids, 
+					    &data->ntsfiles, &master->airtemp, 0)
+      ) == NULL)
+    data->tsfiles = frc_read_cell_ts_mult(master, params->airtemp, 
+					  params->airtemp_dt,
+					  "air_temp", "degrees_C", 
+					  &data->dt, data->varids, 
 					  &data->ntsfiles, &master->airtemp, 1);
+  }
   if (data->tsfiles == NULL) {
     free(data);
     return 0;

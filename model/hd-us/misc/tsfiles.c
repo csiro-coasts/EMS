@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tsfiles.c 6470 2020-02-18 23:50:08Z her127 $
+ *  $Id: tsfiles.c 7278 2022-12-14 05:40:30Z her127 $
  *
  */
 
@@ -29,9 +29,12 @@
 
 void cfl_sp(master_t *master);
 static timeseries_t *find_tsfile_in_cache(master_t *master, char *fname);
+static timeseries_t *find_tsfile_in_cache_us(master_t *master, char *fname,
+					     char *i_rule);
 static void add_tsfile_to_cache(master_t *master, timeseries_t *ts);
-double ts_eval_sparse(timeseries_t *ts, int id, double t, int cc);
-double df_eval_sparse(datafile_t *df, df_variable_t *v, double r, int cc);
+int ts_eval_sparse(timeseries_t *ts, int id, double t, int ns, double *var);
+double ts_eval_isparse(timeseries_t *ts, int id, double t, int cc);
+double df_eval_isparse(datafile_t *df, df_variable_t *v, double r, int cc);
 int dump_choose_multifile(datafile_t *df, double t);
 int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz);
 int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, int nz);
@@ -42,6 +45,12 @@ int count_leap(char *d, double t);
 void process_ghrsst(master_t *master);
 int read_ghrsst(master_t *master, int ntsfiles, timeseries_t **tsfiles,
 		cstring * names, double t);
+void hd_ts_multifile_eval_ugrid(master_t *master, int ntsfiles, timeseries_t **tsfiles,
+				cstring * names, char *varname, double *var,
+				double ti, int ns, int thio, int mode);
+void hd_ts_multifile_eval_ugrid2D(master_t *master, int ntsfiles, timeseries_t **tsfiles,
+				  cstring * names, char *varname, double *var,
+				  double ti, int ns, int thio, int mode);
 
 /* check that time step won't violate CFL condition */
 void cfl_sp(master_t *master)
@@ -94,6 +103,78 @@ timeseries_t *hd_ts_read(master_t *master, char *name, int check)
     if (ts == NULL)
       hd_quit("hd_ts_read: No memory available.\n");
     memset(ts, 0, sizeof(timeseries_t));
+    memset(ts->i_rule, 0, sizeof(ts->i_rule));
+
+    /* Read the time series */
+    ts_read(fname, ts);
+
+    /* Check correct time step is used for FFSL transport */
+    if (master->tmode & SP_FFSL) {
+      double fdt;
+      if (nc_get_att_double(ts->df->ncid, NC_GLOBAL, "dt", &fdt) == NC_NOERR)
+	if (fdt != master->grid_dt)
+	  hd_warn("TRANSPORT FFSL ERROR: file %s sparse file timestep (%5.1f) != prescribed timestep (%5.1f)\n",name, fdt, master->grid_dt);
+    }
+
+    /* Convert units to model time units */
+    /*
+     * Jan '10, FR added the ts->t_units !- NULL check in order to
+     * fall through to the calling function in case this is a plain
+     * ascii file (i.e. no time)
+     */
+    if (master->timeunit && 
+	ts->t_units != NULL && strcmp(ts->t_units, master->timeunit) != 0) {
+      if (DEBUG("conversions"))
+        dlog("conversions",
+             "hd_ts_read: Converting time series %s units\n  From: %s\n  To: %s\n",
+             ts->name, ts->t_units, master->timeunit);
+
+      if (ts->t_mod_type == MOD_NONE)
+	ts->df->rec_mod_scale = tm_unit_to_sec(ts->t_units) / 
+	  tm_unit_to_sec(master->timeunit);
+      
+      ts_convert_time_units(ts, master->timeunit);
+    }
+
+    if (check)
+      hd_ts_check(master, ts);
+
+    if (master->tsfile_caching)
+      add_tsfile_to_cache(master, ts);
+  }
+
+  return ts;
+}
+
+/*-------------------------------------------------------------------*/
+/* Initialisation of timeseries structure for using GRID_SPEC        */
+/* interpolation. The INTERP_TYPE must be copied into ts->i_rule     */
+/* before ts_read is called. Usual bilinear/weighted interpolation   */
+/* will be performed if i_rule is NULL.                              */
+/*-------------------------------------------------------------------*/
+timeseries_t *hd_ts_read_us(master_t *master, char *name, int check, char *i_rule)
+{
+
+  char buf[MAXSTRLEN];
+  timeseries_t *ts = NULL;
+  char *fname = fv_get_filename(name, buf);
+
+  if (master->tsfile_caching) {
+    if (i_rule != NULL && strlen(i_rule))
+      ts = find_tsfile_in_cache_us(master, fname, i_rule);
+    else
+      ts = find_tsfile_in_cache(master, fname);
+  }
+
+  if (ts == NULL) {
+    ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+    if (ts == NULL)
+      hd_quit("hd_ts_read: No memory available.\n");
+    memset(ts, 0, sizeof(timeseries_t));
+    memset(ts->i_rule, 0, sizeof(ts->i_rule));
+    if (i_rule != NULL) {
+      if (strlen(i_rule)) strcpy(ts->i_rule, i_rule);
+    }
 
     /* Read the time series */
     ts_read(fname, ts);
@@ -200,6 +281,7 @@ int hd_ts_multifile_check(int ntsfiles, timeseries_t **tsfiles,
     for (i = 0; i < ntsfiles; ++i) {
       timeseries_t *ts = tsfiles[i];
       int varid = ts_get_index(ts, fv_get_varname(names[i], var, buf));
+      datafile_t *df = ts->df;
 
       if(master->lyear) {
 	tstart -= count_leap(master->timeunit, tstart) * 86400;
@@ -277,6 +359,33 @@ timeseries_t **hd_ts_multifile_read(master_t *master, int nf,
 	hd_quit("Can't initialise file %s using '-g' option; change to .nc file.\n", files[i]);
       else
 	tsfiles[i] = hd_ts_read(master, files[i], 0);
+    }
+  } else
+    hd_quit
+      ("hd_ts_multifile_read: Must specify at least one timeseries file.\n");
+
+  return tsfiles;
+}
+
+
+timeseries_t **hd_ts_multifile_read_us(master_t *master, int nf,
+				       cstring * files,  char *i_rule)
+{
+  timeseries_t **tsfiles = NULL;
+  int i;
+
+  if (nf > 0) {
+    tsfiles = (timeseries_t **)malloc(sizeof(timeseries_t *) * nf);
+    memset(tsfiles, 0, sizeof(timeseries_t *) * nf);
+    for (i = 0; i < nf; ++i) {
+      if(master->runmode & (AUTO | DUMP) && endswith(files[i],".mpk"))
+	hd_quit("Can't initialise file %s using '-g' option; change to .nc file.\n", files[i]);
+      else {
+	if (i_rule != NULL && strlen(i_rule))
+	  tsfiles[i] = hd_ts_read_us(master, files[i], 0, i_rule);
+	else
+	  tsfiles[i] = hd_ts_read(master, files[i], 0);
+      }
     }
   } else
     hd_quit
@@ -407,6 +516,7 @@ double hd_ts_multifile_eval_xyz(int ntsfiles, timeseries_t **tsfiles,
     assert(index >= 0);
     val = ts_eval_xyz(tsfiles[index], varids[index], t, x, y, z);
     if (ts_eval_runcode(tsfiles[index])) master->regf = RS_OBCSET;
+
     return val;
 
   } else
@@ -485,6 +595,27 @@ static timeseries_t *find_tsfile_in_cache(master_t *master, char *fname)
   return NULL;
 }
 
+
+static timeseries_t *find_tsfile_in_cache_us(master_t *master, char *fname,
+					     char *i_rule)
+{
+
+  int i;
+
+  if (!master->tsfile_caching || master->ntscached == 0)
+    return NULL;
+
+  for (i = 0; i < master->ntscached; ++i) {
+    if (master->tscache[i] == NULL)
+      continue;
+    if (strcmp(fname, master->tscache[i]->name) == 0 &&
+	strcmp(i_rule, master->tscache[i]->i_rule) == 0)
+      return master->tscache[i];
+  }
+
+  return NULL;
+}
+
 /** Add a timeseries file to the cache.
   */
 static void add_tsfile_to_cache(master_t *master, timeseries_t *ts)
@@ -541,7 +672,7 @@ void hd_ts_multifile_eval(master_t *master,
   }
   else if (mode & SP_TINT) {
     hd_ts_multifile_eval_isparse(ntsfiles, tsfiles, names, var,
-				 v, t, nvec);
+				 v, t, nvec, master->thIO);
   } else if (mode & XYZ_TINT) {
     int cc, c, cs;
     if (mode & VEL2D) {
@@ -571,6 +702,93 @@ void hd_ts_multifile_eval(master_t *master,
       for (cc = 1; cc <= nvec; cc++) {
 	c = vec[cc];
 	cs = geom->m2d[c];
+
+	v[c] = hd_ts_multifile_eval_xyz_by_name(ntsfiles, tsfiles,
+						names, var, t,
+						geom->cellx[cs], 
+						geom->celly[cs],
+						geom->cellz[c] * master->Ds[cs]);
+      }
+    }
+  }
+}
+
+/* Same as hd_ts_multifile_eval(), but with polygon inclusion / exclusion zones. */
+void hd_ts_multifile_evalp(master_t *master, 
+			   int ntsfiles, timeseries_t **tsfiles,
+			   cstring * names, char *var, double *v, double t,
+			   int *vec, int nvec, int mode, poly_t *pl)
+{
+  geometry_t *geom = master->geom;
+  dump_data_t *dumpdata = master->dumpdata;
+
+  if(master->lyear)
+    t -= count_leap(master->timeunit, t) * 86400;
+
+  if (mode & SP_EXACT) {
+    hd_ts_multifile_eval_sparse(ntsfiles, tsfiles, names, var,
+				v, t, nvec, master->thIO);
+  }
+  else if (mode & SP_TINT) {
+    hd_ts_multifile_eval_isparse(ntsfiles, tsfiles, names, var,
+				 v, t, nvec, master->thIO);
+  } else if (mode & XYZ_TINT) {
+    int cc, c, cs;
+    if (mode & VEL2D) {
+      if (mode & GHRSST) {
+	double x, kelvin = 273.0;
+	for (cc = 1; cc <= nvec; cc++) {
+	  c = vec[cc];
+	  x = (v == master->ghrsst && geom->cellx[c] > 180.0) ? geom->cellx[c] - 360.0 : geom->cellx[c];
+	  v[c] = hd_ts_multifile_eval_xy_by_name(ntsfiles, tsfiles,
+						 names, var, t,
+						 x, geom->celly[c]) - kelvin;
+	}
+	/*read_ghrsst(master, ntsfiles, tsfiles, names, t);*/
+	process_ghrsst(master);
+
+      } else {
+
+	for (cc = 1; cc <= nvec; cc++) {
+	  c = vec[cc];
+
+	  if (mode & P_IN) {
+	    if (!poly_contains_point(pl, geom->cellx[c], geom->celly[c])) {
+	      v[c] = 0.0;
+	      continue;
+	    }
+	  }
+	  if (mode & P_EX) {
+	    if (poly_contains_point(pl, geom->cellx[c], geom->celly[c])) {
+	      v[c] = 0.0;
+	      continue;
+	    }
+	  }
+
+	  v[c] = hd_ts_multifile_eval_xy_by_name(ntsfiles, tsfiles,
+						 names, var, t,
+						 geom->cellx[c], 
+						 geom->celly[c]);
+	}
+      }
+    } else {
+      for (cc = 1; cc <= nvec; cc++) {
+	c = vec[cc];
+	cs = geom->m2d[c];
+
+	if (mode & P_IN) {
+	  if (!poly_contains_point(pl, geom->cellx[cs], geom->celly[cs])) {
+	    v[c] = 0.0;
+	    continue;
+	  }
+	}
+	if (mode & P_EX) {
+	  if (poly_contains_point(pl, geom->cellx[cs], geom->celly[cs])) {
+	    v[c] = 0.0;
+	    continue;
+	  }
+	}
+
 	v[c] = hd_ts_multifile_eval_xyz_by_name(ntsfiles, tsfiles,
 						names, var, t,
 						geom->cellx[cs], 
@@ -609,7 +827,16 @@ void hd_trans_multifile_eval(master_t *master,
   if(master->lyear)
     t -= count_leap(master->timeunit, t) * 86400;
 
-  if (mode & SP_EXACT) {
+  if (mode & SP_EXACT && mode & SP_UGRID) {
+    if (mode & VEL2D) {
+      hd_ts_multifile_eval_ugrid2D(master, ntsfiles, tsfiles, names, var,
+				   v, t, nvec, master->thIO, mode);
+    } else {
+      hd_ts_multifile_eval_ugrid(master, ntsfiles, tsfiles, names, var,
+				 v, t, nvec, master->thIO, mode);
+    }
+  }
+  else if (mode & SP_EXACT) {
     hd_ts_multifile_eval_sparse(ntsfiles, tsfiles, names, var,
 				master->d3, t, nvec, master->thIO);
     if (mode & (U1STRUCT|U2STRUCT)) {
@@ -626,7 +853,7 @@ void hd_trans_multifile_eval(master_t *master,
   }
   else if (mode & SP_TINT) {
     hd_ts_multifile_eval_isparse(ntsfiles, tsfiles, names, var,
-				 master->d3, t, nvec);
+				 master->d3, t, nvec, master->thIO);
     unpack_sparse3(vec, nvec, master->d3, v, oset);
   } else if (mode & XYZ_TINT) {
     int cc, c, cs;
@@ -764,6 +991,7 @@ void hd_ts_multifile_eval_sparse(int ntsfiles, timeseries_t **tsfiles,
        * df_find_record call above will therefore have a non-zero frac
        * value.
        */
+
       rOrfrac = round(rfrac);
       if (rfrac > 0.0 && fabs(rOrfrac-rfrac) < START_EPS) {
 	/* Snap to the nearest value */
@@ -775,8 +1003,9 @@ void hd_ts_multifile_eval_sparse(int ntsfiles, timeseries_t **tsfiles,
       /* a new file in the multi-file list is located. If this isn't */
       /* located, the program terminates.                            */
       if (fabs(t - df->records[r0]) > START_EPS) {
-	if ((timeindex = dump_choose_multifile(df, t)) == -1)
-	  hd_quit("hd_ts_multifile_eval_sparse: The dump file '%s' does not contain the time %.2f.\n", names[index], t);
+	if ((timeindex = dump_choose_multifile(df, t)) == -1) {
+	  hd_quit("hd_ts_multifile_eval_sparse: The multi-dump file '%s' does not contain the time %.2f.\n", names[index], t);
+	}
       }
     }
 
@@ -809,6 +1038,381 @@ void hd_ts_multifile_eval_sparse(int ntsfiles, timeseries_t **tsfiles,
 }
 
 
+/** Evaluate in the first appropriate file the specified variable
+  * at the given time for the whole sparse array. The time is
+  * assumed to correspond to an exact dump time in the file.
+  *
+  * @param ntsfiles Number of timeseries files in array.
+  * @param tsfiles Array of timeseries files.
+  * @param names Array of timeseries file names.
+  * @param varname Name of variable to check.
+  * @param var Array to store values.
+  * @param t time value
+  * @param ns Sparse array size
+  * @return The interpolated value (NaN if failed).
+  */
+void hd_ts_multifile_eval_ugrid(master_t *master, int ntsfiles, timeseries_t **tsfiles,
+				cstring * names, char *varname, double *var,
+				double ti, int ns, int thio, int mode)
+{
+  int varids[MAXNUMTSFILES];
+  geometry_t *geom = master->geom;
+
+  if (hd_ts_multifile_get_index(ntsfiles, tsfiles, 
+				names, varname, varids) == 0)
+    hd_quit("hd_ts_multifile_eval_sparse: Unable to evaluate the variable '%s'.\n", varname);
+
+  if (ntsfiles > 0) {
+    int i, cc, c, k;
+    int index = -1;
+    int timeindex;
+    int nz = geom->nz;
+    double t = ti;
+    size_t start[4];
+    size_t count[4];
+    timeseries_t *ts;
+    datafile_t *df;
+    df_variable_t *v;
+    int r0, r1;
+    double rfrac, rOrfrac;
+    double **in = d_alloc_2d(ns, nz);
+    int **rmap = (mode & U1GEN) ? master->k2e : master->k2c;
+    int istart = (master->tmode & SP_START1) ? 1 : 0;
+
+    start[1] = 0;
+    start[2] = 0;
+    start[3] = 0;
+    count[0] = 1L;
+    count[3] = 0;
+
+    /*---------------------------------------------------------------*/
+    /* If there is a list of files, find the file in the list that   */
+    /* contains the time ti.                                         */
+    for (i = 0; i < ntsfiles; ++i) {
+      ts = tsfiles[i];
+      if (varids[i] < 0) continue;
+      index = i;
+      t = ti;
+
+      if (ts->t_mod_type != MOD_NONE)
+	t = get_file_time(ts, t);
+      if ((t >= ts->t[0]) && (t <= ts->t[ts->nt - 1]))
+	break;
+    }
+    assert(index >= 0);
+    ts = tsfiles[index];
+    v = df_get_variable(ts->df, varids[index]);
+    df = ts->df;
+
+    /*---------------------------------------------------------------*/
+    /* Get the correct dump                                          */
+    if (df->ncid == -1) {
+      /* Find the correct file in the multi-netcdf file list         */
+      if ((timeindex = dump_choose_multifile(df, t)) == -1)
+	hd_quit("hd_ts_multifile_eval_sparse: The dump file '%s' does not contain the time %.2f.\n", names[index], t);
+    } else {
+      /* Find the record in the file; this is either the correct     */
+      /* in the multi-file list located in dump_choose_multifile()   */
+      /* above, or tsfiles[index] located above.                     */
+      df_find_record(df, t, &r0, &r1, &rfrac);
+      /*
+       * This might seem like a bit of a hack but its here to get
+       * around extremely minute numerical issues arising from Trike
+       * running with TIMEUNIT like "seconds since 2014-01-01 +10" and
+       * then START and STOP of 0 and 1 respectively and the
+       * OUTPUT_TIMEUNIT of "days since 1990-01-01 +10" that end up in
+       * the output trans files. So we end up with numbers like:
+       * 8978.00000000015 -> which is close enough to 8978. The
+       * df_find_record call above will therefore have a non-zero frac
+       * value.
+       */
+      rOrfrac = round(rfrac);
+      if (rfrac > 0.0 && fabs(rOrfrac-rfrac) < START_EPS) {
+	/* Snap to the nearest value */
+	r0 += rOrfrac;
+      } // no else, we'll assume rfrac will always be positive
+
+      timeindex = r0;
+      /* When the time ti is greater than the last time in the file, */
+      /* a new file in the multi-file list is located. If this isn't */
+      /* located, the program terminates.                            */
+      if (fabs(t - df->records[r0]) > START_EPS) {
+	if ((timeindex = dump_choose_multifile(df, t)) == -1)
+	  hd_quit("hd_ts_multifile_eval_sparse: The dump file '%s' does not contain the time %.2f.\n", names[index], t);
+      }
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Read in the variable data                                     */
+    start[0] = timeindex;
+    count[1] = geom->nz;
+    count[2] = ns;
+
+    /*
+     * The buffered function reads ahead in parallel - see also the
+     * associated cleanup function in dump_choose_multifile
+     */
+    if (thio)
+      nc_buffered_get_vara_double(df->ncid, v, varids[index], start, count, in[0]);
+    else
+      nc_get_vara_double(df->ncid, varids[index], start, count, in[0]);
+
+    /* Map to the mesh indexing                                      */
+    for (k = 0; k < nz; k++) {
+      for (cc = istart; cc < ns; cc++) {
+	c = rmap[k][cc];
+	if (c) var[c] = in[k][cc];
+      }
+    }
+    d_free_2d(in);
+  } else
+    hd_quit("hd_ts_multifile_eval_sparse: No timeseries files specified.\n");
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Read a UGRID layered topology file directly into a 2D variable.   */
+/*-------------------------------------------------------------------*/
+void hd_ts_multifile_eval_ugrid2D(master_t *master, int ntsfiles, timeseries_t **tsfiles,
+				  cstring * names, char *varname, double *var,
+				  double ti, int ns, int thio, int mode)
+{
+  int varids[MAXNUMTSFILES];
+  geometry_t *geom = master->geom;
+
+  if (hd_ts_multifile_get_index(ntsfiles, tsfiles, 
+				names, varname, varids) == 0)
+    hd_quit("hd_ts_multifile_eval_sparse: Unable to evaluate the variable '%s'.\n", varname);
+
+  if (ntsfiles > 0) {
+    int i, cc, c;
+    int index = -1;
+    int timeindex;
+    double t = ti;
+    size_t start[4];
+    size_t count[4];
+    timeseries_t *ts;
+    datafile_t *df;
+    df_variable_t *v;
+    int r0, r1;
+    double rfrac, rOrfrac;
+    double *in = d_alloc_1d(ns);
+    int istart = (master->tmode & SP_START1) ? 1 : 0;
+    int oset = (istart) ? 0 : 1;
+
+    start[1] = 0;
+    start[2] = 0;
+    start[3] = 0;
+    count[0] = 1L;
+    count[2] = 0;
+    count[3] = 0;
+
+    /*---------------------------------------------------------------*/
+    /* If there is a list of files, find the file in the list that   */
+    /* contains the time ti.                                         */
+    for (i = 0; i < ntsfiles; ++i) {
+      ts = tsfiles[i];
+      if (varids[i] < 0) continue;
+      index = i;
+      t = ti;
+
+      if (ts->t_mod_type != MOD_NONE)
+	t = get_file_time(ts, t);
+      if ((t >= ts->t[0]) && (t <= ts->t[ts->nt - 1]))
+	break;
+    }
+    assert(index >= 0);
+    ts = tsfiles[index];
+    v = df_get_variable(ts->df, varids[index]);
+    df = ts->df;
+
+    /*---------------------------------------------------------------*/
+    /* Get the correct dump                                          */
+    if (df->ncid == -1) {
+      /* Find the correct file in the multi-netcdf file list         */
+      if ((timeindex = dump_choose_multifile(df, t)) == -1)
+	hd_quit("hd_ts_multifile_eval_sparse: The dump file '%s' does not contain the time %.2f.\n", names[index], t);
+    } else {
+      /* Find the record in the file; this is either the correct     */
+      /* in the multi-file list located in dump_choose_multifile()   */
+      /* above, or tsfiles[index] located above.                     */
+      df_find_record(df, t, &r0, &r1, &rfrac);
+      /*
+       * This might seem like a bit of a hack but its here to get
+       * around extremely minute numerical issues arising from Trike
+       * running with TIMEUNIT like "seconds since 2014-01-01 +10" and
+       * then START and STOP of 0 and 1 respectively and the
+       * OUTPUT_TIMEUNIT of "days since 1990-01-01 +10" that end up in
+       * the output trans files. So we end up with numbers like:
+       * 8978.00000000015 -> which is close enough to 8978. The
+       * df_find_record call above will therefore have a non-zero frac
+       * value.
+       */
+      rOrfrac = round(rfrac);
+      if (rfrac > 0.0 && fabs(rOrfrac-rfrac) < START_EPS) {
+	/* Snap to the nearest value */
+	r0 += rOrfrac;
+      } // no else, we'll assume rfrac will always be positive
+
+      timeindex = r0;
+      /* When the time ti is greater than the last time in the file, */
+      /* a new file in the multi-file list is located. If this isn't */
+      /* located, the program terminates.                            */
+      if (fabs(t - df->records[r0]) > START_EPS) {
+	if ((timeindex = dump_choose_multifile(df, t)) == -1)
+	  hd_quit("hd_ts_multifile_eval_sparse: The dump file '%s' does not contain the time %.2f.\n", names[index], t);
+      }
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Read in the variable data                                     */
+    start[0] = timeindex;
+    count[1] = ns;
+
+    /*
+     * The buffered function reads ahead in parallel - see also the
+     * associated cleanup function in dump_choose_multifile
+     */
+    if (thio)
+      nc_buffered_get_vara_double(df->ncid, v, varids[index], start, count, in);
+    else
+      nc_get_vara_double(df->ncid, varids[index], start, count, in);
+
+    for (cc = istart; cc < ns; cc++) {
+      c = cc + oset;
+      var[c] = in[cc];
+    }
+    d_free_1d(in);
+  } else
+    hd_quit("hd_ts_multifile_eval_sparse: No timeseries files specified.\n");
+}
+
+/* END hd_ts_multifile_eval_ugrid2D()                                */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Read a UGRID layered topology file directly into a 2D variable.   */
+/* This routine is the same as hd_ts_multifile_eval_ugrid2D() except */
+/* the variable ids are supplied rather than the variable name.      */ 
+/*-------------------------------------------------------------------*/
+void frc_multifile_eval_ugrid2D(master_t *master, int ntsfiles, 
+				timeseries_t **tsfiles, int *varids, 
+				double *var, double ti, int ns, int thio)
+{
+  geometry_t *geom = master->geom;
+
+  if (ntsfiles > 0) {
+    int i, cc, c;
+    int index = -1;
+    int timeindex;
+    double t = ti;
+    size_t start[4];
+    size_t count[4];
+    timeseries_t *ts;
+    datafile_t *df;
+    df_variable_t *v;
+    int r0, r1;
+    double rfrac, rOrfrac;
+    double *in = d_alloc_1d(ns);
+    int istart = (master->tmode & SP_START1) ? 1 : 0;
+    int oset = (istart) ? 0 : 1;
+
+    start[1] = 0;
+    start[2] = 0;
+    start[3] = 0;
+    count[0] = 1L;
+    count[2] = 0;
+    count[3] = 0;
+
+    /*---------------------------------------------------------------*/
+    /* If there is a list of files, find the file in the list that   */
+    /* contains the time ti.                                         */
+    for (i = 0; i < ntsfiles; ++i) {
+      ts = tsfiles[i];
+      if (varids[i] < 0) continue;
+      index = i;
+      t = ti;
+
+      if (ts->t_mod_type != MOD_NONE)
+	t = get_file_time(ts, t);
+      if ((t >= ts->t[0]) && (t <= ts->t[ts->nt - 1]))
+	break;
+    }
+    assert(index >= 0);
+    ts = tsfiles[index];
+    v = df_get_variable(ts->df, varids[index]);
+    df = ts->df;
+
+    /*---------------------------------------------------------------*/
+    /* Get the correct dump                                          */
+    if (df->ncid == -1) {
+      /* Find the correct file in the multi-netcdf file list         */
+      if ((timeindex = dump_choose_multifile(df, t)) == -1)
+	hd_quit("frc_multifile_eval_ugrid2D: The UGRID forcing file does not contain the time %.2f.\n", t);
+    } else {
+      /* Find the record in the file; this is either the correct     */
+      /* in the multi-file list located in dump_choose_multifile()   */
+      /* above, or tsfiles[index] located above.                     */
+      df_find_record(df, t, &r0, &r1, &rfrac);
+      /*
+       * This might seem like a bit of a hack but its here to get
+       * around extremely minute numerical issues arising from Trike
+       * running with TIMEUNIT like "seconds since 2014-01-01 +10" and
+       * then START and STOP of 0 and 1 respectively and the
+       * OUTPUT_TIMEUNIT of "days since 1990-01-01 +10" that end up in
+       * the output trans files. So we end up with numbers like:
+       * 8978.00000000015 -> which is close enough to 8978. The
+       * df_find_record call above will therefore have a non-zero frac
+       * value.
+       */
+      rOrfrac = round(rfrac);
+      if (rfrac > 0.0 && fabs(rOrfrac-rfrac) < START_EPS) {
+	/* Snap to the nearest value */
+	r0 += rOrfrac;
+      } // no else, we'll assume rfrac will always be positive
+
+      timeindex = r0;
+      /* When the time ti is greater than the last time in the file, */
+      /* a new file in the multi-file list is located. If this isn't */
+      /* located, the program terminates.                            */
+      if (fabs(t - df->records[r0]) > START_EPS) {
+	if ((timeindex = dump_choose_multifile(df, t)) == -1)
+	  hd_quit("frc_multifile_eval_ugrid2D: The UGRID forcing file does not contain the time %.2f.\n", t);
+      }
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Read in the variable data                                     */
+    start[0] = timeindex;
+    count[1] = ns;
+
+    /*
+     * The buffered function reads ahead in parallel - see also the
+     * associated cleanup function in dump_choose_multifile
+     */
+    if (thio)
+      nc_buffered_get_vara_double(df->ncid, v, varids[index], start, count, in);
+    else
+      nc_get_vara_double(df->ncid, varids[index], start, count, in);
+
+    for (cc = istart; cc < ns; cc++) {
+      c = cc + oset;
+      var[c] = in[cc];
+    }
+    d_free_1d(in);
+  } else
+    hd_quit("hd_ts_multifile_eval_sparse: No timeseries files specified.\n");
+}
+
+/* END frc_multifile_eval_ugrid2D()                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Finds a record corresponding to a given time in a multi-netCDF    */
+/* file.                                                             */
+/*-------------------------------------------------------------------*/
 int dump_choose_multifile(datafile_t *df, double t)
 {
   df_multi_t *fd = (df_multi_t *)df->private_data;
@@ -851,6 +1455,10 @@ int dump_choose_multifile(datafile_t *df, double t)
   }
   return(-1);
 }
+
+/* END dump_choose_multifile()                                       */
+/*-------------------------------------------------------------------*/
+
 
 /*-------------------------------------------------------------------*/
 /* Old code : dump_choose_by_time_s is inefficient since it reads    */
@@ -912,22 +1520,22 @@ int dump_choose_by_time_s(int fid, double t)
 /*-------------------------------------------------------------------*/
 
 
-/** Evaluate in the first appropriate file the specified variable
-  * at the given time for the whole sparse array. The variable
-  * value is interpolated in time.
-  *
-  * @param ntsfiles Number of timeseries files in array.
-  * @param tsfiles Array of timeseries files.
-  * @param names Array of timeseries file names.
-  * @param varname Name of variable to check.
-  * @param var Array to store values.
-  * @param t time value
-  * @param ns Sparse array size
-  * @return The interpolated value (NaN if failed).
-  */
+/*-------------------------------------------------------------------*/
+/* Evaluate in the first appropriate file the specified variable     */
+/* at the given time for the whole sparse array. The variable value  */
+/* is interpolated in time.                                          */
+/* @param ntsfiles Number of timeseries files in array.              */
+/* @param tsfiles Array of timeseries files.                         */
+/* @param names Array of timeseries file names.                      */
+/* @param varname Name of variable to check.                         */
+/* @param var Array to store values.                                 */
+/* @param t time value                                               */
+/* @param ns Sparse array size                                       */
+/* @return The interpolated value (NaN if failed).                   */
+/*-------------------------------------------------------------------*/
 void hd_ts_multifile_eval_isparse(int ntsfiles, timeseries_t **tsfiles,
 				 cstring * names, char *varname, double *var,
-				 double ti, int ns)
+				  double ti, int ns, int thIO)
 {
   int varids[MAXNUMTSFILES];
 
@@ -962,56 +1570,59 @@ void hd_ts_multifile_eval_isparse(int ntsfiles, timeseries_t **tsfiles,
 
     assert(index >= 0);
 
+    ts_eval_sparse(tsfiles[index], varids[index], t, ns, var);
+
     /* Interpolate the sparse array for the given time */
+    /*
     for (cc = 0; cc < ns; cc++)
-      var[cc] = ts_eval_sparse(tsfiles[index], varids[index], t, cc);
+      var[cc] = ts_eval_isparse(tsfiles[index], varids[index], t, cc);
+    */
   } else
     hd_quit("hd_ts_multifile_eval_sparse: No timeseries files specified.\n");
 }
 
+/* END hd_ts_multifile_eval_isparse()                                */
+/*-------------------------------------------------------------------*/
 
-/** Evaluate a time series at a specified time and 3d place.
-  * 
-  * @param ts pointer to time series structure
-  * @param id index of variable to evaluate
-  * @param t time value
-  * @param x x value
-  * @param y y value
-  * @param z z value
-  * @return value at (t,x,y,z).
-  *
-  * Calls quit() if something goes wrong.
-  */
-double ts_eval_sparse(timeseries_t *ts, int id, double t, int cc)
+
+/*-------------------------------------------------------------------*/
+/* Evaluate a time series at a specified time.                       */
+/* This function interpolates in time but not space.                 */
+/* @param ts pointer to time series structure                        */
+/* @param id index of variable to evaluate                           */
+/* @param t time value                                               */
+/* Calls quit() if something goes wrong.                             */
+/*-------------------------------------------------------------------*/
+double ts_eval_isparse(timeseries_t *ts, int id, double t, int cc)
 {
   datafile_t *df = ts->df;
   df_variable_t *v = df_get_variable(df, id);
 
   if (v == NULL)
-    quit("ts_eval_sparse: Invalid variable id specified (%d).\n", id);
+    quit("ts_eval_isparse: Invalid variable id specified (%d).\n", id);
 
   /* If 0 dimension, then the best we can do is give the interpolated time 
      value */
   if (v->nd == 0)
     return df_eval(df, v, t);
 
-  return df_eval_sparse(df, v, t, cc);
+  return df_eval_isparse(df, v, t, cc);
 }
 
+/* END ts_eval_isparse()                                             */
+/*-------------------------------------------------------------------*/
 
-/** Interpolate the variable at known coordinates and record.
-  *
-  * @param df pointer to datafile structure.
-  * @param v pointer to variable structure.
-  * @param r record value.
-  * @param coords coordinates values.
-  * @return Interpolated value.
-  *
-  * @see dfGetNumCoordinates
-  * @see dfGetCoordIds
-  * @see quit() If anything goes wrong.
-  */
-double df_eval_sparse(datafile_t *df, df_variable_t *v, double r, int cc)
+
+/*-------------------------------------------------------------------*/
+/* Interpolate the variable at known coordinates and record.         */
+/* @param df pointer to datafile structure.                          */
+/* @param v pointer to variable structure.                           */
+/* @param r record value.                                            */
+/* @param coords coordinates values.                                 */
+/* @return Interpolated value.                                       */
+/* @see quit() If anything goes wrong.                               */
+/*-------------------------------------------------------------------*/
+double df_eval_isparse(datafile_t *df, df_variable_t *v, double r, int cc)
                       
 {
   double val = 0.0;
@@ -1064,6 +1675,94 @@ double df_eval_sparse(datafile_t *df, df_variable_t *v, double r, int cc)
 
   return val;
 }
+
+/* END df_eval_isparse()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Evaluate a time series at a specified time.                       */
+/* This function interpolates in time but not space.                 */
+/* If the input time corresponds to a record in the file (rfrac=0)   */
+/* then the variable at that record is returned, otherwise an        */
+/* interpolation in time is performed.                               */
+/* interpolation in time or space.                                   */
+/* @param ts pointer to time series structure                        */
+/* @param id index of variable to evaluate                           */
+/* @param t time value                                               */
+/* Returns 0 if something goes wrong.                                */
+/*-------------------------------------------------------------------*/
+int ts_eval_sparse(timeseries_t *ts, int id, double t, int ns, double *var)
+{
+
+  datafile_t *df = ts->df;
+  df_variable_t *v = df_get_variable(df, id);
+  int i, cc, r0, r1;
+  double rfrac;
+  double recvals[2];
+  int is[1];
+  
+  /* Sanity checks */
+  if (df == NULL) return(0);
+  if (v == NULL) return(0);
+
+  /* If 0 dimension, then the best we can do is give the interpolated time 
+     value */
+  if (v->nd == 0) {
+    for (cc = 0; cc < ns; cc++)
+      var[cc] = df_eval(df, v, t);
+    return(1);
+  }
+
+  recvals[0] = 0.0;
+  recvals[1] = 0.0;
+
+  /* Find nearest records in table */
+  if ((v->dim_as_record) && (df->records != NULL))
+    df_find_record(df, t, &r0, &r1, &rfrac);
+  else {
+    r0 = r1 = 0;
+    rfrac = 0.0;
+  }
+  if (isnan(rfrac)) rfrac = 0.0;
+
+  if ((df->rec_modulus) && (r0 > r1))
+    r1 += df->nrecords;
+
+  /* Read in the data for each record and interpolate the coordinates
+     for each record. Store the interpolated value for each record in
+     the recvals array. */
+  if (!((v->data != NULL) && (v->start_record == r0)
+        && (v->nrecords == r1 - r0 + 1)))
+    df_read_records(df, v, r0, r1 - r0 + 1);
+
+  if (rfrac == 0.0) {
+    r0 = r0 - v->start_record;
+    memcpy(var, VAR_1D(v)[r0], ns * sizeof(double));
+    /*
+    for (cc = 0; cc < ns; cc++) {
+      is[0] = cc;
+      var[cc] = df_get_data_value(df, v, r0, is);
+    }
+    */
+  } else {
+    for (cc = 0; cc < ns; cc++) {
+      for (i = r0; i <= r1; ++i) {
+	int j = i - r0;
+	recvals[j] = 0.0;
+	is[0] = cc;
+	recvals[j] = df_get_data_value(df, v, i, is);
+      }
+
+      /* Interpolate the record */
+      var[cc] = recvals[0] * (1.0 - rfrac) + recvals[1] * rfrac;
+    }
+  }
+  return(1);
+}
+
+/* ts_eval_sparse()                                                  */
+/*-------------------------------------------------------------------*/
 
 
 /** Interpolate the variable at known coordinates and record.
@@ -1220,21 +1919,25 @@ int check_sparse_dumpfile(geometry_t *geom, int ntsfiles,
 }
 
 
-
+/*-------------------------------------------------------------------*/
+/* Reads the dimensions from a transport file and compares them with */
+/* those of an input file to check for compatibility.                */
+/*-------------------------------------------------------------------*/
 int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz)
 		      
 {
   size_t mc2 = -1, mc3 = -1;
   size_t me2 = -1, me3 = -1, mz = -1;
+  int mc3i, me3i;
   int ncid;
 
   if (nc_open(name, NC_NOWRITE, &ncid) == NC_NOERR) {
+    /* Look for ugrid3 dimensions                                    */
     nc_inq_dimlen(ncid, ncw_dim_id(ncid, "nMesh3_face"), &mc2);
     nc_inq_dimlen(ncid, ncw_dim_id(ncid, "nMesh3_vol"), &mc3);
     nc_inq_dimlen(ncid, ncw_dim_id(ncid, "nMesh3_edge"), &me2);
     nc_inq_dimlen(ncid, ncw_dim_id(ncid, "nMesh3_vol_edge"), &me3);
     nc_inq_dimlen(ncid, ncw_dim_id(ncid, "Mesh3_layerfaces"), &mz);
-    nc_close(ncid);
     /*
     if (szcS != mc2 || szc != mc3 || szeS != me2 || sze != me3 || nz != mz-1) {
       hd_warn("Input file: face2D=%d, face3D=%d edge2D=%d, edge3D=%d, nz=%d\n",szcS, szc, szeS, sze, nz);
@@ -1244,9 +1947,22 @@ int read_sparse_dims(char *name, int szcS, int szc, int szeS, int sze, int nz)
     */
     if (szcS != mc2 || szc != mc3 || nz != mz-1) {
       hd_warn("Input file: face2D=%d, face3D=%d nz=%d\n",szcS, szc, nz);
-      hd_warn("Trans file: face2D=%d, face3D=%d nz=%d\n",mc2, mc3, mz-1);
-      return(2);
+      hd_warn("Trans file (UGRID3): face2D=%d, face3D=%d nz=%d\n",mc2, mc3, mz-1);
+
+      /* Look for ugrid2 dimensions                                  */
+      nc_inq_dimlen(ncid, ncw_dim_id(ncid, "nMesh2_face"), &mc2);
+      nc_get_att_int(ncid, NC_GLOBAL, "nface3", &mc3i);
+      nc_inq_dimlen(ncid, ncw_dim_id(ncid, "nMesh2_edge"), &me2);
+      nc_get_att_int(ncid, NC_GLOBAL, "nedge3", &me3i);
+      nc_inq_dimlen(ncid, ncw_dim_id(ncid, "Mesh2_layerfaces"), &mz);
+      nc_close(ncid);
+      if (szcS != mc2 || szc != mc3i || nz != mz-1) {
+	hd_warn("Input file: face2D=%d, face3D=%d nz=%d\n",szcS, szc, nz);
+	hd_warn("Trans file (UGRID2): face2D=%d, face3D=%d nz=%d\n",mc2, mc3, mz-1);
+	return(2);
+      }
     }
+    nc_close(ncid);
     return(0);
   }
   return(1);
@@ -1350,8 +2066,9 @@ void process_ghrsst(master_t *master  /* Master data                 */
 		    )
 {
   geometry_t *geom = master->geom;
-  double sfact = 1.0;                /* Scaing for std_dev threshold */
-  double tol = 1.0;                  /* Error tolerance              */
+  double sfact = 100.0;              /* Scaing for std_dev threshold */
+  double tolmn = 0.0;                /* Error tolerance              */
+  double tolmx = 1.0;                /* Error tolerance              */
   int c, c1, cc, n, sn;
   double *sst = master->ghrsst;
   double *sste = master->ghrsste;
@@ -1360,36 +2077,48 @@ void process_ghrsst(master_t *master  /* Master data                 */
   double *x, *y, *z;
   char *i_rule = "nn_sibson";
 
+  /*if (master->ghrsst_type & G_HIM) return;*/
+
   /*-----------------------------------------------------------------*/
   /* Get the mean sst                                                */
+  if (master->ghrsst_type & (G_BOM|G_HIM)) {
+    tolmn = 5.0;
+    tolmx = 5.0;
+  }
   mean_sst = 0.0;
   std_dev = 0.0;
   n = 0;
   for(cc = 1; cc <= geom->b2_t; cc++) {
     c = geom->w2_t[cc];    
-    if (fabs(sste[c]) <= tol) {
+    if (fabs(sste[c]) >= tolmn && fabs(sste[c]) <= tolmx) {
       mean_sst += sst[c];
-      std_dev += sst[c] * sst[c];
       n += 1;
     }
   }
   if (n) {
-    std_dev = (std_dev - mean_sst * mean_sst / (double)n) / (double)(n - 1);
-    std_dev = 2.0 * sqrt(std_dev);
     mean_sst /= (double)n;
+    for(cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->w2_t[cc];    
+      if (fabs(sste[c]) >= tolmn && fabs(sste[c]) <= tolmx) {
+	std_dev += (sst[c] - mean_sst) * (sst[c] - mean_sst);
+      }
+    }
+    std_dev = sqrt(std_dev / (double)(n - 1));
   }
-  else
+  else {
     hd_warn("No valid SST values in GHRSST file, time %f\n", master->t/86400);
+    return;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Perform a global fill on the data at land locations             */
   n = 0;
-  x = d_alloc_1d(geom->b2_t);
-  y = d_alloc_1d(geom->b2_t);
-  z = d_alloc_1d(geom->b2_t);
+  x = d_alloc_1d(geom->szcS);
+  y = d_alloc_1d(geom->szcS);
+  z = d_alloc_1d(geom->szcS);
   for(cc = 1; cc <= geom->b2_t; cc++) {
     c = geom->w2_t[cc];
-    if (fabs(sste[c]) <= tol) {
+    if (fabs(sste[c]) >= tolmn && fabs(sste[c]) <= tolmx) {
       x[n] = geom->cellx[c];
       y[n] = geom->celly[c];
       z[n] = sst[c];
@@ -1402,11 +2131,12 @@ void process_ghrsst(master_t *master  /* Master data                 */
   /* Do the interpolation                                            */
   for (cc = 1; cc <= geom->b2_t; cc++) {
     c = geom->w2_t[cc];
-    if (fabs(sste[c]) > tol)
+    if (fabs(sste[c]) < tolmn || fabs(sste[c]) > tolmx)
       sst[c] = grid_interp_on_point(gs, geom->cellx[c], geom->celly[c]);
-	    
+
     /* Check for nan's                                               */
     if (isnan(sst[c])) sst[c] = mean_sst;
+    if (fabs(sst[c] - mean_sst) > sfact * std_dev) sst[c] = mean_sst;
   }
 	  
   /* Cleanup                                                         */

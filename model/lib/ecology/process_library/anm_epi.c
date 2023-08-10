@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: anm_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: anm_epi.c 7196 2022-09-13 10:39:53Z bai155 $
  *
  */
 
@@ -27,7 +27,6 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "anm_epi.h"
 
 typedef struct {
@@ -47,6 +46,8 @@ typedef struct {
     int sed_ldra_i;
     int sed_rdra_i;
 } workspace;
+
+double ginterface_getustrcw(void *model, int b);
 
 void anm_epi_init(eprocess* p)
 {
@@ -91,7 +92,7 @@ void anm_epi_calc(eprocess* p, void* pp)
     double dz_wc = c->dz_wc;
     double dz_sed = c->dz_sed;
     double porosity = c->porosity;
-    double ustrcw = einterface_getustrcw(p->ecology->model, c->b);
+    double ustrcw = ginterface_getustrcw(p->ecology->model, c->b);
     double ads_koeff = ws->D_RES * ws->F_ads * ustrcw / ws->nu;
 
     double wc_LDRA = conc[ws->wc_ldra_i];

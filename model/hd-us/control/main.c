@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 6597 2020-09-03 05:29:26Z riz008 $
+ *  $Id: main.c 7354 2023-05-08 05:34:29Z riz008 $
  *
  */
 
@@ -29,6 +29,12 @@
 #include "tracer.h"
 #include "ems_version.h"
 
+#ifdef HAVE_GSL
+#include "gsl/gsl_version.h"
+#endif
+#ifdef HAVE_MKL
+#include "mkl.h"
+#endif
 #ifdef HAVE_PTHREADS
 #include <pthread.h>
 #endif
@@ -63,6 +69,8 @@ void usage(void)
   fprintf(stderr, "compas -t prmfile <options>\n");
   fprintf(stderr, "  Run COMPAS in the transport mode.\n");
   fprintf(stderr, "  prmfile  :            Transport parameter file\n\n");
+  fprintf(stderr, "compas -at prmfile\n");
+  fprintf(stderr, "  Dump an auto template from parameter file <prmfile>.\n");
   fprintf(stderr, "compas -ps\n");
   fprintf(stderr, "  Generate percentile statistics.\n\n");
   fprintf(stderr, "compas -v\n");
@@ -182,6 +190,13 @@ void process_args(int argc, char *argv[])
       autof = 3;
       argc--;
 
+    } else if (strcmp(*argv, "-at") == 0) {
+      /* Dump an auto template                                      */
+      if (argc < 2)
+        usage();
+      strcpy(buf, *++argv);
+      auto_write(buf);
+      exit(0);
     } else if (strcmp(*argv, "-r") == 0) {
       /* ROAM automated initialisation and run                      */
       if (argc < 2)
@@ -447,6 +462,27 @@ int main(int argc, char *argv[])
   now = time(NULL);
   fprintf(stderr, "\t\tCOMPAS\n");
   fprintf(stderr, "EMS Version:\t%s\n", version);
+  
+#ifdef HAVE_GSL
+  fprintf(stderr, "GSL version (%s)\n", gsl_version);
+#endif
+  
+#ifdef HAVE_MKL
+  {
+    MKLVersion mklVers;
+    MKL_Get_Version(&mklVers);
+    double a1[] = {1., 2., 3.};
+    double a2[] = {2.1, 2.55, 3.9};
+    double c[3];
+    
+    fprintf(stderr, "MKL Major: %d\n", mklVers.MajorVersion);
+    fprintf(stderr, "MKL Minor: %d\n", mklVers.MinorVersion);
+    vdMul(3, a1, a2, c);
+    for (int j=0; j<3; j++)
+      fprintf(stderr, "c = %f\n", c[j]);
+    fprintf(stderr, "\n");
+  }
+#endif
 
   /* get arguments from the command line or interactively */
   memset(prmname, 0, MAXSTRLEN);

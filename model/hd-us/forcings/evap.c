@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: evap.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: evap.c 6822 2021-06-29 23:31:55Z her127 $
  *
  */
 
@@ -36,6 +36,8 @@ int evap_init(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+
+  if (strlen(params->evap) == 0) return 0;
 
   data = (evap_data_t *)malloc(sizeof(evap_data_t));
   schedSetPrivateData(event, data);

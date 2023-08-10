@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 6527 2020-04-15 05:51:09Z her127 $
+ *  $Id: writeatts.c 7065 2022-03-16 01:58:46Z her127 $
  *
  */
 
@@ -519,7 +519,8 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
   write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries/SHOC");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
   if (strlen(dumpdata->runcode))
     write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
@@ -690,7 +691,10 @@ void write_date_created(int cdfid)
 
 void read_grid_atts(parameters_t *params, int fid)
 {
-  nc_get_att_text(fid, NC_GLOBAL, "gridtype", params->gridtype);
+  char buf[MAXSTRLEN];
+
+  nc_get_att_text(fid, NC_GLOBAL, "gridtype", buf);
+  strcpy(params->gridtype, buf);
 
   /* Read info for rectangular grid */
   if (strcasecmp(params->gridtype, "rectangular") == 0) {

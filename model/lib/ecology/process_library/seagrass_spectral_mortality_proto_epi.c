@@ -26,7 +26,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_mortality_proto_epi.c 6534 2020-05-01 01:21:36Z bai155 $
+ *  $Id: seagrass_spectral_mortality_proto_epi.c 6901 2021-08-21 05:28:41Z bai155 $
  *
  */
 
@@ -277,13 +277,14 @@ void seagrass_spectral_mortality_proto_epi_init(eprocess* p)
 void seagrass_spectral_mortality_proto_epi_postinit(eprocess* p)
 {
   ecology* e = p->ecology;
-  workspace* ws = malloc(sizeof(workspace));
+  workspace* ws = p->workspace;
 
   /* overwrite default if recom for UQ group */
-  if (ws->species == 'D' && process_present(e,PT_WC,"recom_extras")) {
-    ws->SG_mQ = (0.1/86400.0)/0.02;
-    eco_write_setup(e,"Written over because in RECOM for UQ:  SGH_mQ  = %e \n", ws->SG_mQ);
-  }
+
+  //if (ws->species == 'D' && process_present(e,PT_WC,"recom_extras")) {
+  //  ws->SG_mQ = (0.1/86400.0)/0.02;
+  //  eco_write_setup(e,"Written over because in RECOM for UQ:  SGH_mQ  = %e \n", ws->SG_mQ);
+  //}
 }
 
 

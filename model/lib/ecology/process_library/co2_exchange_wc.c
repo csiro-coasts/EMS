@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: co2_exchange_wc.c 6046 2018-12-12 00:53:28Z bai155 $
+ *  $Id: co2_exchange_wc.c 7213 2022-09-18 00:22:06Z bai155 $
  *
  */
 
@@ -24,7 +24,9 @@
 #include "utils.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+
+double ginterface_get_windspeed(void *model, int b);
+int ginterface_getwctopk(void *model, int b);
 
 typedef struct {
 
@@ -70,10 +72,10 @@ void co2_exchange_wc_precalc(eprocess* p, void* pp)
 
   /* only continue if in the top watercolumn layer */
 
-  if (c->k_wc != einterface_getwctopk(model, c->b))
+  if (c->k_wc != ginterface_getwctopk(model, c->b))
     return;
 
-  double U = einterface_get_windspeed(model, c->b);
+  double U = ginterface_get_windspeed(model, c->b);
     
   /* define for co2 air sea fluxes*/
 
@@ -129,7 +131,7 @@ void co2_exchange_wc_calc(eprocess* p, void* pp)
 
   /* only continue if in the top watercolumn layer */
 
-  if (c->k_wc != einterface_getwctopk(model, c->b))
+  if (c->k_wc != ginterface_getwctopk(model, c->b))
     return;
 
   double* y1 = ia->y1;

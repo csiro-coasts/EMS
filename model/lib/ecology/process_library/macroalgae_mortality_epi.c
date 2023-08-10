@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_mortality_epi.c 6580 2020-07-29 03:58:50Z bai155 $
+ *  $Id: macroalgae_mortality_epi.c 6899 2021-08-10 07:31:24Z bai155 $
  *
  */
 
@@ -224,7 +224,7 @@ void macroalgae_mortality_epi_calc(eprocess* p, void* pp)
 
     /* add shear stress mortality */
 
-    double tau = y[ws->ustrcw_skin_i]*y[ws->ustrcw_skin_i];
+    double tau = y[ws->ustrcw_skin_i]*y[ws->ustrcw_skin_i]*1000.0;
     mortality += min(2.0/86400,max((tau - ws->MA_tau_critical)/ws->MA_tau_critical, 0.0) * (1.0 / ws->MA_tau_efold)) * MA_N ;
     
     y1[ws->MA_N_i] -= mortality;

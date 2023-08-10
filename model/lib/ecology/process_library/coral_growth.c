@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_growth.c 5948 2018-09-14 00:30:49Z bai155 $
+ *  $Id: coral_growth.c 7210 2022-09-16 07:33:23Z bai155 $
  *
  */
 
@@ -32,7 +32,6 @@
 #include "stringtable.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "coral_growth.h"
 
   

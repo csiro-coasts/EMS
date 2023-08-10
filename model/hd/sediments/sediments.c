@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 6570 2020-06-26 02:13:45Z bai155 $
+ *  $Id: sediments.c 7384 2023-08-08 00:33:51Z mar644 $
  *
  */
 
@@ -29,6 +29,8 @@
 char *SEDCLASS[] = {
   "Gravel",
   "Sand",
+  "Silt",
+  "Clay",
   "Mud",
   "FineSed",
   "Dust",
@@ -39,7 +41,7 @@ char *SEDCLASS[] = {
   "Sand-mineral",
   "Sand-carbonate",
   "Gravel-mineral",
-  "Gravel-carbonate" 
+  "Gravel-carbonate"
 };
 #define NUM_SED_VARS (int)(sizeof(SEDCLASS)/sizeof(char *))
 
@@ -56,33 +58,6 @@ char *SEDNAME2D[] = {
 };
 #define NUM_SED_VARS_2D (int)(sizeof(SEDNAME2D)/sizeof(char *))
 
-/* Sediment transport tracer attribute private data structure */
-typedef struct {
-  int type;                     /* Private data dype */
-  char name[MAXSTRLEN];         /* Name of the default list */
-  int cohesive;                 /* Cohesive flag */
-  int calcvol;                  
-  int floc;                     /* Flocculation flag */
-  int resuspend;                /* Resuspension flag */
-  int deposit;                  /* Deposition flag */
-  int adsorb;                   /* Adsorbtion flag */
-  int obc;                      /* Open boundary condition */
-  double psize;                 /* Particle size */
-  double b_dens;                /* Particle bulk density */
-  double i_conc;                /* Initial deposit concentration */
-  double f_conc;                /* Compacted deposit concentration; 
-				   default = i_conc */
-  //2019                                   default = i_conc */
-  double css_erosion;
-  double css_deposition;
-
-  double svel;                  /* Constant settling velocity */
-  char svel_name[MAXSTRLEN];    /* Settling velocity name */
-  double adsorbkd;              /* Adsorbtion Kd */
-  double adsorbrate;            /* Adsorbtion rate */
-  char carriername[MAXSTRLEN];  /* particulate tracer carrying sediment reactive tracer */
-  char dissolvedname[MAXSTRLEN];/* dissolved coutrepart of the sediment reactive tracer */
-} trinfo_priv_sed_t;
 
 /*
  * The sediment autotracers are defined using the following definition
@@ -115,7 +90,7 @@ typedef struct {
 int sinterface_put_ustrcw(void* hmodel, int c, double ustrcw);
 
 // Local functions
-static void *private_data_copy_sed(void *src);
+/*static void *private_data_copy_sed(void *src);*/
 static trinfo_priv_sed_t *get_private_data_sed(tracer_info_t *tr);
 static void sed_defaults_std(tracer_info_t *tracer, char *trname);
 static void sed_defaults_est(tracer_info_t *tracer, char *trname);
@@ -390,6 +365,9 @@ void sinterface_getgridz_sed(void* hmodel, int c, double *gridz_sed) {
   ginterface_getgridz_sed(hmodel, c, gridz_sed);
 }
 
+// 2021
+char* _itoa(int value, char* str, int base);
+void strreverse(char* begin, char* end);
 
 static int log_DVM = 0;
 /*-------------------------------------------------------------------*/
@@ -1117,6 +1095,26 @@ double sinterface_get_adsorb_rate(void* model, char *name)
       v = data->adsorbrate;
     return v;
 }
+
+// 2021
+// Read decay_days (e-folding time in days) from prm file
+// Default is 0
+double sinterface_get_decay_days(FILE* prmfd, void* model, int tr_number)
+{
+    char keybuf[MAXSTRLEN], buf[MAXSTRLEN];
+    double v;
+
+    strcpy(keybuf,"TRACER"); 
+    strcat(keybuf, _itoa(tr_number, buf, 10) ); 
+    strcat(keybuf, ".decay_days");
+
+    if(prm_read_double(prmfd,keybuf,&v) <= 0.)
+        v = 0;
+    return v;
+
+}
+
+
 
 /************************************** CONCENTRATIONS */
 
@@ -2005,7 +2003,7 @@ void sed_read_tr_atts(tracer_info_t *tr, FILE *fp, char *keyname)
 /*-------------------------------------------------------------------*/
 /* Copies sedimet private data                                       */
 /*-------------------------------------------------------------------*/
-static void *private_data_copy_sed(void *src)
+void *private_data_copy_sed(void *src)
 {
   void *dest = NULL;
 
@@ -2146,6 +2144,17 @@ static int sed_set_autotracer(FILE *fp,
   int m, n, i;
   int trn = tn;
   
+  /* Check if the class is in the global configurations              */
+  if (sed_vars == NULL) {
+    strcpy(buf, sedclass[0]);
+    for (n = 1; n < nsedclass; n++) sprintf(buf, "%s %s", buf, sedclass[n]);
+    n = get_rendered_tracers(fp, 1, buf, sed_defs,
+			     trinfo, ntr, tn, trinfo_type);
+  } else
+    n = get_rendered_tracers(fp, 1, sed_vars, sed_defs,
+			     trinfo, ntr, tn, trinfo_type);
+  if (n != tn) return(n);
+
   trn = tn;
   if ( sed_vars != NULL ) {
     /* Setup classes as specified */

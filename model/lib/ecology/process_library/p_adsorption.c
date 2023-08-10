@@ -30,6 +30,8 @@
 #include "utils.h"
 #include "p_adsorption.h"
 
+double ginterface_get_svel(void* model, char *name);
+
 typedef struct {
     int do_mb;                  /* flag */
 
@@ -165,9 +167,9 @@ void p_adsorption_postinit(eprocess* p)
     if (!e->pre_build) {
       if (p->type == PT_WC){
 	if (ws->Mud_i > -1){
-	  v1 = einterface_gettracersvel(e->model,"PIP");
-	  v2 = einterface_gettracersvel(e->model,"Mud");
-	  v3 = einterface_gettracersvel(e->model,"FineSed");
+	  v1 = ginterface_get_svel(e->model,"PIP");
+	  v2 = ginterface_get_svel(e->model,"Mud");
+	  v3 = ginterface_get_svel(e->model,"FineSed");
 
 	  eco_write_setup(e,"\np_adsorption: sinking rates of PIP %e, Mud %e, FineSed %e \n",v1,v2,v3);
 	  
@@ -176,10 +178,10 @@ void p_adsorption_postinit(eprocess* p)
 	  }
 	}
 	if (ws->Mud_carbonate_i > -1){
-	  v1 = einterface_gettracersvel(e->model,"PIP");
-	  v2 = einterface_gettracersvel(e->model,"Mud-carbonate");
-	  v3 = einterface_gettracersvel(e->model,"Mud-mineral");
-	  v4 = einterface_gettracersvel(e->model,"FineSed");
+	  v1 = ginterface_get_svel(e->model,"PIP");
+	  v2 = ginterface_get_svel(e->model,"Mud-carbonate");
+	  v3 = ginterface_get_svel(e->model,"Mud-mineral");
+	  v4 = ginterface_get_svel(e->model,"FineSed");
 
 	  eco_write_setup(e,"\np_adsorption: sinking rates of PIP = %e, Mud-carbonate = %e, Mud-mineral = %e FineSed = %e \n",v1,v2,v3,v4);
 	  
@@ -188,8 +190,8 @@ void p_adsorption_postinit(eprocess* p)
 	  }
 	}
 	if (ws->PIP_Dust_i > -1){
-	  v1 = einterface_gettracersvel(e->model,"PIP_Dust");
-	  v2 = einterface_gettracersvel(e->model,"Dust");
+	  v1 = ginterface_get_svel(e->model,"PIP_Dust");
+	  v2 = ginterface_get_svel(e->model,"Dust");
 
 	  eco_write_setup(e,"\np_adsorption: sinking rates of PIP_Dust = %e, Dust = %e \n",v1,v2);
 	  

@@ -5,7 +5,11 @@
  *  File: model/lib/ecology/process_library/macroalgae_spectral_grow_epi.c
  *  
  *  Description:
- *  Process implementation
+ *  Suspended macroalgae (SMA) in the water column.
+ *  
+ *  SMA should be specified as a 3D tracer (with units of g N m-3). The light absorption and nutrient uptake are 
+ *  calculated as a layer, whose biomass is given by SMA_N * dz. The derivatives (y1) are all in units of 
+ *  g N m-3 s-1, so no correction is required.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -13,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_spectral_grow_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: macroalgae_spectral_grow_wc.c 7351 2023-04-30 03:42:14Z bai155 $
  *
  */
 
@@ -33,6 +37,8 @@
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
 
+double ginterface_getustrcw(void *model, int b);
+
 typedef struct {
   int do_mb;                  /* flag */
 
@@ -45,9 +51,9 @@ typedef struct {
   /*
    * wc 
    */
-  int MA_N_i;
-  int MA_N_pr_i;
-  int MA_N_gr_i;
+  int SMA_N_i;
+  int SMA_N_pr_i;
+  int SMA_N_gr_i;
   int TN_i;
   int TP_i;
   int TC_i;
@@ -55,7 +61,7 @@ typedef struct {
   int tau_i;
 
 
-  int KI_MA_i;
+  int KI_SMA_i;
   
   /*
    * tracers
@@ -98,11 +104,10 @@ void macroalgae_spectral_grow_wc_init(eprocess* p)
     /*
      * e
      */
-    ws->MA_N_i= e->find_index(tracers, "MA_N_wc", e);
+    ws->SMA_N_i= e->find_index(tracers, "SMA_N", e);
     ws->TN_i = e->find_index(tracers, "TN", e) ;
     ws->TP_i = e->find_index(tracers, "TP", e);
     ws->TC_i = e->find_index(tracers, "TC", e);
-
 
     /*
      * tracers
@@ -118,13 +123,20 @@ void macroalgae_spectral_grow_wc_init(eprocess* p)
 
     ws->Oxy_pr_i = e->try_index(tracers, "Oxy_pr", e);
 
-    ws->MA_N_pr_i = e->try_index(tracers, "MA_N_pr_wc", e);
+    ws->SMA_N_pr_i = e->try_index(tracers, "SMA_N_pr", e);
 
-    ws->MA_N_gr_i = e->try_index(tracers, "MA_N_gr_wc", e);
+    ws->SMA_N_gr_i = e->try_index(tracers, "SMA_N_gr", e);
 
-      ws->tau_i = e->try_index(tracers, "tau_wc", e);
+    ws->tau_i = e->try_index(tracers, "tau_wc", e);
 
+    /* check for obsolete and dangerous tracer name */
 
+    int dummy = -1;
+    
+    dummy  = e->try_index(tracers, "MA_N_wc", e);
+
+    if (dummy > -1)
+      e_quit("Tried to use MA_N_wc as a tracer name for floating seaweed: use SMA_N instead \n");
 
 
     /*
@@ -133,7 +145,7 @@ void macroalgae_spectral_grow_wc_init(eprocess* p)
     ws->DNO3_i = find_index(e->cv_cell, "DNO3", e);
     ws->DPO4_i = find_index(e->cv_cell, "DPO4", e);
     ws->Tfactor_i = try_index(e->cv_cell, "Tfactor", e);
-    ws->umax_i = find_index_or_add(e->cv_cell, "MAumax_wc", e);
+    ws->umax_i = find_index_or_add(e->cv_cell, "SMAumax", e);
 
 }
 
@@ -143,7 +155,7 @@ void macroalgae_spectral_grow_wc_postinit(eprocess* p)
     workspace* ws = p->workspace;
 
     ws->do_mb = (try_index(e->cv_model, "massbalance", e) >= 0) ? 1 : 0;
-    ws->KI_MA_i = find_index_or_add(e->cv_cell, "KI_MA_wc", e);
+    ws->KI_SMA_i = find_index_or_add(e->cv_cell, "KI_SMA", e);
 }
 
 void macroalgae_spectral_grow_wc_destroy(eprocess* p)
@@ -159,23 +171,20 @@ void macroalgae_spectral_grow_wc_precalc(eprocess* p, void* pp)
     cell* c = (cell*) pp;
     double* cv = c->cv;
     double* y = c->y;
-  ecology* e = p->ecology;
+    ecology* e = p->ecology;
 
     void* model = e->model;
 
-
-
     double Tfactor = (ws->Tfactor_i >= 0) ? cv[ws->Tfactor_i] : 1.0;
-    double MA_N = y[ws->MA_N_i] * 1000.0 ;
+    
+    double SMA_N = y[ws->SMA_N_i] * 1000.0 ;
 
     cv[ws->umax_i] = ws->umax_t0 * Tfactor;
     
-    if (ws->do_mb) {
-        y[ws->TN_i] += MA_N;
-        y[ws->TP_i] += MA_N * atk_W_P;
-        y[ws->TC_i] += MA_N * atk_W_C;
-	y[ws->BOD_i] += MA_N * atk_W_O;
-    }
+    y[ws->TN_i] += SMA_N;
+    y[ws->TP_i] += SMA_N * atk_W_P;
+    y[ws->TC_i] += SMA_N * atk_W_C;
+    y[ws->BOD_i] += SMA_N * atk_W_O;
 }
 
 void macroalgae_spectral_grow_wc_calc(eprocess* p, void* pp)
@@ -187,11 +196,14 @@ void macroalgae_spectral_grow_wc_calc(eprocess* p, void* pp)
     cell* c = (cell*) ia->media;
     double* cv = c->cv;
     double dz_wc = c->dz_wc;
-  ecology* e = p->ecology;
+    ecology* e = p->ecology;
 
     void* model = e->model;
 
-    double MA_N = y[ws->MA_N_i];
+    double SMA_N = y[ws->SMA_N_i];
+
+    if (SMA_N < 1e-10)
+      return;
 
     double NO3 = y[ws->NO3_i];
     double NH4 = y[ws->NH4_i];
@@ -212,62 +224,60 @@ void macroalgae_spectral_grow_wc_calc(eprocess* p, void* pp)
        avoids multiplying by density before then dividing by it below */
     
     /*    double tau = 0.01;*/
-    double tau = 0.01;/*/einterface_getustrcw(model, c->b);*/
+    double tau = 0.01;/*/ginterface_getustrcw(model, c->b);*/
 
     double S_DIN = 2850.0*pow((2.0*tau),0.38)*pow(Sc[0],-0.6)/86400.0; /* m s-1 */
     double S_DIP = 2850.0*pow((2.0*tau),0.38)*pow(Sc[1],-0.6)/86400.0; /* m s-1 */
 
     double umax = cv[ws->umax_i];  /* s-1 */
     
-    double kI = c->cv[ws->KI_MA_i] * ( atk_A_N / atk_A_I );  /* mol eqN m-2 s-1 */
+    double kI = c->cv[ws->KI_SMA_i] * ( atk_A_N / atk_A_I );  /* mol eqN m-2 s-1 */
     
     /* available surface area */
     
-    double SA = 1.0-exp(-MA_N * ws->MAleafden);   /* dimensionless */
+    double SA = 1.0-exp(- SMA_N * dz_wc * ws->MAleafden);   /* dimensionless */
     
     double kN_mass = S_DIN * SA * DIN * mgN2molN;  /* mol N m-2 s-1 */
     double kP_mass = S_DIP * SA * DIP * mgP2molP * (atk_A_N / atk_A_P ); /* mol eqN m-2 s-1 */
     
-    /* MA_N now in g N m-2, so need to multiply  mgN2molN by 1000 */
+    /* SMA_N now in g N m-2, so need to multiply  mgN2molN by 1000 */
     
-    double growthrate = min(kI,min(kN_mass, kP_mass)) / (MA_N * mgN2molN * 1000.0); /* s-1 */
+    double growthrate = min(kI,min(kN_mass, kP_mass)) / (SMA_N * mgN2molN * 1000.0); /* s-1 */
     
     growthrate = min(umax,growthrate);
     
-    //  printf("umax %e, kI %e, kN %e, kP %e \n", umax,kI/(MA_N * mgN2molN * 1000.0),kN_mass/(MA_N * mgN2molN * 1000.0),kP_mass/(MA_N * mgN2molN * 1000.0));
+    //  printf("umax %e, kI %e, kN %e, kP %e \n", umax,kI/(SMA_N * mgN2molN * 1000.0),kN_mass/(SMA_N * mgN2molN * 1000.0),kP_mass/(SMA_N * mgN2molN * 1000.0));
     
-    double growth = MA_N * growthrate;
+    double growth = SMA_N * growthrate;
 
     /* preferential ammonia uptake - watch units between growth and uptake */
 
-    double k_NH4_mass = S_DIN * SA * NH4;    /* DNO3 only 4% different to DNH4 */
+    double k_NH4_mass = S_DIN * SA * NH4 / dz_wc;    /* DNO3 only 4% different to DNH4 */
     double NH4uptake = min(k_NH4_mass,growth*1000.0);
     double NO3uptake = growth*1000.0 - NH4uptake;
 
     double Oxy_pr = 1000.0 * growth * atk_W_O ;
     
-    // printf("%d, %d, %d, %d, %d, %d, %d, %d, %d \n",ws->MA_N_i,ws->MA_N_gr_i,ws->MA_N_pr_i,ws->NH4_wc_i,ws->NO3_wc_i,ws->DIP_wc_i,ws->DIC_wc_i,ws->Oxygen_wc_i,ws->Oxy_pr_wc_i);
+    // printf("%d, %d, %d, %d, %d, %d, %d, %d, %d \n",ws->SMA_N_i,ws->SMA_N_gr_i,ws->SMA_N_pr_i,ws->NH4_wc_i,ws->NO3_wc_i,ws->DIP_wc_i,ws->DIC_wc_i,ws->Oxygen_wc_i,ws->Oxy_pr_wc_i);
     
-    y1[ws->MA_N_i] += growth;
+    y1[ws->SMA_N_i] += growth;
     // y1[ws->NH4_wc_i] -= growth * 1000.0 * NH4_wc / DIN_wc / dz_wc;
     // y1[ws->NO3_wc_i] -= growth * 1000.0 * NO3_wc / DIN_wc / dz_wc;
-    y1[ws->NH4_i] -= NH4uptake ;
-    y1[ws->NO3_i] -= NO3uptake ;
-    y1[ws->DIP_i] -= growth * 1000.0 * atk_W_P ;
-    y1[ws->DIC_i] -= growth * 1000.0 * atk_W_C ;
+    y1[ws->NH4_i] -= NH4uptake;
+    y1[ws->NO3_i] -= NO3uptake;
+    y1[ws->DIP_i] -= growth * 1000.0 * atk_W_P;
+    y1[ws->DIC_i] -= growth * 1000.0 * atk_W_C;
     y1[ws->Oxygen_i] += Oxy_pr;
     
-    if (ws->MA_N_gr_i> -1)
-      y1[ws->MA_N_gr_i] += growthrate / umax;
-    if (ws->MA_N_pr_i> -1)
-      y1[ws->MA_N_pr_i] += growth * SEC_PER_DAY;
+    if (ws->SMA_N_gr_i> -1)
+      y1[ws->SMA_N_gr_i] += growthrate / umax;
+    if (ws->SMA_N_pr_i> -1)
+      y1[ws->SMA_N_pr_i] += growth * SEC_PER_DAY;
     if (ws->Oxy_pr_i> -1)      
       y1[ws->Oxy_pr_i] += Oxy_pr * SEC_PER_DAY;     
 
     if (ws->tau_i> -1)      
       y1[ws->tau_i] +=tau;     
-
-
 
 }
 void macroalgae_spectral_grow_wc_postcalc(eprocess* p, void* pp)
@@ -276,10 +286,10 @@ void macroalgae_spectral_grow_wc_postcalc(eprocess* p, void* pp)
   workspace* ws = p->workspace;
   double* y = c->y;
   
-  double MA_N = y[ws->MA_N_i] * 1000.0;
+  double SMA_N = y[ws->SMA_N_i] * 1000.0;
   
-  y[ws->TN_i] += MA_N;
-  y[ws->TP_i] += MA_N * atk_W_P;
-  y[ws->TC_i] += MA_N * atk_W_C;
-  y[ws->BOD_i] += MA_N * atk_W_O;
+  y[ws->TN_i] += SMA_N;
+  y[ws->TP_i] += SMA_N * atk_W_P;
+  y[ws->TC_i] += SMA_N * atk_W_C;
+  y[ws->BOD_i] += SMA_N * atk_W_O;
 }

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: timeseries.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: timeseries.h 6873 2021-07-29 00:39:19Z her127 $
  */
 
 #ifndef _TIMESERIES_H
@@ -58,6 +58,7 @@ typedef struct {
   double t_mod_scale;           /* Modulo scale */
   double t_unit_scalef;
   double t_base;
+  char i_rule[MAXSTRLEN];       /* Interpolation rule */
   datafile_t *df;               /* Pointer to the data file */
 } timeseries_t;
 

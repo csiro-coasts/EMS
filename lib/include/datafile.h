@@ -12,12 +12,12 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.h 6597 2020-09-03 05:29:26Z riz008 $
+ *  $Id: datafile.h 7146 2022-07-07 00:25:36Z her127 $
  */
-
 
 #ifndef _DATAFILE_H
 #define _DATAFILE_H
+
 
 /* Enumerations */
 /*
@@ -27,6 +27,7 @@ typedef enum { DFT_ASCII, DFT_NETCDF, DFT_MULTI_NETCDF } DataFileType;
 typedef enum { DFT_ASCII, DFT_NETCDF, DFT_MULTI_NETCDF, DFT_MEMPACK} DataFileType;
 typedef enum { AT_TEXT, AT_BYTE, AT_FLOAT, AT_DOUBLE, AT_SHORT, AT_INT }
   AttributeType;
+
 
 /* Defines the set of variables understood by the datafile package.
  */
@@ -41,6 +42,8 @@ typedef enum { AT_TEXT, AT_BYTE, AT_FLOAT, AT_DOUBLE, AT_SHORT, AT_INT }
 #define VT_INFERRED      0x00000100 /* Data var. with inferred coordinates */
 #define VT_BATHY         0x00000200 /* Bathymetry variable                 */
 #define VT_COORD         0x00000400 /* Data var. with inferred coordinates */
+#define VT_MV            0x00000800 /* Missing value is present */
+#define VT_FV            0x00001000 /* Fill value is present */
 typedef int VariableType;
 
 /* Define the geographic types understood by datafile */
@@ -62,7 +65,6 @@ typedef int GeoType;
 #if !defined(MAXNUMCMAPS)
 #define MAXNUMCMAPS (MAXNUMCOORDS)  /* must be same as coords */
 #endif
-
 
 
 /* Structures for the supported analytic coordinate systems. */
@@ -280,6 +282,8 @@ struct df_variable {
   GRID_SPECS **gs1_master_3d;
   int nz;
   int *kn, **kmap, **kflag;
+  int **kmapi, **kmapj;
+  int *imap, *jmap;
   int rid;
   int rv[2];
   /*
@@ -419,6 +423,7 @@ struct datafile {
   int r0, r1;                   /* Lower and upper bounds bracketing record no. */
   double frac;                  /* Fraction for record interpolation */
   int runcode;                  /* Runcode */
+  char i_rule[MAXSTRLEN];       /* Interpolation rule */
   void *private_data;           /* Private data for the reader */
   /*
    *  These hashtables facilitate the inverse weighting interpolation
@@ -481,16 +486,30 @@ int df_itoc(datafile_t *df, df_variable_t *v,
             const double indices[], double coords[]);
 int df_is_recom(datafile_t *df);
 int df_is_ugrid(datafile_t *df);
+int df_is_ugrid3(datafile_t *df);
+int df_is_irule(datafile_t *df);
 double interp_1d_inv_weight(datafile_t *df, df_variable_t *v, int record,
                             double coords[]);
 double interp_2d_inv_weight(datafile_t *df, df_variable_t *v, int record,
                             double coords[]);
 double interp_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
 				 double coords[]);
+double interp2d_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
+				   double coords[]);
+double interp3d_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
+				   double coords[]);
 double interp_us_2d(datafile_t *df, df_variable_t *v, int record,
 		    double coords[]);
+double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
+		      double coords[]);
+double interp_us_2d_i(datafile_t *df, df_variable_t *v, int record,
+		      double coords[]);
 double interp_us_3d(datafile_t *df, df_variable_t *v, int record,
 		    double coords[]);
+double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
+		      double coords[]);
+double interp_us_3d_i(datafile_t *df, df_variable_t *v, int record,
+		      double coords[]);
 
 /* Special threaded & buffered functions */
 #ifdef __cplusplus

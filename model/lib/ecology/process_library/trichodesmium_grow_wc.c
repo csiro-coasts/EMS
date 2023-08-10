@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: trichodesmium_grow_wc.c 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: trichodesmium_grow_wc.c 7207 2022-09-16 07:28:14Z bai155 $
  *
  */
 
@@ -26,8 +26,10 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "trichodesmium_grow_wc.h"
+
+double ginterface_get_svel(void* model, char *name);
 
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
@@ -203,11 +205,11 @@ void trichodesmium_grow_wc_postinit(eprocess* p)
   if (!e->pre_build) {
     double v1,v2,v3,v4,v5;
 
-    v1 = einterface_gettracersvel(e->model,"Tricho_N");
-    v2 = einterface_gettracersvel(e->model,"Tricho_NR");
-    v3 = einterface_gettracersvel(e->model,"Tricho_PR");
-    v4 = einterface_gettracersvel(e->model,"Tricho_Chl");
-    v5 = einterface_gettracersvel(e->model,"Tricho_I");
+    v1 = ginterface_get_svel(e->model,"Tricho_N");
+    v2 = ginterface_get_svel(e->model,"Tricho_NR");
+    v3 = ginterface_get_svel(e->model,"Tricho_PR");
+    v4 = ginterface_get_svel(e->model,"Tricho_Chl");
+    v5 = ginterface_get_svel(e->model,"Tricho_I");
     
     if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
       e->quitfn("Sinking rates of Tricho :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);

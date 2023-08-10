@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: swr.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: swr.c 6955 2021-12-17 03:15:32Z her127 $
  *
  */
 
@@ -58,7 +58,8 @@ int swr_init(sched_event_t *event)
     if (master->heatflux & NET_HEAT && master->swr_attn)
       hd_quit("Attenuation of swr requires RADIATION file.\n");
     return 0;
-  }
+  } else
+    master->heatflux |= COMP_SW;
 
   if (master->albedo < -1.0 || master->albedo > 1.0)
     hd_quit("RADIATION requires ALBEDO parameter.\n");

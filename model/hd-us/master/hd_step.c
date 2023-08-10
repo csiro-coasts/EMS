@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_step.c 6469 2020-02-18 23:49:45Z her127 $
+ *  $Id: hd_step.c 7168 2022-07-07 02:35:04Z her127 $
  *
  */
 
@@ -502,12 +502,13 @@ void hd_step_trans(hd_data_t *hd_data, double tstop)
     /* file.                                                         */
     TIMING_SET;
 
-    if (master->tmode & SP_ORIGIN) {
-      /*if (master->t > master->tstart + master->dttr)*/
-      tracer_step(master, window, windat, wincon, master->nwindows);
-    } else
-      tracer_step(master, window, windat, wincon, master->nwindows);
-
+    if (!(master->tmode & SP_DUMP)) {
+      if (master->tmode & SP_ORIGIN) {
+	/*if (master->t > master->tstart + master->dttr)*/
+	tracer_step(master, window, windat, wincon, master->nwindows);
+      } else
+	tracer_step(master, window, windat, wincon, master->nwindows);
+    }
     TIMING_DUMP(1," tracer_step");
     /*---------------------------------------------------------------*/
     /* Finalize the model transport                                  */

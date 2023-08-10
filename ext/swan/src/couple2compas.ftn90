@@ -1,0 +1,583 @@
+      MODULE Couple2Compas
+      USE, INTRINSIC :: ISO_C_BINDING
+      INTEGER   IUNIT
+      INTEGER   IOSTAT, IT0, SAVITE, ILEN
+      INTEGER   INERR
+      INTEGER   IERR
+      INTEGER   ISTAT, IF1, IL1
+      CHARACTER PTYPE, PNAME *8, COMPUT *4
+      CHARACTER*20 CHARS(1)
+      CHARACTER*20 MSGSTR
+      LOGICAL   LOPEN
+
+      INTEGER, ALLOCATABLE :: CROSS(:)
+      INTEGER, ALLOCATABLE :: BGRIDP(:)
+      REAL   , ALLOCATABLE :: BSPECS(:,:,:,:)
+      REAL   , ALLOCATABLE :: AC1(:,:,:), COMPDA(:,:)
+
+      REAL, ALLOCATABLE    :: BLKND(:), BLKNDC(:)
+      REAL*8, ALLOCATABLE  :: OURQT(:)
+      REAL, DIMENSION(:,:), ALLOCATABLE :: CGO,KWAVE,DMW
+
+      REAL, DIMENSION(:), ALLOCATABLE :: FX, FY
+	  
+      INTEGER  DO_AMP
+      INTEGER  DO_PER
+      INTEGER  DO_DIR
+      INTEGER  DO_UB
+      INTEGER  DO_WIF
+      INTEGER  DO_STOKES
+      INTEGER  DO_DEP
+      INTEGER  DO_CUR
+      INTEGER  DO_WIND
+      INTEGER  DO_HS
+      INTEGER  DO_KB
+      INTEGER  DO_K
+      INTEGER  DO_NONCON	  
+      INTEGER  DO_DUM1
+      INTEGER  DO_DUM2
+      INTEGER  HS_NREF
+	  
+      CHARACTER (LEN=100) :: COMPAS_RESTART
+      REAL (C_DOUBLE), POINTER :: COMPAS_ETA(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_UAV(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_VAV(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_WX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_WY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_Z0(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_DEP(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_AMP(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_PER(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_DIR(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_UB(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_STE1(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_STE2(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_KB(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_KWAVE(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FWCAPX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FWCAPY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FBREX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FBREY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FBOTX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FBOTY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FSURX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FSURY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_WFDX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_WFDY(:)
+	  REAL (C_DOUBLE), POINTER :: COMPAS_WOVSX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_WOVSY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FROLX(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_FROLY(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_DUM1(:)
+      REAL (C_DOUBLE), POINTER :: COMPAS_DUM2(:)
+
+      INTEGER  COMPAS_NBOUNC
+      INTEGER (C_INT), POINTER :: COMPAS_BDRY(:)
+	  CONTAINS
+! Computes variables that SWAN send back to COMPAS. Based on swan2coh.ftn90.
+   SUBROUTINE swan2compas( AC2,                                     &
+     &                     DEP2        ,SPCSIG                   ,  &
+     &                     SPCDIR      ,GWIND                    ,  &
+     &                     DISBOT      ,DISSURF                  ,  &
+     &                     DISWCAP     ,DISTUR					 ,  &
+	 &                     ubot        ,tbot					 ,  &
+     &		      	       hsimp                                 ,  &
+     &                     COMPAS_AMP  ,COMPAS_PER               ,  &
+     &                     COMPAS_UB                             ,  &
+     &                     COMPAS_FX   ,COMPAS_FY                ,  &
+     &                     COMPAS_STE1 ,COMPAS_STE2              ,  &
+     &	     	           COMPAS_KB    ,COMPAS_KWAVE            ,  &
+     &	    	           COMPAS_FWCAPX, COMPAS_FWCAPY          ,  &
+     &	    	           COMPAS_FBREX, COMPAS_FBREY            ,  &
+     &	    	           COMPAS_FBOTX, COMPAS_FBOTY            ,  &
+     &	    	           COMPAS_FSURX, COMPAS_FSURY            ,  &
+     &	     	           COMPAS_WFDX, COMPAS_WFDY              ,  &
+     &	     	           COMPAS_WOVSX, COMPAS_WOVSY            ,  &	 
+     &                     DO_AMP, DO_PER, DO_UB, DO_WIF         ,  &
+     &                     DO_STOKES, DO_KB, DO_NONCON)
+   
+  !***********************************************************************
+  !
+  USE SWCOMM1
+  USE SWCOMM2
+  USE SWCOMM3  ! also to use PWTAIL(1)
+  USE SWCOMM4
+  USE SwanGriddata
+  USE M_PARALL    !
+  !
+  IMPLICIT NONE
+
+  !The following variables are send from SWAN to COHERENS. In brackets the name of the existing
+  ! COHERENS variables are given
+
+  ! Significant Wave height (waveheight) [m]
+
+  ! Peak period (waveperiod) [s]
+
+  ! Mean wave direction (wavedir) [rad]
+
+  ! Wave induced pressure (wavepres) [Pa]
+  ! The wave stress determined from the wave dissipation
+
+  ! Depth averaged Stokes drift (umvelstokesatc and vmvelstokesatc)
+
+  ! Near bed orbital velocity amplitude (wavevel) [m/s]
+  ! Line 1781: ! JUBOT  [  3] bottom orbital velocity within array COMPDA
+
+  ! Near bed orbital excursion (waveexcurs)
+  ! TMBOT Bottom wave period (in s) defined as the ratio of the bottom excursion
+  ! amplitude to the bottom orbital velocity.
+  ! bea
+
+  ! The following variables are send from COMPAS to SWAN
+
+  ! Bottom elevation (depmeanatc). Note that this is only necessary for morphology.
+  !
+  ! Water (level) (zeta)
+  !
+  ! Depth averaged velocity in x and y dir
+
+
+  ! Argument variables
+  !
+  !     IN:
+  !
+  !     AC2     input  action density
+  !     CG      local  group velocity in output point
+  !     DEP2    input  depth at comp. grid points
+  !     NE      local  ratio of group and phase velocity
+  !     NED     local  derivative of NE with respect to depth
+  !     SPCDIR  input  (*,1); spectral directionswa (radians)
+  !                    (*,2); cosine of spectral directions
+  !                    (*,3); sine of spectral directions
+  !                    (*,4); cosine^2 of spectral directions
+  !                    (*,5); cosine*sine of spectral directions
+  !                    (*,6); sine^2 of spectral directions
+  !     SPCSIG  input  relative frequencies in computational domain in
+  !                    sigma-space
+  !     WK      local  wavenumber in output point
+  !
+  REAL    AC2(MDC,MSC,MCGRD), CG(MSC), DEP2(MCGRD), NE(MSC), NED(MSC) ,DEP3(MCGRD)
+  REAL    ACLOC(MDC,MSC)
+  REAL    AC2LOC(MCGRD)
+  REAL*8, DIMENSION(:) :: COMPAS_AMP
+  REAL*8, DIMENSION(:) :: COMPAS_PER
+  REAL*8, DIMENSION(:) :: COMPAS_UB
+  REAL*8, DIMENSION(:) :: COMPAS_FX
+  REAL*8, DIMENSION(:) :: COMPAS_FY
+  REAL*8, DIMENSION(:) :: COMPAS_STE1
+  REAL*8, DIMENSION(:) :: COMPAS_STE2
+  REAL*8, DIMENSION(:) :: COMPAS_KB	
+  REAL*8, DIMENSION(:) :: COMPAS_KWAVE
+  REAL*8, DIMENSION(:) :: COMPAS_FWCAPX, COMPAS_FWCAPY	
+  REAL*8, DIMENSION(:) :: COMPAS_FBREX, COMPAS_FBREY	
+  REAL*8, DIMENSION(:) :: COMPAS_FBOTX, COMPAS_FBOTY
+  REAL*8, DIMENSION(:) :: COMPAS_FSURX, COMPAS_FSURY	
+  REAL*8, DIMENSION(:) :: COMPAS_WFDX, COMPAS_WFDY
+  REAL*8, DIMENSION(:) :: COMPAS_WOVSX, COMPAS_WOVSY
+  !REAL*8, DIMENSION(:) :: COMPAS_FROLX, COMPAS_FROLY	
+  INTEGER DO_AMP
+  INTEGER DO_PER
+  INTEGER DO_UB
+  INTEGER DO_WIF
+  INTEGER DO_STOKES
+  INTEGER DO_KB	
+  INTEGER DO_NONCON
+  
+  ! FOR DISSIPATION BASED FORCE
+  REAL    DISBOT(MCGRD),DISSURF(MCGRD),DISWCAP(MCGRD) ,DISTUR(MCGRD), GWIND(MCGRD)
+  !=epsilon/rho/g=[m2/s]   as calculated by swan	
+
+  INTEGER SIGMAXID(MCGRD)
+  REAL    DIRMEAN(MCGRD,3)
+
+  REAL    tbot(MCGRD)
+  REAL    ubot(MCGRD)
+  REAL    hsimp(MCGRD)	
+  REAL    STO_x,STO_y,STT,STO_s,STX1,STY1,STX2,STY2,ST0,ST2,ST_d,WE,STO,BER,KE
+  REAL    SPCDIR(MDC,6)
+  REAL    SPCSIG(MSC)
+  REAL    SME_T,SME_P,SME_D,ACS2,ACS3
+  REAL    WK(MSC)
+  REAL    FBOT,FSUR,FWCAP,FBRE,WFD
+
+  ! Spectrally integrated Stokes dummy variables
+  REAL    SMS_x,SMS_y
+
+
+  !
+  !     AC2LOC       Local action density
+  !     ACWAVE       Action density in output point
+  !     DEPLOC       local depth
+  !     ID           counter for steps in direction
+  !     IP           counter
+  !     IS           counter for sigma
+  !
+
+  REAL    ETOT,EEX,EEY,EAD,EDI,EHFR,DS,DIRDEG,EFTAIL,DEGCNV,KM
+  REAL    DEPLOC,DEPLOC2,EMAX,ETF ,E1,E2,X1, X2, XX1, XX2,XKE1,XKE2,TMIN,ISMIN,TDIFF
+  REAL    EPTOT,APTOT,SIGSQ,APTAIL,PPTAIL,AHFR,TPERID,EPTAIL,TPER
+  REAL    ETD,ISIGM,ED,EMAXU,SIG1,SIG2,SIG3,EMAXD,E3,P,Q,R,T,A,SIGP
+  REAL, PARAMETER :: epsmax = 50
+  INTEGER IP, IS, ID,ISMAX
+  INTEGER :: NORG, NNEW
+  !
+  LOGICAL STPNOW
+
+  ! wave peak period, significant wave height and mean direction
+					
+  EFTAIL = 1. / (PWTAIL(1) - 1.)
+   
+  
+   
+   COMPAS_PER=10
+   COMPAS_KWAVE=4*PI/(GRAV* COMPAS_PER**2)
+
+  DO IP = 1, nverts
+   
+       DEPLOC=DEP2(IP)
+       IF (DEPLOC.GT.DEPMIN) THEN
+	    IF ( hsimp(IP) .GT. 1.0E-2 ) THEN
+          CALL KSCIP1 (MSC, SPCSIG, DEPLOC, WK, CG, NE, NED)
+          ACLOC(:,:)=AC2(:,:,IP)
+		  
+!		  ! Peak Period
+!		  IF (DO_PER.EQ.1) THEN
+!          EMAX=0.
+!          ISMAX=1
+!          DO  IS = 1, MSC
+!             ETF=0.
+!             DO ID = 1, MDC
+!              ETF = ETF + SPCSIG(IS)*ACLOC(ID,IS)*DDIR
+!             ENDDO
+!             IF(ETF.gt.EMAX) THEN
+!                EMAX=ETF
+!                ISMAX=IS
+!             ENDIF
+!          ENDDO
+!          SIGMAXID(IP)=ISMAX
+!          COMPAS_PER(IP)=2*PI/SPCSIG(SIGMAXID(IP))
+!	      COMPAS_KWAVE(IP) = WK(SIGMAXID(IP))
+!         ENDIF
+		
+       ! peak period based on parabolic fitting
+		  IF (DO_PER.EQ.1) THEN
+		   EMAX = 0.
+           ETD  = 0.
+           ISIGM = -1
+           DO IS = 1, MSC
+              ED  = ETD
+              ETD = 0.
+              DO ID = 1, MDC
+                ETD = ETD + SPCSIG(IS)*ACLOC(ID,IS)*DDIR
+              END DO
+              IF (ETD.GT.EMAX) THEN
+                EMAX  = ETD
+                ISIGM = IS
+                EMAXD = ED
+                EMAXU = 0.
+                IF (IS.LT.MSC) THEN
+                   DO ID = 1, MDC
+                     EMAXU = EMAXU + SPCSIG(IS+1)*ACLOC(ID,IS+1)*DDIR
+                   ENDDO
+                ELSE
+                   EMAXU = EMAX
+                END IF
+              END IF
+           ENDDO
+           IF (ISIGM.GT.1 .AND. ISIGM.LT.MSC) THEN                  
+             SIG1 = SPCSIG(ISIGM-1)
+             SIG2 = SPCSIG(ISIGM+1)
+             SIG3 = SPCSIG(ISIGM)
+             E1   = EMAXD
+             E2   = EMAXU
+             E3   = EMAX
+             P    = SIG1+SIG2
+             Q    = (E1-E2)/(SIG1-SIG2)
+             R    = SIG1+SIG3
+             T    = (E1-E3)/(SIG1-SIG3)
+             A    = (T-Q)/(R-P)
+				IF (A.LT.0) THEN
+					SIGP = (-Q+P*A)/(2.*A)
+				ELSE
+					SIGP = SIG3
+				ENDIF
+				TPER = 2.*PI/SIGP
+				TMIN=10
+				ISMIN=1
+					DO IS= 1, MSC 
+					  TDIFF=TPER-2*PI/SPCSIG(IS)
+						IF(TDIFF.lt.TMIN) THEN
+							TMIN=TDIFF
+							ISMIN=IS
+						ENDIF
+					ENDDO  
+            COMPAS_KWAVE(IP) = WK(ISMIN)
+            SIGMAXID(IP)=ISMIN		
+			ELSEIF (ISIGM.EQ.1) THEN
+		    TPER = 2.*PI/SPCSIG(1)
+			COMPAS_KWAVE(IP) = WK(1)
+			SIGMAXID(IP)=1
+			ELSE
+		    TPER = 2.*PI/SPCSIG(1)
+			COMPAS_KWAVE(IP) = WK(1)
+			SIGMAXID(IP)=1 
+			ENDIF
+			COMPAS_PER(IP)=TPER
+            ENDIF
+
+		! !mean period
+		  ! IF (DO_PER.EQ.1) THEN
+			  ! APTOT = 0.
+              ! EPTOT = 0.
+              ! DO ID=1, MDC
+                 ! DO IS=1,MSC
+                   ! SIGSQ = SPCSIG(IS)**2                            
+                   ! APTOT = APTOT + SIGSQ * ACLOC(ID,IS)                   
+                   ! EPTOT = EPTOT + SPCSIG(IS) * SIGSQ * ACLOC(ID,IS)      
+                 ! ENDDO
+              ! ENDDO
+              ! APTOT = APTOT * FRINTF
+              ! EPTOT = EPTOT * FRINTF
+              ! IF (MSC.GT.3) THEN                                       
+                 ! PPTAIL = PWTAIL(1) - 1.                                
+                 ! APTAIL = 1. / (PPTAIL * (1. + PPTAIL * (FRINTH-1.)))     
+                 ! PPTAIL = PWTAIL(1) - 2.                                  
+                 ! EPTAIL = 1. / (PPTAIL * (1. + PPTAIL * (FRINTH-1.)))     
+                 ! DO ID = 1, MDC
+                   ! AHFR = SIGSQ * ACLOC(ID,MSC)                           
+                   ! APTOT = APTOT + APTAIL * AHFR
+                   ! EHFR = SPCSIG(MSC) * AHFR                             
+                   ! EPTOT = EPTOT + EPTAIL * EHFR
+                 ! ENDDO
+			! ENDIF
+            ! IF (EPTOT.GT.0) THEN
+                 ! TPER = 2.*PI * APTOT / EPTOT
+				 ! TMIN=10
+				 ! ISMIN=1
+					! DO IS= 1, MSC 
+					  ! TDIFF=TPER-2*PI/SPCSIG(IS)
+						! IF(TDIFF.lt.TMIN) THEN
+							! TMIN=TDIFF
+							! ISMIN=IS
+						! ENDIF
+					! ENDDO  
+			! ELSE
+				! TPER=-10
+			! ENDIF  
+			! COMPAS_PER(IP)=TPER
+			! COMPAS_KWAVE(IP) = WK(ISMIN)
+            ! ENDIF
+		
+          ! Mean wave direction
+          ETOT = 0.
+          EEX  = 0.
+          EEY  = 0.
+          DO ID=1, MDC
+             EAD = 0.
+             DO IS=1,MSC
+                DS=SPCSIG(IS)-SPCSIG(IS-1)
+                EDI = 0.5*(SPCSIG(IS)*ACLOC(ID,IS)+ SPCSIG(IS-1)*ACLOC(ID,IS-1))*DS
+                EAD = EAD + EDI
+             ENDDO
+             IF (MSC .GT. 3) THEN
+             !Contribution of tail to total energy density
+                EHFR = ACLOC(ID,MSC) * SPCSIG(MSC)
+                EAD = EAD + EHFR * SPCSIG(MSC) * EFTAIL
+             ENDIF
+             EAD = EAD * DDIR
+             ETOT = ETOT + EAD
+             EEX  = EEX + EAD * SPCDIR(ID,2)
+             EEY  = EEY + EAD * SPCDIR(ID,3)
+          ENDDO 
+          IF (ETOT.GT.0.) THEN
+             DIRDEG = ATAN2(EEY,EEX) * 180./PI
+             IF (DIRDEG.LT.0.) DIRDEG = DIRDEG + 360.
+			ELSE
+             DIRDEG = 0.0
+			ENDIF 	
+          DIRMEAN(IP,1)=DIRDEG*PI/180
+          DIRMEAN(IP,2)=cos(DIRMEAN(IP,1))
+          DIRMEAN(IP,3)=sin(DIRMEAN(IP,1))
+	  IF (DO_DIR.EQ.1) THEN
+             COMPAS_DIR(IP) =DIRDEG*PI/180
+          ENDIF
+	  IF (DO_AMP.EQ.1) THEN
+             COMPAS_AMP(IP) = hsimp(IP)
+          ENDIF
+          ENDIF
+		  ENDIF
+     ENDDO 
+	 
+	 
+  ! near bed orbital velocity, excursion amplitude
+
+ IF (DO_UB.EQ.1) THEN
+  do IP = 1, nverts
+           COMPAS_UB(IP) = ubot(IP)
+  ENDDO
+ ENDIF 
+
+
+DEP3=DEP2 + COMPAS_ETA ! without wave set down/up
+
+   !Bernoulli head (m2/s2)
+IF (DO_KB.EQ.1) THEN 
+  COMPAS_KB = 1E-5
+   do IP = 1, nverts
+      DEPLOC=DEP3(IP)
+      IF ( hsimp(IP) .GT. 1.0E-2 ) THEN
+		IF(DEPLOC.GT.DEPMIN) THEN
+			CALL KSCIP1 (MSC, SPCSIG, DEPLOC, WK, CG, NE, NED)
+                ACLOC = AC2(:,:,IP)
+                BER=0		
+                DO  IS = 1, MSC
+                    X1 = MIN(DEPLOC*WK(IS),EPSMAX)
+                    DO  ID  = 1, MDC
+                        BER  =  BER + (WK(IS)/sinh(2*X1))* ACLOC(ID,IS) * SPCSIG(IS)		
+                    ENDDO
+                ENDDO
+                COMPAS_KB(IP)=BER * FRINTF * DDIR * GRAV	
+            ENDIF
+        ENDIF	  
+
+ENDDO
+DEP3=DEP2+COMPAS_ETA + COMPAS_KB/GRAV ! without wave set down/up
+ENDIF
+
+
+! surface stokes drift
+IF (DO_STOKES.EQ.1) THEN	
+ COMPAS_STE1=1E-5
+ COMPAS_STE2=1E-5
+
+do IP = 1, nverts
+
+      DEPLOC=DEP3(IP)
+	  DEPLOC2=DEP2(IP)
+      IF ( hsimp(IP) .GT. 1.0E-2 ) THEN
+		IF(DEPLOC.GT.DEPMIN) THEN
+        CALL KSCIP1 (MSC, SPCSIG, DEPLOC, WK, CG, NE, NED)
+        ACLOC = AC2(:,:,IP)
+		STO_x=0.
+		STO_y=0.
+		STO_s=0.
+		ST_d=0.
+           DO  IS = 1, MSC
+             X1 = MIN(2.0*DEPLOC*WK(IS),EPSMAX) !included
+			 X2 = MIN(2.0*DEPLOC2*WK(IS),EPSMAX)  !not included
+             DO  ID  = 1, MDC
+				STO =  (WK(IS)/SPCSIG(IS))*WK(IS)*(cosh(X2)/ sinh(X1)) * ACLOC(ID,IS) * SPCSIG(IS)
+				!STO =  SPCSIG(IS) * WK(IS) *(cosh(X2)/ sinh(X1)**2) * ACLOC(ID,IS) * SPCSIG(IS)
+			    STO_x  = STO_x + STO * SPCDIR(ID,2)
+			    STO_y  = STO_y + STO * SPCDIR(ID,3)
+                ST_d   = ST_d +  (WK(IS)/ SPCSIG(IS)) * ACLOC(ID,IS) * SPCSIG(IS)
+				STO_s = STO_s + STO
+             ENDDO
+           ENDDO 
+             STX1 = STO_x * FRINTF * DDIR * 2 * GRAV
+		     STY1 = STO_y * FRINTF * DDIR * 2 * GRAV		  
+			 XX1 = MIN(2.0*DEPLOC*WK(SIGMAXID(IP)),EPSMAX)
+			 XX2 = MIN(2.0*DEPLOC2*WK(SIGMAXID(IP)),EPSMAX)				 
+		     ST2 = GRAV*((hsimp(IP)**2 / 8) * COMPAS_KWAVE(IP)**2 / SPCSIG(SIGMAXID(IP)))  * (cosh(XX2) / sinh(XX1))	
+			
+			 STX2 = ST2 * DIRMEAN(IP,2)
+			 STY2 = ST2 * DIRMEAN(IP,3)
+		
+			 ST0 = STO_s * FRINTF * DDIR *2*GRAV
+		     STT = ST_d * FRINTF * DDIR * GRAV
+
+		     KE = ST0/(2*STT)
+			 XKE1 = MIN(2.0*DEPLOC*KE,EPSMAX)
+			 XKE2 = MIN(2.0*DEPLOC2*KE,EPSMAX)	
+			 STX1=STX1 * cosh(XKE1)/cosh(XKE2)
+			 STY2=STY2 * cosh(XKE1)/cosh(XKE2)
+			 
+			 
+			  !WE=tanh((abs(DEPLOC) *KE)*0.5)  !!!check here  
+
+			       !COMPAS_STE1(IP)= WE * STX1 + (1-WE) *STX2
+                   !COMPAS_STE2(IP)= WE * STY1 + (1-WE) *STY2
+				    IF (XX2.GT.PI/5) THEN !int +deep water
+				       COMPAS_STE1(IP)= STX1 
+					   COMPAS_STE2(IP)= STY1
+				    ELSE !shallow water
+					   COMPAS_STE1(IP)= STX2 
+					   COMPAS_STE2(IP)= STY2
+					ENDIF
+		ENDIF 
+	  ENDIF
+
+ENDDO
+ENDIF
+
+! Radiation stress. Note arguments to SwanComputeForce are REAL*4  
+
+   
+   IF (DO_WIF.EQ.1) THEN
+      CALL SwanComputeForce (FX(1), FY(1), AC2, &
+           &                 COMPDA(1,JDP2), COMPDA(1,JHS), &
+     &                       SPCSIG, SPCDIR )
+      COMPAS_FX(:) = FX(:)
+      COMPAS_FY(:) = FY(:)
+   ENDIF
+
+
+
+
+
+IF (DO_NONCON.EQ.1) THEN
+
+   COMPAS_FBOTX= 1E-6
+   COMPAS_FBOTY= 1E-6
+   COMPAS_FWCAPX=1E-6
+   COMPAS_FWCAPY=1E-6
+   COMPAS_FBREX=1E-6
+   COMPAS_FBREY=1E-6
+   COMPAS_FSURX=1E-6
+   COMPAS_FSURY=1E-6
+   COMPAS_WFDX=1E-6
+   COMPAS_WFDY=1E-6			
+   COMPAS_WOVSX=1E-6
+   COMPAS_WOVSY=1E-6
+   KM=1.0E-0
+
+
+DO IP = 1, nverts
+
+	   	 DEPLOC=DEP3(IP)
+		 IF(DEPLOC.GT.DEPMIN) THEN
+
+			  CALL KSCIP1 (MSC, SPCSIG, DEPLOC, WK, CG, NE, NED)
+				     IF ( hsimp(IP) .GT. 1.0E-2 ) THEN
+					 
+						FBOT=DISBOT(IP)* COMPAS_KWAVE(IP)/SPCSIG(SIGMAXID(IP)) *GRAV
+						FWCAP=DISWCAP(IP)* COMPAS_KWAVE(IP)/SPCSIG(SIGMAXID(IP)) *GRAV
+						FBRE=DISSURF(IP)* COMPAS_KWAVE(IP)/SPCSIG(SIGMAXID(IP)) *GRAV 
+						FSUR= KM *hsimp(IP)**2 * COMPAS_KWAVE(IP)* COMPAS_KWAVE(IP) * SPCSIG(SIGMAXID(IP))/ (min(2*tanh(abs(DEPLOC)*COMPAS_KWAVE(IP)),EPSMAX))
+						WFD=GWIND(IP) * COMPAS_KWAVE(IP)/SPCSIG(SIGMAXID(IP)) *GRAV 
+
+						COMPAS_FBOTX(IP)= FBOT*DIRMEAN(IP,2)
+						COMPAS_FBOTY(IP)= FBOT*DIRMEAN(IP,3)
+						COMPAS_FWCAPX(IP)= FWCAP*DIRMEAN(IP,2)
+						COMPAS_FWCAPY(IP)= FWCAP*DIRMEAN(IP,3)
+						COMPAS_FBREX(IP)= FBRE*DIRMEAN(IP,2)
+						COMPAS_FBREY(IP)= FBRE*DIRMEAN(IP,3)
+						COMPAS_FSURX(IP)= FSUR*DIRMEAN(IP,2)
+						COMPAS_FSURY(IP)= FSUR*DIRMEAN(IP,3)
+						COMPAS_WFDX(IP)= WFD*DIRMEAN(IP,2)
+						COMPAS_WFDY(IP)= WFD*DIRMEAN(IP,3)
+					ENDIF
+		 ENDIF
+
+ENDDO
+
+ENDIF
+
+
+   END SUBROUTINE swan2compas
+   
+
+   END MODULE Couple2Compas

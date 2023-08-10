@@ -71,6 +71,7 @@ parameter_defaults.o \
 process_defaults.o \
 utils.o \
 process_library/diffusion_epi.o \
+process_library/diffusion_heat_epi.o \
 process_library/dinoflagellate_grow_wc.o \
 process_library/dinoflagellate_mortality_sed.o \
 process_library/anm_epi.o \
@@ -158,6 +159,7 @@ process_library/filter_feeder_wc.o \
 process_library/filter_feeder_epi.o \
 process_library/age_wc.o \
 process_library/age_sed.o \
+process_library/mixed_layer_age_col.o \
 process_library/co2_exchange_wc.o \
 process_library/gas_exchange_wc.o \
 process_library/gas_exchange_epi.o \
@@ -170,9 +172,10 @@ process_library/macroalgae_spectral_grow_wc.o \
 process_library/salmon_waste.o \
 process_library/recom_extras.o \
 process_library/variable_parameter.o \
-process_library/carbon_leak_sed.o 
-
-
+process_library/carbon_leak_sed.o \
+process_library/light_spectral_col.o \
+process_library/symbiodinium_spectral_free.o \
+process_library/dimethyl_sulfide_wc.o
 
 WIZARDOBJS = process_library/light_optical_wc.o
 

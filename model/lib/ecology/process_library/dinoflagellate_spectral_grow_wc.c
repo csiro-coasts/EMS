@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dinoflagellate_spectral_grow_wc.c 6579 2020-07-29 03:46:14Z bai155 $
+ *  $Id: dinoflagellate_spectral_grow_wc.c 7207 2022-09-16 07:28:14Z bai155 $
  *
  */
 
@@ -32,6 +32,8 @@
 #include "dinoflagellate_spectral_grow_wc.h"
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
+
+double ginterface_get_svel(void* model, char *name);
 
 typedef struct {
   int do_mb;                  /* flag */  
@@ -170,11 +172,11 @@ void dinoflagellate_spectral_grow_wc_postinit(eprocess* p)
    * Not valid during a pre_build (RECOM)
    */
   if (!e->pre_build) {
-    v1 = einterface_gettracersvel(e->model,"PhyD_N");
-    v2 = einterface_gettracersvel(e->model,"PhyD_NR");
-    v3 = einterface_gettracersvel(e->model,"PhyD_PR");
-    v4 = einterface_gettracersvel(e->model,"PhyD_Chl");
-    v5 = einterface_gettracersvel(e->model,"PhyD_I");
+    v1 = ginterface_get_svel(e->model,"PhyD_N");
+    v2 = ginterface_get_svel(e->model,"PhyD_NR");
+    v3 = ginterface_get_svel(e->model,"PhyD_PR");
+    v4 = ginterface_get_svel(e->model,"PhyD_Chl");
+    v5 = ginterface_get_svel(e->model,"PhyD_I");
     
     if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
       printf("Mass conservation violation due to microalgae reserves \n");

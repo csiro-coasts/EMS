@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: gridlib.h 6752 2021-04-07 00:55:30Z her127 $
+ *  $Id: gridlib.h 7147 2022-07-07 00:26:09Z her127 $
  *
  */
 
@@ -34,22 +34,24 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: gridlib.h 6752 2021-04-07 00:55:30Z her127 $
+ *  $Id: gridlib.h 7147 2022-07-07 00:26:09Z her127 $
  *
  */
 
 
 typedef enum { 
-  GRID_CSA             = 0, 
-  GRID_NN_SIBSON       = 1, 
-  GRID_NN_NONSIBSONIAN = 2,
-  GRID_LINEAR          = 4,
-  GRID_AVERAGE         = 8,
-  GRID_LSQQ            = 16,
-  GRID_BL              = 32,
-  GRID_BAL             = 64,
-  GRID_LSQL            = 128,
-  GRID_NRST            = 256
+  GRID_CSA              = 0x001, 
+  GRID_NN_SIBSON        = 0x002, 
+  GRID_NN_NONSIBSONIAN  = 0x004,
+  GRID_LINEAR           = 0x008,
+  GRID_AVERAGE          = 0x010,
+  GRID_LSQQ             = 0x020,
+  GRID_BL               = 0x040,
+  GRID_BAL              = 0x080,
+  GRID_LSQL             = 0x100,
+  GRID_NRST             = 0x200,
+  GRID_NNA_SIBSON       = 0x400, 
+  GRID_NNA_NONSIBSONIAN = 0x800
 } INTERP_RULE;
 
 #include <float.h>

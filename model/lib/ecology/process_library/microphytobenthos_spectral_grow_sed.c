@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_spectral_grow_sed.c 6690 2021-03-24 00:57:04Z wil00y $
+ *  $Id: microphytobenthos_spectral_grow_sed.c 7221 2022-09-25 23:06:34Z bai155 $
  *
  */
 
@@ -155,14 +155,15 @@ void microphytobenthos_spectral_grow_sed_postinit(eprocess* p)
   ws->KI_MPB_i = -1;
   ws->yCfac_MPB_i = -1;
   
-  if (!process_present(e,PT_SED, "light_spectral_sed") && !process_present(e,PT_SED, "light_sed")) 
+  if (!process_present(e,PT_SED, "light_spectral_sed") && !process_present(e,PT_SED, "light_sed") && !process_present(e,PT_COL, "light_spectral_col")) 
     emstag(LPANIC, "eco:microphytobenthos_spectral_grow_sed_init", 
-	   "MPB grow is specified to be spectral but light_spectral_sed or light_sed process not found!"); 
+	   "MPB grow is specified to be spectral but light_spectral_sed, light_sed or light_spectral_col process not found!"); 
   
-  if (process_present(e,PT_SED, "light_spectral_sed")){
+  if ( process_present(e,PT_SED, "light_spectral_sed") || process_present(e,PT_COL, "light_spectral_col")){
     ws->yCfac_MPB_i = find_index_or_add(e->cv_cell, "yCfac_MPB", e);
     ws->KI_MPB_i = find_index_or_add(e->cv_cell, "KI_MPB", e);
   }
+
   if (process_present(e,PT_SED, "light_sed")){
     ws->Kd_i = find_index_or_add(tracers, "Kd", e);
     ws->Light_i = find_index_or_add(tracers, "Light", e);
@@ -254,7 +255,7 @@ void microphytobenthos_spectral_grow_sed_calc(eprocess* p, void* pp)
       double Light = y[ws->Light_i];
       double I = 2.77e18 * Light / AV;
       
-      // need to re-calculate aA based on variable Chl, using 0.04 for par light //
+      // need to re-calculate aA based on variable Chl, using yC = 0.04 for par light //
       
       double aA_here = aa(ws->rad, 0.04 * cellChl);
 

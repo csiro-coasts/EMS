@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 6627 2020-09-08 01:35:18Z her127 $
+ *  $Id: ginterface.c 7325 2023-04-11 02:25:23Z her127 $
  *
  */
 
@@ -34,6 +34,7 @@ int NLOCAL_TRACERS = sizeof(LOCAL_TRACERS) / sizeof(int);
 
 char* ginterface_get2Dtracername(void* model, int i);
 int  ginterface_get_max_numbercolumns(void* model);
+
 
 static int e_ntr;
 static int tr_map[MAXNUMVARS];
@@ -269,6 +270,13 @@ void i_get_names_tracers_3d(void* hmodel, char **trname) {
     }
 }
 
+/* Gets an array of 3D tracer names                                  */
+void i_get_tracerstats_3d(void* hmodel, char *trname, int tn) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    strcpy(trname, wincon->trinfo_3d[tn].tracerstat);
+}
+
 /* Returns the name of a 3D tracer i                                 */
 char* ginterface_gettracername(void* model, int i)
 {
@@ -315,6 +323,23 @@ tracer_info_t* i_get_tracer(void* hmodel, char* trname)
   for (n = 0; n < wincon->ntr; n++) {
     if(strcmp(trname,wincon->trinfo_3d[n].name) == 0)
       return &(wincon->trinfo_3d[n]);
+  }
+  return NULL;
+}
+
+/* Returns the tracer info for a epi with name 'trname'.       */
+/* Returns NULL if the tracer can't be found.                        */
+tracer_info_t* i_get_tracer2d(void* hmodel, char* trname)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  int n;
+  emstag(LTRACE,"hd:ginterface:i_get_tracer2d","looking for epi with name: %s",trname);
+
+
+  for (n = 0; n < wincon->ntrS; n++) {
+    if(strcmp(trname,wincon->trinfo_2d[n].name) == 0)
+      return &(wincon->trinfo_2d[n]);
   }
   return NULL;
 }
@@ -637,6 +662,460 @@ double ginterface_get_srf_flux(void* hmodel, char *name, int c)
     return 0;
 }
 
+/* Returns the size of tracers to transfer to SWAN                   */
+int i_get_swan_size(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  return (window->nw2c);
+}
+int i_get_swan_size_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (data->nw2c);
+}
+int i_get_swan_nobc_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (data->no2_t);
+}
+int *i_get_swan_obc_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->obc_t[1]);
+}
+
+
+/* Returns a poiner to the sea level tracer to transfer to SWAN      */
+double *i_get_swan_eta(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->eta[1]);*/
+  return (&windat->swan_eta[1]);
+}
+double *i_get_swan_eta_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_eta[1]);
+}
+
+/* Returns a poiner to the UAV tracer to transfer to SWAN            */
+double *i_get_swan_uav(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->uav[1]);*/
+  return (&windat->swan_uav[1]);
+}
+double *i_get_swan_uav_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_uav[1]);
+}
+
+/* Returns a poiner to the VAV tracer to transfer to SWAN            */
+double *i_get_swan_vav(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->vav[1]);*/
+  return (&windat->swan_vav[1]);
+}
+double *i_get_swan_vav_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_vav[1]);
+}
+
+/* Returns a pointer to the east component of cell centered wind     */
+/* stress. Unstructured meshes only; assumes the centered u wind     */
+/* stress is in wincon->d2 via vel_cen().                            */
+double *i_get_swan_wx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  /*win_priv_t *wincon = window->wincon;*/
+  /*return (&wincon->d2[1]);*/
+  window_t *windat = window->windat;
+  return (&windat->swan_wx[1]);
+}
+double *i_get_swan_wx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_wx[1]);
+}
+
+/* Returns a pointer to the north component of cell centered wind    */
+/* stress. Unstructured meshes only; assumes the centered v wind     */
+/* stress is in wincon->d3 via vel_cen().                            */
+double *i_get_swan_wy(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  /*win_priv_t *wincon = window->wincon;*/
+  /*return (&wincon->d3[1]);*/
+  window_t *windat = window->windat;
+  return (&windat->swan_wy[1]);
+}
+double *i_get_swan_wy_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_wy[1]);
+}
+
+
+/* Returns a poiner to the bathymetry to transfer to SWAN            */
+double *i_get_swan_dep(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&window->botz[1]);*/
+  return (&windat->swan_dep[1]);
+}
+double *i_get_swan_dep_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_dep[1]);
+}
+
+/* Returns a poiner to the wave amplitude tracer to get from SWAN    */
+double *i_get_swan_amp(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_amp[1]);*/
+  return (&windat->swan_amp[1]);
+}
+double *i_get_swan_amp_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_amp[1]);
+}
+
+/* Returns a poiner to the wave period tracer to get from SWAN       */
+double *i_get_swan_per(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_period[1]);*/
+  return (&windat->swan_per[1]);
+}
+double *i_get_swan_per_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_per[1]);
+}
+
+/* Returns a poiner to the wave direction tracer to get from SWAN    */
+double *i_get_swan_dir(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_dir[1]);*/
+  return (&windat->swan_dir[1]);
+}
+double *i_get_swan_dir_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_dir[1]);
+}
+
+/* Returns a poiner to the wave orbital velocity tracer to get from  */
+/* SWAN.                                                             */
+double *i_get_swan_ub(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_ub[1]);*/
+  return (&windat->swan_ub[1]);
+}
+double *i_get_swan_ub_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_ub[1]);
+}
+
+/* Returns a poiner to the x wave induced force tracer to get from   */
+/* SWAN.                                                             */
+double *i_get_swan_Fx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_Fx[1]);*/
+  return (&windat->swan_Fx[1]);
+}
+double *i_get_swan_Fx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_Fx[1]);
+}
+
+/* Returns a poiner to the y wave induced force tracer to get from   */
+/* SWAN.                                                             */
+double *i_get_swan_Fy(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_Fy[1]);*/
+  return (&windat->swan_Fy[1]);
+}
+double *i_get_swan_Fy_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_Fy[1]);
+}
+
+/* Returns a poiner to the x Stokes velocity tracer to get from      */
+/* SWAN.                                                             */
+double *i_get_swan_ste1(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_ste1[1]);*/
+  return (&windat->swan_ste1[1]);
+}
+double *i_get_swan_ste1_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_ste1[1]);
+}
+
+/* Returns a poiner to the y Stokes velocity tracer to get from      */
+/* SWAN.                                                             */
+double *i_get_swan_ste2(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_ste2[1]);*/
+  return (&windat->swan_ste2[1]);
+}
+double *i_get_swan_ste2_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_ste2[1]);
+}
+
+/* Returns a poiner to the wavenumber tracer to get from SWAN        */
+double *i_get_swan_k(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_amp[1]);*/
+  return (&windat->swan_k[1]);
+}
+double *i_get_swan_k_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_k[1]);
+}
+
+/* Returns a poiner to the wave Bernoulli tracer to get from SWAN    */
+double *i_get_swan_Kb(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  /*return (&windat->wave_amp[1]);*/
+  return (&windat->swan_Kb[1]);
+}
+double *i_get_swan_Kb_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_Kb[1]);
+}
+
+/* Returns a poiner to the wave whitecapping tracer to get from SWAN    */
+double *i_get_swan_fwcapx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fwcapx[1]);
+}
+double *i_get_swan_fwcapx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fwcapx[1]);
+}
+double *i_get_swan_fwcapy(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fwcapy[1]);
+}
+double *i_get_swan_fwcapy_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fwcapy[1]);
+}
+
+/* Returns a poiner to the wave depth-induced breaking tracer to get from SWAN    */
+double *i_get_swan_fbrex(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fbrex[1]);
+}
+double *i_get_swan_fbrex_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fbrex[1]);
+}
+double *i_get_swan_fbrey(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fbrey[1]);
+}
+double *i_get_swan_fbrey_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fbrey[1]);
+}
+
+/* Returns a poiner to the wave bottom friction dissapation tracer to get from SWAN    */
+double *i_get_swan_fbotx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fbotx[1]);
+}
+double *i_get_swan_fbotx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fbotx[1]);
+}
+double *i_get_swan_fboty(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fboty[1]);
+}
+double *i_get_swan_fboty_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fboty[1]);
+}
+
+/* Returns a poiner to the wave surface streaming tracer to get from SWAN    */
+double *i_get_swan_fsurx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fsurx[1]);
+}
+double *i_get_swan_fsurx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fsurx[1]);
+}
+double *i_get_swan_fsury(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_fsury[1]);
+}
+double *i_get_swan_fsury_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_fsury[1]);
+}
+
+/* Returns a poiner to the wave form drag tracer to get from SWAN    */
+double *i_get_swan_wfdx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_wfdx[1]);
+}
+double *i_get_swan_wfdx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_wfdx[1]);
+}
+double *i_get_swan_wfdy(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_wfdy[1]);
+}
+double *i_get_swan_wfdy_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_wfdy[1]);
+}
+
+/* Returns a poiner to the wave ocean viscous stress tracer to get from SWAN    */
+double *i_get_swan_wovsx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_wovsx[1]);
+}
+double *i_get_swan_wovsx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_wovsx[1]);
+}
+double *i_get_swan_wovsy(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_wovsy[1]);
+}
+double *i_get_swan_wovsy_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_wovsy[1]);
+}
+
+/* Returns a poiner to the wave roller tracer to get from SWAN    */
+double *i_get_swan_frolx(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_frolx[1]);
+}
+double *i_get_swan_frolx_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_frolx[1]);
+}
+double *i_get_swan_froly(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_froly[1]);
+}
+double *i_get_swan_froly_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_froly[1]);
+}
+
+
+/* Returns a poiner to the dum1 tracer 1 to get from SWAN            */
+double *i_get_swan_dum1(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_dum1[1]);
+}
+double *i_get_swan_dum1_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_dum1[1]);
+}
+
+/* Returns a poiner to the dum2 tracer 2 to get from SWAN            */
+double *i_get_swan_dum2(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (&windat->swan_dum2[1]);
+}
+double *i_get_swan_dum2_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (&data->swan_dum2[1]);
+}
+
 /*-------------------------------------------------------------------*/
 /* 2D (benthic) tracers                                              */
 /*-------------------------------------------------------------------*/
@@ -691,6 +1170,13 @@ void i_get_names_tracers_2d(void* hmodel, char **trname) {
     for (n = 0; n < wincon->ntrS; n++) {
       strcpy(trname[n], wincon->trinfo_2d[n].name);
     }
+}
+
+/* Gets an 2D tracerstat name                                        */
+void i_get_tracerstats_2d(void* hmodel, char *trname, int tn) {
+    geometry_t* window = (geometry_t*) hmodel;
+    win_priv_t *wincon = window->wincon;
+    strcpy(trname, wincon->trinfo_2d[tn].tracerstat);
 }
 
 /* Returns the name of a 2D tracer i                                 */
@@ -789,6 +1275,39 @@ void ginterface_get_rsr_tracers(void* model, int *rtns)
       rtns[n++] = tn;
   }
 }
+
+/* Returns the number of 3D column tracers whos name is prefixed by  */
+ /* 'Ed_'.                                                             */
+ int ginterface_get_num_ed_tracers(void* model)
+ {
+   geometry_t *window = (geometry_t *)model;
+   win_priv_t *wincon = window->wincon;
+   int tn, n;
+ 
+   n = 0;
+   for(tn = 0; tn < wincon->ntr; tn++) {
+     char *trname = wincon->trinfo_3d[tn].name;
+     if (strncmp(trname, "Ed_", 3) == 0)
+       n++;
+   }
+   return(n);
+ }
+ 
+ /* Returns an array of 1D pointers to tracers whos name is prefixed  */
+ /* by 'Ed_'.                                                          */
+ void ginterface_get_ed_tracers(void* model, int *rtns)
+ {
+   geometry_t *window = (geometry_t *)model;
+   win_priv_t *wincon = window->wincon;
+   int tn, n;
+ 
+   n = 0;
+   for(tn = 0; tn < wincon->ntr; tn++) {
+     char *trname = wincon->trinfo_3d[tn].name;
+     if (strncmp(trname, "Ed_", 3) == 0)
+       rtns[n++] = tn;
+   }
+ }
 
 /* Returns the diagnostic flag of 2D tracer 'name'                   */
 int ginterface_getepidiagnflag(void* model, char* name)
@@ -1027,6 +1546,30 @@ double** ginterface_getsedtracers(void* model, int b)
   return sedtr;
 }
 
+double ginterface_get_svel(void* model, char *name)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+    
+    double v=0;
+    if (data)
+      v = data->svel;
+    return v;
+}
+
+void ginterface_get_svel_name(void* model, char *name, char *sname)
+{
+    geometry_t* window = (geometry_t*) model;
+    win_priv_t *wincon=window->wincon;
+    tracer_info_t *tr = i_get_tracer(model, name);
+    trinfo_priv_sed_t *data = tr->private_data[TR_PRV_DATA_SED];
+    
+    if (data)
+      strcpy(sname, data->svel_name);
+}
+
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
 
@@ -1055,6 +1598,12 @@ char *ginterface_gettimeunits(void *model)
   geometry_t *window = (geometry_t *)model;
   win_priv_t *wincon = window->wincon;
   return wincon->timeunit;
+}
+
+/* Returns the output timeunit                                       */
+char *ginterface_getoutputtimeunits(void *model)
+{
+  return master->output_tunit;
 }
 
 /* Returns the model 3D time-step                                    */
@@ -1321,6 +1870,19 @@ void i_get_dz_wc(void* hmodel, int c, double *dz_wc)
 void ginterface_getdz_wc(void* hmodel, int c, double *dz_wc)
 {
   i_get_dz_wc(hmodel, c, dz_wc);
+}
+/* Cell depth                                                        */
+void ginterface_getcellz_wc(void* hmodel, double *dz_wc)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    int c = window->cdeep;
+    int cs = window->m2d[c];
+    int k;
+
+    for(k = window->nz-1; k >= 0; k--) {
+      dz_wc[k] = window->cellz[c];
+      c = window->zm1[c];
+    }
 }
 /* Returns cell thickness in column b from surface to bottom. The dz */
 /* array is returned from the function. The index b is that for the  */
@@ -2289,25 +2851,114 @@ void wave_interface_step(geometry_t *window)
   /*-----------------------------------------------------------------*/
   /* Do the ecology if required */
 #if defined(HAVE_WAVE_MODULE)
-  if ((wincon->do_wave) && !(windat->nstep % wincon->wave->dt_ratio)) {
-    /*
-    for (cc = 1; cc <= window->b2_t; cc++) {
-      c = window->w2_t[cc];
-    */
-    for (cc = 1; cc <= wincon->vca2; cc++) {
-      c = wincon->s2[cc];
-      /* Exclude process points if required */
-      if (window->ncwave)
-	if (ANY(c, window->cwave, window->ncwave)) continue;
-      wave_step(window, wincon->wave, c);
+  if (!(wincon->do_wave & (NONE)) && !(windat->nstep % wincon->wave->dt_ratio)) {
+    if (wincon->do_wave & W_SWANW) {
+      wave_t *wave = wincon->wave;
+
+      /* Center the N-E rotated wind vector. Note the tangential     */
+      /* component of wind is computed within vel_cen().             */
+      vel_cen(window, windat, wincon, windat->wind1, NULL, 
+	      wincon->d2, wincon->d3, NULL, NULL, 1);
+
+      /* Map the variables required by SWAN into dummy arrays        */
+      for (cc = 1; cc <= window->nw2c; cc++) {
+	c = window->w2c[cc];
+	windat->swan_eta[cc] = windat->eta[c];
+	windat->swan_uav[cc] = windat->uav[c];
+	windat->swan_vav[cc] = windat->vav[c];
+	windat->swan_wx[cc] = wincon->d2[c];
+	windat->swan_wy[cc] = wincon->d3[c];
+	windat->swan_dep[cc] = -window->botz[c];
+	stresswind(&windat->swan_wx[cc], &windat->swan_wy[cc], 
+		   10.0, 26.0, 0.00114, 0.00218);
+      }
+
+      swan_step(wave);
+
+      /* Get the wave current friction                               */
+      for (cc = 1; cc <= wincon->vca2; cc++) {
+	c = wincon->s2[cc];
+	if (wave->do_Cd) {
+	  ustrcw_estim(wave, c);
+	}
+      }
+
+      /* Map the SWAN variables back to arrays                       */
+      for (cc = 1; cc <= window->nw2c; cc++) {
+	c = window->w2c[cc];
+	if (wave->do_amp) windat->wave_amp[c] = windat->swan_amp[cc];
+	if (wave->do_per) windat->wave_period[c] = windat->swan_per[cc];
+	if (wave->do_dir) windat->wave_dir[c] = windat->swan_dir[cc];
+	if (wave->do_ub) windat->wave_ub[c] = windat->swan_ub[cc];
+	if (wave->do_wif) {
+	  windat->wave_Fx[c] = windat->swan_Fx[cc];
+	  windat->wave_Fy[c] = windat->swan_Fy[cc];
+	}
+	if (wave->do_stokes) {
+	  windat->wave_ste1[c] = windat->swan_ste1[cc];
+	  windat->wave_ste2[c] = windat->swan_ste2[cc];
+	}
+	if (wave->do_Kb)
+	  windat->wave_Kb[c] = windat->swan_Kb[cc];
+	if (wave->do_k)
+	  windat->wave_k[c] = windat->swan_k[cc];
+	if (wave->do_dum1)
+	  windat->wave_dum1[c] = windat->swan_dum1[cc];
+	if (wave->do_dum2)
+	  windat->wave_dum2[c] = windat->swan_dum2[cc];
+	if (wave->do_noncon) {
+	  windat->wave_fwcapx[c] = windat->swan_fwcapx[cc];
+	  windat->wave_fwcapy[c] = windat->swan_fwcapy[cc];
+	  windat->wave_fbrex[c] = windat->swan_fbrex[cc];
+	  windat->wave_fbrey[c] = windat->swan_fbrey[cc];
+	  windat->wave_fbotx[c] = windat->swan_fbotx[cc];
+	  windat->wave_fboty[c] = windat->swan_fboty[cc];
+	  windat->wave_fsurx[c] = windat->swan_fsurx[cc];
+	  windat->wave_fsury[c] = windat->swan_fsury[cc];
+	  windat->wave_wfdx[c] = windat->swan_wfdx[cc];
+	  windat->wave_wfdy[c] = windat->swan_wfdy[cc];
+	  windat->wave_wovsx[c] = windat->swan_wovsx[cc];
+	  windat->wave_wovsy[c] = windat->swan_wovsy[cc];
+	  /*
+	  windat->wave_frolx[c] = windat->swan_frolx[cc];
+	  windat->wave_froly[c] = windat->swan_froly[cc];
+	  */
+	}
+      }
+    } else {
+      /*
+      for (cc = 1; cc <= window->b2_t; cc++) {
+        c = window->w2_t[cc];
+      */
+      for (cc = 1; cc <= wincon->vca2; cc++) {
+	c = wincon->s2[cc];
+	/* Exclude process points if required */
+	if (window->ncwave)
+	  if (ANY(c, window->cwave, window->ncwave)) continue;
+	wave_step(window, wincon->wave, c);
+      }
     }
   }
 #endif
 
 }
 
-/* END wave_step()                                                   */
+/* END wave_interface_step()                                         */
 /*-------------------------------------------------------------------*/
+
+/* Returns the wave forcing method                                   */
+int w_do_waves(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  if (wincon->do_wave & W_FILE)
+    return 1;
+  if (wincon->do_wave & W_COMP)
+    return 2;
+  if (wincon->do_wave & W_SWAN)
+    return 4;
+  return 0;
+}
 
 /* Returns the wave time-step                                        */
 double w_get_dt(void *hmodel) 
@@ -2337,12 +2988,26 @@ double i_get_z0(void *hmodel, int c)
   return v;
 }
 
+/* Checks the status of the hotstart flag */
+int i_check_swan_hs_m(void* hmodel)
+{
+  swan_data_t *data = (swan_data_t *)hmodel;
+  return (data->swan_hs);
+}
+
+int i_check_swan_hs(void* hmodel)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  return (windat->swan_hs);
+}
+
 /* Checks if orbital velocities are required to be computed          */
 int i_check_orbital_file(void *hmodel) 
 {
   geometry_t* window = (geometry_t*) hmodel;
   win_priv_t *wincon = window->wincon;
-  if (wincon->orbital)
+  if (wincon->waves & ORBITAL)
     return(1);
   else
     return(0);
@@ -2355,6 +3020,15 @@ int i_check_wave_period(void *hmodel)
   win_priv_t *wincon = window->wincon;
   window_t *windat = window->windat;
   if (wincon->waves & NONE || windat->wave_period == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_period_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_period == NULL)
     return(0);
   else
     return(1);
@@ -2389,6 +3063,15 @@ int i_check_wave_dir(void *hmodel)
   else
     return(1);
 }
+int i_check_wave_dir_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_dir == NULL)
+    return(0);
+  else
+    return(1);
+}
 
 /* Returns the wave direction at coordinate c                        */
 double i_get_wave_dir(void *hmodel, int c) 
@@ -2419,6 +3102,15 @@ int i_check_wave_amp(void *hmodel)
   else
     return(1);
 }
+int i_check_wave_amp_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_amp == NULL)
+    return(0);
+  else
+    return(1);
+}
 
 /* Returns the wave amplitude at coordinate c                        */
 double i_get_wave_amp(void *hmodel, int c) 
@@ -2436,6 +3128,15 @@ int i_check_wave_ub(void *hmodel)
   win_priv_t *wincon = window->wincon;
   window_t *windat = window->windat;
   if (wincon->waves & NONE || windat->wave_ub == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_ub_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_ub == NULL)
     return(0);
   else
     return(1);
@@ -2470,6 +3171,15 @@ int i_check_wave_Fx(void *hmodel)
   else
     return(1);
 }
+int i_check_wave_Fx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_Fx == NULL)
+    return(0);
+  else
+    return(1);
+}
 
 /* Returns the e1 component of radiation stress at coordinate c      */
 double i_get_wave_Fx(void *hmodel, int c) 
@@ -2488,6 +3198,15 @@ int i_check_wave_Fy(void *hmodel)
   win_priv_t *wincon = window->wincon;
   window_t *windat = window->windat;
   if (wincon->waves & NONE || windat->wave_Fy == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_Fy_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_Fy == NULL)
     return(0);
   else
     return(1);
@@ -2514,6 +3233,15 @@ int i_check_wave_ste1(void *hmodel)
   else
     return(1);
 }
+int i_check_wave_ste1_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_ste1 == NULL)
+    return(0);
+  else
+    return(1);
+}
 
 /* Checks if surface Stokes e2 velocities are available              */
 int i_check_wave_ste2(void *hmodel) 
@@ -2522,6 +3250,15 @@ int i_check_wave_ste2(void *hmodel)
   win_priv_t *wincon = window->wincon;
   window_t *windat = window->windat;
   if (wincon->waves & NONE || windat->wave_ste2 == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_ste2_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_ste2 == NULL)
     return(0);
   else
     return(1);
@@ -2557,6 +3294,372 @@ int i_check_wind(void *hmodel)
   else
     return(1);
 }
+
+/* Checks if the wavenumber is available                                  */
+int i_check_wave_k(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_k == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_k_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_k == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave Bernoulli head vector is available                  */
+int i_check_wave_Kb(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_Kb == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_Kb_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_Kb == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave whitecapping vector is available                  */
+int i_check_wave_fwcapx(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fwcapx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fwcapx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fwcapx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fwcapy(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fwcapy == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fwcapy_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fwcapy == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave depth-induced breaking vector is available                  */
+int i_check_wave_fbrex(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fbrex == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fbrex_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fbrex == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fbrey(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fbrey == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fbrey_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fbrey == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave bottom friction dissapation vector is available                  */
+int i_check_wave_fbotx(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fbotx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fbotx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fbotx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fboty(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fboty == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fboty_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fboty == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave surface streaming vector is available                  */
+int i_check_wave_fsurx(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fsurx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fsurx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fsurx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fsury(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_fsury == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_fsury_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_fsury == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave form drag vector is available                  */
+int i_check_wave_wfdx(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_wfdx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_wfdx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_wfdx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_wfdy(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_wfdy == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_wfdy_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_wfdy == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave ocean viscous stress vector is available                  */
+int i_check_wave_wovsx(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_wovsx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_wovsx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_wovsx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_wovsy(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_wovsy == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_wovsy_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_wovsy == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave roller vector is available                  */
+int i_check_wave_frolx(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_frolx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_frolx_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_frolx == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_froly(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_froly == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_froly_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_froly == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+
+/* Checks if the wave dummy 1 tracer is available                    */
+int i_check_wave_dum1(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_dum1 == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_dum1_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_dum1 == NULL)
+    return(0);
+  else
+    return(1);
+}
+
+/* Checks if the wave dummy 2 tracer is available                    */
+int i_check_wave_dum2(void *hmodel) 
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  win_priv_t *wincon = window->wincon;
+  window_t *windat = window->windat;
+  if (wincon->waves & NONE || windat->wave_dum2 == NULL)
+    return(0);
+  else
+    return(1);
+}
+int i_check_wave_dum2_m(void *hmodel) 
+{
+  swan_data_t *data = (swan_data_t *) hmodel;
+  master_t* master = data->master;
+  if (master->waves & NONE || master->wave_dum2 == NULL)
+    return(0);
+  else
+    return(1);
+}
+
 
 /* Returns the east component of cell centered wind stress at        */
 /* coordinate c. Unstructured meshes only; assumes the centered      */
@@ -2613,7 +3716,7 @@ double i_get_fetch(void *hmodel, int cc, int n)
   return v;
 }
 
-/* Gets the edge normal and tangential volocities given the cell     */
+/* Gets the edge normal and tangential velocities given the cell     */
 /* centered velocities.                                              */
 void i_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
 		   double *u1bot, double *u2bot, double *botz, int c)
@@ -2626,8 +3729,10 @@ void i_get_bot_vel(void *hmodel, double sinthcell, double costhcell,
 
   double ui = windat->u[cb];
   double uj = windat->v[cb];
+  /*
   *u1bot = ui * costhcell - uj * sinthcell;
   *u2bot = ui * sinthcell + uj * costhcell;
+  */
   *botz = window->gridz[window->zp1[cb]];
 }
 
@@ -2653,24 +3758,169 @@ void w_get_brsm(void *hmodel, int *brsm)
 }
 
 /*
- * Fractional cloud cover
- */
-double ginterface_get_cloud(void *hmodel, int c)
-{
-  /* stub only */
-  return(0);
-}
-
-/*
  * Moon angle interface
  */
-void ginterface_moonvars(void *hmodel, int c,
+void ginterface_moonvars(void *hmodel, int b,
 			 double *mlon, double *mlat,
 			 double *dist_earth_sun, double *dist_moon_earth,
 			 double *lunar_angle, double *sun_angle,
 			 double *moon_phase,
 			 double *lunar_dec)
 {
-  /* stub only */
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+  double Al, dec;
+  int yr, mon, nday, jd; /* Year, month, day, Julian date            */
+  double day;            /* Day of year                              */
+  double hrs;            /* Hours at longitude lon                   */
+  double d2r = PI/180.0;  /* Degrees to radians                      */
+  double Rl = 3844e5;    /* Mean distance of moon from earth         */
+  double Rs = 1496e8;    /* Mean distance of sun from earth          */
+  double es = 0.0167086; /* Solar eccentricity                       */
+  double el = 0.0549;    /* Lunar eccentricity                       */
+  double as = 149.60e9;  /* Sun semi-maor axis (m)                   */
+  double lat;            /* Latitude (radians)                       */ 
+  double lon = window->cellx[cs];  /* Longitude (degrees)            */
+  double gmst;           /* Greenwhich mean sidereal time (hours)    */
+  double jt;             /* Julian date                              */
+  double hrang[2];       /* Lunar and solar hour angle (rad)         */
+  double radius[2];      /* Lunar and solar distance (m)             */
+
+  /* Get the Julian date                                             */
+  tm_time_to_ymd(windat->t, master->timeunit, &yr, &mon, &nday);
+  jd = date_to_jul(mon, nday, yr);
+
+  /* Julian date starts at midday - adjust half a day                */
+  jt = (double)jd - 0.5;
+
+  /* Get the day of the year                                         */
+  if (window->is_geog) {
+    dtime(NULL, master->timeunit, windat->t, &yr, &day, &lon);
+  } else {
+    hd_quit("Can't compute moon angles for non-geographic mesh.\n");
+    return;
+  }
+
+  /* Get the Greenwhich mean sidereal time in hours                  */
+  /* see https://aa.usno.navy.mil/faq/docs/GAST.php                  */
+  jt += windat->days - floor(windat->days);
+  gmst = fmod(18.697374558 + 24.06570982441908 * (jt - 2451545.0), 24.0) * PI / 12.0;
+  
+  /* Call EMS library function */
+
+  // printf("Passing jt = %e to moonvars \n",jt);
+
+  moonvars(jt, &Al, &dec, mlon, mlat, &radius[0]);
+  radius[0] *= 1e3;   /* Convert to metres */
+
+  /* Get the lunar hour angle (Pugh Eq. 3.20a)                       */
+  hrang[0] = lon * d2r + gmst - Al;
+  
+  /* Get the solar hour angle                                        */
+  nday = (int)day;
+  hrs = 24 * (day - (double)nday);
+  hrang[1] = (hrs - 12.0) * PI / 12.0;
+  radius[1] = d2r * day * 360.0 / 365.25;
+  radius[1] = as * (1.0 - es * es) / (1.0 + es *cos(radius[1]));
+
+  /* Calculate Moon Phase - New Moon in Hobart 4.13 am, 7 Jan 2000 */
+  /* Need to make this work for any time */
+
+  int newmoonday = date_to_jul(1, 7, 2000);
+  double newmoon_jt = (double)newmoonday + 4./24.+ 13./(60.*24.) + 0.5;
+  double partday = (windat->days+12./24. - floor(windat->days+12./24.));
+  double moonphase = fmod((double)jd + partday - newmoon_jt,29.530588853)/29.530588853;
+
+  /* calculate lunar declination using earth's declination (off by a maximum of 5 degrees) */
+
+  // dec = 0.409230*sin(2.0*M_PI*(284.0+day)/365.0);
+
+  /*
+   * Assign outputs
+   */
+  *dist_moon_earth = radius[0];
+  *dist_earth_sun  = radius[1];
+  *lunar_angle = hrang[0];
+  *sun_angle   = hrang[1];
+  *moon_phase = moonphase*M_PI;
+  *lunar_dec = dec;
+
+  return;
+
 }
+
+/*
+ * Fractional cloud cover
+ */
+
+double ginterface_get_cloud(void *hmodel, int b)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+  double tcld;
+
+  tcld = min(max((windat->cloud) ? windat->cloud[c] : 0.0, 0.0), 1.0);
+
+  return(tcld);
+}
+
+void ginterface_get_windspeed_and_cloud_and_mslp_and_rh(void *hmodel, int b, double *windspeed, double *tcld, double *mslp, double *rh)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+
+  *windspeed = windat->windspeed[cs];
+  *tcld = min(max((windat->cloud) ? windat->cloud[cs] : 0.0, 0.0), 1.0);
+  *mslp = (windat->patm) ? windat->patm[cs] : 0.0;
+  *rh =   (windat->rh) ? windat->rh[cs] : 0.0;
+  
+  return;
+}
+
+void ginterface_get_cloud_and_wind(void *hmodel, int b, double *tcld, double *wind)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+
+  *tcld = min(max((windat->cloud) ? windat->cloud[cs] : 0.0, 0.0), 1.0);
+
+  double wind1 = windat->wind1[cs];
+  double wind2 = windat->wind2[cs];
+
+  *wind = 1000.0 * sqrt(wind1*wind1 + wind2*wind2);
+    
+  return;
+}
+
+void ginterface_get_lat_lon(void *hmodel, int b, double *lat, double *lon)
+{
+  geometry_t* window = (geometry_t*) hmodel;
+  window_t *windat = window->windat;
+  int c = i_get_c(hmodel, b);
+  int cs = window->m2d[c];
+  
+  *lon = window->cellx[cs];  /* Longitude (degrees) */
+  *lat = window->celly[cs];  /* Latitude  (degrees) */
+  return;
+}
+
 #endif
+
+/* Returns the sea surface height                                    */
+double ginterface_get_eta(void* hmodel, int b)
+{
+    geometry_t* window = (geometry_t*) hmodel;
+    window_t *windat = window->windat;
+    int c = i_get_c(hmodel, b);
+    int c2 = window->m2d[c];
+    double v = windat->eta[c2];
+    return v;
+}

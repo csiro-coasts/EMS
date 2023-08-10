@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 6748 2021-03-30 00:45:37Z her127 $
+ *  $Id: reset.c 7247 2022-10-25 00:28:46Z her127 $
  *
  */
 
@@ -45,6 +45,8 @@ typedef struct {
   int in_type;                  /* Type of reset file to read */
   double fact;                  /* Scaling factor */
   char interp_type[MAXSTRLEN];  /* Interpolation type (optional) */
+  int start_index;              /* Start index for UGRID */
+  poly_t *pl;                   /* Inclusion /exclusion polygon */
 } tr_reset_data_t;
 
 
@@ -72,7 +74,7 @@ static void open_tr_reset_tsfiles(master_t *master, char *fnames,
     } else {
       for (i = 0; i < nf; ++i) {
 	strcpy(reset->tsnames[i], fields[i]);
-	reset->tsfiles[i] = hd_ts_read(master, reset->tsnames[i], 0);
+	reset->tsfiles[i] = hd_ts_read_us(master, reset->tsnames[i], 0, reset->interp_type);
       }
     }
   } else
@@ -90,6 +92,7 @@ static void open_tr_reset_tsfiles(master_t *master, char *fnames,
 void tracer_reset_init(master_t *master)
 {
   char fname[MAXSTRLEN];
+  char buf[MAXSTRLEN];
   double dt;
   int t;
   tr_reset_data_t *reset = NULL;
@@ -98,7 +101,7 @@ void tracer_reset_init(master_t *master)
   master->nres = 0;
   prm_set_errfn(hd_silent_warn);
 
-  for (t = master->atr; t < master->ntr; t++) {
+  for (t = 0; t < master->ntr; t++) {
 
     /* Read the 'tag' after the 'data', if this is a non-numeric,    */
     /* assume it is a file that can be reset.                        */
@@ -129,6 +132,9 @@ void tracer_reset_init(master_t *master)
 	reset->tid = t;
 	reset->dt = dt;
 
+	/* Interpolation rule */
+	strcpy(reset->interp_type, master->trinfo_3d[t].reset_interp);
+
 	/* Set the initial time one timestep previous. See           */
 	/* tr_reset_event() for the rationale for this.              */
 	reset->tnext = schedule->start_time - master->grid_dt;
@@ -144,7 +150,20 @@ void tracer_reset_init(master_t *master)
 	reset->in_type = XYZ_TINT;
 	if(check_sparse_dumpfile(geom, reset->ntsfiles, 
 				 reset->tsfiles, reset->tsnames) == 0)
-	  reset->in_type = SP_TINT;
+	  if (master->tmode & SP_STRUCT) 
+	    reset->in_type = SP_TINT;
+
+	/* Check if there is a polygon zone                          */
+	reset->pl = NULL;
+	if (master->trinfo_3d[t].flag & (P_IN|P_EX)) {
+	  FILE *fp;
+	  reset->pl = poly_create();
+	  if ((fp = fopen(master->trinfo_3d[t].tag, "r")) != NULL) {
+	    poly_read(reset->pl, fp);
+	    reset->in_type |= master->trinfo_3d[t].flag;
+	    fclose(fp);
+	  }
+	}
 
 	sched_register(schedule, schedName,
 		       tr_reset_init, tr_reset_event, tr_reset_cleanup,
@@ -158,6 +177,7 @@ void tracer_reset_init(master_t *master)
              master->trinfo_3d[t].name);
     }
   }
+
   if (master->nres) {
     master->reset = i_alloc_1d(master->nres);
     for (t = 0; t < master->nres; t++)
@@ -227,9 +247,10 @@ double tr_reset_event(sched_event_t *event, double t)
     /* event is triggered at this time, use (tnext + grid_dt) as the */
     /* input time for the eval() function.                           */
     tsin = reset->tnext + master->grid_dt;
-    hd_ts_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
-			 reset->tsnames, master->trinfo_3d[tid].name,
-			 trv, tsin, geom->wsa, geom->a3_t, reset->in_type);
+    hd_ts_multifile_evalp(master, reset->ntsfiles, reset->tsfiles,
+			  reset->tsnames, master->trinfo_3d[tid].name,
+			  trv, tsin, geom->wsa, geom->a3_t, 
+			  reset->in_type, reset->pl);
 
     /* Set the next update time                                      */
     reset->tnext += reset->dt;
@@ -271,6 +292,7 @@ static void tr_reset_cleanup(sched_event_t *event, double t)
   if (reset == NULL)
     return;
 
+  if(reset->pl) poly_destroy(reset->pl); 
   for (i = 0; i < reset->ntsfiles; ++i)
     hd_ts_free(master, reset->tsfiles[i]);
   free(reset->tsfiles);
@@ -342,9 +364,22 @@ void tracer_reset2d_init(master_t *master)
 
 	if (strcmp(master->trinfo_2d[t].name, "ghrsst") == 0)
 	  reset->in_type |= GHRSST;
+
 	if(!(reset->in_type & SP_SET) && check_sparse_dumpfile(geom, reset->ntsfiles, 
 				 reset->tsfiles, reset->tsnames) == 0)
 	  reset->in_type = SP_TINT;
+
+	/* Check if there is a polygon zone                          */
+	reset->pl = NULL;
+	if (master->trinfo_2d[t].flag & (P_IN|P_EX)) {
+	  FILE *fp;
+	  reset->pl = poly_create();
+	  if ((fp = fopen(master->trinfo_2d[t].tag, "r")) != NULL) {
+	    poly_read(reset->pl, fp);
+	    reset->in_type |= master->trinfo_2d[t].flag;
+	    fclose(fp);
+	  }
+	}
 
         sched_register(schedule, schedName,
                        tr_reset_init, tr_reset2d_event, tr_reset_cleanup,
@@ -416,22 +451,39 @@ double tr_reset2d_event(sched_event_t *event, double t)
       } else {
 	/* Use the grid interp library */
 	/* NOTE: Only reads the first file!! */
+	/*
 	char *vname = fv_get_varname(reset->tsnames[0], master->trinfo_2d[tid].name, buf);
 	hd_ts_grid_interp(master, reset->tsfiles[0], vname,
 			  trv, tsin, geom->wsa, geom->a2_t, reset->interp_type);
+	*/
+	hd_ts_multifile_evalp(master, reset->ntsfiles, reset->tsfiles,
+			      reset->tsnames, master->trinfo_2d[tid].name,
+			      trv, tsin, geom->wsa, geom->a2_t, 
+			      reset->in_type, reset->pl);
+
       }
 			
     } else {
       /* Standard emslib interpolation */
-      hd_ts_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
-			   reset->tsnames, master->trinfo_2d[tid].name,
-			   trv, tsin, geom->wsa, geom->a2_t, reset->in_type);
+      hd_ts_multifile_evalp(master, reset->ntsfiles, reset->tsfiles,
+			    reset->tsnames, master->trinfo_2d[tid].name,
+			    trv, tsin, geom->wsa, geom->a2_t, 
+			    reset->in_type, reset->pl);
     }
     /* Scale if required                                             */
     scale_tracer(master->trinfo_2d, geom, master->tr_wcS, tid);
 
+    /* If we read state variable quantities into the model (e.g. in  */
+    /* transport mode = NONE, then copy them into relevant state     */
+    /* variable arrays.                                              */
+    /* Note: for 2D (u,v) variables copy to the surface layer of the */
+    /* 3D state variables (u,v); for SWAN coupling.                  */
     if (strcmp(master->trinfo_2d[tid].long_name, "eta") == 0)
-      memcpy(master->eta, trv, geom->sgsizS * sizeof(double));
+      memcpy(master->eta, trv, geom->szcS * sizeof(double));
+    if (strcmp(master->trinfo_2d[tid].long_name, "u") == 0)
+      memcpy(master->u, trv, geom->szcS * sizeof(double));
+    if (strcmp(master->trinfo_2d[tid].long_name, "v") == 0)
+      memcpy(master->v, trv, geom->szcS * sizeof(double));
 
     /* Set the next update time                                      */
     reset->tnext += reset->dt;
@@ -472,7 +524,7 @@ void trans_reset_init(parameters_t *params, master_t *master)
   prm_set_errfn(hd_silent_warn);
   strcpy(fname, params->trans_data);
   dt = master->grid_dt;
-  if (master->tmode & NONE) return;
+  if (master->tmode & (NONE|SP_DUMP)) return;
 
   /* Allocate memory for resetation structure, populate and    */
   /* register the scheduler events.                            */
@@ -481,6 +533,11 @@ void trans_reset_init(parameters_t *params, master_t *master)
   reset_trans->master = master;
   reset_trans->dt = dt;
   reset_trans->tnext = schedule->start_time;
+  if (master->tmode & SP_SIMPLE) strcpy(reset_trans->interp_type, "nearest_eps");
+  if (master->tmode & SP_SIMPLEU) {
+    strcpy(reset_trans->interp_type, "nearest");
+    master->tmode |= SP_SIMPLE;
+  }
   open_tr_reset_tsfiles(master, fname, reset_trans);
 
   if (master->tmode & SP_ORIGIN) {
@@ -512,7 +569,7 @@ void trans_reset_init(parameters_t *params, master_t *master)
 			  reset_trans->tsnames, "u2",
 			  schedule->start_time, schedule->stop_time);
     */
-  } else if (master->tmode & GLOBAL) {
+  } else if (master->tmode & (GLOBAL|SP_SIMPLE)) {
     hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
 			  reset_trans->tsnames, "u",
 			  schedule->start_time, schedule->stop_time);
@@ -522,6 +579,10 @@ void trans_reset_init(parameters_t *params, master_t *master)
     hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
 			  reset_trans->tsnames, "eta",
 			  schedule->start_time, schedule->stop_time);
+    if (master->tmode & SP_SIMPLE)
+      hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
+			    reset_trans->tsnames, "w",
+			    schedule->start_time, schedule->stop_time);
   } else {
     hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
 			  reset_trans->tsnames, "u1",
@@ -545,7 +606,7 @@ void trans_reset_init(parameters_t *params, master_t *master)
 			  schedule->start_time, schedule->stop_time);
     */
   }
-  if (!(master->tmode & GLOBAL)) {
+  if (!(master->tmode & (GLOBAL|SP_SIMPLE))) {
     if (!master->do_closure)
       hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
 			    reset_trans->tsnames, "Kz",
@@ -583,6 +644,27 @@ void trans_reset_init(parameters_t *params, master_t *master)
     master->tmode |= DO_SWR;
   }
 
+  if (hd_ts_multifile_get_index(reset_trans->ntsfiles, reset_trans->tsfiles,
+				reset_trans->tsnames, "dz", varids) != 0 &&
+      hd_ts_multifile_get_index(reset_trans->ntsfiles, reset_trans->tsfiles,
+				reset_trans->tsnames, "dzu1", varids) != 0) {
+    hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
+			  reset_trans->tsnames, "dz",
+			  schedule->start_time, schedule->stop_time);
+    hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
+			  reset_trans->tsnames, "dzu1",
+			  schedule->start_time, schedule->stop_time);
+    master->tmode |= DO_DZ;
+  }
+
+  if (master->tmode & SP_UGRID) {
+    reset_trans->start_index = 1;
+    if (strcmp(hd_ts_multifile_get_text_att(reset_trans->ntsfiles, reset_trans->tsfiles,
+					    reset_trans->tsnames, "Mesh2_face_nodes",
+					    "start_index"), "0") == 0)
+      reset_trans->start_index = 0;
+    if (reset_trans->start_index == 1) master->tmode |= SP_START1;
+  }
   sched_register(schedule, "transport_reset",
 		 tr_reset_init, trans_reset_event, tr_reset_cleanup,
 		 reset_trans, NULL, NULL);
@@ -656,6 +738,12 @@ static double trans_reset_event(sched_event_t *event, double t)
     nc2 = geom->ns2;
     nc3 = geom->ns3;
   }
+  if (master->tmode & SP_UGRID) {
+    vc3 = geom->w2_t;
+    nc3 = geom->b2_t;
+    ve3 = geom->w2_e1;
+    ne3 = geom->n2_e1;
+  }
 
   if ((t + reset->dt / 10.0) >= (reset->tnext - tsync)) {
     if (master->tmode & SP_ORIGIN) {
@@ -676,14 +764,18 @@ static double trans_reset_event(sched_event_t *event, double t)
 			      reset->tsnames, "u1", master->u1, tsin,
 			      ve3, ne3, (mode|U1GEN));
     }
-    if (master->tmode & GLOBAL) {
+    if (master->tmode & (GLOBAL|SP_SIMPLE)) {
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
-			      reset->tsnames, "u", master->u, tsin, vc3, nc3, (mode|U1GEN));
+			      reset->tsnames, "u", master->u, tsin, vc3, nc3, mode);
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
-			      reset->tsnames, "v", master->v, tsin, vc3, nc3, (mode|U2GEN));
+			      reset->tsnames, "v", master->v, tsin, vc3, nc3, mode);
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, "eta", master->eta, tsin,
 			      vc2, nc2, (mode|VEL2D));
+      if (master->tmode & SP_SIMPLE)
+	hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
+				reset->tsnames, "w", master->w, tsin, vc3, nc3, 
+				mode);
     }
     if (master->tmode & SP_FFSL) {
       int nmode = (mode|U1GEN);
@@ -701,7 +793,7 @@ static double trans_reset_event(sched_event_t *event, double t)
       if (master->tmode & SP_STRUCT) nmode &= ~U1STRUCT;
     }
     /* Read in mandatory variables                                   */
-    if (!(master->tmode & (SP_ORIGIN|GLOBAL))) {
+    if (!(master->tmode & (SP_ORIGIN|GLOBAL|SP_SIMPLE))) {
       int nmode = (mode|U1GEN);
       if (master->tmode & SP_STRUCT) {
 	nmode |= U2STRUCT;
@@ -722,7 +814,7 @@ static double trans_reset_event(sched_event_t *event, double t)
 	master->w[0] = 1.0;
       }
     }
-    if (!(master->tmode & GLOBAL)) {
+    if (!(master->tmode & (GLOBAL|SP_SIMPLE))) {
       if (!master->do_closure)
 	hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 				reset->tsnames, "Kz", master->Kz, tsin,
@@ -738,21 +830,31 @@ static double trans_reset_event(sched_event_t *event, double t)
     }
     /* Read in additional specified variabes if required             */
     for (tn = 0; tn < master->ntrvars; tn++) {
+      int trn = master->trvm[tn];
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, master->trvars[tn], 
-			      master->tr_wc[2+tn], tsin, vc3, nc3, mode);
+			      master->tr_wc[trn], tsin, vc3, nc3, mode);
     }
     for (tn = 0; tn < master->ntrvarsS; tn++) {
+      int trn = master->trvm[tn];
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, master->trvarsS[tn], 
-			      master->tr_wcS[tn], tsin, vc2, nc2, (mode|VEL2D));
+			      master->tr_wcS[trn], tsin, vc2, nc2, (mode|VEL2D));
     }
     if (master->tmode & DO_SWR) {
       hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
 			      reset->tsnames, "swr", master->light, tsin,
 			      vc2, nc2, (mode|VEL2D));
     }
-
+    if (master->tmode & DO_DZ) {
+      int nmode = (mode|U1GEN);
+      hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
+			      reset->tsnames, "dz", master->dz, tsin,
+			      vc3, nc3, mode);
+      hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
+			      reset->tsnames, "dzu1", master->dzu1, tsin,
+			      ve3, ne3, nmode);
+    }
     /* Read in temp and salt if these variables aren't advected      */
     if (!master->trinfo_3d[master->tno].advect && 
 	!master->trinfo_3d[master->tno].diffuse)
@@ -769,7 +871,6 @@ static double trans_reset_event(sched_event_t *event, double t)
     reset->tnext += reset->dt;
     tsout = reset->tnext;
   }
-
   return tsout;
 }
 

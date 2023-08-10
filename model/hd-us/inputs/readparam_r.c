@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_r.c 6757 2021-04-07 01:00:44Z her127 $
+ *  $Id: readparam_r.c 7126 2022-05-25 02:08:56Z her127 $
  *
  */
 
@@ -108,6 +108,7 @@ void auto_params_roam_pre1(FILE * fp, parameters_t *params)
   /* Surface height */
   if (strlen(params->edata))
     strcpy(params->eta_init, params->edata);
+  params->eta_ib = 1;
 
   /* Wind and pressure */
   if (strlen(params->rdata)) {
@@ -424,6 +425,7 @@ void auto_params_roam_pre2(FILE * fp, parameters_t *params)
   /* Surface height */
   if (strlen(params->edata))
     strcpy(params->eta_init, params->edata);
+  params->eta_ib = 1;
 
   /* Wind and pressure */
   if (strlen(params->rdata)) {
@@ -593,7 +595,7 @@ void auto_params_roam_pre2(FILE * fp, parameters_t *params)
   if (params->robust == 0) {
     params->speed = 10;
     strcpy(params->alert, "NONE");
-    params->trasc = QUICKEST;
+    params->trasc = QUICKEST|HIORDER;
     params->ultimate = 1;
     strcpy(params->mixsc, "k-w");
     params->atr += 2;
@@ -752,6 +754,7 @@ void auto_params_roam_pre3(FILE * fp, parameters_t *params)
   /* Surface height */
   if (strlen(params->edata))
     strcpy(params->eta_init, params->edata);
+  params->eta_ib = 1;
 
   /* Wind and pressure */
   if (strlen(params->rdata)) {
@@ -879,6 +882,15 @@ void auto_params_roam_pre3(FILE * fp, parameters_t *params)
   if (params->robust > 5)
     params->robust = 5;
   if (!strlen(params->smag)) {
+    /* Use the AUTO mode to set horizontal mixing                    */
+    params->diff_scale = (AUTO|NONE|SCALEBI);
+    params->visc_method = US_BIHARMONIC;
+    params->visc_fact = 0.4;
+    if (params->visc_fact = 0.0) {
+      params->diff_scale = (AUTO|NONE);
+      params->visc_method = US_LAPLACIAN;
+    }
+
     strcpy(params->smag, "100.0 0.1");
     params->sue1 = 0.0;
     params->bsue1 = 100.0;
@@ -889,6 +901,7 @@ void auto_params_roam_pre3(FILE * fp, parameters_t *params)
   }
   params->bsue1 /= 100.0;
   params->bkue1 /= 100.0;
+  params->momsc |= PV_CLUST;
 
   /* Velocity */
   if (strlen(params->vdata)) {
@@ -909,7 +922,7 @@ void auto_params_roam_pre3(FILE * fp, parameters_t *params)
   if (params->robust == 0) {
     params->speed = 10;
     strcpy(params->alert, "NONE");
-    params->trasc = QUICKEST;
+    params->trasc = QUICKEST|HIORDER;
     params->ultimate = 1;
     strcpy(params->mixsc, "k-w");
     params->atr += 2;
@@ -1068,6 +1081,7 @@ void auto_params_roam_pre4(FILE * fp, parameters_t *params)
   /* Surface height */
   if (strlen(params->edata))
     strcpy(params->eta_init, params->edata);
+  params->eta_ib = 1;
 
   /* Wind and pressure */
   if (strlen(params->rdata)) {
@@ -1197,6 +1211,14 @@ void auto_params_roam_pre4(FILE * fp, parameters_t *params)
     params->robust = 5;
   */
   if (!strlen(params->smag)) {
+    /* Use the AUTO mode to set horizontal mixing                    */
+    params->diff_scale = (AUTO|NONE|SCALEBI);
+    params->visc_method = US_BIHARMONIC;
+    params->visc_fact = 0.4;
+    if (params->visc_fact = 0.0) {
+      params->diff_scale = (AUTO|NONE);
+      params->visc_method = US_LAPLACIAN;
+    }
     strcpy(params->smag, "100.0 100.0 0.1 0.1");
     params->sue1 = params->sue2 = 0.0;
     params->bsue1 = params->bsue2 =100.0;
@@ -1226,7 +1248,7 @@ void auto_params_roam_pre4(FILE * fp, parameters_t *params)
   if (params->robust == 0) {
     params->speed = 10;
     strcpy(params->alert, "NONE");
-    params->trasc = QUICKEST;
+    params->trasc = QUICKEST|HIORDER;
     params->ultimate = 1;
     strcpy(params->mixsc, "k-w");
     params->atr += 2;
@@ -1238,13 +1260,18 @@ void auto_params_roam_pre4(FILE * fp, parameters_t *params)
     }
 
     /* Means (optional) */
-    if (!(params->means & ETA_M)) {
-      if (params->means == NONE)
-	params->means = ETA_M;
-      else
-	params->means |= ETA_M;
-      params->ntrS += 1;
-      sprintf(params->means_dt, "%f days", get_run_length(fp) + 1);
+    if (params->etadiff >= 2.0 && params->trout) {
+      params->eta_f = 0;
+      sprintf(params->means_dt, "1 hour");
+    } else {
+      if (!(params->means & ETA_M)) {
+	if (params->means == NONE)
+	  params->means = ETA_M;
+	else
+	  params->means |= ETA_M;
+	params->ntrS += 1;
+	sprintf(params->means_dt, "%f days", get_run_length(fp) + 1);
+      }
     }
     params->tide_r = MEAN_R;
   }
@@ -1638,7 +1665,7 @@ void auto_params_recom_pre2(FILE * fp, parameters_t *params)
 
   /* Advection scheme */
   if (params->robust <= 2) {
-    params->trasc = QUICKEST;
+    params->trasc = QUICKEST|HIORDER;
     params->ultimate = 1;
   }
 
@@ -2355,7 +2382,7 @@ void auto_params_roam_post5(FILE * fp, parameters_t *params)
 
 /*-------------------------------------------------------------------*/
 /* Routine to overwrite input parameters to ROAM values.             */
-/* Included Nov 2019. Uses TPXO tide.                                */
+/* Included Nov 2019. Uses TPXO tide for elevation.                  */
 /*-------------------------------------------------------------------*/
 void auto_params_roam_post6(FILE * fp, parameters_t *params)
 {
@@ -2526,6 +2553,7 @@ void auto_params_roam_post6(FILE * fp, parameters_t *params)
 /*-------------------------------------------------------------------*/
 /* Routine to overwrite input parameters to ROAM values.             */
 /* Included Sep 2020. Uses new ROBUST and OBCs.                      */
+/* TPXO tide for elevation and velocity.                             */
 /*-------------------------------------------------------------------*/
 void auto_params_roam_post7(FILE * fp, parameters_t *params)
 {
@@ -3106,6 +3134,31 @@ void autoset_roam(parameters_t *params, master_t *master, geometry_t **window)
     }
   } else
     hd_warn("Horizontal mixing is set to zero\n");
+
+  /* Use the AUTO mode to set horizontal mixing                      */
+  /*
+  params->diff_scale = (AUTO|NONE|SCALEBI);
+  params->visc_method = US_BIHARMONIC;
+  params->visc_fact = 0.4;
+  */
+  /*
+  strcpy(params->u1vhc, "100.0");
+  params->u1vh = 100.0;
+  strcpy(params->u1khc, "30.0");
+  params->u1vh = 30.0;
+  if (strlen(params->smag) == 0) {
+    strcpy(params->smag, "100.0 0.1");
+    params->sue1 = params->sue2 = 0.0;
+    params->bsue1 = params->bsue2 = 100.0;
+    params->kue1 = params->kue2 = 0.1;
+    params->bkue1 = params->bkue2 = 0.0;
+    params->smagorinsky = 1.0;
+    params->atr ++;
+  }
+  params->bsue1 /= 100.0;
+  params->bkue1 /= 100.0;
+  */
+
   if(params->smagorinsky > 0.0) {
     if (params->roammode == A_ROAM_R1 && params->robust != 6 && params->robust != 7) {
       params->u1vh *= -1.0;

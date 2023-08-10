@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: regions.c 6408 2019-11-21 23:03:15Z her127 $
+ *  $Id: regions.c 7073 2022-03-29 02:44:42Z riz008 $
  *
  */
 
@@ -20,6 +20,9 @@
 #include <string.h>
 #include "hd.h"
 #include "tracer.h"
+#ifdef HAVE_METIS
+#include "metis.h"
+#endif
 
 #define ALL_TRACERS       1
 #define TRACERS_WC        2
@@ -32,6 +35,7 @@ void get_regions(geometry_t *win, region_t *region, double *mask, int nregions);
 void region_schedule(region_t *region, double dt, double trem, char *timeunit);
 double get_totflux(region_t *region, int tr);
 int find_trindex(region_t *region, int trn);
+void regions_metis(master_t *master, int nreg);
 
 /*-------------------------------------------------------------------*/
 /* Reads the region infromation from the parameter file              */
@@ -355,6 +359,25 @@ void init_regions_g(master_t *master, parameters_t *params)
       }
     }
     i_free_2d(rmap);
+  }
+
+  /* Find the centre of mass of the region                         */
+  for (n = 0; n < nregions; n++) {
+    int i, j;
+    double xc = 0.0;
+    double yc = 0.0;
+    double nc = 0.0;
+    region = geom->region[n];
+    for (cc = 1; cc <= region->nvec; cc++) {
+      c = region->vec[cc];
+      cs = geom->m2d[c];
+      xc += geom->cellx[cs];
+      yc += geom->celly[cs];
+      nc += 1.0;
+    }
+    xc /= nc;
+    yc /= nc;
+    region->com = hd_grid_xytoij(master, xc, yc, &i, &j) ;
   }
 
   /* Set the region mask for this window                           */
@@ -1172,12 +1195,55 @@ int read_region(master_t *master, parameters_t *params)
   timeseries_t *ts;
   int timeindex = 0;
   int fid, ncerr, id, nregions;
-  int n, c, cc, cs, c1, ee, e;
+  int n, c, cc, cs, c1, ee, e, nreg;
   double d1;
   size_t nr, nce1, nce2, nz, record;
   char buf[MAXSTRLEN];
   int rg[MAXREGIONS], found;
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int readf = 1;
 
+  n = parseline(params->regions, fields, MAXNUMARGS);
+  if (n >= 2 && strcmp(fields[0], "METIS") == 0) {
+    nreg = atoi(fields[1]);
+    strcpy(params->regions, fields[0]);
+    regions_metis(master, nreg);
+    readf = 0;
+  }
+
+  /* Add regions for individual points in a polygon if required      */
+  if (n == 3) {
+    FILE *fp = fopen(fields[2], "r");
+    poly_t *pl = poly_create();
+    double x, y;
+    n = 0;
+    while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+      n++;
+    }
+    rewind(fp);
+    pl->n = n;
+    while (fgets(buf, MAXSTRLEN, fp) != NULL) {
+      parseline(buf, fields, MAXNUMARGS);
+      x = atof(fields[0]);
+      y = atof(fields[1]);
+      poly_add_point(pl, x, y);
+    }
+    for (cc = 1; cc <= geom->b2_t; cc++) {
+      c = geom->w2_t[cc];
+      cs = geom->m2d[c];
+      if (poly_contains_point(pl, geom->cellx[cs], geom->celly[cs])) {
+	master->regionid[c] = nreg;
+	while (c != geom->zm1[c]) {
+	  master->regionid[c] = nreg;
+	  c = geom->zm1[c];
+	}
+	nreg++;
+      }
+    }
+    poly_destroy(pl);
+  }
+
+  if (readf) {
   /* Open the file                                                   */
   if ((ncerr = nc_open(params->regions, NC_NOWRITE, &fid)) != NC_NOERR) {
     hd_warn("read_region: Can't find regions file %s\n", params->regions);
@@ -1224,6 +1290,7 @@ int read_region(master_t *master, parameters_t *params)
 	master->regionid[c] = ceil(d1);
     }
     nc_close(fid);
+  }
   }
 
   /* Count the number of regions                                     */
@@ -2133,4 +2200,192 @@ void region_mass_tr(geometry_t *window,  /* Window geometry     */
 }
 
 /* END region_mass_tr()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Divides the domain into nwindows partitions using the METIS lib   */
+/*                                                                   */
+/* Reference:                                                        */
+/*      http://glaros.dtc.umn.edu/gkhome/metis/metis/overview        */
+/*-------------------------------------------------------------------*/
+void regions_metis(master_t *master,
+		   int nreg               /* Number of regions       */
+		   )
+{
+#ifdef HAVE_METIS
+  geometry_t *geom = master->geom; /* Global geometery        */
+  int ne = geom->b2_t;    /* Number of elements, i.e. cells/faces */
+  int nn = geom->n2_e1;   /* Number of nodes, i.e. vertices */
+  idx_t ncommon = 1;      /* Put an edge across all pairs of nodes */
+  idx_t numflag = 0;      /* C-style (0 based) numberihg */
+  idx_t *eptr, *eind;     /* Node and element arrays */
+  idx_t *npart, *epart;   /* Graph partition output */
+  idx_t *ewgt = NULL;     /* Element weights */
+  real_t *twgts = NULL;   /* Target window partition sizes */
+  int cc, c, n, nnodes;
+  int idx = 0;
+  int status;
+  idx_t options[METIS_NOPTIONS];
+  idx_t nparts = (idx_t)nreg;
+  int objval;
+
+  /* options */
+  int do3D =   0;    /* assign botz as element weights    */
+  int contig = 1;    /* force partitions to be contiguous */
+  
+  /* Count the total number of nodes across all elements */
+  nnodes = 0;
+  for (cc = 1; cc <= geom->b2_t; cc++)
+    nnodes += geom->npe[cc];
+
+  /* Allocate arrays and fill in */
+  eptr = malloc((ne+1) * sizeof(idx_t));
+  eind = malloc(nnodes * sizeof(idx_t));
+  if (do3D) ewgt = malloc(ne * sizeof(idx_t));
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    eptr[cc-1] = idx;
+    for (n = 1; n <= geom->npe[c]; n++)
+      eind[idx++] = geom->c2v[n][c]-1;
+    /* Weight by bathy */
+    if (do3D) ewgt[cc-1] = -(idx_t)geom->botz[c];
+  }
+  eptr[ne] = idx; /* finish off last row */
+   
+  /* METIS options */
+  METIS_SetDefaultOptions(options);
+  options[METIS_OPTION_DBGLVL] = 1;
+  if (contig) options[METIS_OPTION_CONTIG] = 1;
+
+  epart = malloc(ne * sizeof(idx_t));
+  npart = malloc(nn * sizeof(idx_t));
+  
+  /* Partion mesh using the dual graph */
+  status = METIS_PartMeshDual(&ne, &nn, eptr, eind, ewgt, NULL, &ncommon,
+			      &nparts, twgts, options, &objval, epart, npart);
+  if (status != METIS_OK)
+    hd_quit("METIS partitioning failed\n");
+
+  /* Fill in the output arrays */
+  for (cc=0; cc<ne; cc++) {
+    int wn = epart[cc];
+    c = geom->w2_t[cc+1];
+    if (!(wn>=0 && wn<nreg)) hd_quit("METIS: found unpartitioned cell c=%d\n", c);
+    master->regionid[c] = wn;
+    while (c != geom->zm1[c]) {
+      master->regionid[c] = wn;
+      c = geom->zm1[c];
+    }
+  }
+
+  /* Cleanup */
+  free(eptr);
+  free(eind);
+  free(epart);
+  free(npart);
+  if (ewgt) free(ewgt);
+  if (twgts) free(twgts);
+#else
+  hd_quit("METIS specified in regions but executable is not built with METIS\n");
+#endif
+  
+}
+/* END regions_metis()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Sets the tracer concentrations at the region centre of mass       */
+/* equal to the volume weighted region mean.                         */
+/* This is performed for every layer.                                */
+/*-------------------------------------------------------------------*/
+void reduce_region(master_t *master)
+{
+  geometry_t *geom = master->geom;
+  int cc, c, cs, c1, tt, tn, n, k;
+  double *vol, *mass;
+
+  vol = d_alloc_1d(geom->nz);
+  mass = d_alloc_1d(geom->nz);
+
+  for (n = 0; n < geom->nregions; n++) {
+    region_t *region = geom->region[n];
+
+    /* Get the region volume                                         */
+    memset(vol, 0.0, geom->nz * sizeof(double));
+    for (cc = 1; cc <= region->nvec; cc++) {
+      c = region->vec[cc];
+      cs = geom->m2d[c];
+      k = geom->s2k[c];
+      vol[k] += geom->cellarea[cs] * master->dz[c];
+    }
+
+    for (tt = 3; tt < region->nvar; tt++) {
+      tn = region->var[tt];
+
+      /* Get the tracer mass for every layer of each region          */
+      /*tn = tracer_find_index("passive", master->ntr, master->trinfo_3d);*/
+      memset(mass, 0.0, geom->nz * sizeof(double));
+      for (cc = 1; cc <= region->nvec; cc++) {
+	c = region->vec[cc];
+	k = geom->s2k[c];
+	mass[k] = vol[k] * master->tr_wc[tn][c];
+      }
+      /* Set the region volume weighted concentration to the centre  */
+      /* of mass.                                                    */
+      c = region->com;
+      while (c != geom->zm1[c]) {
+	k = geom->s2k[c];
+	master->tr_wc[tn][c] = mass[k] / vol[k];
+	c = geom->zm1[c];
+      }
+    }
+  }
+  d_free_1d(vol);
+  d_free_1d(mass);
+}
+
+/* END reduce_region()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Sets the tracer concentration throughout the region to that at    */
+/* the region centre of mass.                                        */
+/*-------------------------------------------------------------------*/
+void expand_region(master_t *master)
+{
+  geometry_t *geom = master->geom;
+  int cc, c, cs, tt, tn, n, k;
+  double *val;
+
+  /*tn = tracer_find_index("passive", master->ntr, master->trinfo_3d);*/
+  val = d_alloc_1d(geom->nz);
+  for (n = 0; n < geom->nregions; n++) {
+    region_t *region = geom->region[n];
+
+    for (tt = 3; tt < region->nvar; tt++) {
+      tn = region->var[tt];
+
+      /* Get the concentration of each layer                         */
+      c = region->com;
+      while (c != geom->zm1[c]) {
+	k = geom->s2k[c];
+	val[k] = master->tr_wc[tn][c];
+	c = geom->zm1[c];
+      }
+
+      /* Set the region concentration to the centre of mass value    */
+      for (cc = 1; cc <= region->nvec; cc++) {
+	c = region->vec[cc];
+	k = geom->s2k[c];
+	master->tr_wc[tn][c] = val[k];
+      }
+    }
+  }
+  d_free_1d(val);
+}
+
+/* END expand_region()                                               */
 /*-------------------------------------------------------------------*/

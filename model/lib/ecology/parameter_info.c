@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_info.c 6678 2021-01-08 00:41:56Z bai155 $
+ *  $Id: parameter_info.c 7033 2022-03-16 01:29:29Z her127 $
  *
  */
 
@@ -31,6 +31,7 @@
 static int get_eco_params(char name[], parameter_info *parameters[], int *nprm);
 static void eco_params_auto(parameter_info *parametes[], int *nprm);
 static void write_eco_params(char *name, int nparams, parameter_info parameters[]);
+extern int get_rendered_ecoparams(char *name, parameter_info *parameters[], int *nprm);
 
 /** Reads entry for a given parameter attribute.
  * @param fp Parameter file
@@ -86,7 +87,8 @@ void read_parameter_info(char* biofname,
     FILE* biofp = NULL;
     int n, i, sz;
     char buf[MAXLINELEN];
-    char *fields[MAXSTRLEN * MAXNUMVALUES];
+    // char *fields[MAXSTRLEN * MAXNUMVALUES];
+    char **fields = (char**)malloc(MAXSTRLEN * MAXNUMVALUES * sizeof(char*));
 
     prm_seterrorfn(quitfn);
     
@@ -181,7 +183,8 @@ void read_parameter_info(char* biofname,
        * Note: get_eco_params currently only has the one default set
        */
       if (get_eco_params(biofname, parameters, nprm))
-	quitfn("read_parameter_info: Unable to allocate default eco parameters\n");
+	if (get_rendered_ecoparams(biofname, parameters, nprm))
+	  quitfn("read_parameter_info: Unable to allocate default eco parameters\n");
 
       /*
        * Now loop over and overwrite any param attributes
@@ -226,6 +229,7 @@ void read_parameter_info(char* biofname,
       }
     }
     days2seconds(*nprm, *parameters);
+    free(fields);
 }
 
 

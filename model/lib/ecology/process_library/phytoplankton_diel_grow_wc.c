@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_diel_grow_wc.c 6698 2021-03-24 01:11:43Z wil00y $
+ *  $Id: phytoplankton_diel_grow_wc.c 7207 2022-09-16 07:28:14Z bai155 $
  *
  */
 
@@ -29,11 +29,13 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "phytoplankton_diel_grow_wc.h"
 
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
+
+double ginterface_get_svel(void* model, char *name);
 
 typedef struct {
     int do_mb;                  /* flag */
@@ -173,9 +175,9 @@ void phytoplankton_diel_grow_wc_postinit(eprocess* p)
    if (!e->pre_build) {
     /* test for equal sinking rates of structural material and reserves */
     if (ws->large) {
-      v1 = einterface_gettracersvel(e->model,"PhyL_N");
-      v2 = einterface_gettracersvel(e->model,"PhyL_NR");
-      v5 = einterface_gettracersvel(e->model,"PhyL_I");
+      v1 = ginterface_get_svel(e->model,"PhyL_N");
+      v2 = ginterface_get_svel(e->model,"PhyL_NR");
+      v5 = ginterface_get_svel(e->model,"PhyL_I");
       
       if ((v1!=v2)||(v1!=v5)){
 	printf("Mass conservation violation due to microalgae reserves \n");
@@ -185,9 +187,9 @@ void phytoplankton_diel_grow_wc_postinit(eprocess* p)
 	exit(-1);
       }
     } else {
-      v1 = einterface_gettracersvel(e->model,"PhyS_N");
-      v2 = einterface_gettracersvel(e->model,"PhyS_NR");
-      v5 = einterface_gettracersvel(e->model,"PhyS_I");
+      v1 = ginterface_get_svel(e->model,"PhyS_N");
+      v2 = ginterface_get_svel(e->model,"PhyS_NR");
+      v5 = ginterface_get_svel(e->model,"PhyS_I");
       
       if ((v1!=v2)||(v1!=v5)){
 	printf("Mass conservation violation due to microalgae reserves \n");

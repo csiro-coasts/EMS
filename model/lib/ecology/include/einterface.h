@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: einterface.h 5976 2018-09-26 00:30:13Z riz008 $
+ *  $Id: einterface.h 7107 2022-04-20 11:44:57Z bai155 $
  *
  */
 
@@ -301,6 +301,23 @@ int einterface_get_eco_flag(void* model, char* name);
 /* Generic interface */
 extern void i_set_error(void* hmodel, int col, int errorf, char *text);
 extern int i_get_error(void* hmodel, int col);
+
+/* Optical functions */
+extern int einterface_is_optical(void* model, char *name);
+extern int einterface_is_optical2d(void* model, char *name);
+extern int einterface_get_optical_file(void* model, char *name, char *file);
+extern int einterface_get_optical2d_file(void* model, char *name, char *file);
+extern int einterface_get_absorp_name(void* model, char *name, char *absorp);
+extern int einterface_get_scatter_name(void* model, char *name, char *scatter);
+extern int einterface_get_backscat_name(void* model, char *name, char *backscat);
+extern int einterface_get_abtance_name(void* model, char *name, char *abtance);
+extern int einterface_get_refltce_name(void* model, char *name, char *refltce);
+extern int einterface_get_trnmiss_name(void* model, char *name, char *trnmiss);
+extern int einterface_get_benreflt_name(void* model, char *name, char *benreflt);
+extern int einterface_get_specresp3d_name(void* model, char *name, char *specresp3d);
+extern int einterface_get_specresp2d_name(void* model, char *name, char *specresp2d);
+extern int einterface_get_num_ed_tracers(void* model);
+extern void einterface_get_ed_tracers(void* model, int *rtns);
 
 #define _INTERFACE_H
 #endif

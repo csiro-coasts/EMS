@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: allprocesses.c 6708 2021-03-26 03:06:30Z bai155 $
+ *  $Id: allprocesses.c 7344 2023-04-11 23:01:31Z bai155 $
  *
  */
 
@@ -23,6 +23,7 @@
 /* All process header files.
  */
 #include "process_library/diffusion_epi.h"
+#include "process_library/diffusion_heat_epi.h"
 #include "process_library/dinoflagellate_grow_wc.h"
 #include "process_library/dinoflagellate_mortality_sed.h"
 #include "process_library/anm_epi.h"
@@ -114,8 +115,10 @@
 #include "process_library/variable_parameter.h"
 #include "process_library/recom_extras.h"
 #include "process_library/carbon_leak_sed.h"
-
-
+#include "process_library/symbiodinium_spectral_free.h"
+#include "process_library/light_spectral_col.h"
+#include "process_library/mixed_layer_age_col.h"
+#include "process_library/dimethyl_sulfide_wc.h"
 
 /* Do NOT move the lines below */
 
@@ -156,6 +159,7 @@
  */
 eprocess_entry eprocesslist[] = {
     {"diffusion_epi", PT_EPI, 0, 0, diffusion_epi_init, NULL, diffusion_epi_destroy, NULL, diffusion_epi_calc, diffusion_epi_postcalc},
+    {"diffusion_heat_epi", PT_EPI, 0, 0, diffusion_heat_epi_init, NULL, diffusion_heat_epi_destroy, NULL, diffusion_heat_epi_calc, diffusion_heat_epi_postcalc},
     {"dinoflagellate_grow_wc", PT_WC, 0, 0, dinoflagellate_grow_wc_init, dinoflagellate_grow_wc_postinit, dinoflagellate_grow_wc_destroy, dinoflagellate_grow_wc_precalc, dinoflagellate_grow_wc_calc, dinoflagellate_grow_wc_postcalc},
     {"dinoflagellate_mortality_sed", PT_SED, 0, 0, dinoflagellate_mortality_sed_init, dinoflagellate_mortality_sed_postinit, dinoflagellate_mortality_sed_destroy, dinoflagellate_mortality_sed_precalc, dinoflagellate_mortality_sed_calc, dinoflagellate_mortality_sed_postcalc},
     {"anm_epi", PT_EPI, 0, 0, anm_epi_init, NULL, anm_epi_destroy, NULL, anm_epi_calc, NULL},
@@ -194,8 +198,8 @@ eprocess_entry eprocesslist[] = {
     {"tfactor_epi", PT_EPI, 0, 0, tfactor_init, NULL, tfactor_destroy, tfactor_precalc, NULL, NULL},
     {"recom_extras", PT_GEN, 0, 0, recom_extras_init, recom_extras_postinit, recom_extras_destroy, NULL, NULL, recom_extras_postcalc},
     {"carbon_leak_sed", PT_SED, 0, 0, carbon_leak_sed_init, NULL, carbon_leak_sed_destroy, NULL, carbon_leak_sed_calc, carbon_leak_sed_postcalc},
-    {"values_common", PT_GEN, 0, 0, values_common_init, values_common_post_init, values_common_destroy, values_common_precalc, NULL, values_common_postcalc},
-    {"values_common_epi", PT_EPI, 0, 0, values_common_epi_init, NULL, values_common_epi_destroy, values_common_epi_precalc, NULL, values_common_epi_postcalc},
+    {"values_common", PT_GEN, 0, 0, values_common_init, values_common_postinit, values_common_destroy, values_common_precalc, NULL, values_common_postcalc},
+    {"values_common_epi", PT_EPI, 0, 0, values_common_epi_init, values_common_epi_postinit, values_common_epi_destroy, values_common_epi_precalc, NULL, values_common_epi_postcalc},
     {"viscosity", PT_GEN, 0, 0, viscosity_init, NULL, viscosity_destroy, viscosity_precalc, NULL, NULL},
     {"anm_wc", PT_WC, 0, 0, anm_wc_init, NULL, anm_wc_destroy, anm_wc_precalc, anm_wc_calc, NULL},
     {"zooplankton_large_grow_wc", PT_WC, 0, 0, zooplankton_large_grow_wc_init, zooplankton_large_grow_wc_postinit, zooplankton_large_grow_wc_destroy, zooplankton_large_grow_wc_precalc, zooplankton_large_grow_wc_calc, zooplankton_large_grow_wc_postcalc},
@@ -237,6 +241,9 @@ eprocess_entry eprocesslist[] = {
     {"filter_feeder_epi", PT_EPI, 0, 0, filter_feeder_epi_init, filter_feeder_epi_postinit, filter_feeder_epi_destroy, filter_feeder_epi_precalc, filter_feeder_epi_calc, filter_feeder_epi_postcalc},
     {"age_wc", PT_WC, 0, 0, age_wc_init, age_wc_postinit, age_wc_destroy, age_wc_precalc, age_wc_calc, NULL},
     {"age_sed", PT_SED, 0, 0, age_sed_init, age_sed_postinit, age_sed_destroy, age_sed_precalc, age_sed_calc, NULL},
+    {"symbiodinium_spectral_free", PT_GEN, 0, 0, symbiodinium_spectral_free_init, symbiodinium_spectral_free_postinit, symbiodinium_spectral_free_destroy, symbiodinium_spectral_free_precalc, symbiodinium_spectral_free_calc, symbiodinium_spectral_free_postcalc},
+
+
 /*    {"light_wc_gradient", PT_WC, 0, 0, light_wc_gradient_init, light_wc_gradient_postinit, light_wc_gradient_destroy, light_wc_gradient_precalc, NULL, NULL},
 */
 
@@ -250,9 +257,12 @@ eprocess_entry eprocesslist[] = {
 	{"zooplankton_mortality_sed", PT_SED, 1, 0, zooplankton_mortality_sed_init, NULL, zooplankton_mortality_sed_destroy, zooplankton_mortality_sed_precalc, zooplankton_mortality_sed_calc, zooplankton_mortality_sed_postcalc},
     {"trichodesmium_grow_wc", PT_WC, 0, 0, trichodesmium_grow_wc_init, trichodesmium_grow_wc_postinit, trichodesmium_grow_wc_destroy, trichodesmium_grow_wc_precalc, trichodesmium_grow_wc_calc, trichodesmium_grow_wc_postcalc},
 {"trichodesmium_spectral_grow_wc", PT_WC, 0, 0, trichodesmium_spectral_grow_wc_init, trichodesmium_spectral_grow_wc_postinit, trichodesmium_spectral_grow_wc_destroy, trichodesmium_spectral_grow_wc_precalc, trichodesmium_spectral_grow_wc_calc, trichodesmium_spectral_grow_wc_postcalc},
+    /*    {"trichodesmium_spectral_grow_photoacclimate", PT_GEN, 0, 0, trichodesmium_spectral_grow_photoacclimate_init, trichodesmium_spectral_grow_photoacclimate_postinit, trichodesmium_spectral_grow_photoacclimate_destroy, trichodesmium_spectral_grow_photoacclimate_precalc, trichodesmium_spectral_grow_photoacclimate_calc, trichodesmium_spectral_grow_photoacclimate_postcalc},*/
     {"trichodesmium_mortality_wc", PT_WC, 0, 0, trichodesmium_mortality_wc_init, trichodesmium_mortality_wc_postinit, trichodesmium_mortality_wc_destroy, trichodesmium_mortality_wc_precalc, trichodesmium_mortality_wc_calc, trichodesmium_mortality_wc_postcalc},
+    /*{"trichodesmium_mortality_photoacclimate", PT_GEN, 0, 0, trichodesmium_mortality_photoacclimate_init, trichodesmium_mortality_photoacclimate_postinit, trichodesmium_mortality_photoacclimate_destroy, trichodesmium_mortality_photoacclimate_precalc, trichodesmium_mortality_photoacclimate_calc, trichodesmium_mortality_photoacclimate_postcalc},*/
     {"trichodesmium_mortality_sed", PT_SED, 0, 0, trichodesmium_mortality_sed_init, trichodesmium_mortality_sed_postinit, trichodesmium_mortality_sed_destroy, trichodesmium_mortality_sed_precalc, trichodesmium_mortality_sed_calc, trichodesmium_mortality_sed_postcalc},
     {"gas_exchange_wc", PT_WC, 2, 0, gas_exchange_wc_init, NULL, gas_exchange_wc_destroy, gas_exchange_wc_precalc, gas_exchange_wc_calc, gas_exchange_wc_postcalc},
+    {"dimethyl_sulfide_wc", PT_WC, 0, 0, dimethyl_sulfide_wc_init, NULL, dimethyl_sulfide_wc_destroy, dimethyl_sulfide_wc_precalc, dimethyl_sulfide_wc_calc, dimethyl_sulfide_wc_postcalc},
    {"gas_exchange_epi", PT_EPI, 0, 0, gas_exchange_epi_init, NULL, gas_exchange_epi_destroy, gas_exchange_epi_precalc, gas_exchange_epi_calc, gas_exchange_epi_postcalc},
     {"carbon_chemistry_wc", PT_GEN, 0, 0, carbon_chemistry_wc_init, carbon_chemistry_wc_postinit, carbon_chemistry_wc_destroy, carbon_chemistry_wc_precalc, carbon_chemistry_wc_calc, carbon_chemistry_wc_postcalc},
     {"co2_exchange_wc", PT_WC, 0, 0, co2_exchange_wc_init, NULL, co2_exchange_wc_destroy, co2_exchange_wc_precalc, co2_exchange_wc_calc, co2_exchange_wc_postcalc},
@@ -266,9 +276,11 @@ eprocess_entry eprocesslist[] = {
 
     {"macroalgae_spectral_grow_wc", PT_WC, 0, 0, macroalgae_spectral_grow_wc_init, macroalgae_spectral_grow_wc_postinit, macroalgae_spectral_grow_wc_destroy, macroalgae_spectral_grow_wc_precalc, macroalgae_spectral_grow_wc_calc, macroalgae_spectral_grow_wc_postcalc},
     {"macroalgae_spectral_mortality_wc", PT_WC, 0, 0, macroalgae_spectral_mortality_wc_init, NULL, macroalgae_spectral_mortality_wc_destroy, macroalgae_spectral_mortality_wc_precalc, macroalgae_spectral_mortality_wc_calc, macroalgae_spectral_mortality_wc_postcalc},
-    {"variable_parameter", PT_WC, 0, 0,variable_parameter_init,NULL,variable_parameter_destroy,variable_parameter_precalc,variable_parameter_calc,variable_parameter_postcalc}
+    {"variable_parameter", PT_WC, 0, 0,variable_parameter_init,NULL,variable_parameter_destroy,variable_parameter_precalc,variable_parameter_calc,variable_parameter_postcalc},
 
-
+/* Column based */
+    {"light_spectral_col", PT_COL, 0, 0, light_spectral_col_init,NULL,light_spectral_col_destroy,light_spectral_col_precalc, NULL, light_spectral_col_postcalc},
+    {"mixed_layer_age_col", PT_COL, 0, 0, mixed_layer_age_col_init,NULL,mixed_layer_age_col_destroy,mixed_layer_age_col_precalc, NULL, mixed_layer_age_col_postcalc}
 };
 int NEPROCESSES = sizeof(eprocesslist) / sizeof(eprocess_entry);
 

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: age_mb_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: age_mb_wc.c 7212 2022-09-16 21:24:17Z bai155 $
  *
  */
 
@@ -29,8 +29,9 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "age_wc.h"
+
+void ginterface_get_ij(void* model, int col, int *ij);
 
 typedef struct {
  
@@ -62,7 +63,7 @@ void age_wc_precalc(eprocess* p, void* pp)
     
     int ij[2];
 
-    einterface_get_ij(p->ecology->model, c->b, ij);
+    ginterface_get_ij(p->ecology->model, c->b, ij);
 
     ws->do_age = 0;
 
@@ -89,7 +90,7 @@ void age_wc_calc(eprocess* p, void* pp)
 
     /* Age 1 day per day in a box */
 
-    einterface_get_ij(p->ecology->model, c->b, ij);
+    ginterface_get_ij(p->ecology->model, c->b, ij);
 
     /* Anti-ageing (decay of ageing effect) */
 

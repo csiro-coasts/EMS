@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracer_info.c 6654 2020-09-08 01:46:00Z her127 $
+ *  $Id: tracer_info.c 7248 2022-10-25 00:29:10Z her127 $
  *
  */
 
@@ -25,9 +25,9 @@
 #include "netcdf.h"
 #include "hd.h"
 
-errfn keyprm_errfn;
 int get_type(char *buf, int type);
 int is_type(int type, char *stype);
+int is_tracer_type_optical(int type);
 
 /** Creates a `tracer_info' array from a PRM file.
  * @param fp parameter file
@@ -302,6 +302,14 @@ void tracer_read(FILE * fpp, char *prefix, int type, errfn quitfn,
 	  tr->flag |= V_HP;
 	}
       }
+      if (decode_tag(buf, "poly_in", key)) {
+	strcpy(tr->tag, key);
+	tr->flag |= P_IN;
+      }
+      if (decode_tag(buf, "poly_ex", key)) {
+	strcpy(tr->tag, key);
+	tr->flag |= P_EX;
+      }
     }
     /* Scaling */
     if (tracer_read_attribute
@@ -496,7 +504,8 @@ void tracer_read(FILE * fpp, char *prefix, int type, errfn quitfn,
 #endif
 
 #if defined(HAVE_ECOLOGY_MODULE)
-    if (is_eco_var(tr->name)) {
+
+    if (is_tracer_type_ecology(tr->type) || is_tracer_type_optical(tr->type) || is_eco_var(tr->name)) {
       if (tracer_read_attribute
 	  (fpt, prefix, keyname, tr->name, m, "eco_default", emptyfn, buf))
 	eco_set_tracer_defaults(tr, tr->name, buf, NULL);
@@ -825,7 +834,7 @@ void tracer_write_2d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
     fprintf(op, "TRACER%1.1d.valid_range     %-6.1f %-6.1f\n", n,
 	    tracer->valid_range_wc[0], tracer->valid_range_wc[1]);
   fprintf(op, "TRACER%1.1d.diagn           %d\n", n, tracer->diagn);
-  fprintf(op, "TRACER%1.1d.type           %s\n", n, trtypename(tracer->type, key));
+  fprintf(op, "TRACER%1.1d.type            %s\n", n, trtypename(tracer->type, key));
   fprintf(op, "\n");
   
 }
@@ -868,8 +877,27 @@ int get_type(char *buf, int type)
     type |= PARAMETER;
   if (contains_token(buf, "FORCING") != NULL)
     type |= FORCING;
+  if (contains_token(buf, "OPTICAL") != NULL)
+    type |= OPTICAL;
   return (type);
 }
+
+int is_tracer_type_ecology(int type)
+{
+  int result = 0;
+  if (type & ECOLOGY)
+    result = 1;
+  return(result);
+}
+
+int is_tracer_type_optical(int type)
+{
+  int result = 0;
+  if (type & OPTICAL)
+    result = 1;
+  return(result);
+}
+
 
 /*
  * Helper function to write out 3D tracer attributes
@@ -916,7 +944,7 @@ void tracer_write_3d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
   fprintf(op, "TRACER%1.1d.diagn           %d\n", n, tracer->diagn);
   fprintf(op, "TRACER%1.1d.partic          %d\n", n, tracer->partic);
   fprintf(op, "TRACER%1.1d.dissol          %d\n", n, tracer->dissol);
-  
+
 #if defined(HAVE_SEDIMENT_MODULE)
   if (strcmp(tracer->name, "temp") == 0 && params->do_sed)
     fprintf(op, "TRACER%1.1d.type            WATER SEDIMENT\n", n);
@@ -927,7 +955,7 @@ void tracer_write_3d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
   else 
 #endif
     if(tracer->type && (tracer->type & (WATER|SEDIM) || tracer->type & INTER))
-      fprintf(op, "TRACER%1.1d.type           %s\n", n, trtypename(tracer->type, key));
+      fprintf(op, "TRACER%1.1d.type            %s\n", n, trtypename(tracer->type, key));
   
   if (strlen(tracer->tracerstat))
     fprintf(op, "TRACER%1.1d.tracerstat      %s\n", n, tracer->tracerstat);
@@ -959,6 +987,10 @@ void tracer_write_3d(master_t *master, FILE *op, tracer_info_t *tracer, int n)
 	      n, otime(params->trrestdt[n], tag));
     }
   }
+  if (params->tmode & SP_DUMP) {
+    fprintf(op, "#TRACER%1.1d.reset_file      %s\n", n, tracer->data);
+    fprintf(op, "#TRACER%1.1d.reset_dt        1 day\n", n);
+  }
   fprintf(op, "\n");
 }
 
@@ -970,7 +1002,7 @@ int tracer_write(parameters_t *params, FILE *op)
   int n, tn, ntr = 0;
 
   /* Only print salt and temp for RECOM and PRE_MARVL */
-  if (params->roammode & (A_RECOM_R1|A_RECOM_R2) || params->runmode & PRE_MARVL) {
+  if (params->roammode >= A_RECOM_R1 || params->runmode & (PRE_MARVL|DUMP)) {
     int num_tr = 2;
     fprintf(op, "\n# Tracers\n");
     fprintf(op, "NTRACERS                %d\n\n", num_tr);

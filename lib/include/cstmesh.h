@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: cstmesh.h 6233 2019-05-29 03:31:45Z her127 $
+ *  $Id: cstmesh.h 7185 2022-08-08 23:46:25Z her127 $
  */
 
 #ifndef _CSTMESH_H
@@ -110,6 +110,7 @@ typedef struct {
   double slat, slon;  /* Start lat/lon for the largest coastline segment */
   double elat, elon;  /* End lat/lon for the largest coastline segment */
   double mlat, mlon;  /* Mid lat/lon for the largest coastline segment */
+  int sid, eid, mid;  /* Start, end, mid ids                           */
   double radius;      /* Minimum radius for segments to include        */
   double length;      /* Minimum length for segments to include        */
   double bslon, bslat, belon, belat; /* Bounding box                   */

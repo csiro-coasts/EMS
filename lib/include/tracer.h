@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: tracer.h 5863 2018-07-02 04:09:13Z her127 $
+ *  $Id: tracer.h 7022 2022-02-28 01:10:27Z her127 $
  */
 
 #ifndef _TRACER_H
@@ -55,6 +55,7 @@ typedef struct {
   char long_name[MAXSTRLEN];    /* long name (netcdf name, etc) */
   char std_name[MAXSTRLEN];     /* standard name (CF name, etc) */
   char units[MAXSTRLEN];        /* units */
+  char groupkey[MAXSTRLEN];     /* Tag for autotracers */
   int type;                     /* type of tracer */ 
 /* ranges and default values */
   double fill_value_wc;         /* watercolumn fill value */
@@ -96,6 +97,7 @@ typedef struct {
   timeseries_t *ts;             /* time-series file */
   int var_id;                   /* variable id into TS file. */
   char tracerstat[MAXSTRLEN];   /* Tracer statistic attribute */
+  char trstat_tag[MAXSTRLEN];   /* Additional tracerstat info */
   char data[MAXSTRLEN];         /* Initialisation data */
 
   char relax_file[MAXSTRLEN];   /* Relax input file */

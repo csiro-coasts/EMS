@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 6659 2020-09-08 06:08:27Z her127 $
+ *  $Id: readparam.c 7319 2023-04-11 02:07:26Z her127 $
  *
  */
 
@@ -89,6 +89,8 @@ char *tf(int m);
 void write_grid_specs(FILE *op, parameters_t *params);
 void decode_id(parameters_t *params, char *ifile, char *name, double *grd_id,
 	       double *hyd_id, double *sed_id, double *bgc_id);
+void decode_idc(parameters_t *params, char *ifile, char *name, char *grd_id,
+		char *hyd_id, char *sed_id, char *bgc_id);
 
 
 /*-------------------------------------------------------------------*/
@@ -107,6 +109,7 @@ void set_default_param(parameters_t *params)
   sprintf(params->tracerdata, "%c", '\0');
   sprintf(params->rivldir, "%c", '\0');
   sprintf(params->trans_dt, "%c", '\0');
+  sprintf(params->runnoc, "%c", '\0');
   params->runno = 0;
   sprintf(params->runcode, "%c", '\0');
   sprintf(params->rev, "%c", '\0');
@@ -235,6 +238,7 @@ void set_default_param(parameters_t *params)
   params->etadiff = 0.0;
   params->wmax = 100.0;
   params->trsplit = 0;
+  params->eta_ib = 0;
   params->etarlx = NONE;
   params->velrlx = NONE;
   params->albedo = -9999.0;
@@ -253,6 +257,12 @@ void set_default_param(parameters_t *params)
   params->do_closure = 0;
   params->rsalt = 0;
   params->rtemp = 0;
+  sprintf(params->mixsc, "%c", '\0');
+  sprintf(params->s_func, "%c", '\0');
+  params->min_tke = 0.0;
+  params->min_diss = 0.0;
+  params->vz0 = 0.0;
+  params->kz0 = 0.0;
   params->smooth_VzKz = 0;
   params->albedo_l = -1;
   params->trout = 0;
@@ -329,7 +339,13 @@ void set_default_param(parameters_t *params)
   params->smax = 2.03e-4;      /* Maximum shear, dv/dx (s-1)         */
   /*params->smax = 1.3e-4;*/       /* Maximum shear, dv/dx (s-1)         */
 
-
+  sprintf(params->rendername, "%c", '\0');
+  sprintf(params->renderpath, "%c", '\0');
+  sprintf(params->renderdesc, "%c", '\0');
+  sprintf(params->renderrem, "%c", '\0');
+  sprintf(params->rendertype, "%c", '\0');
+  sprintf(params->renderopts, "%c", '\0');
+  sprintf(params->ecosedconfig, "%c", '\0');
 #if defined(HAVE_SEDIMENT_MODULE)
   params->do_sed = 0;
   sprintf(params->sed_vars, "%c", '\0');
@@ -366,6 +382,7 @@ parameters_t *params_read(FILE *fp)
   int m, n;
   int cc;                       /* Sparse counters */
   double d1;
+  int conf = 0;
 
   /* Allocate memory for the parameter data structure */
   params = params_alloc();
@@ -439,6 +456,15 @@ parameters_t *params_read(FILE *fp)
   /* Set defaults */
   params->runmode = MANUAL;
   set_default_param(params);
+  if (prm_read_char(fp, "HYDRO_CONFIG", buf)) {
+    if (get_rendered_hydroparams(buf, params))
+      hd_warn("Can't find hydrodynamic configuration '%s'\n", buf);
+    else {
+      hd_warn("Hydrodynamic parameters configured to '%s.h'\n", buf);
+      conf = 1;
+    }
+  }
+
   sprintf(keyword, "ETAMAX");
   prm_read_double(fp, keyword, &params->etamax);
   sprintf(keyword, "MIN_CELL_THICKNESS");
@@ -467,7 +493,8 @@ parameters_t *params_read(FILE *fp)
 
   /* ID number and revision */
   sprintf(keyword, "ID_NUMBER");
-  prm_read_double(fp, keyword, &params->runno);
+  prm_read_char(fp, keyword, params->runnoc);
+  params->runno = atof(params->runnoc);
   sprintf(keyword, "REVISION");
   prm_read_char(fp, keyword, params->rev);
   /* Fatal instability checking */
@@ -1126,12 +1153,6 @@ parameters_t *params_read(FILE *fp)
   */
 
   /* Mixing scheme */
-  sprintf(params->mixsc, "%c", '\0');
-  sprintf(params->s_func, "%c", '\0');
-  params->min_tke = 0.0;
-  params->min_diss = 0.0;
-  params->vz0 = 0.0;
-  params->kz0 = 0.0;
   prm_set_errfn(hd_quit);
   sprintf(keyword, "MIXING_SCHEME");
   prm_read_char(fp, keyword, params->mixsc);
@@ -1150,7 +1171,8 @@ parameters_t *params_read(FILE *fp)
   sprintf(keyword, "VZ_ALPHA");
   prm_read_double(fp, keyword, &params->vz_alpha);
   sprintf(keyword, "ZS");
-  if (!(prm_read_double(fp, keyword, &params->zs))) {
+  prm_read_double(fp, keyword, &params->zs);
+  if (params->zs == 0.0) {
     if (strcmp(params->mixsc, "mellor_yamada_2_0") == 0 ||
         strcmp(params->mixsc, "mellor_yamada_2_5") == 0 ||
         strcmp(params->mixsc, "harcourt") == 0 ||
@@ -1199,6 +1221,11 @@ parameters_t *params_read(FILE *fp)
   sprintf(params->eta_init, "%c", '\0');
   sprintf(keyword, "SURFACE");
   prm_read_char(fp, keyword, params->eta_init);
+  /* Inverse barometer initial condition only for -g option
+  sprintf(keyword, "SURFACE_INV_BAR");
+  if (prm_read_char(fp, keyword, buf))
+    params->eta_ib = is_true(buf);
+  */
   sprintf(params->vel_init, "%c", '\0');
   sprintf(keyword, "VELOCITY");
   prm_read_char(fp, keyword, params->vel_init);
@@ -1345,6 +1372,11 @@ parameters_t *params_read(FILE *fp)
   sprintf(keyword, "LIGHT_INPUT_DT");
   prm_get_time_in_secs(fp, keyword, &params->light_dt);
   prm_read_double(fp, "ALBEDO_LIGHT", &params->albedo_l);
+  sprintf(params->lwri, "%c", '\0');
+  sprintf(keyword, "LONGWAVE_IN");
+  prm_read_char(fp, keyword, params->lwri);
+  sprintf(keyword, "LONGWAVE_INPUT_DT");
+  prm_get_time_in_secs(fp, keyword, &params->lwri_dt);
   sprintf(params->wetb, "%c", '\0');
   sprintf(keyword, "WET_BULB");
   prm_read_char(fp, keyword, params->wetb);
@@ -1561,6 +1593,21 @@ parameters_t *params_read(FILE *fp)
     }
   }
 
+  sprintf(keyword, "RENDER_NAME");
+  if (prm_read_char(fp, keyword, params->rendername)) {
+    sprintf(keyword, "RENDER_DESC");
+    prm_read_char(fp, keyword, params->renderdesc);
+  }
+  sprintf(keyword, "RENDER_PATH");
+  prm_read_char(fp, keyword, params->renderpath);
+  sprintf(keyword, "RENDER_TYPE");
+  prm_read_char(fp, keyword, params->rendertype);
+  sprintf(keyword, "RENDER_OPTIONS");
+  prm_read_char(fp, keyword, params->renderopts);
+  sprintf(keyword, "RENDER_REMOVE");
+  prm_read_char(fp, keyword, params->renderrem);
+  sprintf(keyword, "ECOSED_CONFIG");
+  prm_read_char(fp, keyword, params->ecosedconfig);
 #if defined(HAVE_SEDIMENT_MODULE)
   read_sediments(params, fp, &params->ntr);
 #endif
@@ -1568,8 +1615,23 @@ parameters_t *params_read(FILE *fp)
 #if defined(HAVE_WAVE_MODULE)
   params->do_wave = 0;
   sprintf(keyword, "DO_WAVES");
+  /*
   if (prm_read_char(fp, keyword, buf) && is_true(buf)) {
     params->do_wave = is_true(buf);
+    prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
+  }
+  */
+  if (prm_read_char(fp, keyword, buf)) {
+    if (strcmp(buf, "NONE") == 0)
+      params->do_wave = NONE;
+    if (strcmp(buf, "FILE") == 0 || is_true(buf))
+      params->do_wave = W_FILE;
+    if (strcmp(buf, "COMP") == 0)
+      params->do_wave = W_COMP;
+    if (strcmp(buf, "SWAN") == 0)
+      params->do_wave = (W_SWAN|W_SWANM);
+    if (strcmp(buf, "SWAN_W") == 0)
+      params->do_wave = (W_SWAN|W_SWANW);
     prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
   }
 #endif
@@ -1976,7 +2038,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 
   /* ID number and revision */
   sprintf(keyword, "ID_NUMBER");
-  prm_read_double(fp, keyword, &params->runno);
+  prm_read_char(fp, keyword, params->runnoc);
+  params->runno = atof(params->runnoc);
   sprintf(keyword, "REVISION");
   prm_read_char(fp, keyword, params->rev);
 
@@ -2150,6 +2213,9 @@ parameters_t *auto_params(FILE * fp, int autof)
   sprintf(params->eta_init, "%c", '\0');
   sprintf(keyword, "SURFACE");
   prm_read_char(fp, keyword, params->eta_init);
+  sprintf(keyword, "SURFACE_INV_BAR");
+  if (prm_read_char(fp, keyword, buf))
+    params->eta_ib = is_true(buf);
   sprintf(params->vel_init, "%c", '\0');
   sprintf(keyword, "VELOCITY");
   prm_read_char(fp, keyword, params->vel_init);
@@ -2395,6 +2461,17 @@ parameters_t *auto_params(FILE * fp, int autof)
 
   /* Transport mode files (optional) */
   read_tmode_params(fp, params);
+  /* Transport output                                                */
+  sprintf(keyword, "TRANS_OUTPUT");
+  if (prm_read_char(fp, keyword, buf))
+    params->trout = is_true(buf);
+  if (!prm_read_char(fp, "OutputTransport", params->trkey)) {
+    if (params->trout) {
+      strcpy(buf, params->prmname);
+      stripend(buf);
+      strcpy(params->trkey, buf);
+    }
+  }
 
   /* Means (optional) */
   read_means(params, fp, 1);
@@ -2521,8 +2598,22 @@ parameters_t *auto_params(FILE * fp, int autof)
 #if defined(HAVE_WAVE_MODULE)
   params->do_wave = 0;
   sprintf(keyword, "DO_WAVES");
+  /*
   if (prm_read_char(fp, keyword, buf) && is_true(buf)) {
     params->do_wave = is_true(buf);
+    prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
+  */
+  if (prm_read_char(fp, keyword, buf)) {
+    if (strcmp(buf, "NONE") == 0)
+      params->do_wave = NONE;
+    if (strcmp(buf, "FILE") == 0 || is_true(buf))
+      params->do_wave = W_FILE;
+    if (strcmp(buf, "COMP") == 0)
+      params->do_wave = W_COMP;
+    if (strcmp(buf, "SWAN") == 0)
+      params->do_wave = (W_SWAN|W_SWANM);
+    if (strcmp(buf, "SWAN_W") == 0)
+      params->do_wave = (W_SWAN|W_SWANW);
     prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
   }
 #endif
@@ -2590,6 +2681,8 @@ parameters_t *auto_params(FILE * fp, int autof)
 	params->roammode = A_ROAM_R4;
       else if (strcmp(buf, "ROAMv5") == 0)
 	params->roammode = A_ROAM_R5;
+      else if (strcmp(buf, "ROAMv6") == 0)
+	params->roammode = A_ROAM_R6;
       else if (strcmp(buf, "6") == 0 || strcmp(buf, "RECOMv1") == 0)
 	params->roammode = A_RECOM_R1;
       else if (strcmp(buf, "7") == 0 || strcmp(buf, "RECOMv2") == 0)
@@ -2608,6 +2701,8 @@ parameters_t *auto_params(FILE * fp, int autof)
       auto_params_roam_pre3(fp, params);
     else if (params->roammode == A_ROAM_R5)
       auto_params_roam_pre4(fp, params);
+    else if (params->roammode == A_ROAM_R6)
+      auto_params_roam_pre5(fp, params);
     else
       auto_params_roam_pre1(fp, params);
   }
@@ -2620,6 +2715,10 @@ parameters_t *auto_params(FILE * fp, int autof)
     params->ntr = params->atr;
     tracer_setup(params, fptr);
     create_tracer_3d(params);
+    for (n = 0; n < params->atr; n++) {
+      params->trinfo_3d[n].m = -1;
+      params->trinfo_3d[n].n = n;
+    }
   } else {
     params->ntr = 2 + params->atr;
     params->atr = 0;
@@ -2627,10 +2726,8 @@ parameters_t *auto_params(FILE * fp, int autof)
     params->trinfo_3d = (tracer_info_t *)malloc(sz);
     memset(params->trinfo_3d, 0, sz);
     create_tracer_3d(params);
-  }
-  for (n = 0; n < params->atr; n++) {
-    params->trinfo_3d[n].m = -1;
-    params->trinfo_3d[n].n = n;
+    for (n = 0; n < params->ntr; n++)
+      params->trinfo_3d[n].n = params->trinfo_3d[n].m;
   }
 
   /* Tracer relaxation */
@@ -2960,7 +3057,7 @@ parameters_t *auto_params(FILE * fp, int autof)
   /* Open boundaries */
   /* If boundary info is included in the input file, read and return */
   get_bdry_params(params, fp);
-  
+
   if (prm_read_int(fp, "NBOUNDARIES", &params->nobc)) {
     if (params->nobc == 0) {
       d_free_2d(bathy);
@@ -2984,6 +3081,7 @@ parameters_t *auto_params(FILE * fp, int autof)
       prm_set_errfn(hd_quit);
     }
     d_free_2d(bathy);
+
     /* Read the csr tide model paths if required */
     for (n = 0; n < params->nobc; n++) {
       if(params->open[n]->bcond_ele & TIDALH) {
@@ -3695,6 +3793,8 @@ parameters_t *auto_params(FILE * fp, int autof)
       auto_params_roam_post6(fp, params);
     if (params->roammode == A_ROAM_R5)   /* A_ROAM_R5 with TPXO tide and dual relaxation */
       auto_params_roam_post7(fp, params);
+    if (params->roammode == A_ROAM_R6)   /* A_ROAM_R6 TPXO tide only */
+      auto_params_roam_post8(fp, params);
     if (params->roammode == A_RECOM_R1)   /* RECOM */
       auto_params_recom_post1(fp, params);
     if (params->roammode == A_RECOM_R2)   /* RECOM + ROBUST */
@@ -4443,6 +4543,8 @@ static void mask_bathy_with_coast(const char *cfname, parameters_t *params) {
 
 /*-------------------------------------------------------------------*/
 /* Routine to initialise surface elevation.                          */
+/* Note inverse barometer is added to the initial condition in       */
+/* pre_run_setup() because patm and dens aren't initialised yet.     */
 /*-------------------------------------------------------------------*/
 void eta_init(geometry_t *geom,      /* Global geometry              */
 	      parameters_t *params,  /* Input parameter data         */
@@ -5187,7 +5289,7 @@ int read2darray(FILE * fp, char *label, double **array, long n1, long n2)
 
 /*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
-void params_write(parameters_t *params, dump_data_t *dumpdata)
+void params_write(parameters_t *params, dump_data_t *dumpdata, char *name)
 {
 
   FILE *op, *fopen();
@@ -5197,8 +5299,9 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
   char key[MAXSTRLEN];
   char bname[MAXSTRLEN];
 
-  sprintf(tag, "%s.prm", params->oname);
+  sprintf(tag, "%s.prm", name);
   op = fopen(tag, "w");
+
   fprintf(op, "# SHOC parameter file\n");
   fprintf(op, "CODEHEADER           %s\n", params->codeheader);
   fprintf(op, "PARAMETERHEADER      %s\n", params->parameterheader);
@@ -5209,7 +5312,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
   if (strlen(params->trl))
     fprintf(op, "TECHNOLOGY_READINESS_LEVEL %s", params->trl);
   if (params->runno > 0)
-    fprintf(op, "ID_NUMBER            %5.2f\n", params->runno);
+    fprintf(op, "ID_NUMBER            %s\n", params->runnoc);
   if (strlen(params->runcode))
     fprintf(op, "ID_CODE              %s\n", params->runcode);
   if (strlen(params->rev))
@@ -5243,14 +5346,15 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     for(n = 0; n < params->ndf; n++) {
       fprintf(op,"file%1.1d.name           %s\n",n,params->d_name[n]);
       fprintf(op,"file%1.1d.filetype       %s\n",n,params->d_filetype[n]);
-      if (strlen(params->d_tstart[n]))
+      if (params->d_tstart != NULL && strlen(params->d_tstart[n]))
 	fprintf(op,"file%1.1d.tstart         %s\n",n,params->d_tstart[n]);
       fprintf(op,"file%1.1d.tinc           %s\n",n,params->d_tinc[n]);
-      if (strlen(params->d_tstop[n]))
+      if (params->d_tstop != NULL && strlen(params->d_tstop[n]))
 	fprintf(op,"file%1.1d.tstop          %s\n",n,params->d_tstop[n]);
       fprintf(op,"file%1.1d.bytespervalue  4\n",n);
-      fprintf(op,"file%1.1d.vars           %s\n",n,params->d_vars[n]);
-      if (strlen(params->d_tunit[n]))
+      if (params->d_vars != NULL)
+	fprintf(op,"file%1.1d.vars           %s\n",n,params->d_vars[n]);
+      if (params->d_tunit != NULL && strlen(params->d_tunit[n]))
 	fprintf(op,"file%1.1d.timeunit       %s\n",n,params->d_tunit[n]);
       fprintf(op,"\n");
     }
@@ -5507,7 +5611,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     }
     if (strlen(params->trinfo_3d[n].data))
       fprintf(op, "TRACER%1.1d.data         %s\n", tn, params->trinfo_3d[n].data);
-    if (strlen(params->trrlxn[n])) {
+    if (params->trrlxn != NULL && strlen(params->trrlxn[n])) {
       fprintf(op, "TRACER%1.1d.relaxation_file     %s\n",
               tn, params->trrlxn[n]);
       fprintf(op, "TRACER%1.1d.relaxation_input_dt %s\n",
@@ -5515,7 +5619,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
       fprintf(op, "TRACER%1.1d.relaxation_time_constant  %s\n",
               tn, params->trrlxtc[n]);
     }
-    if (strlen(params->trrest[n])) {
+    if (params->trrest != NULL && strlen(params->trrest[n])) {
       fprintf(op, "TRACER%1.1d.reset_file   %s\n",
               tn, params->trrest[n]);
       if (params->save_force && (strcmp(tracer->name, "otemp") == 0 ||
@@ -5804,12 +5908,12 @@ void params_write(parameters_t *params, dump_data_t *dumpdata)
     d_free_1d(params->coriolis);
   if (params->surface)
     d_free_1d(params->surface);
-  d_free_2d(params->x);
-  d_free_2d(params->y);
-  d_free_2d(params->h1);
-  d_free_2d(params->h2);
-  d_free_2d(params->a1);
-  d_free_2d(params->a2);
+  if (params->x) d_free_2d(params->x);
+  if (params->y) d_free_2d(params->y);
+  if (params->h1) d_free_2d(params->h1);
+  if (params->h2) d_free_2d(params->h2);
+  if (params->a1) d_free_2d(params->a1);
+  if (params->a2) d_free_2d(params->a2);
 }
 
 /* END params_write()                                                */
@@ -6747,13 +6851,14 @@ void read_swr(parameters_t *params, FILE *fp, int mode)
 	strcpy(params->swr_tran, "0.0");
       if (!(params->swr_type & SWR_SPLIT)) params->ntrS+=1;
     }
+  } else {
+    if (params->swr_type & SWR_ATTN && !(params->swr_type & SWR_TRAN) &&
+	!(params->swr_type & SWR_SPLIT)) {
+      strcpy(params->swr_tran, "1.0");
+      params->ntrS++;
+    }
   }
 
-  if (params->swr_type & SWR_ATTN && !(params->swr_type & SWR_TRAN) &&
-      !(params->swr_type & SWR_SPLIT)) {
-    strcpy(params->swr_tran, "1.0");
-    params->ntrS++;
-  }
   if (strlen(params->swr_attn) && !strlen(params->swr_babs)) {
     strcpy(params->swr_babs, "1.0");
     params->ntrS++;
@@ -7765,7 +7870,6 @@ void read_means(parameters_t *params, FILE *fp, int mode)
       strip(meanbuf, "TRA2D");
       strcpy(params->means_tra, meanbuf);
     }
-
     if (params->means & ETA_M)
       params->ntrS += 1;
     if (params->means & WIND)
@@ -7843,7 +7947,7 @@ void read_means(parameters_t *params, FILE *fp, int mode)
 	params->ntr += 2;
     }
   }
-  if (params->tmode & SP_FFSL) {
+  if (params->runmode & TRANS && params->tmode & SP_FFSL) {
     if(mode)
       params->atr += 2;
     else
@@ -8336,6 +8440,7 @@ double intpf(double a, double b, double xs, double xe, double x)
 /*-------------------------------------------------------------------*/
 
 
+
 /*-------------------------------------------------------------------*/
 /* Constructs a run code from previous codes in output files, and    */
 /* run identifiers in the parameter file.                            */
@@ -8351,6 +8456,7 @@ double intpf(double a, double b, double xs, double xe, double x)
 void create_code(parameters_t *params)
 {
   char name[MAXSTRLEN], buf[MAXSTRLEN];
+  char grd_c[MAXSTRLEN], hyd_c[MAXSTRLEN], sed_c[MAXSTRLEN], bgc_c[MAXSTRLEN];
   double grd_id, hyd_id, sed_id, bgc_id;
   FILE *fp;
   long t;
@@ -8379,19 +8485,25 @@ void create_code(parameters_t *params)
   /* 1.0 unless specified otherwise.                                 */
   if (params->runmode & AUTO) {
     strcpy(name, params->grid_name);
-    if (params->runno == 0.0)
+    if (params->runno == 0.0) {
       grd_id = 1.0;
-    else
+      sprintf(grd_c, "1.0");
+    } else {
       grd_id = params->runno;
+      strcpy(grd_c, params->runnoc);
+    }
   }
   /* netCDF INPUT file generated by -g. grd_id inherits the current  */
   /* ID_NUMBER.  If no number is specified, set to 1.0.               */
   if (params->runmode & DUMP) {
     strcpy(name, params->grid_name);
-    if (params->runno == 0.0)
+    if (params->runno == 0.0) {
       grd_id = 1.0;
-    else
+      sprintf(grd_c, "1.0");
+    } else {
       grd_id = params->runno;
+      strcpy(grd_c, params->runnoc);
+    }
   }
   /* Run using -p. Read the GRD ID from input file and set the HYD   */
   /* ID to the ID_NUMBER.                                            */
@@ -8399,12 +8511,17 @@ void create_code(parameters_t *params)
     /* Read the NAME and GRD ID from INPUT_FILE                      */
     decode_id(params, params->idumpname, name, 
 	      &grd_id, &hyd_id, &sed_id, &bgc_id);
+    decode_idc(params, params->idumpname, name, 
+	       grd_c, hyd_c, sed_c, bgc_c);
 
     /* Set the HYD ID                                                */
-    if (params->runno == 0.0)
+    if (params->runno == 0.0) {
       hyd_id = 1.0;
-    else
+      sprintf(hyd_c, "1.0");
+    } else {
       hyd_id = params->runno;
+      strcpy(hyd_c, params->runnoc);
+    }
   }
   /* Run using -t. Read GRD and hyd_id from the transport file, and  */
   /* set the sed_id or bgc_id to the ID_NUMBER.                      */
@@ -8412,25 +8529,32 @@ void create_code(parameters_t *params)
     /* Read the NAME, GRD ID and HYD ID from INPUT_FILE              */
     decode_id(params, params->trans_data, name, 
 	      &grd_id, &hyd_id, &sed_id, &bgc_id);
+    decode_idc(params, params->idumpname, name, 
+	       grd_c, hyd_c, sed_c, bgc_c);
     /* If the model component is SED, then record the runno in the   */
     /* parameter file. This is used downstream to include SED IDs    */
     /* in BGC runs.                                                  */
-    if (sedf == SEDIM)
+    if (sedf == SEDIM) {
       sed_id = params->runno;
+      strcpy(sed_c, params->runnoc);
+    }
     /* If the model component is BGC, then read the sediment ID from */
     /* the parameter file.                                           */
     if (sedf == ECOLOGY) {
       prm_read_char(fp, "ID_CODE", buf);
       sed_id = get_idcode(buf, "S");
+      get_idcodec(buf, "S", sed_c);
       if (sed_id == 0.0)
-                hd_warn("Can't find sediment transport ID in file %s\n", params->prmname);
+	hd_warn("Can't find sediment transport ID in file %s\n", params->prmname);
       bgc_id = params->runno;
+      strcpy(bgc_c, params->runnoc);
     } 
   }
-
   /* Make the id code                                                */
   sprintf(params->runcode, "%s|G%3.2f|H%3.2f|S%3.2f|B%3.2f", name,
 	  grd_id, hyd_id, sed_id, bgc_id);
+  sprintf(params->runcode, "%s|G%s|H%s|S%s|B%s", name,
+	  grd_c, hyd_c, sed_c, bgc_c);
 
   if (sedf == SEDIM) {
     if (prm_skip_to_start_of_key(fp, "ID_CODE")) {
@@ -8508,6 +8632,55 @@ void decode_id(parameters_t *params,
   nc_close(fid);
 }
 
+void decode_idc(parameters_t *params,
+		char *ifile,
+		char *name,
+		char *grd_id,
+	        char *hyd_id,
+		char *sed_id,
+		char *bgc_id
+	       )
+{
+  int i, n, fid, ncerr;
+  char rcode[MAXSTRLEN], buf[MAXSTRLEN], fname[MAXSTRLEN];
+  char *tok;
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+
+  n = parseline(ifile, fields, MAXNUMARGS);
+  if (n == 1)
+    strcpy(fname, fields[0]);
+  if (endswith(fname, ".mnc")) {
+    FILE *fp;
+    fp = fopen(fname, "r");
+    prm_read_char(fp, "file0.filename", buf);
+    strcpy(fname, buf);
+    fclose(fp);
+  }
+  /* Strip out any variable substitution                             */
+  if (!(endswith(fname, ".nc"))) {
+    strcpy(buf, fname);
+    tok = strtok(buf, ".");
+    sprintf(fname, "%s.nc", buf);
+  }
+
+  for (i = 0; i < MAXSTRLEN; i++) {
+    rcode[i] = 0;
+  }
+
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    hd_warn("Can't find input file %s\n", fname);
+  }
+  nc_get_att_text(fid, NC_GLOBAL, "Run_code", rcode);
+  strcpy(buf, rcode);
+  tok = strtok(buf, "|");
+  if (tok != NULL) strcpy(name, tok);
+  get_idcodec(rcode, "G", grd_id);
+  get_idcodec(rcode, "H", hyd_id);
+  get_idcodec(rcode, "S", sed_id);
+  get_idcodec(rcode, "B", bgc_id);
+  nc_close(fid);
+}
+
 /* END decode_id()                                                   */
 /*-------------------------------------------------------------------*/
 
@@ -8519,7 +8692,7 @@ double get_idcode(char *code, char *id)
 {
   char buf[MAXSTRLEN], key[MAXSTRLEN];
   char *tok;
-  int i, nn, n = strlen(buf);
+  int i, nn, n;
   int j = 0;
 
   sprintf(key, "%c", '\0');
@@ -8541,6 +8714,34 @@ double get_idcode(char *code, char *id)
   } else {
     return(0.0);
   }
+}
+
+void get_idcodec(char *code, char *id, char *ret)
+{
+  char buf[MAXSTRLEN], key[MAXSTRLEN];
+  char *tok;
+  int i, nn, n;
+  int j = 0;
+
+  sprintf(key, "%c", '\0');
+  strcpy(buf, code);
+  tok = strtok(buf, "|");
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "G") == 0) strcpy(key, tok);
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "H") == 0) strcpy(key, tok);
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "S") == 0) strcpy(key, tok);
+  tok = strtok(NULL, "|");
+  if (tok != NULL && strcmp(id, "B") == 0) strcpy(key, tok);
+  if (strlen(key)) {
+    for (n = 0; n < strlen(key) - 1; n++)
+      buf[n] = key[n+1];
+    buf[n] = '\0';
+  } else {
+    strcpy(buf, "0.0");
+  }
+  strcpy(ret, buf);
 }
 
 /* END get_idcode()                                                  */

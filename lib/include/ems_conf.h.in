@@ -120,3 +120,12 @@
 
 /* Define wether to include the Metis library */
 #undef HAVE_METIS
+
+/* See if the SWAN library is available */
+#undef HAVE_SWAN
+
+/* Intel Math Kernel Library */
+#undef HAVE_MKL
+
+/* GSL */
+#undef HAVE_GSL

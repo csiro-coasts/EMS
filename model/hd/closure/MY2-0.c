@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: MY2-0.c 6527 2020-04-15 05:51:09Z her127 $
+ *  $Id: MY2-0.c 6934 2021-10-27 02:36:22Z riz008 $
  *
  */
 
@@ -32,8 +32,6 @@ double get_Lscale(geometry_t *window, window_t *windat, win_priv_t *wincon,
                   double Ri, double N2, double Lo, double q, double z,
                   double sl, double bl, double top, double bot, int kts,
                   int ktb, double z0);
-int cg;
-
 /* Constants */
 
 #define KAPPA (0.4)             /* Von Karman's constant */
@@ -332,7 +330,6 @@ void closure_MY2_est(geometry_t *window,  /* Processing window */
     zm1 = window->zm1[c];
 
     while (c < cb) {
-      cg = c;
       /* SIGMA : Multiply by depth */
       dz = (window->cellz[c] - window->cellz[zm1]) * wincon->Ds[cs];
 

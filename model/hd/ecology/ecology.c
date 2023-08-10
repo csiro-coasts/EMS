@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 6721 2021-03-29 04:38:30Z bai155 $
+ *  $Id: ecology.c 7284 2023-01-09 23:03:51Z bai155 $
  *
  */
 
@@ -27,7 +27,7 @@
 #include "einterface.h"
 #include "ecology_tracer_defaults.h"
 
-#define ECO_MAXNUMARGS 400
+/*#define ECO_MAXNUMARGS 400*/
 
 double sinterface_get_svel(void* model,char* name);
 
@@ -38,6 +38,7 @@ double sinterface_get_svel(void* model,char* name);
 /* Ecology 3D tracers */
 const char *ECONAME3D[][2] = {
   {"Age",         "Tracer age"},
+  {"Porewater_Age","Porewater age"},
   {"source",      "Ageing zone"},
   {"temp_clim",   "Climatological temperature"},
   {"PhyL_N",      "Large Phytoplankton N"},
@@ -71,6 +72,11 @@ const char *ECONAME3D[][2] = {
   {"Tricho_I",      "Trichodesmium I reserve"},
   {"Tricho_Chl",    "Trichodesmium chlorophyll"},
   {"Tricho_sv",     "Trichodesmium settling velocity"},
+  {"Tricho_PEB",       "Trichodesmium symbiont PB photo."},
+  {"Tricho_PUB",       "Trichodesmium symbiont PB heat."},
+  {"Tricho_Qred",     "Trichodesmium symbiont red. RC"},
+  {"Tricho_Qox",      "Trichodesmium symbiont ox. RC"},
+  {"Tricho_Qi",       "Trichodesmium symbiont in. RC"},
   {"ZooL_sv",       "Large Zooplankton settling velocity"},
   {"Phy_L_N2",    "Lyngbya"},
   {"NH4",         "Ammonium"},
@@ -152,6 +158,14 @@ const char *ECONAME3D[][2] = {
   {"cdom_amber",  "CDOM tracer (amber)"},
   {"cdom_dark",   "CDOM tracer (dark)"},  
   {"cdom_gbr",    "CDOM tracer (gbr)"},
+  {"PhyL_kI",     "Col: Large phytoplankton absorption"},
+  {"PhyL_yCfac",  "Col: Large phytoplankton opaqueness"},
+  {"PhyS_kI",     "Col: Small phytoplankton absorption"},
+  {"PhyS_yCfac",  "Col: Small phytoplankton opaqueness"},
+  {"Tricho_kI",     "Col: Trichodesmium absorption"},
+  {"Tricho_yCfac",  "Col: Trichodesmium opaqueness"},
+  {"MPB_kI",     "Col: MPB absorption"},
+  {"MPB_yCfac",  "Col: MPB opaqueness"},
 };
 
 const int NUM_ECO_VARS_3D = ((int)(sizeof(ECONAME3D)/(2*sizeof(char*))));
@@ -282,7 +296,7 @@ const eco_def_trstat_t eco_def_trstat[] = {
   {"NULL", "", ""}
 };
 
-static void *private_data_copy_eco(void *src);
+/*static void *private_data_copy_eco(void *src);*/
 
 static int e_ntr;
 static int tr_map[MAXNUMVARS];
@@ -314,6 +328,8 @@ void einterface_check_default_tracers(void)
 /*-------------------------------------------------------------------*/
 extern int ginterface_get_num_rsr_tracers(void* model);
 extern void ginterface_get_rsr_tracers(void* model, int *rtns);
+extern int ginterface_get_num_ed_tracers(void* model);
+extern void ginterface_get_ed_tracers(void* model, int *rtns);
 extern int ginterface_getntracers(void* model);
 extern int ginterface_gettracerdiagnflag(void* model, char* name);
 extern int ginterface_gettracerparticflag(void* model, char* name);
@@ -355,6 +371,7 @@ extern int ginterface_transport_mode(void);
 extern char * ginterface_get_output_path(void);
 extern double ginterface_calc_zenith(void *model, double t, int b);
 extern int ginterface_get_win_num(void *model);
+extern double ginterface_get_svel(void* model, char *name);
 
 /*-------------------------------------------------------------------*/
 /* Re-directed interface routines. These should be replaced with     */
@@ -367,6 +384,12 @@ int einterface_get_num_rsr_tracers(void* model) {
 }
 void einterface_get_rsr_tracers(void* model, int *rtns) {
   ginterface_get_rsr_tracers(model, rtns);
+}
+int einterface_get_num_ed_tracers(void* model) {
+  return ginterface_get_num_ed_tracers(model);
+}
+void einterface_get_ed_tracers(void* model, int *rtns) {
+  ginterface_get_ed_tracers(model, rtns);
 }
 int einterface_getntracers(void* model) {
   return ginterface_getntracers(model);
@@ -390,6 +413,9 @@ int einterface_tracername_exists_epi(void* model, char*name) {
   return ginterface_tracername_exists_epi(model, name);
 }
 void einterface_get_ij(void* model, int col, int *ij) {
+  // called by cell, light_spectral_col, massbalance_epi, age
+  printf("called the now obsolete einterface_get_ij \n");
+  exit(-1);
   ginterface_get_ij(model, col, ij);
 }
 int einterface_getnepis(void* model) {
@@ -426,6 +452,10 @@ int einterface_getwcbotk(void *model, int b) {
   return ginterface_getwcbotk(model, b);
 }
 double einterface_getcellz(void *model, int b, int k) {
+  // called: mleco, column, age_wc, coral_spectral_grow_epi
+  //         filter_feeder, salmon_waste, variable_parameter
+  //         zooplankton_large_carnivore_spectral_grow_wc,
+  //         zooplankton_large_spectral_grow_wc
   return ginterface_getcellz(model, b, k);
 }
 int einterface_isboundarycolumn(void *model, int b) {
@@ -444,9 +474,15 @@ double *einterface_getsedcellthicknesses(void *model, int b) {
   return ginterface_getsedcellthicknesses(model, b);
 }
 double einterface_botstress(void *model, int b) {
+  // doesn't appear to be called.
+  printf("called the now obsolete einterface_botstress \n");
+  exit(-1);
   return ginterface_botstress(model, b);
 }
 double einterface_get_windspeed(void *model, int b) {
+  // called by co2_exchange_wc, dimethyl_sulfide_wc,gas_exchange_wc.c
+  printf("called the now obsolete einterface_get_windspeed \n");
+  exit(-1);
   return ginterface_get_windspeed(model, b);
 }
 double einterface_getlighttop(void *model, int b) {
@@ -456,22 +492,15 @@ double *einterface_getporosity(void *model, int b) {
   return ginterface_getporosity(model, b);
 }
 double einterface_geterosionrate(void *model, int b) {
+  // only called in model/boxhd/ecology_bm
+  printf("called the now obsolete einterface_geterosionrate \n");
+  exit(-1);
   return ginterface_geterosionrate(model, b);
 }
 double einterface_getustrcw(void *model, int b) {
+  // called in model/boxhd/ecology_bm, ediagn, anm_epi, macroalgae_spectral_grow_wc
   return ginterface_getustrcw(model, b);
 }
-/* Issues with returning pointers; duplacte einterface_ routines for now.
-double**  einterface_getwctracers(void* model, int b) {
-  return ginterface_getwctracers(model, b);
-}
-double** einterface_getsedtracers(void* model, int b) {
-  return ginterface_getsedtracers(model, b);
-}
-double **einterface_getepivars(void *model, int b) {
-  return ginterface_getepivars(model, b);
-}
-*/
 double einterface_cellarea(void* hmodel, int b) {
   return ginterface_cellarea(hmodel, b);
 }
@@ -482,12 +511,21 @@ char *einterface_gettimeunits(void *model) {
   return ginterface_gettimeunits(model);
 }
 int einterface_transport_mode(void) {
+  // only called in model/lib/ecology.c
+  printf("called the now obsolete einterface_transport_mode \n");
+  exit(-1);
   return ginterface_transport_mode();
 }
 char * einterface_get_output_path(void) {
+  // only called in model/lib/ecology.c
+  printf("called the now obsolete einterface_get_output_path \n");
+  exit(-1);
   ginterface_get_output_path();
 }
 int einterface_get_win_num(void *model) {
+  // only called in bio_opt.c, and even then commented out.
+  printf("called the now obsolete einterface_get_win_num \n");
+  exit(-1);
   return ginterface_get_win_num(model);
 }
 double einterface_calc_zenith(void *model, double t, int b) {
@@ -571,7 +609,7 @@ static void einterface_tracermap(void* model, ecology *e, int ntr)
 {
   geometry_t *window = (geometry_t *)model;
   win_priv_t *wincon = window->wincon;
-  char trname[MAXSTRLEN];
+  char trname[MAXSTRLEN] = "";
   int tn,n,m;
 
   n = m = 0;
@@ -598,7 +636,7 @@ static void einterface_epimap(void* model, ecology *e, int ntr)
 {
   geometry_t *window = (geometry_t *)model;
   win_priv_t *wincon = window->wincon;
-  char trname[MAXSTRLEN];
+  char trname[MAXSTRLEN] = "";
   int tn,n;
 
   n = 0;
@@ -627,10 +665,229 @@ int einterface_get_eco_flag(void* model, char* name)
   return flag;
 }
 
+/* Returns whether a tracer is optically active                      */
+int einterface_is_optical(void* model, char *name)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+
+  if(tr->type & OPTICAL)
+    return 1;
+  else
+    return 0;
+}
+
+tracer_info_t* i_get_tracer2d(void* hmodel, char* trname);
+
+/* Returns whether a epi is optically active                      */
+int einterface_is_optical2d(void* model, char *name)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer2d(model, name);
+
+  if(tr->type & OPTICAL)
+    return 1;
+  else
+    return 0;
+}
+
+int einterface_get_optical_file(void* model, char *name, char *file)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->optical_file)) {
+      strcpy(file, data->optical_file);
+      return 1;
+    } else
+      return 0;
+  } else{
+    return 0;
+  }
+}
+
+
+int einterface_get_optical2d_file(void* model, char *name, char *file)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer2d(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->optical_file)) {
+      strcpy(file, data->optical_file);
+      return 1;
+    } else
+      return 0;
+  } else{
+    return 0;
+  }
+}
+
+
+int einterface_get_absorp_name(void* model, char *name, char *absorp)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->absorp_name)) {
+      strcpy(absorp, data->absorp_name);
+      return 1;
+    } else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_scatter_name(void* model, char *name, char *scatter)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->scatter_name)) {
+      strcpy(scatter, data->scatter_name);
+      return 1;
+    } else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_backscat_name(void* model, char *name, char *backscat)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->backscat_name)) {
+      strcpy(backscat, data->backscat_name);
+      return 1;
+    }  else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_benreflt_name(void* model, char *name, char *benreflt)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->benreflt_name)) {
+      strcpy(benreflt, data->benreflt_name);
+      return 1;
+    }  else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_specresp3d_name(void* model, char *name, char *specresp3d)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->specresp3d_name)) {
+      strcpy(specresp3d, data->specresp3d_name);
+      return 1;
+    }  else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_abtance_name(void* model, char *name, char *abtance)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer2d(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->abtance_name)) {
+      strcpy(abtance, data->abtance_name);
+      return 1;
+    } else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_refltce_name(void* model, char *name, char *refltce)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer2d(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->refltce_name)) {
+      strcpy(refltce, data->refltce_name);
+      return 1;
+    } else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_trnmiss_name(void* model, char *name, char *trnmiss)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer2d(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->trnmiss_name)) {
+      strcpy(trnmiss, data->trnmiss_name);
+      return 1;
+    } else
+      return 0;
+  } else
+    return 0;
+}
+
+int einterface_get_specresp2d_name(void* model, char *name, char *specresp2d)
+{
+  geometry_t *window = (geometry_t *)model;
+  win_priv_t *wincon = window->wincon;
+  tracer_info_t *tr = i_get_tracer2d(model, name);
+  trinfo_priv_eco_t *data = tr->private_data[TR_PRV_DATA_ECO];
+
+  if(data) {
+    if (strlen(data->specresp2d_name)) {
+      strcpy(specresp2d, data->specresp2d_name);
+      return 1;
+    } else
+      return 0;
+  } else
+    return 0;
+}
 
 double einterface_gettracersvel(void* model, char* name)
 {
-  return(sinterface_get_svel(model,name));
+  return(ginterface_get_svel(model,name));
+  //return(sinterface_get_svel(model,name));
 
 }
 
@@ -828,6 +1085,16 @@ trinfo_priv_eco_t *get_private_data_eco(tracer_info_t *tr)
     tr->private_data_copy[TR_PRV_DATA_ECO] = private_data_copy_eco;
   
     sprintf(data->name, "%c", '\0');
+    sprintf(data->optical_file, "%c", '\0');
+    sprintf(data->absorp_name, "%c", '\0');
+    sprintf(data->scatter_name, "%c", '\0');
+    sprintf(data->backscat_name, "%c", '\0');
+    sprintf(data->benreflt_name, "%c", '\0');
+    sprintf(data->specresp3d_name, "%c", '\0');
+    sprintf(data->abtance_name, "%c", '\0');
+    sprintf(data->refltce_name, "%c", '\0');
+    sprintf(data->trnmiss_name, "%c", '\0');
+    sprintf(data->specresp2d_name, "%c", '\0');
     data->obc  = NOGRAD;
     data->flag = ECO_NONE;
   }
@@ -839,7 +1106,7 @@ trinfo_priv_eco_t *get_private_data_eco(tracer_info_t *tr)
 /*-------------------------------------------------------------------*/
 /* Copies ecology private data                                       */
 /*-------------------------------------------------------------------*/
-static void *private_data_copy_eco(void *src)
+void *private_data_copy_eco(void *src)
 {
   void *dest = NULL;
 
@@ -951,6 +1218,46 @@ void eco_read_tr_atts(tracer_info_t *tr, FILE *fp, char *keyname)
   if (prm_read_char(fp, key, buf))
     data->flag = get_eco_flag_num(buf);
 
+  sprintf(key, "%s.optical_file", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->optical_file, buf);
+
+  sprintf(key, "%s.absorp_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->absorp_name, buf);
+
+  sprintf(key, "%s.scatter_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->scatter_name, buf);
+
+  sprintf(key, "%s.backscat_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->backscat_name, buf);
+
+  sprintf(key, "%s.benreflt_name", keyname);
+  if (prm_read_char(fp, key, buf)){
+    strcpy(data->benreflt_name, buf);
+  }
+  sprintf(key, "%s.specresp3d_name", keyname);
+  if (prm_read_char(fp, key, buf)){
+    strcpy(data->specresp3d_name, buf);
+  }
+  sprintf(key, "%s.abtance_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->abtance_name, buf);
+
+  sprintf(key, "%s.refltce_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->refltce_name, buf);
+
+  sprintf(key, "%s.trnmiss_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->trnmiss_name, buf);
+
+  sprintf(key, "%s.specresp2d_name", keyname);
+  if (prm_read_char(fp, key, buf))
+    strcpy(data->specresp2d_name, buf);
+
 }
 
 
@@ -1037,6 +1344,11 @@ static int eco_set_autotracer(FILE *fp,
 {
   char *vars[ECO_MAXNUMARGS], buf[MAXSTRLEN];
   int m, n, i;
+
+  /* Check if the class is in the global configurations              */
+  n = get_rendered_tracers(fp, do_eco, eco_vars, eco_defs,
+			   trinfo, ntr, tn, trinfo_type);
+  if (n != tn) return(n);
 
   /* Set up the auto-tracers */
   if (do_eco && strlen(eco_vars)) {
@@ -1138,6 +1450,37 @@ int eco_get_obc(tracer_info_t *tr)
 }
 
 /* END eco_get_obc()                                                 */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+void set_optic_tracers(master_t *master) 
+{
+
+  /*
+  geometry_t *window = (geometry_t *)model;
+  window_t *windat = window->windat;
+  char data[MAXSTRLEN];
+  int i, m, n;
+  char filename[MAXSTRLEN];
+
+  // Loop through 3D tracers                                        
+   for (m = 0; m < wincon->ntr; m++) {
+    if (ginterface_is_optical(model, m, data) == 2) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      n = parseline(data, fields, MAXNUMARGS);
+      for (i = 0; i < n; i++) {
+	char *tok;
+	tok = strtok(fields[i], "=");
+	if (strcmp(tok, "file") == 0) {
+	  tok = strtok(NULL, "=");
+	  filename = atof(tok);
+	}
+      }
+    }
+  }  */
+}
+
 /*-------------------------------------------------------------------*/
 
 

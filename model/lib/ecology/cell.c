@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: cell.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: cell.c 7193 2022-09-13 06:14:06Z bai155 $
  *
  */
 
@@ -25,7 +25,7 @@
 #endif
 #include <assert.h>
 #include "ecology_internal.h"
-#include "einterface.h"
+// #include "einterface.h"
 #include "parameter_info.h"
 #include "stringtable.h"
 #include "eprocess.h"
@@ -36,6 +36,8 @@
 
 #define NDPE_MAX 100
 #define SMALL_EPS 1e-5
+
+void ginterface_get_ij(void* model, int col, int *ij);
 
 /** Cell constructor.
  * @param parent Parent cell
@@ -719,7 +721,7 @@ int cell_calc(cell* c)
     void *hmodel = e->model;
     char str[MAXSTRLEN];
     
-    einterface_get_ij(e->model, b, ij);
+    ginterface_get_ij(e->model, b, ij);
     if (c->type == CT_WC) {
       sprintf(str, "ecology: error: integration failed in water cell, nstep = %d, nsubstep = %d, b = %d, k = %d (i,j) = (%u,%u)\n", e->nstep, c->nsubstep, b, c->k_wc, ij[0],ij[1]);
       i_set_error(e->model, b, LFATAL, str);

@@ -34,7 +34,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_uq_epi.c 6580 2020-07-29 03:58:50Z bai155 $
+ *  $Id: light_spectral_uq_epi.c 7217 2022-09-18 01:30:05Z bai155 $
  *
  */
 
@@ -47,9 +47,10 @@
 #include "eprocess.h"
 #include "column.h"
 #include "cell.h"
-#include "einterface.h"
 #include "light_spectral_uq_epi.h"
 #include "constants.h"
+
+double ginterface_calc_zenith(void *model, double t, int b);
 
 typedef struct {
   /*
@@ -430,6 +431,25 @@ void light_spectral_uq_epi_postinit(eprocess* p)
     if (ws->wave[w] == 690.0)
       ws->wPAR_top = w;
   }
+  if ((ws->wPAR_bot < 0) || (ws->wPAR_top < 0)){
+    e->quitfn("light_spectral_uq_epi: did not identify top or bottom band for PAR (410,690) \n");
+  }
+  
+  ws->w443 = -1;
+  ws->w488 = -1;
+  ws->w510 = -1;
+  ws->w547 = -1;
+  ws->w560 = -1;
+  ws->w645 = -1;
+  ws->w486 = -1;
+  ws->w551 = -1;
+  ws->w667 = -1;
+  ws->w678 = -1;
+  ws->w748 = -1;
+  ws->w709 = -1;
+  ws->w490 = -1;
+  ws->w665 = -1;
+
   for (w2=0; w2<ws->num_rrs_waves; w2++){
     if (ws->rrs_wave[w2] == 443.0)
       ws->w443 = w2;
@@ -461,6 +481,28 @@ void light_spectral_uq_epi_postinit(eprocess* p)
       ws->w490 = w2;
   }
 
+  // Check for wavelengths for satellite algorithms.
+  
+  if (((ws->w678 < 0)||(ws->w667 < 0)||(ws->w748 < 0)) && (ws->nFLH_i > -1)){
+    e->quitfn("light_spectral_uq_epi: cannot do nFLH because remote-sensing reflectance at wavelengths 667, 678, 748 not in tracer list (indices: %d,%d,%d) \n",ws->w667,ws->w678,ws->w748); 
+  }
+
+  if (((ws->w443 < 0)||(ws->w486 < 0)||(ws->w551 < 0)) && (ws->OC3V_i > -1)){
+    e->quitfn("light_spectral_uq_epi: cannot do OC3V because remote-sensing reflectance at wavelengths 443, 486, 551 not in tracer list (indices: %d,%d,%d) \n",ws->w443,ws->w486,ws->w551); 
+  }
+
+  if (((ws->w488 < 0)||(ws->w547 < 0)) && (ws->KD490M_i > -1)){
+    e->quitfn("light_spectral_uq_epi: cannot do KD490 because remote-sensing reflectance at wavelengths 488, 547 not in tracer list (indices: %d,%d) \n",ws->w488,ws->w547); 
+  }
+
+  if (((ws->w443 < 0)||(ws->w490 < 0)||(ws->w560 < 0)||(ws->w665 < 0)||(ws->w709 < 0)) && (ws->Hue_i > -1)){
+    e->quitfn("light_spectral_uq_epi: cannot do Hue because remote-sensing reflectance at wavelengths 443, 490, 560, 665, 709 not in tracer list (indices: %d,%d,%d,%d,%d) \n",ws->w443,ws->w490,ws->w560,ws->w665,ws->w709); 
+  }
+
+  if (((ws->w645 < 0)) && (ws->TSSM_i > -1)){
+    e->quitfn("light_spectral_uq_epi: cannot do TSSM because remote-sensing reflectance at wavelength 645 not in tracer list (indices: %d) \n",ws->w645); 
+  }
+  
   ws->CS_Xp_i = e->try_index(epis, "CS_Xp", e);
   if (ws->CS_Xp_i >=0)
     ws->CS_Xp_i += OFFSET_EPI;
@@ -963,8 +1005,7 @@ void light_spectral_uq_epi_precalc(eprocess* p, void* pp)
     d_free_1d(aA_s_CS);
     if (ws->CS_Xp_i > -1)
       d_free_1d(aA_s_CS_cph);
-  }
-  
+  } 
   
   /* sum up light in the PAR range (400-700 nm), assuming weighting by photons 
      (not energy) - remove when sediment is spectrally-resolved.  */
@@ -1031,7 +1072,7 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
     }
   }
 
-  double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
+  double zenith = ginterface_calc_zenith(e->model, e->t + e->dt, c->b);
   
   if (ws->Zenith_i > -1)
     y[ws->Zenith_i] = zenith;
@@ -1362,7 +1403,7 @@ void light_spectral_uq_epi_postcalc(eprocess* p, void* pp)
     finalise_reflectances(ws, c);
     d_free_1d(u_bot);
 
-}   // if reflectances
+  }   // if reflectances
 }
 
 static void finalise_reflectances(workspace *ws, cell *c)
@@ -1439,7 +1480,7 @@ static void finalise_reflectances(workspace *ws, cell *c)
   /* MODIS nFLH */
   
   /* nFLH uses nLw, which is normalised (to zero zenith) water leaving irradiance 
-     for MODIS 678, and has units mW / cm2 / um / sr-1. This includes a factor fo = 148.097 mW / cm2 / um
+     for MODIS 678, and has units mW / cm2 / um / sr. This includes a factor fo = 148.097 mW / cm2 / um
      pi - sr-1 */
   
   if (ws->nFLH_i > -1){

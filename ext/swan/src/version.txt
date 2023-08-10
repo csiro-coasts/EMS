@@ -1,0 +1,5 @@
+ #  $Id: version.txt 6766 2021-05-28 01:42:08Z riz008 $
+
+https://sourceforge.net/projects/swanmodel/files/swan/
+VERSION 4131
+

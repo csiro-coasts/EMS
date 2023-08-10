@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: column.c 5867 2018-07-05 07:35:46Z riz008 $
+ *  $Id: column.c 6910 2021-09-27 05:57:34Z bai155 $
  *
  */
 
@@ -230,6 +230,27 @@ column* column_create(ecology* e, int b)
     }
   }
 
+  /* Column based tracers */
+  col->y = d_alloc_2d(col->ncells, e->ntr);
+  col->y_sed0 = d_alloc_1d(e->ntr);
+  col->y_epi  = d_alloc_1d(e->nepi);
+  col->zc = d_alloc_1d(n_wc);
+  col->dz = d_alloc_1d(n_wc);
+  i = 0;
+  if (up_wc) {
+    for (k = col->topk_wc; k >= col->botk_wc; --k) {
+      col->zc[i] = einterface_getcellz(e->model, b, k);
+      col->dz[i] = col->dz_wc[k];
+      i++;
+    }
+  } else {
+    for (k = col->topk_wc; k <= col->botk_wc; ++k) {
+      col->zc[i] = einterface_getcellz(e->model, b, k);
+      col->dz[i] = col->dz_wc[k];
+      i++;
+    }
+  }
+  
   col->ncv = e->cv_column->n;
   col->n_ncv = NULL;
   col->cv = NULL;
@@ -283,6 +304,17 @@ void column_destroy(column* col)
     free(col->n_ncv);
     free(col->cv);
   }
+  if (col->y != NULL)
+    d_free_2d(col->y);
+  if (col->zc != NULL)
+    d_free_1d(col->zc);
+  if (col->dz != NULL)
+    d_free_1d(col->dz);
+  if (col->y_epi != NULL)
+    d_free_1d(col->y_epi);
+  if (col->y_sed0 != NULL)
+    d_free_1d(col->y_sed0);
+  
   free(col);
 }
 
@@ -390,6 +422,81 @@ static void cell_fill(cell* c, column* col)
   }
 }
 
+/**
+ *
+ */
+static void column_run(column* col)
+{
+  ecology *e = col->e;
+  int i;
+
+  /* Loop through all the column processes */
+  for (i = 0; i < e->npr[PT_COL]; ++i) {
+    eprocess* p = e->processes[PT_COL][i];
+    if (p->precalc == NULL)
+      e_quit("column_run: only pre_calc is currently supported");
+    p->precalc(p, col);
+  }
+}
+
+static void column_writeback(column* col)
+{
+  ecology* e = col->e;
+  double dt = e->dt;
+
+  /*
+   * Consists of a single stacked vector
+   */
+  double** y_wc   = col->y;
+  double*  y_epi  = col->y_epi;
+  double*  y_sed0 = col->y_sed0;
+  int k, k_wc, n, ntr = e->ntr;
+
+  for (n = 0; n < ntr; n++) {
+    /* loop from the top */
+    for (k = 0, k_wc = col->topk_wc; k_wc >= col->botk_wc; k_wc--, k++)
+      *col->tr_wc[k_wc * ntr + n] = y_wc[n][k];
+
+    // xxx what about fluxes that need to be divided by dt?
+    
+    /* Fill top of sediment */
+    *col->tr_sed[col->topk_sed * ntr + n] = y_sed0[n];
+  }
+  
+  /* Fill epi */
+  for (n = 0; n < e->nepi; n++)
+    *col->epivar[n] = y_epi[n];
+}
+
+/** 
+ * Column based values
+ */
+static void column_fill(column* col)
+{
+  ecology* e = col->e;
+
+  /*
+   * Consists of a single stacked vector
+   */
+  double** y_wc   = col->y;
+  double*  y_epi  = col->y_epi;
+  double*  y_sed0 = col->y_sed0;
+  int k, k_wc, n, ntr = e->ntr;
+
+  for (n = 0; n < ntr; n++) {
+    /* loop from the top */
+    for (k = 0, k_wc = col->topk_wc; k_wc >= col->botk_wc; k_wc--, k++)
+      y_wc[n][k] = *col->tr_wc[k_wc * ntr + n];
+
+    /* Fill top of sediment */
+    y_sed0[n] = *col->tr_sed[col->topk_sed * ntr + n];
+  }
+  
+  /* Fill epi */
+  for (n = 0; n < e->nepi; n++) 
+    y_epi[n] = *col->epivar[n];
+}
+
 /** Performs ecology step for a column.
  * @param col Pointer to column
  * @return 0 for fail, 1 for success
@@ -443,6 +550,13 @@ int column_step(column* col)
        */
       cell_writeback(c);
     }
-    
+
+  /* Run column based processes */
+  if (col->e->npr[PT_COL] && col->topk_wc > -1) {
+    column_fill(col);
+    column_run(col);
+    column_writeback(col);
+  }
+  
   return 1;
 }

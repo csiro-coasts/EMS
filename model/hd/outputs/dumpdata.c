@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 6527 2020-04-15 05:51:09Z her127 $
+ *  $Id: dumpdata.c 7063 2022-03-16 01:58:17Z her127 $
  *
  */
 
@@ -91,6 +91,7 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   strcpy(dumpdata->trl, params->trl);
   strcpy(dumpdata->runcode, params->runcode);
   dumpdata->runno = params->runno;
+  strcpy(dumpdata->runnoc, params->runnoc);
 
   strcpy(dumpdata->lenunit, params->lenunit);
   strcpy(dumpdata->prmname, params->prmname);
@@ -268,6 +269,18 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   dumpdata->romsgrid = convert_roms_grid(params, dumpdata);
   dumpdata->fmap_i = dumpdata->fmap_j = NULL;
 
+  /* UGRID */
+  dumpdata->npe = 0;
+  dumpdata->nface2 = 0;
+  dumpdata->nface3 = 0;
+  dumpdata->nedge2 = 0;
+  dumpdata->nedge3 = 0;
+  dumpdata->w2_e1 = NULL;
+  dumpdata->e2c = NULL;
+  dumpdata->c2e = NULL;
+  dumpdata->u1e = NULL;
+  dumpdata->u1v = NULL;
+
   /* Get the vertical mapping function */
   dumpdata->vmap = NULL;
   if (params->sigma)
@@ -420,6 +433,26 @@ void dumpdata_cleanup(dump_data_t *dumpdata,  /* Dump data structure */
       mom_grid_free(dumpdata->momgrid, ALL);
     if (dumpdata->romsgrid != NULL)
       roms_grid_free(dumpdata->romsgrid);
+
+    /* UGRID                                                         */
+    if (dumpdata->w2_e1) i_free_1d(dumpdata->w2_e1);
+    if (dumpdata->c2i) i_free_1d(dumpdata->c2i);
+    if (dumpdata->c2j) i_free_1d(dumpdata->c2j);
+    if (dumpdata->c2e) i_free_2d(dumpdata->c2e);
+    if (dumpdata->e2c) i_free_2d(dumpdata->e2c);
+    if (dumpdata->u1e) i_free_1d(dumpdata->u1e);
+    if (dumpdata->u2e) i_free_1d(dumpdata->u2e);
+    if (dumpdata->u1v) i_free_1d(dumpdata->u1v);
+    if (dumpdata->v2c) i_free_1d(dumpdata->v2c);
+    if (dumpdata->c2v) i_free_2d(dumpdata->c2v);
+    if (dumpdata->e2v) i_free_2d(dumpdata->e2v);
+    if (dumpdata->i2s) i_free_2d(dumpdata->i2s);
+    if (dumpdata->w2s) d_free_1d(dumpdata->w2s);
+    if (dumpdata->wc1) d_free_2d(dumpdata->wc1);
+    if (dumpdata->wc2) d_free_2d(dumpdata->wc2);
+    if (dumpdata->we1) d_free_2d(dumpdata->we1);
+    if (dumpdata->we2) d_free_2d(dumpdata->we2);
+    if (dumpdata->wv) d_free_1d(dumpdata->wv);
   }
 }
 

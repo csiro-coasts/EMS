@@ -35,7 +35,6 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "age_sed.h"
 
 typedef struct {
@@ -58,7 +57,8 @@ void age_sed_init(eprocess* p)
     /*get the tracer list*/
     p->workspace = ws;
     
-    ws->Age_sed_i = e->find_index(tracers, "Age", e);
+    ws->Age_sed_i = e->find_index(tracers, "Porewater_Age", e);
+    eco_write_setup(e,"Setting up Porewater age tracer");
     
     /*get the parameters i.e age decay */
 

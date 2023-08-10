@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 6646 2020-09-08 01:43:32Z her127 $
+ *  $Id: dumpdata.c 7376 2023-07-26 04:35:19Z her127 $
  *
  */
 
@@ -136,6 +136,9 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   /* Variables dumped when the dumpfile is created */
   dumpdata->gridz = d_alloc_1d(nz + 1);
   dumpdata->cellz = d_alloc_1d(nz);
+  if (sednz) {
+    dumpdata->cellzcsed = d_alloc_1d(sednz);
+  }
 
   if (geom->us_type & US_IJ) {
     dumpdata->gridx = d_alloc_2d(nce1 + 1, nce2 + 1);
@@ -295,8 +298,10 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
 
   /* Layer geometry and flags */
   for (k = 0; k < nz; k++) {
+    /* Assume the upper most layer is the sea surface at zero */
+    double top = (k == nz-1) ? 0.0 : layers[k + 1];
     dumpdata->gridz[k] = layers[k];
-    dumpdata->cellz[k] = 0.5 * (layers[k] + layers[k + 1]);
+    dumpdata->cellz[k] = 0.5 * (layers[k] + top);
     for (j = 0; j < nfe2; j++)
       for (i = 0; i < nfe1; i++)
         dumpdata->flag[k][j][i] = (params->sigma) ? flag[nz - 1][j][i] : 
@@ -308,7 +313,9 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   if (sednz) {
     /* This is the nominal z centre in sediments */
     for (k = 0; k < sednz; k++)
-      dumpdata->cellzcsed[k] = dumpdata->cellz_sed[k][0][0];
+      /*dumpdata->cellzcsed[k] = dumpdata->cellz_sed[k][0][0];*/
+      dumpdata->cellzcsed[k] = 0.5 * (params->gridz_sed[k] +
+				      params->gridz_sed[k + 1]);
   }
 
   /* Get the mom/roms grid structure if required */

@@ -13,24 +13,27 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 6522 2020-04-15 05:49:05Z her127 $
+ *  $Id: dumpfile.h 7054 2022-03-16 01:54:53Z her127 $
  *
  */
 
 #if !defined(_DUMPFILE_H)
 #define _DUMPFILE_H 1
 
-#define CL_NONE 0
-#define CL_GRID 1
-#define CL_CENTRE 2
-#define CL_LEFT 4
-#define CL_BACK 8
-#define CL_SP2 16
-#define CL_SP3 32
-#define CL_B2  64
-#define CL_B3  128
-#define CL_B2T 256
-#define CL_B3T 512
+#define CL_NONE   0x0000
+#define CL_GRID   0x0001
+#define CL_CENTRE 0x0002
+#define CL_LEFT   0x0004
+#define CL_BACK   0x0008
+#define CL_SP2    0x0010
+#define CL_SP3    0x0020
+#define CL_B2     0x0040
+#define CL_B3     0x0080
+#define CL_B2T    0x0100
+#define CL_B3T    0x0200
+#define CL_FACE   0x0400
+#define CL_EDGE   0x0800
+#define CL_VERTEX 0x1000
 
 #define M3PT   0x001
 #define M5PT   0x002
@@ -61,6 +64,30 @@ typedef struct {
   double v;             /* Damping factor (optional) */
 } df_filter_t;
 
+/* Structure to describe each dump file time dep variable */
+typedef struct {
+  void **v;                     /* Pointer to values */
+  void *v1;
+  void *v2;
+  int ndims;                    /* Number of spatial dimensions */
+  nc_type type;                 /* netCDF type of this variable */
+  int xylocation;               /* Location on the horizontal mesh */
+  int zlocation;                /* Location on the vertical mesh */
+  int sediment;                 /* Sediment flag */
+  int vector_mode;              /* NONE, east, north, mag, dirn */
+  int *hmap;                    /* Map to horizontal location */
+  int *vmap;                    /* Map to layer */
+  int *m2d;                     /* 3D to 2D map */
+  void (*func2) (dump_data_t *, double *, double *, double *, double *, int);
+  void (*func3) (dump_data_t *, double *, double *, double **, double **, int);
+} df_ugrid_var_t;
+
+/* Structure to describe each dump file */
+typedef struct {
+  int fid;                      /* Netcdf file id */
+  int nextrec;                  /* Netcdf record number */
+  df_ugrid_var_t *vars;         /* List of dump file variables */
+} df_ugrid_data_t;
 
 /*-------------------------------------------------------------------*/
 /* MOM Grid structure                                                */
@@ -279,6 +306,7 @@ struct dump_data {
   int ns2;
   int ns3;
   double runno;
+  char runnoc[MAXSTRLEN];
   char rev[MAXSTRLEN];          /* Version number for parameter file */
   char reference[MAXSTRLEN];
   char runcode[MAXSTRLEN];
@@ -402,6 +430,29 @@ struct dump_data {
   int df_diagn_set;             /* Flag if the `diagn' flag has been set */
   int tmode;                    /* Transport mode */
   int togn;                     /* Origin for tri-linear interpolation */
+
+  /* UGRID maps */
+  int npe;
+  int nface2;
+  int nedge2;
+  int nvertex2;
+  int nface3;
+  int nedge3;
+  int nvertex3;
+  int *w2_e1, **c2e, **e2c, nu1, nu1S, *u1e, *u2e, *u1v;
+  int **c2v, **e2v, *v2c;
+  int start_index, szm;
+  int face_dim;
+  int edge_dim;
+  double *w2s;
+  double **wc1;
+  double **wc2;
+  double **we1;
+  double **we2;
+  double *wv;
+  int *c2i, *c2j;
+  int **i2s;
+
   /* for one of the output files */
 
 #if defined(HAVE_SEDIMENT_MODULE)
@@ -442,6 +493,12 @@ struct dump_file {
                                    output */
   int ns2;                      /* 3D sparse size */
   int ns3;                      /* 2D sparse size */
+  int nface2;                   /* UGRID 2D cell centre size */
+  int nface3;                   /* UGRID 3D cell centre size */
+  int nedge2;                   /* UGRID 2D cell edge size */
+  int nedge3;                   /* UGRID 3D cell edge size */
+  int nvertex2;                   /* UGRID 2D cell vertex size */
+  int nvertex3;                   /* UGRID 3D cell vertex size */
   int finished;                 /* Non-zero if output has finished. */
   int append;                   /* Append */
   double tout;                  /* Next output time */

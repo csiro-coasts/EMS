@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: heatflux.c 6414 2019-11-22 00:19:28Z her127 $
+ *  $Id: heatflux.c 6983 2022-02-27 23:40:13Z her127 $
  *
  */
 
@@ -193,6 +193,7 @@ int heatf_init(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+  if (strlen(params->hf) == 0) return 0;
 
   data = (heatf_data_t *)malloc(sizeof(heatf_data_t));
   schedSetPrivateData(event, data);
@@ -265,6 +266,7 @@ int longout_init(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+  if (strlen(params->hf) == 0) return 0;
 
   data = (longout_data_t *)malloc(sizeof(longout_data_t));
   schedSetPrivateData(event, data);
@@ -280,7 +282,8 @@ int longout_init(sched_event_t *event)
   if (data->ts == NULL) {
     free(data);
     return 0;
-  }
+  } else
+    master->heatflux |= COMP_LWO;
 
   return 1;
 }
@@ -347,16 +350,23 @@ int longin_init(sched_event_t *event)
 
   data = (longin_data_t *)malloc(sizeof(longin_data_t));
   schedSetPrivateData(event, data);
-  data->ts = frc_read_cell_ts(master, params->hf, params->hf_dt,
-                              "lwr_in", "W m-2", &data->dt, &data->id,
-                              &master->lwrd);
+  if (params->heatflux & ADVANCED) 
+    data->ts = frc_read_cell_ts(master, params->lwri, params->lwri_dt,
+				"lwr_in", "W m-2", &data->dt, &data->id,
+				&master->lwri);
+  else
+    data->ts = frc_read_cell_ts(master, params->hf, params->hf_dt,
+				"lwr_in", "W m-2", &data->dt, &data->id,
+				&master->lwrd);
 
   if (data->ts == NULL) {
     free(data);
     return 0;
-  }
+  } else
+    master->heatflux |= COMP_LWI;
 
   return 1;
+
 }
 
 /* END longin_init()                                                 */
@@ -394,7 +404,10 @@ void longin_cleanup(sched_event_t *event, double t)
   longin_data_t *data = (longin_data_t *)schedGetPrivateData(event);
 
   if (data != NULL) {
-    free(master->lwrd);
+    if (params->heatflux & ADVANCED)
+      free(master->lwri);
+    else
+      free(master->lwrd);
     hd_ts_free(master, data->ts);
     free(data);
   }
@@ -417,6 +430,7 @@ int sheat_init(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+  if (strlen(params->hf) == 0) return 0;
 
   data = (sensible_data_t *)malloc(sizeof(sensible_data_t));
   schedSetPrivateData(event, data);
@@ -493,6 +507,7 @@ int lheat_init(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+  if (strlen(params->hf) == 0) return 0;
 
   data = (latent_data_t *)malloc(sizeof(latent_data_t));
   schedSetPrivateData(event, data);
@@ -572,6 +587,7 @@ int swr_mean_init(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+  if (strlen(params->hf) == 0) return 0;
 
   data = (longout_data_t *)malloc(sizeof(longout_data_t));
   schedSetPrivateData(event, data);
@@ -1037,8 +1053,10 @@ void surf_heat_flux(geometry_t *window,
       bow = 0.62 * (wt - at) / (ew - es);
 
     /* Get the long wave radiation */
-    lg = lwrad(wt, at, tcld);
-    /*lg = lwrado(wt);*/
+    if (wincon->heatflux & COMP_LWI) {
+      lg = lwrado(wt) + windat->lwri[c];
+    } else
+      lg = lwrad(wt, at, tcld);
 
     /* Get the short wave radiation */
     if (fabs(wincon->albedo) <= 1.0) {
@@ -1194,6 +1212,13 @@ double get_vapour_press(window_t   *windat,
   } else if (wincon->sh_f & DEWPOINT) {
     dtw = windat->wetb[c];
     *es = dewe(dtw, pres);
+    *esat = dewe(at, pres);
+    *rh = 100.0 * (*es / *esat);
+    dtw = estt(at, pres, *rh);
+  } else if (wincon->sh_f & SPECHUM) {
+    double q = windat->rh[c];
+    /* Back out es from q = 0.622 * es / (pres - (0.378 * es)) */
+    *es = (q * pres) / (0.622 + q * 0.378);
     *esat = dewe(at, pres);
     *rh = 100.0 * (*es / *esat);
     dtw = estt(at, pres, *rh);

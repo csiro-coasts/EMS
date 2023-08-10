@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.c 6755 2021-04-07 00:57:40Z her127 $
+ *  $Id: datafile.c 7292 2023-02-20 03:47:10Z riz008 $
  */
 
 #include <stdio.h>
@@ -25,6 +25,33 @@
 #include <time.h>
 #include "netcdf.h"
 #include "ems.h"
+
+static char *lon_names[7] = {
+  "degrees_east",
+  "degree_east",
+  "degree_E",
+  "degrees_E",
+  "degreeE",
+  "degreesE",
+  NULL
+};
+
+static char *lat_names[7] = {
+  "degrees_north",
+  "degree_north",
+  "degree_N",
+  "degrees_N",
+  "degreeN",
+  "degreesN",
+  NULL
+};
+
+static char *v_names[4] = {
+  "metres",
+  "meters",
+  "m",
+  NULL
+};
 
 static char *sst_names[5] = {
   "analysed_sst",
@@ -61,6 +88,7 @@ void left_shift_data(datafile_t *df, df_variable_t *v, int nrecs);
 void right_shift_data(datafile_t *df, df_variable_t *v, int nrecs);
 
 static void destroy_hq_within_ht(void *ht);
+static int has_name(char *name, char *array[]);
 
 /* Located in dfcoords.c */
 extern void decode_coords(datafile_t *df, df_variable_t *v, char *coords);
@@ -472,6 +500,9 @@ int df_find_record(datafile_t *df, double r, int *before, int *after,
 	  df->t0 = -1;
 
 	return (0);
+      } else {
+	/* df->nrecords have changed so update value */
+	ihigh = df->nrecords - 1;
       }
     }
   }
@@ -625,7 +656,7 @@ void df_read_records(datafile_t *df, df_variable_t *v, int start_rec,
     v->nrecords = nrecs;
     for (i = sr; i <= er; ++i) {
 
-      if (df->type == DFT_NETCDF)
+      if (df->type == DFT_NETCDF) 
          netcdf_read_data(df, v, i, 0);
 
       else if (df->type == DFT_MULTI_NETCDF)
@@ -1016,6 +1047,29 @@ int df_is_ugrid(datafile_t *df)
   return(0);  
 }
 
+/** See if this is a UGRID3 file
+ *
+ */
+int df_is_ugrid3(datafile_t *df)
+{
+  df_attribute_t *at = df_get_global_attribute(df, "Conventions");
+  if (at != NULL) {
+    if (strncmp(ATT_TEXT(at),"UGRID",5) == 0) {
+      at = df_get_global_attribute(df, "UGRID");
+      return(strncmp(ATT_TEXT(at),"3D",2) == 0);
+    }
+  }
+  return(0);  
+}
+
+int df_is_irule(datafile_t *df)
+{
+  if (strlen(df->i_rule))
+    return(1);
+  else
+    return(0);
+}
+
 
 /** Check if positive down
  *
@@ -1333,6 +1387,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
   int i, j;
   char line[MAXLINELEN];
   int unlimited = -1;
+  int inferred = 0;
 
   /* Query the netCDF file for the total number of dimensions, allocate
      the array, and populate. Special care must be taken define which
@@ -1440,6 +1495,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	      v->missing = ATT_SHORT(a, 0);
 	    else
 	      v->missing = ATT_DOUBLE(a, 0);
+	    v->type |= VT_MV;
 	  }
           else if (strcasecmp(a->name, "_FillValue") == 0) {
 	    if (CHK_TYPE(a, AT_BYTE))
@@ -1450,6 +1506,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	      v->fillvalue = ATT_FLOAT(a, 0);
 	    else
 	      v->fillvalue = ATT_DOUBLE(a, 0);
+	    v->type |= VT_FV;
 	  }
           else if (strcasecmp(a->name, "scale_factor") == 0) {
 	    if (CHK_TYPE(a, AT_DOUBLE))
@@ -1491,6 +1548,20 @@ void netcdf_read(int fid, datafile_t *df, int type)
         v->lflag = v->lflag * v->scale_factor + v->add_offset;
         v->cflag = v->cflag * v->scale_factor + v->add_offset;
       }
+
+      /* MH. If a variable has the same name as a coordinate, and */
+      /* its units are degrees or metres, then if its type is     */
+      /* VT_DATA, reset to the appropriate coordinate.            */ 
+      if (v->type & VT_DATA) {
+	for (j = 0; j < df->nd; ++j) {
+	  if (strcmp(v->name, df->dimensions[j].name) == 0) {
+	    if (has_name(v->units, lon_names)) v->type = VT_LONGITUDE;
+	    if (has_name(v->units, lat_names)) v->type = VT_LATITUDE;
+	    if (has_name(v->units, v_names)) v->type = VT_Z;
+	    inferred = 1;
+	  }
+	}
+      }
     }
 
     /* Read the global attributes */
@@ -1527,7 +1598,6 @@ void netcdf_read(int fid, datafile_t *df, int type)
       /* END MH */
     }
 
-
     /* Sweep back trough the variables and decode the associated
        coordinates information if the attribute is present. This * has to
        be left until the end to ensure all variables were * read. */
@@ -1541,6 +1611,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
           text = ATT_TEXT(a);
         }
       }
+
       decode_coords(df, v, text);
 
       /* MH : set the coordinate types (for GHRSST data) if not already set     */
@@ -1567,7 +1638,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	v->type |= VT_BATHY;
       }
       /* MH : If the variable is height and no coordinates were found, assume   */
-      /* the coordinates are lon, lat and try again.    */                         
+      /* the coordinates are lon, lat and try again.    */
       if (strcmp(v->name, "height") == 0 && v->nc == 0 && df->records == NULL) {
 	int ii;
 	char buf[MAXSTRLEN];
@@ -1590,6 +1661,7 @@ void netcdf_read(int fid, datafile_t *df, int type)
 
       /* MH : Check if the coordinates can be constructed from existing variables. */
       /* Only for 2d and 3d spatial data in lat/long coordinates. */
+      if (inferred) v->type |= VT_INFERRED;
       if (v->type & VT_DATA && v->nc == 0 && v->nd > 1) {
 	int n;
 	v->coordids = (int *)malloc(v->nd * sizeof(int));
@@ -1611,12 +1683,9 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	  for (j = 0; j < v->nc; ++j) {
 	    df_variable_t *cv = &df->variables[v->coordids[j]];
 	    if (cv->type & VT_DATA) {
-	      if (strcmp(cv->units, "degrees_E") == 0)
-		cv->type = VT_LONGITUDE;
-	      else if (strcmp(cv->units, "degrees_N") == 0)
-		cv->type = VT_LATITUDE;
-	      else if (strcmp(cv->units, "meters") == 0)
-		cv->type = VT_Z;
+	      if (has_name(cv->units, lon_names)) cv->type = VT_LONGITUDE;
+	      if (has_name(cv->units, lat_names)) cv->type = VT_LATITUDE;
+	      if (has_name(cv->units, v_names)) cv->type = VT_Z;
 	    }
 	    warn("netcdf_read: Coordinates for %s not found; using coord%d = %s\n",
 		 v->name, j, cv->name);
@@ -1647,12 +1716,9 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	    for (j = 0; j < v->nc; ++j) {
 	      df_variable_t *cv = &df->variables[v->coordids[j]];
 	      if (cv->type & VT_DATA) {
-		if (strcmp(cv->units, "degrees_east") == 0)
-		  cv->type = VT_LONGITUDE;
-		else if (strcmp(cv->units, "degrees_north") == 0)
-		  cv->type = VT_LATITUDE;
-		else if (strcmp(cv->units, "meters") == 0)
-		  cv->type = VT_Z;	      
+		if (has_name(cv->units, lon_names)) cv->type = VT_LONGITUDE;
+		if (has_name(cv->units, lat_names)) cv->type = VT_LATITUDE;
+		if (has_name(cv->units, v_names)) cv->type = VT_Z;
 	      }
 	      warn("netcdf_read: Coordinates for %s not found; using coord%d = %s\n",
 		   v->name, j, cv->name);
@@ -3095,6 +3161,18 @@ static void destroy_hq_within_ht(void *ht_void)
   // the given hash-table.
   hash_table_t *ht = (hash_table_t *)ht_void;
   ht_process(ht, hq_destroy);
+}
+
+static int has_name(char *name, char *array[])
+{
+  int j = 0;
+  while (array[j] != NULL) {
+    if (strcmp(name, array[j]) == 0) {
+      return(1);
+    }
+    j++;
+  }
+  return(0);
 }
 
 // EOF

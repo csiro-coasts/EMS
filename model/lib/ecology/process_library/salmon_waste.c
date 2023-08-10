@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: salmon_waste.c 6219 2019-05-14 23:19:24Z wil00y $
+ *  $Id: salmon_waste.c 7202 2022-09-15 04:49:43Z bai155 $
  *
  */
 
@@ -27,7 +27,12 @@
 #include "column.h"
 #include "utils.h"
 #include "salmon_waste.h"
-#include "einterface.h"
+// #include "einterface.h"
+
+double ginterface_getcellz(void *model, int b, int k);
+int ginterface_getwcbotk(void *model, int b);
+double ginterface_cellarea(void* hmodel, int b);
+double ginterface_getmodeltime(void* model);
 
 typedef struct {
     int do_mb;                  /* flag */
@@ -165,7 +170,7 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     /*    cv[ws->fish_resp_i] = Tfactor * ws->fish_resp_t0;*/
 
     // Bail out if deeper than 24m
-    double z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
+    double z_centre = ginterface_getcellz(c->col->model,c->b,c->k_wc);
     if (z_centre < -24.0)
       return;
 
@@ -188,16 +193,16 @@ void salmon_waste_precalc(eprocess* p, void* pp)
     double DetR_P = y[ws->DetR_P_i];*/
 
     int wcbotk; 
-    wcbotk = einterface_getwcbotk(c->col->model, c->b);
-    double z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
-    double pen_volume = einterface_cellarea(c->col->e->model, c->b) * -(max(-24,z_bot));
-    /*  double pen_volume = einterface_cellarea(c->col->model, c->b) * -(max(-24,z_bot));*/
+    wcbotk = ginterface_getwcbotk(c->col->model, c->b);
+    double z_bot = ginterface_getcellz(c->col->model,c->b,wcbotk);
+    double pen_volume = ginterface_cellarea(c->col->e->model, c->b) * -(max(-24,z_bot));
+    /*  double pen_volume = ginterface_cellarea(c->col->model, c->b) * -(max(-24,z_bot));*/
  // Bail out if dry cell
     if (pen_volume <= 0)
       return;
 
     /* assuming t:units = "days since 2010-01-01 00:00:00 +0" find week in year 0<week<=52 */
-    double time = einterface_getmodeltime(e->model) / SEC_PER_DAY;
+    double time = ginterface_getmodeltime(e->model) / SEC_PER_DAY;
     double week = (time - (floor((time) / 365.25) * 365.25)) / 7.0;
 
     /* salmon growth model coefficients */

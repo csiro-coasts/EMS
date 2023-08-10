@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.h 6762 2021-04-13 02:12:03Z riz008 $
+ *  $Id: sediments.h 7355 2023-05-08 05:36:40Z riz008 $
  *
  */
 
@@ -41,7 +41,7 @@ extern sedlogtag sedtag;
 /* Release verions and getters */
 #define SEDIMENTS_MAJOR_VERSION 1
 #define SEDIMENTS_MINOR_VERSION 1
-#define SEDIMENTS_PATCH_VERSION 2
+#define SEDIMENTS_PATCH_VERSION 3
 
 int get_sediments_major_vers(void);
 int get_sediments_minor_vers(void);
@@ -145,6 +145,34 @@ struct sediment {
   sed_spatial_t *spatial;
 };
 
+/* Sediment transport tracer attribute private data structure */
+typedef struct {
+  int type;                     /* Private data dype */
+  char name[MAXSTRLEN];         /* Name of the default list */
+  char trname[MAXSTRLEN];       /* Name of the tracer */
+  int cohesive;                 /* Cohesive flag */
+  int calcvol;                  
+  int floc;                     /* Flocculation flag */
+  int resuspend;                /* Resuspension flag */
+  int deposit;                  /* Deposition flag */
+  int adsorb;                   /* Adsorbtion flag */
+  int obc;                      /* Open boundary condition */
+  double psize;                 /* Particle size */
+  double b_dens;                /* Particle bulk density */
+  double i_conc;                /* Initial deposit concentration */
+  double f_conc;                /* Compacted deposit concentration; 
+				   default = i_conc */
+  //2019                                   default = i_conc */
+  double css_erosion;
+  double css_deposition;
+
+  double svel;                  /* Constant settling velocity */
+  char svel_name[MAXSTRLEN];    /* Settling velocity name */
+  double adsorbkd;              /* Adsorbtion Kd */
+  double adsorbrate;            /* Adsorbtion rate */
+  char carriername[MAXSTRLEN];  /* particulate tracer carrying sediment reactive tracer */
+  char dissolvedname[MAXSTRLEN];/* dissolved coutrepart of the sediment reactive tracer */
+} trinfo_priv_sed_t;
 
 /* (i,j) independent data */
 struct sed_params {
@@ -330,7 +358,7 @@ struct sed_tracer {
                                    cohesive */
   int floc;                     /* flag 1 if tracer flocculates, default 0
                                  */
-  double decay;                 /* decay rate */
+  double decay_days;                 /* decay e-folding time in days */
 /* particulate tracers only (dissol = 0) */
   double psize;                 /* particle size - optional */
   double b_dens;                /* particle bulk density - mandatory
@@ -459,6 +487,7 @@ struct sed_spatial {
                                    time step [kg m-3] */
   double **erdeprate;
 };
+
 #endif
 
 

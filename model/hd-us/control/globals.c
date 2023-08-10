@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: globals.c 5915 2018-09-05 03:30:40Z riz008 $
+ *  $Id: globals.c 7116 2022-05-25 02:05:37Z her127 $
  *
  */
 
@@ -61,6 +61,7 @@ ts_point_t tsphist;
 ts_point_t tsalert;
 ts_point_t tstotal;
 ts_point_t tstrans;
+ts_point_t tserror;
 
 int debug = 0;                  /* enable/disable debug */
 int warnings = 1;               /* enable/disable warning message */

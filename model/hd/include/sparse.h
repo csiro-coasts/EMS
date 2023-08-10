@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6658 2020-09-08 06:08:13Z her127 $
+ *  $Id: sparse.h 7057 2022-03-16 01:56:09Z her127 $
  *
  */
 
@@ -238,7 +238,6 @@ typedef struct {
   int size;                /* Size of relaxation arrays */
 } relax_info_t;
 
-
 /*------------------------------------------------------------------*/
 /* Window geometry data structure. Contains all variables which are */
 /* not dependent on or can be derived from information contained in */
@@ -418,6 +417,7 @@ struct win_priv {
   double u2vh0;                 /* Horizontal e2 viscosity (m2s-1) */
   double u1kh0;                 /* Horizontal e1 diffusivity (m2s-1) */
   double u2kh0;                 /* Horizontal e2 diffusivity (m2s-1) */
+  int eta_ib;                   /* Inverse barometer compensation */
   int etarlx;                   /* Eta relaxation flag */
   int velrlx;                   /* Velocity relaxation flag */
   int dozoom;                   /* Zoom flag */
@@ -1028,6 +1028,7 @@ typedef struct {
   char opath[MAXSTRLEN];        /* Output path for files */
   char trkey[MAXSTRLEN];        /* Transport keyname */
   double runno;                 /* Unique run identification number */
+  char runnoc[MAXSTRLEN];       /* Unique run identification number */
   char runcode[MAXSTRLEN];      /* Unique run identification code */
   char rev[MAXSTRLEN];          /* Version number for parameter file */
   int gridcode;                 /* Code to specify grid type */
@@ -1374,6 +1375,15 @@ typedef struct {
   char tide_con_file[MAXSTRLEN];/* Tidal constituent file */
   char bdrypath[MAXSTRLEN];     /* Path for boundary files */
 
+
+  char rendername[MAXSTRLEN];   /* Name for rendered ecosed configuration*/
+  char renderpath[MAXSTRLEN];   /* Path to put rendered files */
+  char renderdesc[MAXSTRLEN];   /* Description for rendered files */
+  char rendertype[MAXSTRLEN];   /* Model to render */
+  char renderopts[MAXSTRLEN];   /* Render options */
+  char renderrem[MAXSTRLEN];    /* Configurations to remove */
+  char ecosedconfig[MAXSTRLEN]; /* Reconfigure ecosed configuration */
+
 #if defined(HAVE_WAVE_MODULE)
   int do_wave;                  /* Wave flag */
   double wavedt;                /* wave timestep */
@@ -1403,6 +1413,7 @@ typedef struct {
   /* Forcing files */
   /* Surface elevation */
   char eta_init[MAXSTRLEN];     /* Name of eta initialisation file */
+  int eta_ib;                   /* Inverse barometer compensation */
   int etarlx;                   /* Eta relaxation flag */
   char etarlxn[MAXSTRLEN];      /* Elevation relaxation filename */
   double etarlxdt;              /* Elevation relaxation input time */
@@ -1466,6 +1477,8 @@ typedef struct {
   double rh_dt;                 /* Relative humidity input time-step */
   char swr[MAXSTRLEN];          /* Name of short wave radiation file */
   double swr_dt;                /* Short wave radiation input time-step */
+  char lwri[MAXSTRLEN];         /* Name of incoming long wave radiation file */
+  double lwri_dt;               /* Incoming long wave radiation input time-step */
   char webf[MAXSTRLEN];         /* Name of wave enhanced friction file */
   double webf_dt;               /* Wave friction input time-step */
   char webf_interp[MAXSTRLEN];  /* Interpolation method for webf vars */
@@ -1962,6 +1975,7 @@ struct master {
   double etarlxdt;              /* Elevation relaxation input time */
   double etarlxtc;              /* Elevation relaxation time constant */
   char etarlxtcs[MAXSTRLEN];    /* Elevation time constant string */
+  int eta_ib;                   /* Inverse barometer compensation */
 
   /* Density variables */
   double *dens;                 /* Density (kgm-3) */
@@ -2023,6 +2037,7 @@ struct master {
   double *shfd;                 /* Sensible heat flux diagnostic */
   double *lhfd;                 /* Latent heat flux diagnostic */
   double *lwro;                 /* Long wave output radiation */
+  double *lwri;                 /* Long wave input radiation */
   int lwrn;                     /* Tracer number for lwr */
   int lhfn;                     /* Tracer number for lhf */
   int shfn;                     /* Tracer number for shf */
@@ -2165,6 +2180,14 @@ struct master {
   double *wave_stke2;           /* Stokes sub-surface velocity, e2 */
   double *freq;
   int nsfr;
+
+  char rendername[MAXSTRLEN];   /* Name for rendered ecosed configuration*/
+  char renderpath[MAXSTRLEN];   /* Path to put rendered files */
+  char renderdesc[MAXSTRLEN];   /* Description for rendered files */
+  int renderopts;               /* Render options */
+  int rendertype;               /* Model to render */
+  char renderrem[MAXSTRLEN];    /* Configurations to remove */
+  char ecosedconfig[MAXSTRLEN]; /* Reconfigure ecosed configuration */
 
 #if defined(HAVE_WAVE_MODULE)
   int do_wave;                  /* Wave flag */
@@ -2504,6 +2527,7 @@ struct window {
   double *shfd;                 /* Sensible heat flux diagnostic */
   double *lhfd;                 /* Latent heat flux diagnostic */
   double *lwro;                 /* Long wave output radiation */
+  double *lwri;                 /* Long wave input radiation */
   double *avhrr;                /* AVHRR SST */
   double *ghrsst;               /* GHRSST SST */
   double *ghrsste;              /* GHRSST SST error */

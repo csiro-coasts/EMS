@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 6628 2020-09-08 01:35:37Z her127 $
+ *  $Id: dumpfile.h 7162 2022-07-07 02:33:06Z her127 $
  *
  */
 
@@ -69,6 +69,7 @@ typedef struct {
 /* Structure to describe each dump file time dep variable */
 typedef struct {
   void **v;                     /* Pointer to values */
+  void **vt;                    /* Pointer to values */
   int ndims;                    /* Number of spatial dimensions */
   nc_type type;                 /* netCDF type of this variable */
   int xylocation;               /* Location on the horizontal mesh */
@@ -526,6 +527,7 @@ struct dump_file {
   int compress;                 /* Activate compression */
   int chunk;                    /* Output in chunks */
   int flag;                     /* General purpose flag */
+  int obcid;                    /* Id for obc dumps */
   double bathymask;             /* Bathymetry mask */
   df_filter_t *filter;          /* Filtering function */
   void *private_data;           /* Private data. */

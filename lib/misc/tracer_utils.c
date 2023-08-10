@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: tracer_utils.c 5864 2018-07-02 04:09:36Z her127 $
+ *  $Id: tracer_utils.c 6934 2021-10-27 02:36:22Z riz008 $
  */
 
 #include <stdlib.h>
@@ -27,7 +27,7 @@
 #include "errfn.h"
 
 
-errfn keyprm_errfn;
+extern errfn keyprm_errfn;
 
 
 /** Copy the contents of one tracer_info_t structure into another.
