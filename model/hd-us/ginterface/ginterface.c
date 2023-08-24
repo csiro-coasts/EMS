@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 7325 2023-04-11 02:25:23Z her127 $
+ *  $Id: ginterface.c 7385 2023-08-22 09:05:38Z bai155 $
  *
  */
 
@@ -2208,8 +2208,11 @@ double ginterface_calc_zenith(void *model, double t, int b)
   lat = asin(window->wincon->coriolis[c2] / (2.0 * ang));
 
   /* Call the library function to calculate the solar elevation      */
-  // xxx this needs fixing
-  elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
+
+  if (window->is_geog)
+    elev = calc_solar_elevation(NULL, tunit, t, lat, NULL, &window->cellx[c2]);
+  else
+    elev = calc_solar_elevation(ounit, tunit, t, lat, NULL, NULL);
 
   /* Zenith                                                          */
   return ( (PI/2.0) - elev);
