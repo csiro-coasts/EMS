@@ -6,7 +6,7 @@
                 # Internal CSIRO development only
                 #
                 
-                echo "" > lib/include/svn_rev.h
+                echo "" > $1/lib/include/svn_rev.h
                 
                 exit 0
                 
