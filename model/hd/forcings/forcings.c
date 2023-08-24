@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: forcings.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: forcings.c 6952 2021-12-17 03:14:26Z her127 $
  *
  */
 
@@ -90,6 +90,8 @@ void forcings_init(master_t *master)
                    hftemp_event, hftemp_cleanup, master, NULL, NULL);
   }
   if (master->heatflux & ADVANCED) {
+    sched_register(schedule, "forcings:longin", longin_init,
+                   longin_event, longin_cleanup, master, NULL, NULL);
     if (master->airtemp == NULL)
       hd_quit("Heat flux requires an air temperature file");
     if (master->patm == NULL)

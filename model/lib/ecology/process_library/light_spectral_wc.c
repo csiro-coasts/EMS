@@ -47,7 +47,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_wc.c 6679 2021-01-08 00:45:59Z bai155 $
+ *  $Id: light_spectral_wc.c 7351 2023-04-30 03:42:14Z bai155 $
  *
  */
 
@@ -61,9 +61,11 @@
 #include "eprocess.h"
 #include "column.h"
 #include "cell.h"
-#include "einterface.h"
 #include "light_spectral_wc.h"
 #include "constants.h"
+
+double ginterface_calc_zenith(void *model, double t, int b);
+double ginterface_getlighttop(void *model, int b);
 
 typedef struct {
 
@@ -195,7 +197,7 @@ typedef struct {
 
   int K_heat_i;
 
-  int MA_N_wc_i;
+  int SMA_N_i;
   /*
    * Local variables
    */
@@ -221,7 +223,7 @@ typedef struct {
   int KI_MPB_i;
   int KI_PhyD_i;
   int KI_Tricho_i;
-  int KI_MA_wc_i;
+  int KI_SMA_i;
 
   int yCfac_s_i;
   int yCfac_l_i;
@@ -250,6 +252,13 @@ typedef struct {
   
 } workspace;
 
+
+/* ginterface routines */
+void ginterface_moonvars(void *hmodel, int c,
+			 double *mlon, double *mlat,
+			 double *dist_earth_sun, double *dist_moon_earth,
+			 double *lunar_angle, double *sun_angle,double *moon_phase,double *lunar_dec);
+double ginterface_get_cloud(void *hmodel, int c);
 
 void light_spectral_wc_init(eprocess* p)
 {
@@ -464,7 +473,7 @@ void light_spectral_wc_init(eprocess* p)
   ws->temp_i = e->find_index(tracers, "temp", e);
   ws->salt_i = e->find_index(tracers, "salt", e);
 
-  ws->MA_N_wc_i = e->try_index(tracers, "MA_N_wc", e) ;
+  ws->SMA_N_i = e->try_index(tracers, "SMA_N", e) ;
 
   /*
    * common column variables
@@ -670,7 +679,7 @@ void light_spectral_wc_postinit(eprocess* p)
       ws->w700 = w;
   }
 
-  if (ws->MA_N_wc_i > -1){
+  if (ws->SMA_N_i > -1){
     
     /* Put in macroalgae initialisations if there is a macroalgae tracer */
     
@@ -684,7 +693,7 @@ void light_spectral_wc_postinit(eprocess* p)
   ws->KI_PhyD_i = try_index(e->cv_cell, "KI_PhyD", e);
   ws->KI_Tricho_i = try_index(e->cv_cell, "KI_Tricho", e);
   
-  ws->KI_MA_wc_i = try_index(e->cv_cell, "KI_MA_wc", e);
+  ws->KI_SMA_i = try_index(e->cv_cell, "KI_SMA", e);
   
   ws->yCfac_s_i = try_index(e->cv_cell, "yCfac_s", e);
   ws->yCfac_l_i = try_index(e->cv_cell, "yCfac_l", e);
@@ -823,7 +832,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
 
   if (isnan(lighttop_s[0])) {
 
-    double light = ws->SWRscale * einterface_getlighttop(col->model, col->b); // *albedo;
+    double light = ws->SWRscale * ginterface_getlighttop(col->model, col->b); // *albedo;
 
     /* check that albedo is zero in the transport file */
     
@@ -975,8 +984,8 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
     for (w=0; w<num_waves; w++) {
       lighttop_s[w] =  0.0;
     }
-    if (ws->KI_MA_wc_i>-1){
-      c->cv[ws->KI_MA_wc_i] = 0.0;
+    if (ws->KI_SMA_i>-1){
+      c->cv[ws->KI_SMA_i] = 0.0;
     }
     if (ws->KI_s_i>-1){
       c->cv[ws->KI_s_i] = 0.0;   
@@ -1062,21 +1071,21 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
   double FineSed = 0.0;
   double Mud = 0.0;
   
-  if (ws->MA_N_wc_i > -1){
+  if (ws->SMA_N_i > -1){
   
     /* Assume that Macroalgae sits at the top of the layer. */
     
-    double MA_N_wc = y[ws->MA_N_wc_i];
-    c->cv[ws->KI_MA_wc_i] = 0.0;
+    double SMA_N = y[ws->SMA_N_i];
+    c->cv[ws->KI_SMA_i] = 0.0;
     
-    if (MA_N_wc > 0.0){  /* macroalgae */
+    if (SMA_N > 0.0){  /* macroalgae */
       
       for (w=0; w<num_waves; w++){
-	photons += lighttop_s[w] * (1.0 - exp(-MA_N_wc * ws->MAleafden * bio->MA_aAwave[w])) 
-	  * 8.359335857479461e-09 * wave[w];
-	lighttop_s[w] = lighttop_s[w] * exp(-MA_N_wc * ws->MAleafden * bio->MA_aAwave[w]);
+	photons += lighttop_s[w] * (1.0 - exp(-SMA_N * c->dz_wc * ws->MAleafden * bio->MA_aAwave[w])) 
+	  * wave[w];
+	lighttop_s[w] = lighttop_s[w] * exp(-SMA_N * c->dz_wc * ws->MAleafden * bio->MA_aAwave[w]);
       }
-      c->cv[ws->KI_MA_wc_i] = photons;
+      c->cv[ws->KI_SMA_i] = photons * 8.359335857479461e-09 ;
     }
   }
 
@@ -1117,7 +1126,7 @@ void light_spectral_wc_precalc(eprocess* p, void* pp)
 
   if (isnan(zenith)){
 
-    zenith = einterface_calc_zenith(e->model, e->t, c->b);
+    zenith = ginterface_calc_zenith(e->model, e->t, c->b);
     
     /*  avoid exactly zero zenith which cause trouble with albedo calcs. */
     
@@ -1818,7 +1827,7 @@ void light_spectral_wc_postcalc(eprocess* p, void* pp)
     
     /* Get zenith at postcalc time */
     
-    double zenith = einterface_calc_zenith(e->model, e->t + e->dt, c->b);
+    double zenith = ginterface_calc_zenith(e->model, e->t + e->dt, c->b);
     
     if (ws->zenith_i > -1) // this is the 3D zenith output for backward compatability.
       y[ws->zenith_i] = zenith;

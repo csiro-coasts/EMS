@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: prmfile.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: prmfile.h 6866 2021-07-23 05:23:13Z her127 $
  */
 
 
@@ -41,7 +41,6 @@ int prm_read_darray(FILE * fp, char *key, double **p, int *size);
 int prm_read_char(FILE * fp, char *key, char *p);
 int keyfscanf(FILE * fp, char *key, char *format, ...);
 int prm_get_time_in_secs(FILE * fp, char *key, double *v);
-char *tm_time_to_datestr(double t, char *u);
 
 /* External variables */
 extern int keyprm_verbose;

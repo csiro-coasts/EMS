@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 6666 2020-09-08 06:14:02Z her127 $
+ *  $Id: readparam_t.c 7276 2022-12-14 05:39:52Z her127 $
  *
  */
 
@@ -344,10 +344,20 @@ FILE *fp;
     params->avhrr = 1;
     params->ntrS++;
   }
+
   /* GHRSST SST */
   if (prm_read_char(fp, "GHRSST", params->ghrsst_path)) {
+    prm_read_char(fp, "GHRSST_OPTIONS", params->ghrsst_opt);
+    prm_read_char(fp, "GHRSST_INTERP", params->ghrsst_irule);
     create_ghrsst_list(params);
-    params->ntrS++;
+    params->ntrS+=2;
+  }
+  /* Error norm diagnostic */
+  if (prm_read_char(fp, "ERROR_NORM", params->errornorm)) {
+    if (prm_read_char(fp, "ERROR_NORM_DT", buf))
+      tm_scale_to_secs(buf, &params->enorm_dt);
+    else
+      params->enorm_dt = 3600.0;
   }
   /* Diagnistic numbers */
   params->ntr += numbers_init(params);
@@ -355,6 +365,13 @@ FILE *fp;
 
   read_decorr(params, fp, 0);
   read_monotone(params, fp, 0);
+
+  /* Auto point source                                               */
+  if (prm_read_char(fp, "pss", buf)) {
+    params->numbers |= PASS;
+    params->ntr += 1;
+  }
+
   /* Means */
   read_means(params, fp, 0);
   /* Alerts */
@@ -438,14 +455,23 @@ FILE *fp;
     params->ntrS += 6;
 
   /* Waves */
-  read_waves(params, fp, 0);
 #if defined(HAVE_WAVE_MODULE)
-  params->do_wave = 0;
+  params->do_wave = NONE;
   sprintf(keyword, "DO_WAVES");
-  if (prm_read_char(fp, keyword, buf) && is_true(buf)) {
-    params->do_wave = is_true(buf);
+  if (prm_read_char(fp, keyword, buf)) {
+    if (strcmp(buf, "NONE") == 0)
+      params->do_wave = NONE;
+    if (strcmp(buf, "FILE") == 0)
+      params->do_wave = W_FILE;
+    if (strcmp(buf, "COMP") == 0)
+      params->do_wave = W_COMP;
+    if (strcmp(buf, "SWAN") == 0)
+      params->do_wave = (W_SWAN|W_SWANM);
+    if (strcmp(buf, "SWAN_W") == 0)
+      params->do_wave = (W_SWAN|W_SWANW);
     prm_get_time_in_secs(fp, "WAVES_DT", &params->wavedt);
   }
+  read_waves(params, fp, 0);
 #endif
 
   /* Library error handling */
@@ -472,6 +498,10 @@ FILE *fp;
   if(prm_read_char(fp, "PT_InputFile", params->ptinname)) {
     params->do_pt = 1;
     params->ntr++;
+    /* Auto particle source                                          */
+    if (prm_read_char(fp, "particles", params->particles))
+      params->do_pt = 2;
+    params->do_lag = params->do_pt;
   }
 
   /* Fixed constants */
@@ -813,6 +843,17 @@ FILE *fp;
     }
   }
 
+  sprintf(keyword, "RENDER_ECOSED_NAME");
+  if (prm_read_char(fp, keyword, params->rendername)) {
+    sprintf(keyword, "RENDER_ECOSED_DESC");
+    prm_read_char(fp, keyword, params->renderdesc);
+  }
+  sprintf(keyword, "RENDER_ECOSED_PATH");
+  prm_read_char(fp, keyword, params->renderpath);
+  sprintf(keyword, "RENDER_ECOSED_REMOVE");
+  prm_read_char(fp, keyword, params->renderrem);
+  sprintf(keyword, "ECOSED_CONFIG");
+  prm_read_char(fp, keyword, params->ecosedconfig);
 
 #if defined(HAVE_SEDIMENT_MODULE)
   read_sediments(params, fp, &params->ntr);
@@ -1059,12 +1100,18 @@ void read_tmode_params(FILE *fp, parameters_t *params)
       params->tmode = SP_ORIGIN|SP_EXACT;
     if (contains_token(buf, "NONE") != NULL)
       params->tmode = NONE;
+    if (contains_token(buf, "SP_DUMP") != NULL)
+      params->tmode = SP_DUMP;
     if (contains_token(buf, "SP_CHECK") != NULL)
       params->tmode = (SP_EXACT|SP_CHECK);
     if (contains_token(buf, "TR_CHECK") != NULL)
       params->tmode = (SP_EXACT|TR_CHECK);
     if (contains_token(buf, "GLOBAL") != NULL)
       params->tmode = (GLOBAL|XYZ_TINT);
+    if (contains_token(buf, "SIMPLE") != NULL)
+      params->tmode = (SP_SIMPLE|XYZ_TINT);
+    if (contains_token(buf, "SIMPLEU") != NULL)
+      params->tmode = (SP_SIMPLEU|XYZ_TINT);
     if (contains_token(buf, "SP_FFSL") != NULL) {
       params->tmode = (SP_FFSL|SP_EXACT);
       if (params->runmode & TRANS) params->tmode |= SP_U1VM;
@@ -1074,6 +1121,11 @@ void read_tmode_params(FILE *fp, parameters_t *params)
       params->tmode = (SP_FFSL|SP_EXACT|SP_STRUCT);
       if (params->runmode & TRANS) params->tmode |= SP_U1VM;
       params->ntrS += 1;    
+    }
+    if (contains_token(buf, "SP_FFSLU") != NULL) {
+      params->tmode = (SP_FFSL|SP_EXACT|SP_UGRID);
+      if (params->runmode & TRANS) params->tmode |= SP_U1VM;
+      params->ntrS += 1;
     }
   }
 
@@ -1100,18 +1152,12 @@ void read_tmode_params(FILE *fp, parameters_t *params)
 	params->fillf |= DIAGNOSE;
       if (contains_token(buf, "DIAGNOSE_BGC") != NULL)
 	params->fillf |= DIAGNOSE_BGC;
-      if (contains_token(buf, "LOCAL") != NULL)
-	params->fillf |= LOCAL;
       if (contains_token(buf, "MONO+GLOB") != NULL)
 	params->fillf |= (MONGLOB|MONOTONIC);
     }
   }
   if (params->fillf & (WEIGHTED|MONOTONIC))
     params->ntrS += 1;
-  if (params->fillf & LOCAL) {
-    if(params->fillf & DIAGNOSE)
-      params->ntr += 2;
-  }
   
   params->pssinput = WIMPLICIT;
   sprintf(keyword, "PSS_INPUT");
@@ -1161,7 +1207,7 @@ void read_tmode_params(FILE *fp, parameters_t *params)
   params->trans_num_omp = 1; /* default to 1 */
   prm_read_int(fp, keyword, &params->trans_num_omp);
 #endif
-  
+
 }
 
 /* END read_tmode_params()                                           */
@@ -1190,7 +1236,7 @@ void check_wave_vars(parameters_t *params)
 	if (strcmp(trfile, "wave_ub") == 0) wf++;
       }
       if (wf == 4) {
-	params->orbital = 1;
+	params->do_wave = W_FILE;
 	params->webf_dt = 0.0;
 	params->waves |= ORBITAL;
 	params->ntrS += 5;

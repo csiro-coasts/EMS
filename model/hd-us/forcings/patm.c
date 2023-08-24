@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: patm.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: patm.c 7157 2022-07-07 02:31:51Z her127 $
  *
  */
 
@@ -46,6 +46,8 @@ int patm_init_single(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+
+  if (strlen(params->patm) == 0) return 0;
 
   data = (patm_data_t *)malloc(sizeof(patm_data_t));
   schedSetPrivateData(event, data);
@@ -108,9 +110,15 @@ int patm_init(sched_event_t *event)
 
   data = (patm_mdata_t *)malloc(sizeof(patm_mdata_t));
   schedSetPrivateData(event, data);
-  data->tsfiles = frc_read_cell_ts_mult(master, params->patm, params->patm_dt,
-					"pressure", "Pa", &data->dt, data->varids, 
-					&data->ntsfiles, NULL, 1);
+  if (strlen(params->patm_interp))
+    data->tsfiles = frc_read_cell_ts_mult_us(master, params->patm, params->patm_dt,
+					     params->patm_interp, "pressure", "Pa", 
+					     &data->dt, data->varids, 
+					     &data->ntsfiles, NULL, 1);
+  else
+    data->tsfiles = frc_read_cell_ts_mult(master, params->patm, params->patm_dt,
+					  "pressure", "Pa", &data->dt, data->varids, 
+					  &data->ntsfiles, NULL, 1);
 
   if (data->tsfiles == NULL) {
     geometry_t *geom = master->geom;

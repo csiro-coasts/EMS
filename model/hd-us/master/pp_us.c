@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 6736 2021-03-30 00:39:49Z her127 $
+ *  $Id: pp_us.c 7332 2023-04-11 02:33:14Z her127 $
  *
  */
 
@@ -112,7 +112,6 @@ void obc_num_all(int c, int nobc, int *npts, int **loc, int *mask);
 int is_obce(int cc, int j, mesh_t *m);
 int is_obceo(int npe, int cc, int j, double **x, double **y, double ***posx, double ***posy,
              int nobc, int *npts);
-void write_us_map(geometry_t *sgrid, parameters_t *params);
 void reorder_edges(geometry_t *sgrid);
 int cyc_m2(geometry_t *sgrid, int *nmap, int *omap, int c);
 int oedge(int npe, int n);
@@ -125,8 +124,6 @@ int find_vertex(int c, double x, double y, double **xloc, double **yloc, int *ma
 int find_edges_tan(geometry_t *sgrid, mesh_t *m, int k, int *e, int *ee, int *c4, int *b4,
 		   int *maske, int **vle, point *tegl);
 int get_nve(int npe);
-void vertex_map_4(geometry_t *sgrid);
-void create_delaunay_cell(geometry_t *geom, parameters_t *params);
 void create_delaunay_cent(geometry_t *geom, parameters_t *params);
 void build_delaunay_cell(geometry_t *geom, parameters_t *params, point *tegl);
 int get_limit_obc(parameters_t *params, int ns2, int **neic);
@@ -219,7 +216,7 @@ void build_sparse_grid_us(parameters_t *params,
   int npe;           /* Number of nodes                              */
   int npem;          /* Maximum number of nodes                      */
   int nve;           /* Number of vertices                           */
-  int *mask;         /* Centre mask                                  */
+  int *mask = NULL;  /* Centre mask                                  */
   int *maske;        /* Edge mask                                    */
   int *maskv;        /* Vertex mask                                  */
   int *maskb;        /* Boundary mask                                */
@@ -263,6 +260,12 @@ void build_sparse_grid_us(parameters_t *params,
   int newcode = 1;
   int newvert = 1;
   int *wgsts;
+
+  if (params->map_type & GEOM_READ) {
+    read_geom_us(params, sgrid, params->geom_file);
+    geom = master->geom;
+    return;
+  }
 
   if (DEBUG("init_m"))
     dlog("init_m", "\nStart unstructured preprocessor\n");
@@ -328,7 +331,7 @@ void build_sparse_grid_us(parameters_t *params,
   memcpy(sgrid->layers, olayers, (params->nz + 1) * sizeof(double));
   d_free_1d(olayers);
   sgrid->compatible = params->compatible;
- 
+
   /*-----------------------------------------------------------------*/
   /* Set up the array of the bottom coordinate                       */
   kbot = s_alloc_1d(ns2 + 1);
@@ -2067,7 +2070,7 @@ void build_sparse_grid_us(parameters_t *params,
     v = sgrid->w3_e2[vv];
     vs = sgrid->m2dv[v];
     for (n = 1; n <= sgrid->nvc[vs]; n++)
-      sgrid->v2c[vv][n] = 0;
+      sgrid->v2c[v][n] = 0;
   }
   for (vv = 1; vv <= sgrid->n3_e2; vv++) {
     int found, nn;
@@ -2152,6 +2155,42 @@ void build_sparse_grid_us(parameters_t *params,
     }
   }
   */
+
+  /*-----------------------------------------------------------------*/
+  /* Get the ghost vertices                                          */
+  sgrid->nbpte2 = 0;
+  maskv = i_alloc_1d(sgrid->szv);
+  memset(maskv, 0, sgrid->szv * sizeof(int));
+  for (ee = 1; ee <= sgrid->nbpte1; ee++) {
+    e = sgrid->bpte1[ee];
+    v1 = sgrid->e2v[e][0];
+    if (!maskv[v1]) {
+      sgrid->nbpte2++;
+      maskv[v1] = 1;
+    }
+    v2 = sgrid->e2v[e][1];
+    if (!maskv[v2]) {
+      sgrid->nbpte2++;
+      maskv[v2] = 1;
+    }    
+  }
+  sgrid->bpte2 = i_alloc_1d(sgrid->nbpte2 + 1);
+  sgrid->nbpte2 = 1;
+  memset(maskv, 0, sgrid->szv * sizeof(int));
+  for (ee = 1; ee <= sgrid->nbpte1; ee++) {
+    e = sgrid->bpte1[ee];
+    v1 = sgrid->e2v[e][0];
+    if (!maskv[v1]) {
+      sgrid->bpte2[sgrid->nbpte2++] = v1;
+      maskv[v1] = 1;
+    }
+    v2 = sgrid->e2v[e][1];
+    if (!maskv[v2]) {
+      sgrid->bpte2[sgrid->nbpte2++] = v2;
+      maskv[v2] = 1;
+    }    
+  }
+  i_free_1d(maskv);
 
   if (DEBUG("init_m"))
     dlog("init_m", "\nVertex mappings created OK\n");
@@ -2240,6 +2279,34 @@ void build_sparse_grid_us(parameters_t *params,
     v2 = sgrid->e2v[e][1];
     sgrid->u1x[e] = 0.5 * (sgrid->gridx[v1] + sgrid->gridx[v2]);
     sgrid->u1y[e] = 0.5 * (sgrid->gridy[v1] + sgrid->gridy[v2]);
+  }
+
+  /* Check the v2c maps are counter-clockwise, and reverse them if   */
+  /* they're not (note: c2c and c2e maps always go clockwise from    */
+  /* the most south-westerly vertex)                                */
+  for (vv = 1; vv <= sgrid->v2_e2; vv++) {
+    v = sgrid->w2_e2[vv];
+    c1 = sgrid->v2c[v][1];
+    c2 = sgrid->v2c[v][2];
+    for (cc = 1; cc <= sgrid->npe[c1]; cc++) {
+      v1 = sgrid->c2v[cc][c1];
+      if (v1 == v) break;
+    }
+    if (sgrid->nvc[v] == 3 && c2 != sgrid->c2c[cc][c1]) {
+      /*printf("Clockwise around %d [%f %f]\n", v, sgrid->gridx[v], sgrid->gridy[v]);*/
+      int nn, vmap[sgrid->nvc[v]+1];
+      for (n = 1; n <= sgrid->nvc[v]; n++) vmap[n] = sgrid->v2c[v][n];
+      for (n = 1; n <= sgrid->nvc[v]; n++) {
+	nn = sgrid->nvc[v] - n + 1;
+	c = sgrid->v2c[v][n] = vmap[nn];
+      }
+      /*
+      for (n = 1; n <= sgrid->nvc[v]; n++) {
+	c = sgrid->v2c[v][n];
+	printf("%f %f p%d\n", sgrid->cellx[c], sgrid->celly[c], n);
+      }
+      */
+    }
   }
 
   /* Get the vertex sign and index vectors                           */
@@ -2694,6 +2761,7 @@ void build_sparse_grid_us(parameters_t *params,
   if (DEBUG("init_m"))
     dlog("init_m", "\nMappings checked OK\n");
 
+
   /*-----------------------------------------------------------------*/
   /* Save the locations of sparse cells on open boundaries to the    */
   /* boundary arrays.                                                */
@@ -2753,7 +2821,7 @@ void build_sparse_grid_us(parameters_t *params,
 
   /* Count the cell centre locations */
   if (m->nobc) {
-    i_free_1d(mask);
+    if(mask) i_free_1d(mask);
     mask = i_alloc_1d(m->nobc);
   }
   for (cc = sgrid->v2_t + 1; cc <= sgrid->b2_t; cc++) {
@@ -2789,6 +2857,7 @@ void build_sparse_grid_us(parameters_t *params,
   /* outi[] below.                                                   */
   imape = i_alloc_1d(sgrid->szeS);
   memset(imape, 0, sgrid->szeS * sizeof(int));
+
   for (cc = sgrid->v2_e1 + 1; cc <= sgrid->b2_e1; cc++) {
     open_bdrys_t *open;
     e = sgrid->w2_e1[cc];
@@ -3140,7 +3209,6 @@ void build_sparse_grid_us(parameters_t *params,
 	open->bec[j][cc] = 0;
 	open->bcc[j][cc] = 0;
 	cn = sgrid->c2c[j][c];
-
 	if (sgrid->wgst[cn]) {
 	  e = sgrid->c2e[j][c];
 	  if (maske[e] >= 0) {
@@ -3167,9 +3235,14 @@ void build_sparse_grid_us(parameters_t *params,
     if (open->bcond_ele & (FILEIN | CUSTOM) || open->bcond_nor2d & FLATHR) {
       open->transfer_eta = d_alloc_1d(open->no2_t + 1);
     }
-    i = (open->relax_zone_nor) ? open->relax_zone_nor : 1;
-    if (open->bcond_nor & (FILEIN | CUSTOM))
-      open->transfer_u1 = d_alloc_1d(i * open->no3_e1 + 1);
+    if (open->options & OP_UGRID) {
+      if (open->bcond_nor & (FILEIN | CUSTOM))
+	open->transfer_u1 = d_alloc_1d(open->to3_e1 + 1);
+    } else {
+      i = (open->relax_zone_nor) ? open->relax_zone_nor : 1;
+      if (open->bcond_nor & (FILEIN | CUSTOM))
+	open->transfer_u1 = d_alloc_1d(i * open->no3_e1 + 1);
+    }
     i = (open->relax_zone_tan) ? open->relax_zone_tan : 1;
     if (open->bcond_tan & (FILEIN | CUSTOM))
       open->transfer_u2 = d_alloc_1d(i * open->to3_e1 + 1);
@@ -3318,6 +3391,19 @@ void build_sparse_grid_us(parameters_t *params,
 	}
       }
     }
+    /* Surface map for OBC ghosts */
+    if (open->bgz > 0) {
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	c = open->ogc_t[ee];
+	c1 = open->obc_e2[ee];
+	c2 = open->omape[ee][sgrid->m2d[c1]];
+	for (j = 0; j < open->bgz; j++) {
+	  sgrid->m2d[c] = c2;
+	  c = open->omape[ee][c];
+	  c2 = open->omape[ee][c2];
+	}
+      }
+    }
   }
 
   /* Set the flag                                                    */
@@ -3422,6 +3508,10 @@ void build_sparse_grid_us(parameters_t *params,
   /*-----------------------------------------------------------------*/
   /* Allocate memory for the geometry vectors                        */
   alloc_geom_us(sgrid, (MAP_A | GRID_A | MASTER_A));
+  if (params->map_type & (GEOM_DUMP|GEOM_CHECK)) {
+    sgrid->maske = i_alloc_1d(sgrid->sze);
+    memcpy(sgrid->maske, maske, sgrid->sze * sizeof(int));
+  }
 
   /*-----------------------------------------------------------------*/
   /* Set the bathymetry value. This is overwritten from the input   */
@@ -3500,7 +3590,7 @@ void build_sparse_grid_us(parameters_t *params,
   TIMING_SET;
   window_build(sgrid, params);
   TIMING_DUMP(1, "  window_build");
-  
+
   if (params->us_type & US_IJ)
     write_windows(sgrid, flag);
 
@@ -3514,6 +3604,7 @@ void build_sparse_grid_us(parameters_t *params,
   geom = sgrid;
   master->geom = sgrid;
   master->sgrid = sgrid;
+  if (params->map_type & GEOM_CHECK) check_geom_map_us(params, geom, params->geom_file);
   get_filter(geom);
   if (DEBUG("init_m"))
     dlog("init_m", "\nMaster data created OK\n");
@@ -3528,7 +3619,8 @@ void build_sparse_grid_us(parameters_t *params,
   /* Make a map from Delaunay triangulation to unstructured          */
   /* coordinate. Used for mapping (x,y) to i.                        */
   /*build_delaunay_cell(geom, params, tegl);*/
-  create_delaunay_cell(geom, params);
+  if (!(params->us_type & US_IJ))
+    create_delaunay_cell(geom, params);
 
   /*
   if (params->d) {
@@ -4031,6 +4123,720 @@ int find_edges_tan(geometry_t *sgrid,
 }
 
 /* END find_edges_tan()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Generates the global OBC arrays                                   */
+/*-------------------------------------------------------------------*/
+void make_geom_obc(parameters_t *params, geometry_t *sgrid, int laus, int *maske)
+{
+  mesh_t *m = params->mesh;
+  int cc, c, cs, cn, cb, c1, c2, c3;
+  int ee, e, ei, es;
+  int ii, jj, i, j, k, n, tn;
+  int b1, b2, b3, b4;/* Counters                                     */
+  int npem = m->mnpe;
+  int *mask, *maskb, *imape, *imapc, *omapc;
+  unsigned long **flg; /* Flag for unstructured grid                 */
+  unsigned long ***flag;/* Flag for Cartesian grid                   */
+
+  /*-----------------------------------------------------------------*/
+  /* Save the locations of sparse cells on open boundaries to the    */
+  /* boundary arrays.                                                */
+  /* The open boundary location vectors are:                         */
+  /* obc_t = cell centered sparse location of the open boundary      */
+  /* oi1_t = one cell into the interior from obc_t                   */
+  /* oi2_t = two cells into the interior from obc_t                  */
+  /* obc_e1 = edge centered sparse location of the open boundary     */
+  /* obc_e2 = cell center corresponding to the normal OBC edge       */
+  /* oi1_e1 = one cell into the interior from obc_e1                 */
+  /* oi2_e1 = two cells into the interior from obc_e1                */
+  /* e2c_e1 = map from edge boundary index ee (for obc_e1) to cell   */
+  /*          index cc (for obc_t).                                  */
+
+  /* Allocate memory for the open boundary data structure            */
+  if (sgrid->nobc)
+    sgrid->open = (open_bdrys_t **)malloc(sizeof(open_bdrys_t *) * sgrid->nobc);
+
+  maskb = i_alloc_1d(sgrid->szcS);
+  memset(maskb, 0, sgrid->szcS * sizeof(int));
+  for (cc = sgrid->v2_t + 1; cc <= sgrid->b2_t; cc++) {
+    c = sgrid->w2_t[cc];
+    maskb[c] = 1;
+  }
+
+  /* Allocate memory for the boundary structures                     */
+  for (n = 0; n < sgrid->nobc; n++) {
+
+    sgrid->open[n] = OBC_alloc();
+
+    sgrid->open[n]->ntr = params->ntr;
+    sgrid->open[n]->npts = m->npts[n];
+    sgrid->open[n]->iloc = i_alloc_1d(m->npts[n]+1);
+    sgrid->open[n]->bgz = 0;
+    for (cc = 1; cc <= sgrid->open[n]->npts; cc++)
+      sgrid->open[n]->iloc[cc] = m->loc[n][cc];
+    sgrid->open[n]->no2_t = 0;
+    sgrid->open[n]->no3_t = 0;
+    sgrid->open[n]->no2_e1 = 0;
+    sgrid->open[n]->no3_e1 = 0;
+    sgrid->open[n]->to2_e1 = 0;
+    sgrid->open[n]->to3_e1 = 0;
+    sgrid->open[n]->bgz = laus;
+    copy_OBC_conds(params->open[n], sgrid->open[n], n, params->trinfo_3d);
+    /* All unstructured OBCs are of type U1BDRY                      */
+    sgrid->open[n]->type = U1BDRY;
+  }
+
+  /* Set the OBC mask */
+  /*
+  memset(mask, 0, sgrid->szc * sizeof(int));
+  for (cc = 1; cc <= ns2; cc++) {
+    c = cc2s[cc];
+    mask[c] = -1;
+    for (n = 0; n < m->nobc; n++) {
+      for (c1 = 1; c1 <= m->npts[n]; c1++) {
+	if (cc == m->loc[n][c1]) {
+	  mask[c] = n;
+	}
+      }
+    }
+  }
+  */
+
+  /* Count the cell centre locations */
+  if (m->nobc) {
+    mask = i_alloc_1d(m->nobc);
+  }
+
+  for (cc = sgrid->v2_t + 1; cc <= sgrid->b2_t; cc++) {
+    c = cs = sgrid->w2_t[cc];
+    /*
+    n = mask[c];
+    n = obc_num(sgrid->c2cc[c], m->nobc, m->npts, m->loc);
+    */
+    /* Several OBCs may share the same cell centre; capture all      */
+    /* these instances in the loop below.                            */
+    obc_num_all(sgrid->c2cc[c], m->nobc, m->npts, m->loc, mask);
+    for(tn = 0; tn < m->nobc; tn++) {
+      if ((n = mask[tn]) >= 0) {
+	/*if (n >= 0) {*/
+	sgrid->open[n]->no2_t++;
+	sgrid->open[n]->no3_t++;
+	c = sgrid->zm1[cs];
+	cb = sgrid->bot_t[cc];
+	while (c <= cb) {
+	  sgrid->open[n]->no3_t++;
+	  c = sgrid->zm1[c];
+	}
+      }
+    }
+  }
+
+  /* Count the edge locations                                        */
+  /* ocodec = 1 if e2c[0] is a (boundary) ghost cell (e2c[1] is wet) */
+  /* ocodec = 0 if e2c[1] is a (boundary) ghost cell (e2c[0] is wet) */
+  /* ocodex = index pointing into the domain                         */
+  /* ocodey = index pointing out of the domain                       */
+  /* Note: these are different for each edge; see ceni[], ini[] and  */
+  /* outi[] below.                                                   */
+  imape = i_alloc_1d(sgrid->szeS);
+  memset(imape, 0, sgrid->szeS * sizeof(int));
+
+  for (cc = sgrid->v2_e1 + 1; cc <= sgrid->b2_e1; cc++) {
+    open_bdrys_t *open;
+    e = sgrid->w2_e1[cc];
+    n = maske[e];
+    open = sgrid->open[n];
+    c1 = sgrid->e2c[e][0];
+    c2 = sgrid->e2c[e][1];
+    if (sgrid->wgst[c1]) {      
+      open->ocodex = sgrid->e2e[e][0];
+      open->ocodey = sgrid->e2e[e][1];
+      open->ocodec = 1;
+      imape[e] = open->ocodex;
+    }
+    if (sgrid->wgst[c2]) {
+      open->ocodex = sgrid->e2e[e][1];
+      open->ocodey = sgrid->e2e[e][0];
+      open->ocodec = 0;
+      imape[e] = open->ocodex;
+    }
+    if (sgrid->wgst[c1] || sgrid->wgst[c2]) {
+      /* Normal velocity */
+      sgrid->open[n]->no2_e1++;
+      sgrid->open[n]->no3_e1++;
+      e = sgrid->zm1e[e];
+      cb = sgrid->bot_e1[cc];
+      while (e <= cb) {
+	sgrid->open[n]->no3_e1++;
+	e = sgrid->zm1e[e];
+      }
+    } else {
+      /* Tangential velocity */
+      sgrid->open[n]->to2_e1++;
+      sgrid->open[n]->to3_e1++;
+      e = sgrid->zm1e[e];
+      cb = sgrid->bot_e1[cc];
+      while (e <= cb) {
+	sgrid->open[n]->to3_e1++;
+        e = sgrid->zm1e[e];
+      }
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Allocate memory for the boundary vectors                        */
+  /* Open boundary vectors                                           */
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    c1 = open->no3_e1 + open->to3_e1 + 1;
+    open->obc_t = i_alloc_1d(open->no3_t + 1);
+    open->ogc_t = i_alloc_1d(open->no3_e1 + 1);
+    open->obc_e1 = i_alloc_1d(c1);
+    open->obc_e2 = i_alloc_1d(c1);
+    open->bot_t = i_alloc_1d(open->no2_t + 1);
+    open->nepc = d_alloc_1d(open->no3_t + 1);
+    open->ceni = i_alloc_1d(open->no3_e1 + 1);
+    open->dir = i_alloc_1d(open->no3_e1 + 1);
+    open->ini = i_alloc_1d(open->no3_e1 + 1);
+    open->outi = i_alloc_1d(open->no3_e1 + 1);
+    open->inc = i_alloc_1d(open->no3_t + 1);
+    open->bec = i_alloc_2d(open->no3_t + 1, npem + 1);
+    open->bcc = i_alloc_2d(open->no3_t + 1, npem + 1);
+    open->olap = i_alloc_1d(open->no3_t + 1);
+    open->nmape = (int **)p_alloc_1d(open->no3_e1+1);
+    open->omape = (int **)p_alloc_1d(open->no3_e1+1);
+    memset(open->nepc, 0, (open->no3_t + 1) * sizeof(double));
+
+    /* Sparse locations one cell into the interior */
+    open->oi1_t = i_alloc_1d(open->no3_t + 1);
+    open->oi1_e1 = i_alloc_1d(c1);
+
+    /* Sparse locations two cells into the interior */
+    open->oi2_t = i_alloc_1d(open->no3_t + 1);
+    open->oi2_e1 = i_alloc_1d(c1);
+    
+    /* Sparse locations for cyclic boundary conditions */
+    open->cyc_t = i_alloc_1d(open->no3_t + 1);
+    open->cyc_e1 = i_alloc_1d(c1);
+    open->e2c_e1 = i_alloc_1d(c1);
+
+    /* Dummies                                  */
+    /*
+    open->dum = d_alloc_1d(open->no3_t + 1);
+    open->i1 = i_alloc_1d(open->no3_t + 1);
+    */
+    /* Reset the vector sizes for filling below */
+    /* Tangential velocity positions */
+    open->to3_e1 = open->no3_e1 + open->to2_e1 + 1;
+    open->to2_e1 = open->no3_e1 + 1;
+    /* Normal velocity and cell centered positions */
+    open->no3_t = open->no2_t + 1;
+    open->no3_e1 = open->no2_e1 + 1;
+    open->no2_t = 1;
+    open->no2_e1 = 1;
+  }
+
+  /* Point the interior cell maps on the boundaries to the correct */
+  /* spatial map.                                                  */
+  for (n = 0; n < sgrid->nobc; n++) {
+    sgrid->open[n]->nmap = sgrid->c2c[sgrid->open[n]->ocodex];
+    sgrid->open[n]->omap = sgrid->c2c[sgrid->open[n]->ocodey];
+    if(sgrid->npem == 4) {
+      if (sgrid->open[n]->ocodex == 1 || sgrid->open[n]->ocodex == 3) {
+	sgrid->open[n]->tmpp = sgrid->c2c[2];
+	sgrid->open[n]->tmpm = sgrid->c2c[4];
+      }
+      if (sgrid->open[n]->ocodex == 2 || sgrid->open[n]->ocodex == 4) {
+	sgrid->open[n]->tmpp = sgrid->c2c[3];
+	sgrid->open[n]->tmpm = sgrid->c2c[1];
+      }
+    }
+  }
+
+  /* Set the cell centre locations                                   */
+  imapc = i_alloc_1d(sgrid->szcS);
+  omapc = i_alloc_1d(sgrid->szcS);
+  memset(imapc, 0, sgrid->szcS * sizeof(int));
+  memset(omapc, 0, sgrid->szcS * sizeof(int));
+  for (cc = sgrid->v2_t + 1; cc <= sgrid->b2_t; cc++) {
+    open_bdrys_t *open;
+    c = cs = sgrid->w2_t[cc];
+    /*
+    n = mask[c];
+    n = obc_num(sgrid->c2cc[c], m->nobc, m->npts, m->loc);
+    */
+    j = imapc[cs] = get_bind(sgrid, c, maskb);
+    if (usejo)
+      omapc[cs] = oedge(sgrid->npe[c], j);
+    else
+      omapc[cs] = jocw(sgrid, c, j);
+
+    /* Regular quad grids U1 boundary                                */
+    if (params->us_type & US_IJ) {
+      if(sgrid->wgst[sgrid->c2c[1][cs]]) {
+	imapc[cs] = 3;
+	omapc[cs] = 1;
+      }
+      if(sgrid->wgst[sgrid->c2c[3][cs]]) {
+	imapc[cs] = 1;
+	omapc[cs] = 3;
+      }
+    }
+    /* Regular hex grids U1 boundary                                 */
+    if (params->us_type & US_HEX) {
+      if(sgrid->wgst[sgrid->c2c[1][cs]]) {
+	imapc[cs] = 4;
+	omapc[cs] = 1;
+      }
+      if(sgrid->wgst[sgrid->c2c[4][cs]]) {
+	imapc[cs] = 1;
+	omapc[cs] = 4;
+      }
+    }
+
+    /* Find the direction that maps to the interior for this centre  */
+    /*
+    jj = 0; i = 0;
+    for (j = 1; j <= sgrid->npe[c]; j++) {
+      cn = sgrid->c2c[j][c];
+      if (maskb[cn]) {
+	jj += j;
+	i += 1;
+      }
+    }
+
+    jj = omapc[cs] = (i) ? jj / i : 1;
+    j = imapc[cs] = oedge(sgrid->npe[c], jj);
+    */
+
+    obc_num_all(sgrid->c2cc[c], m->nobc, m->npts, m->loc, mask);
+    for(tn = 0; tn < m->nobc; tn++) {
+      if ((n = mask[tn]) >= 0) {
+	open = sgrid->open[n];
+	/*if (n >= 0){*/
+	open->obc_t[open->no2_t] = cs;
+	open->oi1_t[open->no2_t] = sgrid->c2c[j][cs];
+	open->oi2_t[open->no2_t] = sgrid->c2c[j][sgrid->c2c[j][cs]];
+	open->no2_t++;
+	c = sgrid->zm1[cs];
+	cb = sgrid->bot_t[cc];
+	while (c <= cb) {
+	  open->obc_t[open->no3_t] = c;
+	  open->oi1_t[open->no3_t] = sgrid->c2c[j][c];
+	  open->oi2_t[open->no3_t] = sgrid->c2c[j][sgrid->c2c[j][c]];
+	  open->no3_t++;
+	  c = sgrid->zm1[c];
+	}
+      }
+    }
+  }
+
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    open->no2_t--;
+    open->no3_t--;
+  }
+
+  /* Set the edge locations */
+  for (ee = sgrid->v2_e1 + 1; ee <= sgrid->b2_e1; ee++) {
+    open_bdrys_t *open;
+    e = sgrid->w2_e1[ee];
+    es = sgrid->m2de[e];
+    n = maske[e];
+    open = sgrid->open[n];
+    c1 = sgrid->e2c[e][0];
+    c2 = sgrid->e2c[e][1];
+    if (sgrid->wgst[c1] || sgrid->wgst[c2]) {
+      /* Normal velocity */
+      open->obc_e1[open->no2_e1] = e;
+      if (sgrid->wgst[c1]) {
+	open->obc_e2[open->no2_e1] = c2;
+	open->ogc_t[open->no2_e1] = c1;
+      }
+      if (sgrid->wgst[c2]) {
+	open->obc_e2[open->no2_e1] = c1;
+	open->ogc_t[open->no2_e1] = c2;
+      }
+      /*
+      for(cc = 1; cc <= open->no2_t; cc++)
+	if(open->obc_t[cc] == open->obc_e2[open->no2_e1]) {
+	  open->nepc[cc]++;
+	}
+      */
+      ei = e2e(sgrid, e, imape[e]);
+      open->oi1_e1[open->no2_e1] = ei;
+      ei = e2e(sgrid, ei, imape[e]);
+      open->oi2_e1[open->no2_e1] = ei;
+      open->no2_e1++;
+      e = sgrid->zm1e[e];
+      cb = sgrid->bot_e1[ee];
+      c1 = sgrid->e2c[e][0];
+      c2 = sgrid->e2c[e][1];
+      while (e <= cb) {
+        open->obc_e1[open->no3_e1] = e;
+	if (sgrid->wgst[c1]) {
+	  open->obc_e2[open->no3_e1] = c2;
+	  open->ogc_t[open->no3_e1] = c1;
+	}
+	if (sgrid->wgst[c2]) {
+	  open->obc_e2[open->no3_e1] = c1;
+	  open->ogc_t[open->no3_e1] = c2;
+	}
+	ei = e2e(sgrid, e, imape[es]);
+	open->oi1_e1[open->no3_e1] = ei;
+	ei = e2e(sgrid, ei, imape[es]);
+	open->oi2_e1[open->no3_e1] = ei;
+	open->no3_e1++;
+        e = sgrid->zm1e[e];
+	c1 = sgrid->e2c[e][0];
+	c2 = sgrid->e2c[e][1];
+      }
+    } else {
+      /* Tangential velocity */
+      open->obc_e1[open->to2_e1] = e;
+      open->obc_e2[open->to2_e1] = c1;
+      ei = e2e(sgrid, e, imape[e]);
+      open->oi1_e1[open->to2_e1] = ei;
+      ei = e2e(sgrid, ei, imape[e]);
+      open->oi2_e1[open->to2_e1] = ei;
+      open->to2_e1++;
+      e = sgrid->zm1e[e];
+      c1 = sgrid->e2c[e][0];
+      cb = sgrid->bot_e1[ee];
+      while (e <= cb) {
+        open->obc_e1[open->to3_e1] = e;
+        open->obc_e2[open->to3_e1] = c1;
+	ei = e2e(sgrid, e, imape[es]);
+	open->oi1_e1[open->to3_e1] = ei;
+	ei = e2e(sgrid, ei, imape[es]);
+	open->oi2_e1[open->to3_e1] = ei;
+	open->to3_e1++;
+        e = sgrid->zm1e[e];
+	c1 = sgrid->e2c[e][0];
+      }
+    }
+  }
+  i_free_1d(imape);
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    open->no2_e1--;
+    open->no3_e1--;
+    open->to2_e1--;
+    open->to3_e1--;
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Get the edge orientation maps                                   */
+  /* ceni[ee]=1 if e2c[0] is a (boundary) ghost cell (e2c[1] is wet) */
+  /* ceni[ee]=0 if e2c[1] is a (boundary) ghost cell (e2c[0] is wet) */
+  /* dir[ee] = 1 if the velocity vector is directed into the cell    */
+  /* dir[ee] = -1 if the velocity vector is directed out of the cell */
+  /* ini[ee] = index pointing into the domain                        */
+  /* outi[ee] = index pointing out of the domain                     */
+  /* inc[cc] = average index pointing into the domain                */
+  /* bec[j][cc] = e for boundary edges, = 0 for interior edges       */
+  /* bcc[j][cc] = c for normal boundary edges, = -c for tangential   */
+  /*              boundary edges, = 0 for interior edges.            */
+  /* olap[cc] = number of wet (non-boundary, non-ghost) cells        */
+  /*            adjacent to the OBC cell at cc.                      */
+  /* omape[ee][c] and nmape[ee][c] are arrays of pointers that map   */
+  /*           to neighboring cell centres of c across the edge ee.  */
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    for (ee = 1; ee <= open->no3_e1; ee++) {
+      e = open->obc_e1[ee];
+      c1 = sgrid->e2c[e][0];
+      c2 = sgrid->e2c[e][1];
+      if (sgrid->wgst[c1]) {
+	open->ini[ee] = sgrid->e2e[e][0];
+	open->outi[ee] = sgrid->e2e[e][1];
+	open->ceni[ee] = 1;
+	c = c2;
+      }
+      if (sgrid->wgst[c2]) {
+	open->ini[ee] = sgrid->e2e[e][1];
+	open->outi[ee] = sgrid->e2e[e][0];
+	open->ceni[ee] = 0;
+	c = c1;
+      }
+      cs = sgrid->m2d[c];
+      for (j = 1; j <= sgrid->npe[cs]; j++)
+	if (e == sgrid->c2e[j][c])
+	  break;
+      if (sgrid->eSc[j][cs] == 1)
+	open->dir[ee] = -1;
+      else
+	open->dir[ee] = 1;
+
+      for(cc = 1; cc <= open->no3_t; cc++) {
+	if(open->obc_t[cc] == open->obc_e2[ee]) {
+	  open->nepc[cc] += 1.0;
+	}
+      }
+      j = open->ini[ee];
+      c = open->obc_e2[ee];
+      cs = sgrid->m2d[c];
+      open->nmape[ee] = sgrid->c2c[j];
+      j = open->outi[ee];
+      open->omape[ee] = sgrid->c2c[j];
+    }
+
+    /* Find the direction that maps to the interior for this centre  */
+    for (cc = 1; cc <= open->no3_t; cc++) {
+      c = open->obc_t[cc];
+      cs = sgrid->m2d[c];
+
+      open->inc[cc] = get_bind(sgrid, cs, maskb);
+      open->olap[cc] = 0;
+      for (j = 1; j <= sgrid->npe[cs]; j++) {
+	open->bec[j][cc] = 0;
+	open->bcc[j][cc] = 0;
+	cn = sgrid->c2c[j][c];
+	if (sgrid->wgst[cn]) {
+	  e = sgrid->c2e[j][c];
+	  if (maske[e] >= 0) {
+	    open->bec[j][cc] = e;
+	    open->bcc[j][cc] = cn;
+
+	  }
+	} else if (maskb[sgrid->m2d[cn]]) {
+	  open->bcc[j][cc] = -cn;
+	} else {
+	  open->olap[cc]++;
+	}
+      }
+    }
+    for(cc = 1; cc <= open->no3_t; cc++)
+      open->nepc[cc] = 1.0 / open->nepc[cc];
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Get the transfer vectors                                        */
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    /* Allocate memory for master - slave transfer vectors */
+    if (open->bcond_ele & (FILEIN | CUSTOM) || open->bcond_nor2d & FLATHR) {
+      open->transfer_eta = d_alloc_1d(open->no2_t + 1);
+    }
+    if (open->options & OP_UGRID) {
+      if (open->bcond_nor & (FILEIN | CUSTOM))
+	open->transfer_u1 = d_alloc_1d(open->to3_e1 + 1);
+    } else {
+      i = (open->relax_zone_nor) ? open->relax_zone_nor : 1;
+      if (open->bcond_nor & (FILEIN | CUSTOM))
+	open->transfer_u1 = d_alloc_1d(i * open->no3_e1 + 1);
+    }
+    i = (open->relax_zone_tan) ? open->relax_zone_tan : 1;
+    if (open->bcond_tan & (FILEIN | CUSTOM))
+      open->transfer_u2 = d_alloc_1d(i * open->to3_e1 + 1);
+    if (open->bcond_nor2d & FILEIN)
+      open->transfer_u1av = d_alloc_1d(open->no2_e1 + 1);
+    if (open->bcond_nor2d & CUSTOM)
+      open->transfer_u1av = d_alloc_1d(open->no3_e1 + 1);
+    if (open->bcond_tan2d & (FILEIN | CUSTOM))
+      open->transfer_u2av = d_alloc_1d(open->to3_e1 + 1);
+
+    i = 1;
+    open->ntt = 0;
+    if (open->ntr)
+      open->trm = i_alloc_1d(open->ntr);
+    for (tn = 0; tn < open->ntr; tn++) {
+      if (open->bcond_tra[tn] & (FILEIN | CUSTOM)) {
+	open->trm[tn] = open->ntt;
+	if (open->bcond_tra[tn] & (TRCONC|TRCONF)) i = open->bgz;
+	open->ntt++;
+      }
+      if (open->bcond_tra[tn] & NOTHIN) {
+	if (open->bcond_tra[tn] & (TRCONC|TRCONF)) i = open->bgz;
+    }
+
+    }
+    open->ttsz = 0;
+    open->t_imap = NULL;
+    open->t_transfer = NULL;
+    if (open->ntt) {
+      open->ttsz = open->no3_t + i * open->no3_e1 + 1;
+      open->t_transfer = d_alloc_2d(open->ttsz, open->ntt);
+      open->t_imap = i_alloc_2d(i + 1, open->ttsz);
+    }
+  }
+
+  /* Get the cyclic boundary locations.                              */
+  for (n = 0; n < sgrid->nobc; n++) {
+    /* Tracers                                                       */
+
+    for (cc = 1; cc <= sgrid->open[n]->no3_t; cc++) {
+      c = sgrid->open[n]->obc_t[cc];
+      cs = sgrid->m2d[c];
+      if (sgrid->open[n]->bcond_ele & CYCLIC || 
+	  ANY0(CYCLIC, sgrid->open[n]->bcond_tra, sgrid->open[n]->ntr)) {
+	sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+
+	/* Move outwards an extra cell                               */
+	if (params->us_type & US_HEX) 
+	  sgrid->open[n]->cyc_t[cc] = sgrid->c2c[omapc[cs]][sgrid->open[n]->cyc_t[cc]];
+      }
+    }
+
+    /* Normal velocity component                                              */
+    for (ee = 1; ee <= sgrid->open[n]->no3_e1; ee++) {
+      e = sgrid->open[n]->obc_e1[ee];
+      c = sgrid->open[n]->obc_e2[ee];
+      es = sgrid->m2de[e];
+      cs = sgrid->m2d[c];
+      j = (sgrid->open[n]->ceni[ee]) ? sgrid->e2e[e][1] : sgrid->e2e[e][0];
+      if (sgrid->open[n]->bcond_nor & CYCLIC) {
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	if (params->us_type & US_HEX)
+	  c1 = sgrid->c2c[omapc[cs]][c1];
+	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
+	sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
+      }
+    }
+
+    /* Tangential velocity component                                          */
+    for (ee = sgrid->open[n]->no3_e1 + 1; ee <= sgrid->open[n]->to3_e1; ee++) {
+      e = sgrid->open[n]->obc_e1[ee];
+      es = sgrid->m2de[e];
+      c = sgrid->open[n]->obc_e2[ee];
+      cs = sgrid->m2d[c];
+      j = sgrid->e2e[e][0];
+      if (sgrid->open[n]->bcond_tan & CYCLIC) {
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	if (params->us_type & US_HEX)
+	  c1 = sgrid->c2c[omapc[cs]][c1];
+	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
+	sgrid->open[n]->cyc_e1[ee] = sgrid->c2e[j][c1];
+      }
+    }
+
+    /* Get the bottom coordinate vector                              */
+    for (cc = 1; cc <= sgrid->open[n]->no2_t; cc++) {
+      int cl;
+      c = c2 = sgrid->open[n]->obc_t[cc];
+      while(c != sgrid->zm1[c])
+	c = sgrid->zm1[c];
+      sgrid->open[n]->bot_t[cc] = sgrid->zp1[c];
+    }
+  }
+
+  /* Set the interior face stagger for normal component */
+  /* Inner staggerd cells adjacent to land are omitted */
+
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    if (open->stagger & INFACE) {
+      c1 = c2 = c3 = 1;
+      /* u1 velocity */
+      for (ee = 1; ee <= open->to3_e1; ee++) {
+	b1 = open->obc_e1[ee];
+	b2 = open->oi1_e1[ee];
+	b3 = open->oi2_e1[ee];
+	if (ee <= open->no3_e1) {
+	  if (b2 != b3 && b3 != sgrid->em[b3]) {
+	    open->obc_e1[c1] = b2;
+	    open->oi1_e1[c1] = b3;
+	    ei = e2e(sgrid, b3, sgrid->m2de[open->ini[ee]]);
+	    open->oi2_e1[c1] = ei;
+	    c1 += 1;
+	    if (sgrid->zp1e[b1] == b1) c2 += 1;
+	    c3 += 1;
+	  }
+	} else {
+	  open->obc_e1[c3] = b1;
+	  open->oi1_e1[c3] = b2;
+	  open->oi2_e1[c3] = b3;
+	  c3 += 1;
+	} 
+      }
+      c1 = open->no3_e1 - c1 + 1;
+      c2 = open->no2_e1 - c2 + 1;
+      if (c1) {
+	open->no3_e1 -= c1;
+	open->no2_e1 -= c2;
+	open->to2_e1 -= c1;
+	open->to3_e1 -= c1;
+      }
+    }
+  }
+
+  /* Edge to centre boundary index map */
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    for (ee = 1; ee <= open->no3_e1; ee++) {
+      e = open->obc_e1[ee];
+      es = sgrid->m2de[e];
+      c = sgrid->e2c[e][open->ini[ee]];
+      for (cc = 1; cc <= open->no3_t; cc++) {
+	if (c == open->obc_t[cc]) {
+	  open->e2c_e1[ee] = cc;
+	  break;
+	}
+      }
+    }
+    /* Surface map for OBC ghosts */
+    if (open->bgz > 0) {
+      for (ee = 1; ee <= open->no3_e1; ee++) {
+	c = open->ogc_t[ee];
+	c1 = open->obc_e2[ee];
+	c2 = open->omape[ee][sgrid->m2d[c1]];
+	for (j = 0; j < open->bgz; j++) {
+	  sgrid->m2d[c] = c2;
+	  c = open->omape[ee][c];
+	  c2 = open->omape[ee][c2];
+	}
+      }
+    }
+  }
+
+  /* Set the flag                                                    */
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    for (cc = 1; cc <= open->no3_t; cc++) {
+      c = open->obc_t[cc];
+      c1 = sgrid->c2cc[sgrid->m2d[c]];
+      k = sgrid->s2k[c];
+      /*
+      flg[k][c1] |= ETASPEC;
+
+      flg[k][c1] |= (U1BDRY|U2BDRY);
+      if (open->ocodec) 
+	flg[k][c1] |= (R_EDGE|F_EDGE);
+      else
+	flg[k][c1] |= (L_EDGE|B_EDGE);
+
+      if (sgrid->us_type & US_IJ)
+	flag[k][sgrid->s2j[c]][sgrid->s2i[c]] = flg[k][c1];
+      */
+    }
+  }
+
+  /* Get the ghost tracer transfer vector index mappings             */
+  for (n = 0; n < sgrid->nobc; n++) {
+    open_bdrys_t *open = sgrid->open[n];
+    i = 1;
+    if (open->ttsz) {
+      for (cc = 1; cc <= open->no3_t; cc++) {
+	open->t_imap[cc][0] = i;
+	i++;
+      }
+      for (j = 1; j <= open->bgz; j++) {
+	for (ee = 1; ee <= open->no3_e1; ee++) {
+	  open->t_imap[ee][j] = i;
+	  i++;
+	}
+      }
+    }
+  }
+
+  if (DEBUG("init_m"))
+    dlog("init_m", "\nOpen boundaries created OK\n");
+}
+
+/* END make_geom_obc()                                               */
 /*-------------------------------------------------------------------*/
 
 int is_obc(int c, int nobc, int *npts, int**loc)
@@ -4753,7 +5559,6 @@ int cyc_m2(geometry_t *sgrid, /* Window geometry                   */
 
   while (c != nmap[nmap[c]]) {
     c = nmap[c];
-    printf("%d %d\n",cyc,c);
   }
   cyc = omap[omap[c]];
   return (cyc);
@@ -4780,7 +5585,7 @@ void alloc_geom_us(geometry_t *geom, /* Model geometry structure */
     geom->gridz = d_alloc_1d(geom->szc);
     geom->cellz = d_alloc_1d(geom->szc);
     /* 2D arrays */
-    geom->botz = d_alloc_1d(geom->szcS);
+    if (geom->botz == NULL) geom->botz = d_alloc_1d(geom->szcS);
     geom->botzgrid = d_alloc_1d(geom->szvS);
     geom->dHde1 = d_alloc_1d(geom->szeS);
     geom->botzu1 = d_alloc_1d(geom->szeS);

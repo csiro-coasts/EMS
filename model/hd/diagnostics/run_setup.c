@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 6604 2020-09-07 03:27:05Z her127 $
+ *  $Id: run_setup.c 7316 2023-04-11 02:05:02Z her127 $
  *
  */
 
@@ -63,7 +63,7 @@ void write_run_setup(hd_data_t *hd_data)
   getcwd(bname, MAXSTRLEN);
   fprintf(fp, "Working directory = %s\n",bname);
   fprintf(fp, "%s\n", params->parameterheader);
-  if (params->runno) fprintf(fp, "Identifier # %5.2f\n", params->runno);
+  if (params->runno) fprintf(fp, "Identifier # %s\n", params->runnoc);
   if (strlen(params->runcode)) {
     char *tok;
     fprintf(fp, "Run code %s\n", params->runcode);
@@ -1300,6 +1300,12 @@ void write_run_setup(hd_data_t *hd_data)
       }
       if (params->heatflux & ADVANCED) {
         fprintf(fp, "Heat flux calculated : bulk formulation\n");
+	if (master->heatflux & COMP_LWI)
+	  fprintf(fp, "  Incoming longwave supplied via file input: %s\n", params->lwri);
+	if (master->heatflux & COMP_LWO)
+	  fprintf(fp, "  Outgoing longwave supplied via file input.\n");
+	if (master->heatflux & COMP_SW)
+	  fprintf(fp, "  Shortwave supplied via file input: %s\n", params->swr);
         if (params->bulkf == KONDO)
           fprintf(fp, "  Bulk scheme = Kondo (1975)\n");
         if (params->bulkf == LARGEPOND)
@@ -1594,6 +1600,14 @@ void write_run_setup(hd_data_t *hd_data)
 	  geom->b3_t, 100.0*geom->b3_t/(geom->nz * geom->nce1 * geom->nce2));
   fprintf(fp,"Percent of cells beneath the sea bed = %d%%\n", 100 * geom->bdry / 
 	  (geom->b2_t * geom->nz));
+  d1 = d2 = 0.0;
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    d1 += geom->cellarea[c];
+    d2 += geom->cellarea[c] * (master->eta[c] - geom->botz[c]);
+  }
+  fprintf(fp,"Domain surface area = %e\n", d1);
+  fprintf(fp,"Domain initial volume = %e\n", d2);
   fprintf(fp,"  (Use -debug init_m on the shoc command line to get full stats).\n");
 
   /* 3D Tracer relaxation */
@@ -1631,7 +1645,7 @@ void write_run_setup(hd_data_t *hd_data)
     win_priv_t *wincon = hd_data->wincon[1];
     fprintf(fp, "############################################################################\n");
     fprintf(fp, "# Sediment specification\n\n");
-    ntr = tracer_write(params, fp, wincon);
+    ntr = tracer_write(params, fp);
     ntr = sediment_autotracer_write(master, fp, ntr);
     trans_write_sed(params, wincon->sediment, fp);
     fprintf(fp, "\n");
@@ -2235,10 +2249,12 @@ void trans_write(hd_data_t *hd_data)
   char tag[MAXSTRLEN];
   char key[MAXSTRLEN];
   char bname[MAXSTRLEN];
+  char trdata[MAXSTRLEN];
   char TRANS_DT[MAXSTRLEN];
 
   if(!strlen(params->trans_data) || params->runmode & TRANS)
     return;
+  strcpy(trdata, params->trans_data);
 
   if (strlen(params->trans_dt))
     sprintf(TRANS_DT, "%s", params->trans_dt);
@@ -2254,6 +2270,9 @@ void trans_write(hd_data_t *hd_data)
     return;
   }
   fprintf(op, "# SHOC transport file\n");
+  fprintf(op, "# Created from %s\n", params->prmname);
+  fprintf(op, "# Use with INPUT_FILE %s\n", params->idumpname);
+  fprintf(op, "# EMS Version : %s\n", version);
   fprintf(op, "CODEHEADER           %s\n", params->codeheader);
   fprintf(op, "PARAMETERHEADER      %s\n", params->parameterheader);
   fprintf(op, "DESCRIPTION          %s\n", params->grid_desc);
@@ -2281,9 +2300,9 @@ void trans_write(hd_data_t *hd_data)
     fprintf(op, "\nROMS_Z2S_FACTOR  %.2f\n", params->roms_z2s);
   } else {
     if(params->tmode & SP_FFSL)
-      fprintf(op, "TRANS_DATA            %s(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)(u1vm=u1vmean)(u2vm=u2vmean)\n", params->trans_data);
+      fprintf(op, "TRANS_DATA            %s(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)(u1vm=u1vmean)(u2vm=u2vmean)\n", trdata);
     else
-      fprintf(op, "TRANS_DATA           %s(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)\n", params->trans_data);
+      fprintf(op, "TRANS_DATA           %s(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)\n", trdata);
     if(!(params->tmode & SP_FFSL) && strlen(params->sourcefile))
       fprintf(op, "SOURCE_GRID          %s\n", params->sourcefile);
     if(strlen(params->trvars))
@@ -2459,11 +2478,24 @@ void trans_write(hd_data_t *hd_data)
 #if defined(HAVE_ECOLOGY_MODULE)
   if (params->do_eco) {
     win_priv_t *wincon = hd_data->wincon[1];
-    tracer_write(params, op, wincon);
+    tracer_write(params, op);
   }
 #else
-  tracer_write(params, op, NULL);
+  tracer_write(params, op);
 #endif
+
+  if (params->roammode & (A_ROAM_R4|A_ROAM_R5)) {
+    fprintf(op, "\n# Point source specification for auto tracer 'passive'\n");
+    fprintf(op, "#pss   %-10.4f %-10.4f -1 0\n",
+	    dumpdata->cellx[params->nce2 / 2][params->nce1 / 2],
+            dumpdata->celly[params->nce2 / 2][params->nce1 / 2]);
+
+    fprintf(op, "\n# Particle specification\n");
+    fprintf(op, "#particles   %-10.4f %-10.4f -1 0\n",
+	    dumpdata->cellx[params->nce2 / 2][params->nce1 / 2],
+            dumpdata->celly[params->nce2 / 2][params->nce1 / 2]);
+    fprintf(op, "#PT_InputFile   pt.nc\n\n");
+  }
 
   fprintf(op, "# Time series\n");
   prm_set_errfn(hd_silent_warn);
@@ -2563,7 +2595,7 @@ void trans_write(hd_data_t *hd_data)
     for (tn = 0; tn < params->ntr; tn++) {
       bcname(open->bcond_tra[tn], bname);
       /* Leave salt/temp out for RECOM */
-      if (params->roammode & (A_RECOM_R1|A_RECOM_R2) )
+      if (params->roammode >= A_RECOM_R1 )
 	if (strcmp(params->trinfo_3d->name, "salt") == 0 ||
 	    strcmp(params->trinfo_3d->name, "temp") == 0 )
 	  continue;

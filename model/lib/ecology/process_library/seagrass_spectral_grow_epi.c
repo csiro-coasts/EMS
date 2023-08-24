@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: seagrass_spectral_grow_epi.c 6691 2021-03-24 00:59:14Z wil00y $
+ *  $Id: seagrass_spectral_grow_epi.c 7199 2022-09-14 06:36:12Z bai155 $
  *
  */
 
@@ -61,6 +61,9 @@
 #define EPS_DIN 1.0e-12
 #define EPS_DIP 1.0e-12
 #define unitch 1000.0
+
+int ginterface_getsedtopk(void *model, int b);
+int ginterface_getsedbotk(void *model, int b);
 
 typedef struct {
   int do_mb;                  /* flags */
@@ -151,8 +154,8 @@ void seagrass_spectral_grow_epi_init(eprocess* p)
     int OFFSET_SED = tracers->n;
     int OFFSET_EPI = tracers->n * 2;
 
-    int topk_sed = einterface_getsedtopk(e->model, 0);
-    int botk_sed = einterface_getsedbotk(e->model, 0);
+    int topk_sed = ginterface_getsedtopk(e->model, 0);
+    int botk_sed = ginterface_getsedbotk(e->model, 0);
 
     ws->nsed = abs(topk_sed - botk_sed) + 1;
 

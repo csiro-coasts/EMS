@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: riverflow.c 5943 2018-09-13 04:39:09Z her127 $
+ *  $Id: riverflow.c 6879 2021-07-29 00:43:55Z her127 $
  *
  */
 
@@ -143,10 +143,10 @@ double bf_u1_flow_w(geometry_t *window, window_t *windat,
     cs = open->obc_e2[ee];
     u1_flow_do(window, windat, data, e, cs, open->bot_t[cc]);
     if (windat->riverflow)
-      windat->riverflow[open->obc_e2[ee]] = data->flow / (double)open->no2_e1;
-    if (windat->riverdepth) windat->riverdepth[open->obc_e2[ee]] = data->hc;
+      windat->riverflow[cs] += data->flow / (double)open->no2_e1;
+    if (windat->riverdepth) windat->riverdepth[cs] = data->hc;
   }
-  return (data->v_river[c] * open->dir[ee] / (double)open->no2_e1);
+  return (data->v_river[e] * open->dir[ee] / (double)open->no2_e1);
 }
 
 /* END bf_u1_flow_w()                                                */
@@ -169,7 +169,7 @@ static void u1_flow_do(geometry_t *window,  /* Window geometry       */
   double trsp;
   double flow;
   int zp1;
-  int c, es = window->m2de[e];
+  int c, e1, es = window->m2de[e];
 
   /* Get the depth of the outflow layer using Keulegan (1966),     */
   /* Eqn. 11.16.                                                   */
@@ -207,11 +207,12 @@ static void u1_flow_do(geometry_t *window,  /* Window geometry       */
   /* Calculate river flow profile */
   trsp = 0.0;
   c = cs = window->m2d[c];
+  e1 = es;
   while (c != window->zm1[c]) {
     double eta = windat->eta[cs];
     double botz = window->botz[cs];
     double z1, z0 = max(window->gridz[c], botz);
-    data->v_river[c] = 0.0;
+    data->v_river[e1] = 0.0;
     if (eta < z0) {
       c = window->zm1[c];
       continue;
@@ -222,9 +223,10 @@ static void u1_flow_do(geometry_t *window,  /* Window geometry       */
     sum = 0.0;
     for (z = z0 + dz / 2.0; z < z1; z += dz)
       sum += flow_riverprofile(z-eta, max(data->hc-eta, botz-eta));
-    data->v_river[c] = sum / 10.0;
-    trsp += data->v_river[c] * (z1 - z0) * window->h1au1[es];
+    data->v_river[e1] = sum / 10.0;
+    trsp += data->v_river[e1] * (z1 - z0) * window->h1au1[es];
     c = window->zm1[c];
+    e1 = window->zm1e[e1];
   }
 
   flow = data->flow;
@@ -234,10 +236,17 @@ static void u1_flow_do(geometry_t *window,  /* Window geometry       */
     flow *= (-1.0);
   */
   /* Scale so transport equals specified river flow */
+  /*
   c = cs;
   while (c != window->zm1[c] && trsp) {
     data->v_river[c] *= flow / trsp;
     c = window->zm1[c];
+  }
+  */
+  e1 = es;
+  while (e1 != window->zm1e[e1] && trsp) {
+    data->v_river[e1] *= flow / trsp;
+    e1 = window->zm1e[e1];
   }
 }
 
@@ -266,6 +275,8 @@ void bf_flow_t(master_t *master,  /* Master data */
     d_m = &open_m->datau2;
   f_m = d_m->custdata;
   f_w->flow = f_m->flow;
+  if (windat->riverflow)
+    memset(windat->riverflow, 0, window->szcS * sizeof(double));
 }
 
 /* END bf_flow_t()                                                   */

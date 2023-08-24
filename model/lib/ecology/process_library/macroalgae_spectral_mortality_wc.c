@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: macroalgae_spectral_mortality_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: macroalgae_spectral_mortality_wc.c 7291 2023-02-13 11:28:03Z bai155 $
  *
  */
 
@@ -77,7 +77,7 @@ void macroalgae_spectral_mortality_wc_init(eprocess* p)
     /*
      * wc
      */
-    ws->MA_N_i = e->find_index(tracers, "MA_N_wc", e) ;
+    ws->MA_N_i = e->find_index(tracers, "SMA_N", e) ;
 
     /*
      * tracers

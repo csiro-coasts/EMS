@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: choosedump.c 6731 2021-03-30 00:37:20Z her127 $
+ *  $Id: choosedump.c 6852 2021-07-01 02:15:22Z her127 $
  *
  */
 
@@ -134,7 +134,7 @@ int dump_choose_by_time_p(parameters_t *params, int fid, double t)
   nc_inq_dimlen(fid, ncw_dim_id(fid, "record"), &n);
 
   if (n < 1)
-    hd_quit("dump_choose_by_time: No dumps in input file '%s'!\n",
+    hd_quit("dump_choose_by_time_p: No dumps in input file '%s'!\n",
             params->idumpname);
   memset(timeunits, 0, MAXSTRLEN);
   nc_get_att_text(fid, ncw_var_id(fid, "t"), "units", timeunits);
@@ -167,7 +167,7 @@ int dump_choose_by_time_m(master_t *master, int fid, double t)
   nc_inq_dimlen(fid, ncw_dim_id(fid, "record"), &n);
 
   if (n < 1)
-    hd_quit("dump_choose_by_time: No dumps in input file!\n");
+    hd_quit("dump_choose_by_time_m: No dumps in input file!\n");
   memset(timeunits, 0, MAXSTRLEN);
   nc_get_att_text(fid, ncw_var_id(fid, "t"), "units", timeunits);
   for (i = 0; i < n; ++i) {
@@ -200,7 +200,7 @@ int dump_choose_by_time_mom(master_t *master, int fid, double t)
   nc_inq_dimlen(fid, ncw_dim_id(fid, "time"), &n);
 
   if (n < 1)
-    hd_quit("dump_choose_by_time: No dumps in input file!\n");
+    hd_quit("dump_choose_by_time_mom: No dumps in input file!\n");
   memset(timeunits, 0, MAXSTRLEN);
   nc_get_att_text(fid, ncw_var_id(fid, "Time_bounds"), "units", timeunits);
 

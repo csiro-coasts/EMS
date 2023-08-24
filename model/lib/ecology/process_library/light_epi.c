@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_epi.c 7211 2022-09-16 21:12:57Z bai155 $
  *
  */
 
@@ -26,9 +26,10 @@
 #include "eprocess.h"
 #include "column.h"
 #include "cell.h"
-#include "einterface.h"
 #include "light_epi.h"
 #include "constants.h"
+
+double ginterface_getlighttop(void *model, int b);
 
 #define EPS_KD 1.0e-10
 
@@ -98,7 +99,7 @@ void light_epi_precalc(eprocess* p, void* pp)
     double *cv_lighttop = col->cv[ws->lighttop_i];
 
     if (isnan(cv_lighttop[0]))
-        cv_lighttop[0] = einterface_getlighttop(col->model, col->b) * ws->k_swr_par;
+        cv_lighttop[0] = ginterface_getlighttop(col->model, col->b) * ws->k_swr_par;
     lighttop = cv_lighttop[0];
 
     /*

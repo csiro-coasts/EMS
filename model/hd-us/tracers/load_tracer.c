@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 6747 2021-03-30 00:45:10Z her127 $
+ *  $Id: load_tracer.c 7380 2023-07-26 04:36:43Z her127 $
  *
  */
 
@@ -55,14 +55,33 @@ int value_init_sparse2d_o(master_t *master, double *ret, char *fname,
 int value_init_sparse3d_o(master_t *master, double *ret, char *fname,
 			char *vname, char *i_rule);
 int value_init_sparse2d(master_t *master, double *ret, char *fname, char *vname,
-			char *in_rule, double t, int *rask);
+			char *in_rule, double t, int *rask, timeseries_t *ts);
 int value_init_sparse3d(master_t *master, double *ret, char *fname, char *vname,
-			char *in_rule, double t, int *rask);
+			char *in_rule, double t, int *rask, timeseries_t *ts);
 void decode_indata(char *in, char *fname, char *iname, double *t);
 void interp_data_s(master_t *master, char *fname, char *vname, double *ret, int mode,
 		   int *mask, double t);
 void filter_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n);
 void glider_scaling(parameters_t *params, master_t *master, char *mapname, int tm);
+int find_autotracer_by_name(char *name);
+void copy_autotracer_by_name(char *name, tracer_info_t tr[], int ntr, int *n, 
+			     double **tra, double **trp);
+int set_autotracer_by_name(char *name, tracer_info_t tr[], int ntr, int *n, 
+			   double **tra, double **trp, char *buf);
+void find_autotracer_by_groupkey(char *name, int *tra, int *n);
+int copy_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, int *n);
+int set_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, 
+			       int *n, char *key);
+void update_autotracer(tracer_info_t tr[], int ntr, int *atr, int *mtr);
+void typename(int code, char *name);
+int set_tracer_3d(parameters_t *params, master_t *master, int ntr, 
+		  tracer_info_t *trinfo, double **tr);
+int set_tracer_2d(parameters_t *params, master_t *master, int ntr, 
+		  tracer_info_t *trinfo, double **tr);
+void duplicate_error(char *name, int tn);
+
+extern int NAUTOTR;
+extern tracer_info_t autotracerlist[];
 
 /*------------------------------------------------------------------*/
 /* Loads 3D tracer values                                           */
@@ -362,13 +381,13 @@ void temp_salt_init(parameters_t *params, master_t *master)
     else
       continue;
     
+    ts = hd_ts_read(master, buf, 0);
     if (value_init_sparse3d(master, master->tr_wc[t], buf, 
 			    master->trinfo_3d[t].name, 
 			    master->trinfo_3d[t].i_rule,
-			    schedule->start_time, NULL) == 0)
+			    schedule->start_time, NULL, ts) == 0)
       continue;
 
-    ts = hd_ts_read(master, buf, 0);
     id = ts_get_index(ts, fv_get_varname(buf,
 					 master->trinfo_3d[t].name, buf2));
     if (id >= 0) {
@@ -413,7 +432,6 @@ void load_wc_tracer_step_2d(parameters_t *params, master_t *master,
   prm_set_errfn(hd_silent_warn);
   for (t = 0; t < master->ntrS; ++t) {
     int tm = master->trinfo_2d[t].m;
-
     /*
     sprintf(tag, "TRACER%1.1d.interp_type", tm);
     if (!(prm_read_char(fp, tag, buf2)))
@@ -583,6 +601,12 @@ void load_wc_tracer_name(master_t *master, FILE * fp, char *trname, int dim)
 
 /*-------------------------------------------------------------------*/
 /* Routine to initialise the 2D tracers in the master                */
+/* To add a new autotracer:                                          */
+/* 1) Define the tracer attributes in autotracer.c                   */
+/* 2) Copy the attributes to trinfo_3d when the keyword is invoked   */
+/*    in set_tracer_2d(), assign pointers, and perform any custom    */
+/*    initialisation in this routine.                                */
+/* 3) Assign pointers for the windows in win_data_init().            */
 /*-------------------------------------------------------------------*/
 void init_tracer_2d(parameters_t *params, /* Input parameters data   */
                     master_t *master      /* Master data             */
@@ -590,12 +614,12 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
 {
   int tn;
   geometry_t *geom = master->geom;
-  char buf[MAXSTRLEN];
   tn = 0;
 
-  /* Initialise */
+  /*-----------------------------------------------------------------*/
+  /* Initialise                                                      */
   master->alert_a = master->alert_c = NULL;
-  master->avhrr = master->ghrsst = master->ghrsste = master->shwin = master->layth = NULL;
+  master->avhrr = master->ghrsst = master->ghrsste = master->shwin = master->shinx = master->layth = NULL;
   master->cfl2d = master->cfl3d = master->cour = master->courn = master->lips = master->ahsb = NULL;
   master->mixl = master->steric = NULL;
   master->av = master->rv = master->pv = NULL;
@@ -614,1407 +638,37 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
   master->sederr = master->ecoerr = master->riverflow = master->riverdepth = NULL;
   master->bathy_range_max = master->bathy_range_min = NULL;
   master->bathy_grad_max = master->bathy_grad_min = master->eta_tc = master->eta_inc = NULL;
-  master->cellres = master->equitide =   master->tpxotide = NULL;
+  master->cellres = master->equitide =   master->tpxotide = master->vhreg = NULL;
   master->tpxovelu = master->tpxovelv = master->tpxotranu = master->tpxotranv = NULL;
   master->uat = master->vat = master->meshun = NULL;
   master->carea = master->earea = master->sarea = master->searea = NULL;
+  master->feta = NULL;
 
-  /* Waves */
+  /* Waves                                                           */
   master->ustrcw = master->wave_amp = master->wave_Cd = NULL;
   master->wave_ub = master->wave_period = master->wave_dir = NULL;
   master->wave_Sxy = master->wave_Syx = master->vol_cons = NULL;
   master->wave_Fx = master->wave_Fy = NULL;
   master->wave_ste1 = master->wave_ste2 = NULL;
+  master->wave_P = master->wave_Kb = master->wave_k = NULL;
+  master->wave_fwcapx = master->wave_fwcapy = master->wave_fbrex = master->wave_fbrey = NULL;
+  master->wave_fbotx = master->wave_fboty = master->wave_fsurx = master->wave_fsury = NULL;
+  master->wave_wfdx = master->wave_wfdy = master->wave_wovsx = master->wave_wovsy = NULL;
+  master->wave_frolx = master->wave_froly = NULL;
   master->tau_w1 = master->tau_w2 = master->tau_diss1 = master->tau_diss2 = NULL;
   master->sep = master->bep = master->tfront = NULL;
 
-  /* SWR */
+  /* SWR                                                             */
   master->swr_attn1 = master->swr_tran = NULL;
   master->swr_babs = master->swreg = master->swrms = master->attn_mean = master->tran_mean = NULL;
   if (params->swr_type & SWR_2D) master->swr_attn = NULL;
 
-  /* Assign the 2D pointers.  */
-  sprintf(buf, "%c", '\0');
-  /* CFL time-step diagnostic.  */
-  if (!(params->cfl & NONE)) {
-    master->cfl2d = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "cfl2d");
-    strcpy(master->trinfo_2d[tn].long_name, "2D CFL timestep");
-    strcpy(master->trinfo_2d[tn].units, "s");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = 0;
-    master->cfl3d = master->tr_wcS[tn + 1];
-    strcpy(master->trinfo_2d[tn + 1].name, "cfl3d");
-    strcpy(master->trinfo_2d[tn + 1].long_name, "3D CFL timestep");
-    strcpy(master->trinfo_2d[tn + 1].units, "s");
-    master->trinfo_2d[tn + 1].type = INTER;
-    tr_dataset(buf, &master->trinfo_2d[tn + 1], 0.0);
-    master->trinfo_2d[tn + 1].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn + 1].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn + 1].n = 1;
-    master->cour = master->tr_wcS[tn + 2];
-    strcpy(master->trinfo_2d[tn + 2].name, "courant");
-    strcpy(master->trinfo_2d[tn + 2].long_name, "Courant timestep");
-    strcpy(master->trinfo_2d[tn + 2].units, "s");
-    master->trinfo_2d[tn + 2].type = INTER;
-    tr_dataset(buf, &master->trinfo_2d[tn + 2], 0.0);
-    master->trinfo_2d[tn + 2].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn + 2].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn + 2].n = 1;
-    master->lips = master->tr_wcS[tn + 3];
-    strcpy(master->trinfo_2d[tn + 3].name, "lipschitz");
-    strcpy(master->trinfo_2d[tn + 3].long_name, "Lipschitz timestep");
-    strcpy(master->trinfo_2d[tn + 3].units, "s");
-    master->trinfo_2d[tn + 3].type = INTER;
-    tr_dataset(buf, &master->trinfo_2d[tn + 3], 0.0);
-    master->trinfo_2d[tn + 3].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn + 3].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn + 3].n = 1;
-    master->ahsb = master->tr_wcS[tn + 4];
-    strcpy(master->trinfo_2d[tn + 4].name, "diffstab");
-    strcpy(master->trinfo_2d[tn + 4].long_name, "Horizontal diffusion timestep");
-    strcpy(master->trinfo_2d[tn + 4].units, "s");
-    master->trinfo_2d[tn + 4].type = INTER;
-    tr_dataset(buf, &master->trinfo_2d[tn + 4], 0.0);
-    master->trinfo_2d[tn + 4].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn + 4].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn + 4].n = 1;
-    master->courn = master->tr_wcS[tn + 5];
-    strcpy(master->trinfo_2d[tn + 5].name, "courant_no");
-    strcpy(master->trinfo_2d[tn + 5].long_name, "Courant Number");
-    strcpy(master->trinfo_2d[tn + 5].units, "");
-    master->trinfo_2d[tn + 5].type = INTER;
-    tr_dataset(buf, &master->trinfo_2d[tn + 5], 0.0);
-    master->trinfo_2d[tn + 5].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn + 5].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn + 5].n = 1;
-    tn = 6;
-  }
-  /* Mixed layer depth diagnostic */
-  if (!(params->mixlayer & NONE)) {
-    master->mixl = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "mixed_layer");
-    strcpy(master->trinfo_2d[tn].long_name, "Mixed layer depth");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  /* Steric height diagnostic */
-  if (params->lnm != 0.0) {
-    master->steric = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "steric");
-    strcpy(master->trinfo_2d[tn].long_name, "Steric height");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  /* Vorticity diagnostic */
-  if (params->vorticity & ABSOLUTE) {
-    master->av = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "abs_vor");
-    strcpy(master->trinfo_2d[tn].long_name, "Absolute vorticity");
-    strcpy(master->trinfo_2d[tn].units, "s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->vorticity & RELATIVE) {
-    master->rv = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rel_vor");
-    strcpy(master->trinfo_2d[tn].long_name, "Relative vorticity");
-    strcpy(master->trinfo_2d[tn].units, "s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->vorticity & POTENTIAL) {
-    master->pv = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "pot_vor");
-    strcpy(master->trinfo_2d[tn].long_name, "Potential vorticity");
-    strcpy(master->trinfo_2d[tn].units, "m-1s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->vorticity & TENDENCY) {
-    master->rv_drvdt = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_drvdt");
-    strcpy(master->trinfo_2d[tn].long_name, "RV rate of change tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->rv_nonlin = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_nonlin");
-    strcpy(master->trinfo_2d[tn].long_name, "RV nonlinear tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->rv_beta = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_beta");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "RV planetary vorticity tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->rv_strch = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_strch");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "RV topographic vorticity tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->rv_jebar = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_jebar");
-    strcpy(master->trinfo_2d[tn].long_name, "RV JEBAR tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->rv_wsc = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_wsc");
-    strcpy(master->trinfo_2d[tn].long_name, "RV wind stress curl tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->rv_bsc = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rv_bsc");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "RV bottom stress curl tendency");
-    strcpy(master->trinfo_2d[tn].units, "s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  /* Numbers diagnostic */
-  if (params->numbers & ROSSBY_EX) {
-    master->rossby_ex = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "rossby_external");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "External Rossby radius");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SPEED_2D) {
-    master->speed_2d = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "current_speed_2d");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "Current Speed 2D");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SPEED_SQ) {
-    master->speed_sq = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "speed_sq");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "Bottom Current^2");
-    strcpy(master->trinfo_2d[tn].units, "m2s-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & OBC_PHASE) {
-    master->obc_phase = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "obc_phase");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "OBC phase speed");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & WIND_CD) {
-    master->wind_Cd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wind_Cd");
-    strcpy(master->trinfo_2d[tn].long_name, 
-           "Momentum drag coefficient");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    tn++;
-  }
-  if (params->numbers & CELLRES) {
-    master->cellres = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "cell_resolution");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean Cell Resolution");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->sarea = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "cell_area_sqrt");
-    strcpy(master->trinfo_2d[tn].long_name, "sqrt(cell area)");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->searea = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "edge_area_sqrt");
-    strcpy(master->trinfo_2d[tn].long_name, "sqrt(edge area)");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers1 & CELLAREA) {
-    master->carea = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "cell_area");
-    strcpy(master->trinfo_2d[tn].long_name, "Cell area");
-    strcpy(master->trinfo_2d[tn].units, "m^2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->earea = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "edge_area");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean edge area");
-    strcpy(master->trinfo_2d[tn].units, "m^2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers1 & MESHUN) {
-    master->meshun = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "mesh_uniformity");
-    strcpy(master->trinfo_2d[tn].long_name, "Mesh uniformity index");
-    strcpy(master->trinfo_2d[tn].units, "%");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->waves & TAN_RAD && params->tendf) {
-    master->u1_rad = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "u1_rad");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "u1 radiation stress tendency");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|WAVE|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->u2_rad = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "u2_rad");
-    strcpy(master->trinfo_2d[tn].long_name,
-           "u2 radiation stress tendency");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|WAVE|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->means & ETA_M) {
-    master->etam = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "eta_mean");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean elevation");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    memset(master->etam, 0, geom->szcS * sizeof(double));
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->means & WIND) {
-    master->w1m = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "w1mean");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean eastward wind stress");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    memset(master->w1m, 0, geom->sgsizS * sizeof(double));
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->w2m = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "w2mean");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean northward wind stress");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    memset(master->w2m, 0, geom->sgsizS * sizeof(double));
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->means & VEL2D) {
-    master->u1am = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "u1av_mean");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean 2D east velocity ");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    strcpy(master->trinfo_2d[tn].vector_name, "Mean 2D current");
-    strcpy(master->trinfo_2d[tn].vector_components, "u1av_mean u2av_mean");
-    memset(master->u1am, 0, geom->sgsizS * sizeof(double));
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->u2am = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "u2av_mean");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean 2D north velocity");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    strcpy(master->trinfo_2d[tn].vector_name, "Mean 2D current");
-    strcpy(master->trinfo_2d[tn].vector_components, "u1av_mean u2av_mean");
-    memset(master->u2am, 0, geom->sgsizS * sizeof(double));
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->means & MTRA2D) {
-    char key[MAXSTRLEN];
-    master->tram = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tracer_mean");
-    sprintf(key, "Mean %s", params->means_tra);
-    strcpy(master->trinfo_2d[tn].long_name, key);
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    memset(master->tram, 0, geom->sgsizS * sizeof(double));
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-
-  if (params->heatflux & ADVANCED) {
-    master->nhfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "nhf");
-    strcpy(master->trinfo_2d[tn].long_name, "Net heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->swrd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr");
-    strcpy(master->trinfo_2d[tn].long_name, "Short wave radiation");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-
-    master->lwrd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "lwr");
-    strcpy(master->trinfo_2d[tn].long_name, "Long wave radiation");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->lhfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "lhf");
-    strcpy(master->trinfo_2d[tn].long_name, "Latent heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->shfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "shf");
-    strcpy(master->trinfo_2d[tn].long_name, "Sensible heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-
-  if (params->heatflux & INVERSE) {
-    master->nhfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "nhf");
-    strcpy(master->trinfo_2d[tn].long_name, "Net heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->heatflux & (COMP_HEAT | COMP_HEAT_MOM)) {
-    master->nhfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "nhf");
-    strcpy(master->trinfo_2d[tn].long_name, "Net heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->heatflux & (COMP_HEAT | COMP_HEAT_MOM | COMP_HEAT_NONE)) {
-    if (params->heatflux & (COMP_HEAT_MOM | COMP_HEAT_NONE)) {
-      /* See logic in heatflux.c:comp_heat_mom */
-      master->swr = master->tr_wcS[tn];
-    } else 
-      master->swrd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr");
-    strcpy(master->trinfo_2d[tn].long_name, "Short wave radiation");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->lwrn = tn;
-    strcpy(master->trinfo_2d[tn].name, "lwr");
-    strcpy(master->trinfo_2d[tn].long_name, "Long wave radiation");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->lhfn = tn;
-    strcpy(master->trinfo_2d[tn].name, "lhf");
-    strcpy(master->trinfo_2d[tn].long_name, "Latent heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->shfn = tn;
-    strcpy(master->trinfo_2d[tn].name, "shf");
-    strcpy(master->trinfo_2d[tn].long_name, "Sensible heat flux");
-    strcpy(master->trinfo_2d[tn].units, "W m-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    if (params->heatflux & COMP_HEAT_NONE) {
-      if (strlen(params->precip)) {
-	master->precipn = tn;
-	strcpy(master->trinfo_2d[tn].name, "precip");
-	strcpy(master->trinfo_2d[tn].long_name, "Precipitation rate");
-	strcpy(master->trinfo_2d[tn].units, "ms-1");
-	master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-	tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-	master->trinfo_2d[tn].valid_range_wc[0] = 0;
-	master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-	master->trinfo_2d[tn].n = tn;
-	tn++;
-      }
-      if (strlen(params->evap)) {
-	master->evapn = tn;
-	strcpy(master->trinfo_2d[tn].name, "evap");
-	strcpy(master->trinfo_2d[tn].long_name, "Evaporation rate");
-	strcpy(master->trinfo_2d[tn].units, "ms-1");
-	master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-	tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-	master->trinfo_2d[tn].valid_range_wc[0] = 0;
-	master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-	master->trinfo_2d[tn].n = tn;
-	tn++;
-      }
-    }
-  }
-  if (params->heatflux & NET_HEAT) {
-    master->nhfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "nhf");
-    strcpy(master->trinfo_2d[tn].long_name, "Net heat flux");
-    strcpy(master->trinfo_2d[tn].units, "Wm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1000;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->swrd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr");
-    strcpy(master->trinfo_2d[tn].long_name, "Short wave radiation");
-    strcpy(master->trinfo_2d[tn].units, "Wm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->saltflux & (ADVANCED | BULK | ORIGINAL)) {
-    master->nsfd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "nsf");
-    strcpy(master->trinfo_2d[tn].long_name, "Net salt flux");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->saltflux & (ADVANCED | ORIGINAL)) {
-    master->evapn = tn;
-    strcpy(master->trinfo_2d[tn].name, "evap");
-    strcpy(master->trinfo_2d[tn].long_name, "Evaporation rate");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->precipn = tn;
-    strcpy(master->trinfo_2d[tn].name, "precip");
-    strcpy(master->trinfo_2d[tn].long_name, "Precipitation rate");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->waves & BOT_STR) {
-    master->wave_Cd = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_Cd");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave enhanced bottom drag");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->waves & TAN_RAD) {
-    master->wave_Sxy = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_Sxy");
-    strcpy(master->trinfo_2d[tn].long_name, "Radiation stress, x tangential");
-    strcpy(master->trinfo_2d[tn].units, "m2s-2");
-    master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_Syx = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_Syx");
-    strcpy(master->trinfo_2d[tn].long_name, "Radiation stress, y tangential");
-    strcpy(master->trinfo_2d[tn].units, "m2s-2");
-    master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->waves & WAVE_FOR) {
-    master->wave_Fx = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_Fx");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave-induced force along e1");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_Fy = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_Fy");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave-induced force along e2");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->waves & (STOKES|SPECTRAL)) {
-    master->wave_ste1 = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_ste1");
-    strcpy(master->trinfo_2d[tn].long_name, "Stokes velocity along e1");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -100;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_ste2 = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_ste2");
-    strcpy(master->trinfo_2d[tn].long_name, "Stokes velocity along e2");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -100;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    if (params->waves & STOKES_DRIFT) {
-      master->tau_w1 = master->tr_wcS[tn];
-      strcpy(master->trinfo_2d[tn].name, "tau_w1");
-      strcpy(master->trinfo_2d[tn].long_name, "Wave supported wind stress e1 direction");
-      strcpy(master->trinfo_2d[tn].units, "Nm-2");
-      master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-      tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-      master->trinfo_2d[tn].valid_range_wc[0] = -100;
-      master->trinfo_2d[tn].valid_range_wc[1] = 100;
-      master->trinfo_2d[tn].n = tn;
-      tn++;
-      master->tau_w2 = master->tr_wcS[tn];
-      strcpy(master->trinfo_2d[tn].name, "tau_w2");
-      strcpy(master->trinfo_2d[tn].long_name, "Wave supported wind stress e2 direction");
-      strcpy(master->trinfo_2d[tn].units, "Nm-2");
-      master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-      tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-      master->trinfo_2d[tn].valid_range_wc[0] = -100;
-      master->trinfo_2d[tn].valid_range_wc[1] = 100;
-      master->trinfo_2d[tn].n = tn;
-      tn++;
-      master->tau_diss1 = master->tr_wcS[tn];
-      strcpy(master->trinfo_2d[tn].name, "tau_diss1");
-      strcpy(master->trinfo_2d[tn].long_name, "Wave to ocean stress e1 direction");
-      strcpy(master->trinfo_2d[tn].units, "Nm-2");
-      master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-      tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-      master->trinfo_2d[tn].valid_range_wc[0] = -100;
-      master->trinfo_2d[tn].valid_range_wc[1] = 100;
-      master->trinfo_2d[tn].n = tn;
-      tn++;
-      master->tau_diss2 = master->tr_wcS[tn];
-      strcpy(master->trinfo_2d[tn].name, "tau_diss2");
-      strcpy(master->trinfo_2d[tn].long_name, "Wave to ocean stress e2 direction");
-      strcpy(master->trinfo_2d[tn].units, "Nm-2");
-      master->trinfo_2d[tn].type = INTER|WAVE|FORCING;
-      tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-      master->trinfo_2d[tn].valid_range_wc[0] = -100;
-      master->trinfo_2d[tn].valid_range_wc[1] = 100;
-      master->trinfo_2d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->orbital) {
-    master->ustrcw = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "ustrcw");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave current friction");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].type = INTER|WAVE|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_ub = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_ub");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave orbital velocity");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|WAVE|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_period = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_period");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave period");
-    strcpy(master->trinfo_2d[tn].units, "s");
-    master->trinfo_2d[tn].type = INTER|WAVE|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_dir = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_dir");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave direction");
-    strcpy(master->trinfo_2d[tn].units, "deg");
-    master->trinfo_2d[tn].type = INTER|WAVE|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->wave_amp = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wave_amp");
-    strcpy(master->trinfo_2d[tn].long_name, "Wave amplitude");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].type = INTER|WAVE|PROGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->etarlx & (RELAX|ALERT|BOUNDARY)) {
-    /*master->eta_rlx->val1 = master->tr_wcS[tn];*/
-    strcpy(master->trinfo_2d[tn].name, "oeta");
-    strcpy(master->trinfo_2d[tn].long_name, "Relaxation elevation");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].fill_value_wc = 0.0;
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].diagn = 1;
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e35;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e35;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->etarlx & ETA_TPXO) {
-    /*
-    strcpy(master->trinfo_2d[tn].name, "oeta");
-    strcpy(master->trinfo_2d[tn].long_name, "Relaxation elevation");
-    strcpy(master->trinfo_2d[tn].units, "metre");
-    master->trinfo_2d[tn].fill_value_wc = 0.0;
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].diagn = 1;
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e35;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e35;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    */
-    master->eta_tc = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "eta_tc");
-    strcpy(master->trinfo_2d[tn].long_name, "Relaxation eta time constant");
-    strcpy(master->trinfo_2d[tn].units, "days");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  /* AVHRR SST */
-  if (params->avhrr) {
-    master->avhrr = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "AVHRR");
-    strcpy(master->trinfo_2d[tn].long_name, "AVHRR SST");
-    strcpy(master->trinfo_2d[tn].units, "degrees C");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    strcpy(master->trinfo_2d[tn].reset_file, "avhrr_list.txt(AVHRR=sst)");
-    strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  /* GHRSST SST */
-  if (params->ghrsst) {
-    master->ghrsst = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "ghrsst");
-    strcpy(master->trinfo_2d[tn].long_name, "GHRSST L4 SST");
-    strcpy(master->trinfo_2d[tn].units, "degrees C");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
-    strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->ghrsste = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "ghrsst_error");
-    strcpy(master->trinfo_2d[tn].long_name, "GHRSST L4 SST error");
-    strcpy(master->trinfo_2d[tn].units, "degrees C");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    strcpy(master->trinfo_2d[tn].reset_file, params->ghrsst_path);
-    strcpy(master->trinfo_2d[tn].reset_dt, "1 day");
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->show_win) {
-    master->shwin = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "windows");
-    strcpy(master->trinfo_2d[tn].long_name, "window partitions");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (strlen(params->bathystats)) {
-    master->bathy_range_min = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "bathy_range_min");
-    strcpy(master->trinfo_2d[tn].long_name, "Bathymetry deviation above");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->bathy_range_max = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "bathy_range_max");
-    strcpy(master->trinfo_2d[tn].long_name, "Bathymetry deviation below");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->bathy_grad_min = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "bathy_grad");
-    strcpy(master->trinfo_2d[tn].long_name, "Bathymetry gradient");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->bathy_grad_max = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "bathy_grad_max");
-    strcpy(master->trinfo_2d[tn].long_name, "Bathymetry maximum gradient deviation");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (contains_token(params->alert, "ACTIVE") != NULL) {
-    master->alert_a = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "alerts_actual");
-    strcpy(master->trinfo_2d[tn].long_name, "alerts; actual");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->alert_c = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "alerts_cumulative");
-    strcpy(master->trinfo_2d[tn].long_name, "alerts; cumulative");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e36;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->u1vhin = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "U1VH0");
-    strcpy(master->trinfo_2d[tn].long_name, "Initial e1 horizontal viscosity");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e36;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->u2vhin = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "U2VH0");
-    strcpy(master->trinfo_2d[tn].long_name, "Initial e2 horizontal viscosity");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e36;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->fillf & (WEIGHTED|MONOTONIC) || (params->tmode & SP_FFSL)) {
-    master->vol_cons = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "vol_cons");
-    strcpy(master->trinfo_2d[tn].long_name, "Volume conservation");
-    strcpy(master->trinfo_2d[tn].units, "%");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SOUND) {
-    master->sonic = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "sonic_depth");
-    strcpy(master->trinfo_2d[tn].long_name, "Sonic depth");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 100;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & EKPUMP) {
-    master->sep = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "sep");
-    strcpy(master->trinfo_2d[tn].long_name, "Surface Ekman pumping");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->bep = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "bep");
-    strcpy(master->trinfo_2d[tn].long_name, "Bottom Ekman pumping");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & TIDEFR) {
-    master->tfront = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tide_front");
-    strcpy(master->trinfo_2d[tn].long_name, "Tide front");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & WET_CELLS) {
-    master->wetcell = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "wet_cells");
-    strcpy(master->trinfo_2d[tn].long_name, "Wet cell diagnostic");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SURF_LAYER) {
-    master->surfz = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "surf_layer");
-    strcpy(master->trinfo_2d[tn].long_name, "k index of surface layer");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SLOPE) {
-    master->slope_x = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "surf_slope");
-    strcpy(master->trinfo_2d[tn].long_name, "Mean surface slope");
-    strcpy(master->trinfo_2d[tn].units, "m/m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & BOTSTRESS) {
-    master->tau_be1 = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tau_be1");
-    strcpy(master->trinfo_2d[tn].long_name, "Bottom stress in east direction");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    strcpy(master->trinfo_2d[tn].vector_name, "Bottom stress");
-    strcpy(master->trinfo_2d[tn].vector_components, "tau_be1 tau_be2");
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->tau_be2 = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tau_be2");
-    strcpy(master->trinfo_2d[tn].long_name, "Bottom stress in north direction");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    strcpy(master->trinfo_2d[tn].vector_name, "Bottom stress");
-    strcpy(master->trinfo_2d[tn].vector_components, "tau_be1 tau_be2");
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->tau_bm = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tau_bm");
-    strcpy(master->trinfo_2d[tn].long_name, "Bottom stress magnitude");
-    strcpy(master->trinfo_2d[tn].units, "Nm-2");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e4;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (strlen(params->swr_babs)) {
-    master->swr_babs = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr_bot_absorb");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR bottom absorption");
-    strcpy(master->trinfo_2d[tn].units, "");
-    trn_dataset(params->swr_babs, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 1.0);
-    /*tr_dataset(params->swr_babs, &master->trinfo_2d[tn], 1.0);*/
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->swr_type & SWR_2D && strlen(params->swr_attn)) {
-    master->swr_attn = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr_attenuation");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR attenuation");
-    strcpy(master->trinfo_2d[tn].units, "m-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    /*tr_dataset(params->swr_attn, &master->trinfo_2d[tn], 0.073);*/
-    trf_dataset(params->swr_attn, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.073);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (strlen(params->swr_attn1)) {
-    master->swr_attn1 = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr_deep_attenuation");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR deep attenuation");
-    strcpy(master->trinfo_2d[tn].units, "m-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    tr_dataset(params->swr_attn1, &master->trinfo_2d[tn], 0.073);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (strlen(params->swr_tran)) {
-    master->swr_tran = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swr_transmission");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR transmission");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    /*tr_dataset(params->swr_tran, &master->trinfo_2d[tn], 0.26);*/
-    trf_dataset(params->swr_tran, master->trinfo_2d, tn, params->ntrS, params->atrS, master->tr_wcS, 0.26);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
- if (strlen(params->swr_regions)) {
-    master->swreg = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swreg");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR param estimation regions");
-    strcpy(master->trinfo_2d[tn].units, "");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->swrms = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "swrms");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR param estimation RMSE");
-    strcpy(master->trinfo_2d[tn].units, "degrees C");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->swrms = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "attn_mean");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR mean attenuation");
-    strcpy(master->trinfo_2d[tn].units, "m-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->swrms = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tran_mean");
-    strcpy(master->trinfo_2d[tn].long_name, "SWR mean transmission");
-    strcpy(master->trinfo_2d[tn].units, " ");
-    master->trinfo_2d[tn].type = INTER|HYDRO|PARAMETER;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->riverflow) {
-    master->riverflow = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "flow");
-    strcpy(master->trinfo_2d[tn].long_name, "River flow");
-    strcpy(master->trinfo_2d[tn].units, "m3s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    if (params->riverflow == 2) {
-      master->riverdepth = master->tr_wcS[tn];
-      strcpy(master->trinfo_2d[tn].name, "flow_depth");
-      strcpy(master->trinfo_2d[tn].long_name, "River flow depth");
-      strcpy(master->trinfo_2d[tn].units, "m");
-      master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-      tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-      master->trinfo_2d[tn].valid_range_wc[0] = 0;
-      master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_2d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->tidep) {
-    master->equitide = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "equitide");
-    strcpy(master->trinfo_2d[tn].long_name, "Equilibrium tide");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers1 & TPXO) {
-    master->tpxotide = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tpxotide");
-    strcpy(master->trinfo_2d[tn].long_name, "TPXO tide");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers1 & TPXOV) {
-    master->tpxovelu = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tpxou");
-    strcpy(master->trinfo_2d[tn].long_name, "TPXO x velocity");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->tpxovelv = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tpxov");
-    strcpy(master->trinfo_2d[tn].long_name, "TPXO v velocity");
-    strcpy(master->trinfo_2d[tn].units, "ms-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers1 & TPXOT) {
-    master->tpxotranu = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tpxoU");
-    strcpy(master->trinfo_2d[tn].long_name, "TPXO x transport");
-    strcpy(master->trinfo_2d[tn].units, "m2s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->tpxotranv = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "tpxoV");
-    strcpy(master->trinfo_2d[tn].long_name, "TPXO v transport");
-    strcpy(master->trinfo_2d[tn].units, "m2s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers1 & TRAN2D) {
-    master->uat = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "UAT");
-    strcpy(master->trinfo_2d[tn].long_name, "Eastward 2D transport");
-    strcpy(master->trinfo_2d[tn].units, "m2s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->vat = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "VAT");
-    strcpy(master->trinfo_2d[tn].long_name, "Northward 2D transport");
-    strcpy(master->trinfo_2d[tn].units, "m2s-1");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (params->decf & DEC_ETA) {
-    master->decv1 = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "decorr_e1");
-    strcpy(master->trinfo_2d[tn].long_name, "Decorrelation length scale");
-    strcpy(master->trinfo_2d[tn].units, params->decs);
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  if (strlen(params->imp2df)) {
-    strcpy(master->trinfo_2d[tn].name, params->imp2dn);
-    strcpy(master->trinfo_2d[tn].long_name, params->imp2dn);
-    strcpy(master->trinfo_2d[tn].units, params->imp2du);
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    strcpy(master->trinfo_2d[tn].i_rule, "nn_sibson");
-    if (strlen(params->imp2dt))
-      sprintf(master->trinfo_2d[tn].data, "[data=%s(t=%s)]", params->imp2df, 
-	      params->imp2dt);
-    else
-      sprintf(master->trinfo_2d[tn].data, "[data=%s]", params->imp2df);
-    tn++;
-  }
-  if (params->etarlx & ETA_ADPT) {
-    master->eta_tc = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "eta_tc");
-    strcpy(master->trinfo_2d[tn].long_name, "Relaxation eta time constant");
-    strcpy(master->trinfo_2d[tn].units, "days");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = 0;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-    master->eta_inc = master->tr_wcS[tn];
-    strcpy(master->trinfo_2d[tn].name, "eta_inc");
-    strcpy(master->trinfo_2d[tn].long_name, "Relaxation eta increment");
-    strcpy(master->trinfo_2d[tn].units, "m");
-    master->trinfo_2d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_2d[tn], 0.0);
-    master->trinfo_2d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_2d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_2d[tn].n = tn;
-    tn++;
-  }
-  /* Sediment error maps */
+  /*-----------------------------------------------------------------*/
+  /* Assign the automtically generated 2D pointers and set up the    */
+  /* tracer_info structure. If any of these tracers have been        */
+  /* explicitly defined in the input parameter file, then continue.  */
+  tn = set_tracer_2d(params, master, master->ntrS, master->trinfo_2d, master->tr_wcS);
+  /* Sediment error maps                                             */
 #if defined(HAVE_SEDIMENT_MODULE)
   if (params->do_sed) {
     master->sederr = master->tr_wcS[tn];
@@ -2027,12 +681,12 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     memset(master->sederr, 0, geom->sgsizS * sizeof(double));
     master->trinfo_2d[tn].n = tn;
     tn++;
-    /* Set up sediment tracers if required */
+    /* Set up sediment tracers if required                           */
     tn = sediment_autotracer_2d(params->prmfd, params->do_sed, params->sed_vars, 
 				params->sed_defs, master->trinfo_2d, master->ntrS, tn);
   }
 #endif
-  /* Ecology error maps */
+  /* Ecology error maps                                              */
 #if defined(HAVE_ECOLOGY_MODULE)
   if (params->do_eco) {
     master->ecoerr = master->tr_wcS[tn];
@@ -2045,12 +699,13 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     memset(master->ecoerr, 0, geom->sgsizS * sizeof(double));
     master->trinfo_2d[tn].n = tn;
     tn++;
-    /* Set up sediment tracers if required */
+    /* Set up sediment tracers if required                           */
     tn = ecology_autotracer_2d(params->prmfd, params->do_eco, params->eco_vars, 
 			       params->eco_defs, params->pre_eco, 
 			       master->trinfo_2d, master->ntrS, tn);
   }
 #endif
+
 }
 
 /* END init_tracer_2d()                                              */
@@ -2094,12 +749,23 @@ void init_tracer_sed(parameters_t *params, /* Input parameters data  */
 
 }
 
-/* END init_tracer_sed()                                              */
+/* END init_tracer_sed()                                             */
 /*-------------------------------------------------------------------*/
 
 
 /*-------------------------------------------------------------------*/
-/* Routine to initialise the 3D tracers in the master                */
+/* Routine to initialise the 3D tracers in the master.               */
+/* Note: 3D tracers are first defined in params->trinfo_3d in the    */
+/* routine create_tracer_3d(), copied to master->trinfo_3d in        */
+/* hd_init(), then pointers are assigned here.                       */
+/* To add a new autotracer:                                          */
+/* 1) Define the tracer attributes in autotracer.c                   */
+/* 2) Copy the attributes to trinfo_3d when the keyword is invoked   */
+/*    in set_tracer_3d(). Note; capability exists for this routine   */
+/*    to assign pointers, but we don't use this here.                */
+/* 3) Assign ponters to the tracer and define any custom             */
+/*    initialisation in this routine.                                */
+/* 4) Assign pointers for the windows in win_data_build().           */
 /*-------------------------------------------------------------------*/
 void init_tracer_3d(parameters_t *params, /* Input parameters data   */
                     master_t *master      /* Master data             */
@@ -2107,26 +773,30 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
 {
   int n, tn;
   geometry_t *geom = master->sgrid;
-  char buf[MAXSTRLEN];
+  char buf[MAXSTRLEN], name[MAXSTRLEN];
   if (geom == NULL) geom = master->geom;
 
-  /* Initialise pointers */
+  /*-----------------------------------------------------------------*/
+  /* Initialise pointers                                             */
   master->sal = master->temp = NULL;
   master->tke = master->diss = master->L = master->omega = NULL;
   master->Q2 = master->Q2L = master->Kq = master->sdc = NULL;
   master->u1m = master->u2m = master->wm = master->Kzm = NULL;
-  master->fluxe1 = master->fluxe2 = master->tempm = master->saltm = master->tram = NULL;
-  master->fluxw = master->fluxkz = NULL;
+  master->fluxe1 = master->fluxe2 = master->tempm = master->saltm = NULL;
+  master->tram = master->fluxw = master->fluxkz = NULL;
   master->brunt = master->int_wave = master->rich_gr = master->rich_fl = NULL;
   master->froude = master->reynolds = master->rossby_in = master->sound = NULL;
   master->shear_v = master->b_prod = master->s_prod = master->speed_3d = NULL;
-  master->otemp = master->osalt = master->perc = master->fltr = master->agetr = NULL;
+  master->otemp = master->osalt = master->perc = NULL;
+  master->fltr = master->agetr = NULL;
   master->rtemp = master->rsalt = master->schan = master->sigma_t = NULL;
   master->ptconc = master->energy = master->vcorr = master->acorr = NULL;
-  master->dum1 = master->dum2 = master->dum3 = master->kenergy = master->riversalt = NULL;
-  master->regionid = master->regres = master->Vi = master->reefe1 = master->reefe2 = NULL;
+  master->dum1 = master->dum2 = master->dum3 = master->kenergy = NULL;
+  master->riversalt = master->regionid = master->regres = NULL;
+  master->Vi = master->reefe1 = master->reefe2 = NULL;
   master->temp_tc = master->salt_tc = master->unit = master->mono = NULL;
   master->wave_stke1 = master->wave_stke2 = NULL;
+  master->fsalt = master->ftemp = master->fvelu = master->fvelv = NULL;
   if (params->swr_type & SWR_3D) master->swr_attn = NULL;
   master->glider = master->nprof = master->u1vhc = NULL;
   master->volcont = master->centi = NULL;
@@ -2142,2129 +812,323 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
   }
 
   /*-----------------------------------------------------------------*/
-  /* Assign the water column tracer pointers to any tracers defined */
-  /* in the input parameter file.  */
+  /* Assign the water column tracer pointers to any tracers defined  */
+  /* in the input parameter file.                                    */
   for (tn = 0; tn < master->ntr; tn++) {
-    if (strcmp("salt", master->trinfo_3d[tn].name) == 0) {
+    strcpy(name, master->trinfo_3d[tn].name);
+
+    if (strcmp("salt", name) == 0) {
       master->sal = master->tr_wc[tn];
       master->sno = tn;
     }
-    else if (strcmp("temp", master->trinfo_3d[tn].name) == 0) {
+    else if (strcmp("temp", name) == 0) {
       master->temp = master->tr_wc[tn];
       master->tno = tn;
     }
-    else if (strcmp("tke", master->trinfo_3d[tn].name) == 0) {
+    else if (strcmp("tke", name) == 0) {
       master->tke = master->tr_wc[tn];
       master->trinfo_3d[tn].diffuse = 0;
-    } else if (strcmp("diss", master->trinfo_3d[tn].name) == 0) {
+    } else if (strcmp("diss", name) == 0) {
       master->diss = master->tr_wc[tn];
       master->trinfo_3d[tn].diffuse = 0;
-    } else if (strcmp("omega", master->trinfo_3d[tn].name) == 0) {
+    } else if (strcmp("omega", name) == 0) {
       master->omega = master->tr_wc[tn];
       master->trinfo_3d[tn].diffuse = 0;
-    } else if (strcmp("tki", master->trinfo_3d[tn].name) == 0) {
+    } else if (strcmp("tki", name) == 0) {
       master->Q2 = master->tr_wc[tn];
       master->trinfo_3d[tn].diffuse = 0;
-    } else if (strcmp("tki_l", master->trinfo_3d[tn].name) == 0) {
-      master->trinfo_3d[tn].diffuse = 0;
+    } else if (strcmp("tki_l", name) == 0) {
       master->Q2L = master->tr_wc[tn];
-    } else if (strcmp("Kq", master->trinfo_3d[tn].name) == 0) {
+      master->trinfo_3d[tn].diffuse = 0;
+    } else if (strcmp("Kq", name) == 0) {
       master->Kq = master->tr_wc[tn];
       master->trinfo_3d[tn].advect = 0;
       master->trinfo_3d[tn].diffuse = 0;
       master->trinfo_3d[tn].diagn = 0;
-    } else if (strcmp("lscale", master->trinfo_3d[tn].name) == 0) {
+    } else if (strcmp("lscale", name) == 0) {
       master->L = master->tr_wc[tn];
       master->trinfo_3d[tn].advect = 0;
       master->trinfo_3d[tn].diffuse = 0;
       master->trinfo_3d[tn].diagn = 0;
-    } else if (strcmp("u1mean", master->trinfo_3d[tn].name) == 0)
+    } else if (strcmp("u1mean", name) == 0) {
       master->u1m = master->tr_wc[tn];
-    else if (strcmp("u2mean", master->trinfo_3d[tn].name) == 0)
+      memset(master->u1m, 0, geom->sgsiz * sizeof(double));
+    } else if (strcmp("u2mean", name) == 0) {
       master->u2m = master->tr_wc[tn];
-    else if (strcmp("wmean", master->trinfo_3d[tn].name) == 0)
+      memset(master->u2m, 0, geom->sgsiz * sizeof(double));
+    } else if (strcmp("wmean", name) == 0) {
       master->wm = master->tr_wc[tn];
-    else if (strcmp("temp_mean", master->trinfo_3d[tn].name) == 0)
+      memset(master->wm, 0, geom->sgsiz * sizeof(double));
+    } else if (strcmp("temp_mean", name) == 0) {
       master->tempm = master->tr_wc[tn];
-    else if (strcmp("salt_mean", master->trinfo_3d[tn].name) == 0)
+      memset(master->tempm, 0, geom->sgsiz * sizeof(double));
+    } else if (strcmp("salt_mean", name) == 0) {
       master->saltm = master->tr_wc[tn];
-    else if (strcmp("tracer_mean", master->trinfo_3d[tn].name) == 0)
+      memset(master->saltm, 0, geom->sgsiz * sizeof(double));
+    } else if (strcmp("tracer_mean", name) == 0) {
       master->tram = master->tr_wc[tn];
-    else if (strcmp("Kzmean", master->trinfo_3d[tn].name) == 0)
+      memset(master->tram, 0, geom->sgsiz * sizeof(double));
+      sprintf(buf, "Mean %s", params->means_tra);
+      strcpy(master->trinfo_3d[tn].long_name, buf);
+    } else if (strcmp("Kzmean", name) == 0) {
       master->Kzm = master->tr_wc[tn];
-    else if (strcmp("flux_e1", master->trinfo_3d[tn].name) == 0)
+      memset(master->Kzm, 0, geom->sgsiz * sizeof(double));
+    } else if (strcmp("flux_e1", name) == 0) {
       master->fluxe1 = master->tr_wc[tn];
-    else if (strcmp("flux_e2", master->trinfo_3d[tn].name) == 0)
+      sprintf(master->trinfo_3d[tn].long_name, "Advective flux through face %d", 
+	      params->trfd1);
+    } else if (strcmp("flux_e2", name) == 0) {
       master->fluxe2 = master->tr_wc[tn];
-    else if (strcmp("flux_w", master->trinfo_3d[tn].name) == 0)
+      sprintf(master->trinfo_3d[tn].long_name, "Advective flux through face %d", 
+	      params->trfd2);
+    } else if (strcmp("flux_w", name) == 0)
       master->fluxw = master->tr_wc[tn];
-    else if (strcmp("flux_kz", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("flux_kz", name) == 0)
       master->fluxkz = master->tr_wc[tn];
-    else if (strcmp("flush", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("flush", name) == 0)
       master->fltr = master->tr_wc[tn];
-    else if (strcmp("age", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("age", name) == 0)
       master->agetr = master->tr_wc[tn];
-    else if (strcmp("smagorinsky", master->trinfo_3d[tn].name) == 0) {
+    else if (strcmp("smagorinsky", name) == 0) {
       master->sdc = master->tr_wc[tn];
       master->trinfo_3d[tn].advect = 0;
       master->trinfo_3d[tn].diffuse = 0;
       master->trinfo_3d[tn].diagn = 0;
     }
-    else if (strcmp("brunt_vaisala", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("brunt_vaisala", name) == 0)
       master->brunt = master->tr_wc[tn];
-    else if (strcmp("int_wave_speed", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("int_wave_speed", name) == 0)
       master->int_wave = master->tr_wc[tn];
-    else if (strcmp("richardson_gr", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("richardson_gr", name) == 0)
       master->rich_gr = master->tr_wc[tn];
-    else if (strcmp("richardson_fl", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("richardson_fl", name) == 0)
       master->rich_fl = master->tr_wc[tn];
-    else if (strcmp("reynolds", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("reynolds", name) == 0)
       master->reynolds = master->tr_wc[tn];
-    else if (strcmp("froude", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("froude", name) == 0)
       master->froude = master->tr_wc[tn];
-    else if (strcmp("sigma_t", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("sigma_t", name) == 0)
       master->sigma_t = master->tr_wc[tn];
-    else if (strcmp("energy", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("energy", name) == 0)
       master->energy = master->tr_wc[tn];
-    else if (strcmp("kenergy", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("kenergy", name) == 0)
       master->kenergy = master->tr_wc[tn];
-    else if (strcmp("ptconc", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("ptconc", name) == 0)
       master->ptconc = master->tr_wc[tn];
-    else if (strcmp("sound", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("sound", name) == 0)
       master->sound = master->tr_wc[tn];
-    else if (strcmp("sound_channel", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("sound_channel", name) == 0)
       master->schan = master->tr_wc[tn];
-    else if (strcmp("shear_vert", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("shear_vert", name) == 0)
       master->shear_v = master->tr_wc[tn];
-    else if (strcmp("buoy_prod", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("buoy_prod", name) == 0)
       master->b_prod = master->tr_wc[tn];
-    else if (strcmp("shear_prod", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("shear_prod", name) == 0)
       master->s_prod = master->tr_wc[tn];
-    else if (strcmp("rossby_in", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("rossby_in", name) == 0)
       master->rossby_in = master->tr_wc[tn];
-    else if (strcmp("current_speed_3d", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("current_speed_3d", name) == 0)
       master->speed_3d = master->tr_wc[tn];
-    else if (strcmp("otemp", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("otemp", name) == 0) {
       master->otemp = master->tr_wc[tn];
-    else if (strcmp("osalt", master->trinfo_3d[tn].name) == 0)
+      if (strlen(params->odata)) {
+	if (params->save_force & ROAM)
+	  sprintf(buf, "%s(otemp=temp)", params->tdata);
+	else
+	  sprintf(buf, "%s", params->odata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
+      }
+    } else if (strcmp("osalt", name) == 0) {
       master->osalt = master->tr_wc[tn];
-    else if (strcmp("rtemp", master->trinfo_3d[tn].name) == 0)
+      if (strlen(params->odata)) {
+	if (params->save_force & ROAM)
+	  sprintf(buf, "%s(osalt=salt)", params->sdata);
+	else
+	  sprintf(buf, "%s", params->odata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
+      }
+    } else if (strcmp("rtemp", name) == 0) {
       master->rtemp = master->tr_wc[tn];
-    else if (strcmp("rsalt", master->trinfo_3d[tn].name) == 0)
+      if (strlen(params->tdata)) {
+	char buf1[MAXSTRLEN];
+	if (params->save_force & ROAM) {
+	  sprintf(buf, "%s(rtemp=temp)", params->tdata);
+	  strcpy(buf1, "1 day");
+	}
+	else {
+	  sprintf(buf, "%s", params->tdata);
+	  strcpy(buf1, "1 second");
+	}
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, buf1);
+      }
+    } else if (strcmp("rsalt", name) == 0) {
       master->rsalt = master->tr_wc[tn];
-    else if (strcmp("temp_tc", master->trinfo_3d[tn].name) == 0)
+      if (strlen(params->sdata)) {
+	char buf1[MAXSTRLEN];
+	if (params->save_force & ROAM) {
+	  sprintf(buf, "%s(rsalt=salt)", params->sdata);
+	  strcpy(buf1, "1 day");
+	}
+	else {
+	  sprintf(buf, "%s", params->sdata);
+	  strcpy(buf1, "1 second");
+	}
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, buf1);
+      }
+    } else if (strcmp("ovelu", name) == 0) {
+      if (strlen(params->vdata)) {
+	if (params->save_force & ROAM)
+	  sprintf(buf, "%s(ovelu=u)", params->vdata);
+	else
+	  sprintf(buf, "%s", params->vdata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
+      }
+    } else if (strcmp("ovelv", name) == 0) {
+      if (strlen(params->vdata)) {
+	if (params->save_force & ROAM)
+	  sprintf(buf, "%s(ovelv=v)", params->vdata);
+	else
+	  sprintf(buf, "%s", params->vdata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
+      }
+    } else if (strcmp("salt_force", name) == 0) {
+      master->fsalt = master->tr_wc[tn];
+      if (params->save_force & FSALT) {
+	sprintf(buf, "%s(salt_force=salt)", params->sdata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, params->fsalt_input_dt);
+	strcpy(master->trinfo_3d[tn].reset_interp, params->fsalt_interp);
+      }
+    } else if (strcmp("temp_force", name) == 0) {
+      master->ftemp = master->tr_wc[tn];
+      if (params->save_force & FTEMP) {
+	sprintf(buf, "%s(temp_force=temp)", params->tdata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, params->ftemp_input_dt);
+	strcpy(master->trinfo_3d[tn].reset_interp, params->ftemp_interp);
+      }
+    } else if (strcmp("velu_force", name) == 0) {
+      master->fvelu = master->tr_wc[tn];
+      if (params->save_force & FVELU) {
+	sprintf(buf, "%s(velu_force=u)", params->vdata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, params->fvelu_input_dt);
+	strcpy(master->trinfo_3d[tn].reset_interp, params->fvelu_interp);
+      }
+    } else if (strcmp("velv_force", name) == 0) {
+      master->fvelv = master->tr_wc[tn];
+      if (params->save_force & FVELV) {
+	sprintf(buf, "%s(velv_force=v)", params->vdata);
+	strcpy(master->trinfo_3d[tn].reset_file, buf);
+	strcpy(master->trinfo_3d[tn].reset_dt, params->fvelv_input_dt);
+	strcpy(master->trinfo_3d[tn].reset_interp, params->fvelv_interp);
+      }
+    } else if (strcmp("imp3df", name) == 0) {
+      strcpy(master->trinfo_3d[tn].name, params->imp3dn);
+      strcpy(master->trinfo_3d[tn].long_name, params->imp3dn);
+      strcpy(master->trinfo_3d[tn].units, params->imp3du);
+      sprintf(buf, "%c", '\0');
+      tr_dataset(buf, &master->trinfo_3d[tn], 0.0);
+      strcpy(master->trinfo_3d[tn].i_rule, "nn_sibson");
+      if (strlen(params->imp3dt))
+	sprintf(master->trinfo_3d[tn].data, "[data=%s(t=%s)]", params->imp3df, 
+		params->imp3dt);
+      else
+	sprintf(master->trinfo_3d[tn].data, "[data=%s]", params->imp3df);
+    } else if (strcmp("temp_tc", name) == 0)
       master->temp_tc = master->tr_wc[tn];
-    else if (strcmp("salt_tc", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("salt_tc", name) == 0)
       master->salt_tc = master->tr_wc[tn];
-    else if (strcmp("tracer1", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("tracer1", name) == 0)
       master->dum1 = master->tr_wc[tn];
-    else if (strcmp("tracer2", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("tracer2", name) == 0)
       master->dum2 = master->tr_wc[tn];
-    else if (strcmp("tracer3", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("tracer3", name) == 0)
       master->dum3 = master->tr_wc[tn];
-    else if (strcmp("reef_fraction_e1", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("reef_fraction_e1", name) == 0)
       master->reefe1 = master->tr_wc[tn];
-    else if (strcmp("reef_fraction_e2", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("reef_fraction_e2", name) == 0)
       master->reefe2 = master->tr_wc[tn];
-    else if (strcmp("Vcorr", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("Vcorr", name) == 0)
       master->vcorr = master->tr_wc[tn];
-    else if (strcmp("Acorr", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("Acorr", name) == 0)
       master->acorr = master->tr_wc[tn];
-    else if (strcmp("Vi", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("Vi", name) == 0)
       master->Vi = master->tr_wc[tn];
-    else if (strcmp("unit", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("unit", name) == 0)
       master->unit = master->tr_wc[tn];
-    else if (strcmp("regionid", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("regionid", name) == 0)
       master->regionid = master->tr_wc[tn];
-    else if (strcmp("residence", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("residence", name) == 0)
       master->regres = master->tr_wc[tn];
-    else if (strcmp("decorr_e1", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("decorr_e1", name) == 0)
       master->decv1 = master->tr_wc[tn];
-    else if (strcmp("wave_stke1", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("wave_stke1", name) == 0)
       master->wave_stke1 = master->tr_wc[tn];
-    else if (strcmp("wave_stke2", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("wave_stke2", name) == 0)
       master->wave_stke2 = master->tr_wc[tn];
-    else if (strcmp("glider", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("glider", name) == 0)
       master->glider = master->tr_wc[tn];
-    else if (strcmp("u1vhc", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("u1vhc", name) == 0)
       master->u1vhc = master->tr_wc[tn];
-    else if (strcmp("vol_cont", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("vol_cont", name) == 0)
       master->volcont = master->tr_wc[tn];
-    else if (strcmp("cell_index", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("cell_index", name) == 0)
       master->centi = master->tr_wc[tn];
-    else if (strcmp("nprof", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("nprof", name) == 0)
       master->nprof = master->tr_wc[tn];
-    else if (strcmp("mono", master->trinfo_3d[tn].name) == 0)
+    else if (strcmp("mono", name) == 0) {
       master->mono = master->tr_wc[tn];
-    else if (params->swr_type & SWR_3D && strcmp("swr_attenuation", master->trinfo_3d[tn].name) == 0)
+      sprintf(master->trinfo_3d[tn].long_name, "Monotinicity of %s", 
+	      params->monotr);
+    } else if (params->swr_type & SWR_3D && strcmp("swr_attenuation", name) == 0) {
       master->swr_attn = master->tr_wc[tn];
-    else if (params->ndhw) {
+      trn_dataset(params->swr_attn, master->trinfo_3d, tn, master->ntr, 
+		  master->atr, master->tr_wc, 0.073);
+    } else if (params->ndhw) {
       for (n = 0; n < params->ndhw; n++) {
 	sprintf(buf, "dhw%d", n);
-	if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+	if (strcmp(buf, name) == 0)
 	  master->dhw[n] = master->tr_wc[tn];
 	sprintf(buf, "dhd%d", n);
-	if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+	if (strcmp(buf, name) == 0)
 	  master->dhd[n] = master->tr_wc[tn];
 	sprintf(buf, "dhwc%d", n);
-	if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+	if (strcmp(buf, name) == 0)
 	  master->dhwc[n] = master->tr_wc[tn];
       }
     }
   }
-
   sprintf(buf, "percentile_%s", params->trperc);
   for (tn = 0; tn < master->ntr; tn++) {
-    if (strcmp(buf, master->trinfo_3d[tn].name) == 0)
+    if (strcmp(buf, master->trinfo_3d[tn].name) == 0) {
       master->perc = master->tr_wc[tn];
-  }
-
-  /* Assign the automtically generated 3D pointers and set up the */
-  /* tracer_info structure. If any of these tracers have been */
-  /* explicitly defined in the input parameter file, then continue.  */
-  tn = 0;
-  /* Temperature and salinity */
-  if ((tracer_find_index("salt", master->ntr, master->trinfo_3d)) < 0) {
-    master->sal = master->tr_wc[tn];
-    master->sno = tn;
-    strcpy(master->trinfo_3d[tn].name, "salt");
-    strcpy(master->trinfo_3d[tn].long_name, "Salinity");
-    strcpy(master->trinfo_3d[tn].units, "PSU");
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 40;
-    master->trinfo_3d[tn].fill_value_wc = 35.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].dissol = 1;
-    master->trinfo_3d[tn].advect = 1;
-    master->trinfo_3d[tn].diffuse = 1;
-    strcpy(master->trinfo_3d[tn].decay, "0.0");
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].m = tn;
-    tn++;
-  }
-  if ((tracer_find_index("temp", master->ntr, master->trinfo_3d)) < 0) {
-    master->temp = master->tr_wc[tn];
-    master->tno = tn;
-    strcpy(master->trinfo_3d[tn].name, "temp");
-    strcpy(master->trinfo_3d[tn].long_name, "Temperature");
-    strcpy(master->trinfo_3d[tn].units, "degrees C");
-    master->trinfo_3d[tn].valid_range_wc[0] = -4;
-    master->trinfo_3d[tn].valid_range_wc[1] = 40;
-    master->trinfo_3d[tn].fill_value_wc = 20.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].dissol = 1;
-    master->trinfo_3d[tn].advect = 1;
-    master->trinfo_3d[tn].diffuse = 1;
-    strcpy(master->trinfo_3d[tn].decay, "0.0");
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].m = tn;
-    tn++;
-  }
-  /* 3D mean velocity */
-  if (params->means & VEL3D) {
-    if (tracer_find_index("u1mean", master->ntr, master->trinfo_3d) == -1) {
-      master->u1m = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "u1mean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean 3D east velocity");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC|E1VAR;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -100;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      strcpy(master->trinfo_3d[tn].vector_name, "Mean 3D current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1mean u2mean");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->u1m, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-    if (tracer_find_index("u2mean", master->ntr, master->trinfo_3d) == -1) {
-      master->u2m = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "u2mean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean 3D north velocity");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC|E2VAR;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -100;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      strcpy(master->trinfo_3d[tn].vector_name, "Mean 3D current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1mean u2mean");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->u2m, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-    if (tracer_find_index("wmean", master->ntr, master->trinfo_3d) == -1) {
-      master->wm = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "wmean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean w velocity");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -100;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->wm, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-  }
-    /* Temperature and salinity */
-  if (params->means & TS) {
-    if (tracer_find_index("temp_mean", master->ntr, master->trinfo_3d) == -1) {
-      master->tempm = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "temp_mean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean temperature");
-      strcpy(master->trinfo_3d[tn].units, "deg C");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->tempm, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-    if (tracer_find_index("salt_mean", master->ntr, master->trinfo_3d) == -1) {
-      master->saltm = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "salt_mean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean salinity");
-      strcpy(master->trinfo_3d[tn].units, "psu");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->saltm, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-  }
-  /* Tracer mean */
-  if (params->means & MTRA3D) {
-    if (tracer_find_index("tracer_mean", master->ntr, master->trinfo_3d) == -1) {
-      master->tram = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tracer_mean");
-      sprintf(buf, "Mean %s", params->means_tra);
-      strcpy(master->trinfo_3d[tn].long_name, buf);
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->tram, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-  }
-  /* 3D mean volume flux */
-  /*
-  if ((params->means & VOLFLUX) || (params->tmode & SP_FFSL)) {
-    if (tracer_find_index("u1vmean", master->ntr, master->trinfo_3d) == -1) {
-      master->u1vm = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "u1vmean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean u1 volume flux");
-      strcpy(master->trinfo_3d[tn].units, "m3s-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC|E1VAR;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e30;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e30;
-      strcpy(master->trinfo_3d[tn].vector_name, "Mean volume flux");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1vmean u2vmean");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->u1vm, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-    if (tracer_find_index("u2vmean", master->ntr, master->trinfo_3d) == -1) {
-      master->u2vm = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "u2vmean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean u2 volume flux");
-      strcpy(master->trinfo_3d[tn].units, "m3s-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC|E2VAR;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e30;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e30;
-      strcpy(master->trinfo_3d[tn].vector_name, "Mean volume flux");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1vmean u2vmean");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->u2vm, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-  }
-  */
-  /* Mean Kz */
-  if (params->means & KZ_M) {
-    if (tracer_find_index("Kzmean", master->ntr, master->trinfo_3d) == -1) {
-      master->Kzm = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "Kzmean");
-      strcpy(master->trinfo_3d[tn].long_name, "Mean Vertical Diffusivity");
-      strcpy(master->trinfo_3d[tn].units, "m2s-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* Tracer fluxes */
-  if (strcmp(params->trflux, "NONE") != 0) {
-    if (tracer_find_index("flux_e1", master->ntr, master->trinfo_3d) == -1) {
-      master->fluxe1 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "flux_e1");
-      sprintf(master->trinfo_3d[tn].long_name, "Advective flux through face %d", params->trfd1);
-      strcpy(master->trinfo_3d[tn].units, "kgs-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("flux_e2", master->ntr, master->trinfo_3d) == -1) {
-      master->fluxe2 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "flux_e2");
-      sprintf(master->trinfo_3d[tn].long_name, "Advective flux through face %d", params->trfd2);
-      strcpy(master->trinfo_3d[tn].units, "kgs-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("flux_w", master->ntr, master->trinfo_3d) == -1) {
-      master->fluxw = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "flux_w");
-      strcpy(master->trinfo_3d[tn].long_name, "Vertical advective flux");
-      strcpy(master->trinfo_3d[tn].units, "kgs-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("flux_kz", master->ntr, master->trinfo_3d) == -1) {
-      master->fluxkz = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "flux_kz");
-      strcpy(master->trinfo_3d[tn].long_name, "Vertical diffusive flux");
-      strcpy(master->trinfo_3d[tn].units, "kgs-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* Regions */
-  if (strlen(params->regions)) {
-    if (tracer_find_index("regionid", master->ntr, master->trinfo_3d) == -1) {
-      master->regionid = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "regionid");
-      strcpy(master->trinfo_3d[tn].long_name, "Region identifier");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("residence", master->ntr, master->trinfo_3d) == -1) {
-      master->regres = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "residence");
-      strcpy(master->trinfo_3d[tn].long_name, "Residence time");
-      strcpy(master->trinfo_3d[tn].units, "days");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
- /* Flushing tracer */
-  if (params->trflsh) {
-    if (tracer_find_index("flush", master->ntr, master->trinfo_3d) == -1) {
-      master->fltr = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "flush");
-      strcpy(master->trinfo_3d[tn].long_name, "Flushing tracer");
-      strcpy(master->trinfo_3d[tn].units, "mgL-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
- /* Age tracer */
-  if (strlen(params->trage)) {
-    if (tracer_find_index("age", master->ntr, master->trinfo_3d) == -1) {
-      master->agetr = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "age");
-      strcpy(master->trinfo_3d[tn].long_name, "Age tracer");
-      strcpy(master->trinfo_3d[tn].units, "days");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* Tracer percentiles */
-  if (strcmp(params->trperc, "NONE") != 0) {
-    sprintf(buf, "percentile_%s", params->trperc);
-    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
-      master->perc = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, buf);
+      strcpy(master->trinfo_3d[n].name, buf);
       sprintf(buf, "Percentile for %s", params->trperc);
-      strcpy(master->trinfo_3d[tn].long_name, buf);
-      strcpy(master->trinfo_3d[tn].units, "%");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* k-e closure */
-  if (strcmp(params->mixsc, "k-e") == 0) {
-    if (tracer_find_index("tke", master->ntr, master->trinfo_3d) == -1) {
-      master->tke = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tke");
-      strcpy(master->trinfo_3d[tn].long_name, "Turbulent Kinetic Energy");
-      strcpy(master->trinfo_3d[tn].units, "m2s-2");
-      master->trinfo_3d[tn].fill_value_wc = 7.6e-6;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("diss", master->ntr, master->trinfo_3d) == -1) {
-      master->diss = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "diss");
-      strcpy(master->trinfo_3d[tn].long_name, "Dissipation");
-      strcpy(master->trinfo_3d[tn].units, "m2s-3");
-      master->trinfo_3d[tn].fill_value_wc = 5e-10;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* k-w closure */
-  if (strcmp(params->mixsc, "k-w") == 0 || strcmp(params->mixsc, "W88") == 0) {
-    if (tracer_find_index("tke", master->ntr, master->trinfo_3d) == -1) {
-      master->tke = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tke");
-      strcpy(master->trinfo_3d[tn].long_name, "Turbulent Kinetic Energy");
-      strcpy(master->trinfo_3d[tn].units, "m2s-2");
-      master->trinfo_3d[tn].fill_value_wc = 7.6e-6;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("omega", master->ntr, master->trinfo_3d) == -1) {
-      master->omega = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "omega");
-      strcpy(master->trinfo_3d[tn].long_name, "Turbulence frequency");
-      strcpy(master->trinfo_3d[tn].units, "s-1");
-      master->trinfo_3d[tn].fill_value_wc = 1.0e-12;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* Mellor-Yamada 2.5 closure */
-  if (strcmp(params->mixsc, "mellor_yamada_2_5") == 0 ||
-      strcmp(params->mixsc, "harcourt") == 0) {
-    if (tracer_find_index("tki", master->ntr, master->trinfo_3d) == -1) {
-      master->Q2 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tki");
-      strcpy(master->trinfo_3d[tn].long_name, "Turbulent Kinetic Intensity");
-      strcpy(master->trinfo_3d[tn].units, "m2s-2");
-      master->trinfo_3d[tn].fill_value_wc = 2.0e-8;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("tki_l", master->ntr, master->trinfo_3d) == -1) {
-      master->Q2L = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tki_l");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "Turbulent Kinetic Intensity Length Scale");
-      strcpy(master->trinfo_3d[tn].units, "m2s-1");
-      master->trinfo_3d[tn].fill_value_wc = 3.4e-9;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("lscale", master->ntr, master->trinfo_3d) == -1) {
-      master->L = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "lscale");
-      strcpy(master->trinfo_3d[tn].long_name, "Turbulence length scale");
-      strcpy(master->trinfo_3d[tn].units, "metre");
-      master->trinfo_3d[tn].fill_value_wc = 0.17;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e4;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("Kq", master->ntr, master->trinfo_3d) == -1) {
-      master->Kq = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "Kq");
-      strcpy(master->trinfo_3d[tn].long_name, "Turbulence mixing");
-      strcpy(master->trinfo_3d[tn].units, "m2s-1");
-      master->trinfo_3d[tn].fill_value_wc = 1e-5;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PARAMETER;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* Smagorinsky diffusion */
-  if (params->smagorinsky > 0.0) {
-    if (tracer_find_index("smagorinsky", master->ntr, master->trinfo_3d) ==
-        -1) {
-      master->sdc = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "smagorinsky");
-      strcpy(master->trinfo_3d[tn].long_name, "Smagorinsky diffusion");
-      strcpy(master->trinfo_3d[tn].units, "m2s-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|PARAMETER;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      memset(master->sdc, 0, geom->sgsiz * sizeof(double));
-      tn++;
-    }
-  }
-  /* Layer thickness */
-  if (params->show_layers) {
-    master->layth = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "layer_thick");
-    strcpy(master->trinfo_3d[tn].long_name, "Layer thickness");
-    strcpy(master->trinfo_3d[tn].units, "metre");
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e4;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  /* Forcing data saved to file */
-  if (params->save_force & OTEMP &&
-      tracer_find_index("otemp", master->ntr, master->trinfo_3d) == -1) {
-    master->otemp = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "otemp");
-    strcpy(master->trinfo_3d[tn].long_name, "OFAM temperature");
-    strcpy(master->trinfo_3d[tn].units, "degrees C");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -4;
-    master->trinfo_3d[tn].valid_range_wc[1] = 40;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    if (strlen(params->odata)) {
-      char buf[MAXSTRLEN];
-      if (params->save_force & ROAM)
-	sprintf(buf, "%s(otemp=temp)", params->tdata);
-      else
-	sprintf(buf, "%s", params->odata);
-      strcpy(master->trinfo_3d[tn].reset_file, buf);
-      strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  if (params->save_force & OSALT &&
-      tracer_find_index("osalt", master->ntr, master->trinfo_3d) == -1) {
-    master->osalt = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "osalt");
-    strcpy(master->trinfo_3d[tn].long_name, "OFAM salinity");
-    strcpy(master->trinfo_3d[tn].units, "PSU");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 40;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    if (strlen(params->odata)) {
-      char buf[MAXSTRLEN];
-      if (params->save_force & ROAM)
-	sprintf(buf, "%s(osalt=salt)", params->sdata);
-      else
-	sprintf(buf, "%s", params->odata);
-      strcpy(master->trinfo_3d[tn].reset_file, buf);
-      strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  /* Relaxation for temp and salt */
-  if (params->rtemp &&
-      tracer_find_index("rtemp", master->ntr, master->trinfo_3d) == -1) {
-    master->rtemp = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "rtemp");
-    strcpy(master->trinfo_3d[tn].long_name, "Relaxation temperature");
-    strcpy(master->trinfo_3d[tn].units, "degrees C");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|FORCING;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 50;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    if (strlen(params->tdata)) {
-      char buf[MAXSTRLEN];
-      char buf1[MAXSTRLEN];
-      if (params->save_force & ROAM) {
-	sprintf(buf, "%s(rtemp=temp)", params->tdata);
-	strcpy(buf1, "1 day");
-      }
-      else {
-	sprintf(buf, "%s", params->tdata);
-	strcpy(buf1, "1 second");
-      }
-      strcpy(master->trinfo_3d[tn].reset_file, buf);
-      strcpy(master->trinfo_3d[tn].reset_dt, buf1);
-    }
-    tn++;
-  }
-  if (params->rsalt &&
-      tracer_find_index("rsalt", master->ntr, master->trinfo_3d) == -1) {
-    master->rsalt = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "rsalt");
-    strcpy(master->trinfo_3d[tn].long_name, "Relaxation salinity");
-    strcpy(master->trinfo_3d[tn].units, "PSU");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|FORCING;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 40;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    if (strlen(params->sdata)) {
-      char buf[MAXSTRLEN];
-      char buf1[MAXSTRLEN];
-      if (params->save_force & ROAM) {
-	sprintf(buf, "%s(rsalt=salt)", params->sdata);
-	strcpy(buf1, "1 day");
-      }
-      else {
-	sprintf(buf, "%s", params->sdata);
-	strcpy(buf1, "1 second");
-      }
-      strcpy(master->trinfo_3d[tn].reset_file, buf);
-      strcpy(master->trinfo_3d[tn].reset_dt, buf1);
-    }
-    tn++;
-  }
-  if (params->rtemp & (RLX_ADPT|RLX_REG|RLX_OBC) &&
-      tracer_find_index("temp_tc", master->ntr, master->trinfo_3d) == -1) {
-    master->temp_tc = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "temp_tc");
-    strcpy(master->trinfo_3d[tn].long_name, "Relaxation temperature time constant");
-    strcpy(master->trinfo_3d[tn].units, "days");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|FORCING;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->rsalt & (RLX_ADPT|RLX_REG|RLX_OBC) &&
-      tracer_find_index("salt_tc", master->ntr, master->trinfo_3d) == -1) {
-    master->salt_tc = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "salt_tc");
-    strcpy(master->trinfo_3d[tn].long_name, "Relaxation salinity time constant");
-    strcpy(master->trinfo_3d[tn].units, "days");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|FORCING;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->save_force & OVELU &&
-      tracer_find_index("ovelu", master->ntr, master->trinfo_3d) == -1) {
-    strcpy(master->trinfo_3d[tn].name, "ovelu");
-    strcpy(master->trinfo_3d[tn].long_name, "OFAM east velocity");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -100;
-    master->trinfo_3d[tn].valid_range_wc[1] = 100;
-    strcpy(master->trinfo_3d[tn].vector_name, "Global 3D current");
-    strcpy(master->trinfo_3d[tn].vector_components, "ovelu ovelv");
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    if (strlen(params->vdata)) {
-      char buf[MAXSTRLEN];
-      if (params->save_force & ROAM)
-	sprintf(buf, "%s(ovelu=u)", params->vdata);
-      else
-	sprintf(buf, "%s", params->vdata);
-      strcpy(master->trinfo_3d[tn].reset_file, buf);
-      strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  if (params->save_force & OVELV &&
-      tracer_find_index("ovelv", master->ntr, master->trinfo_3d) == -1) {
-    strcpy(master->trinfo_3d[tn].name, "ovelv");
-    strcpy(master->trinfo_3d[tn].long_name, "OFAM north velocity");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -100;
-    master->trinfo_3d[tn].valid_range_wc[1] = 100;
-    strcpy(master->trinfo_3d[tn].vector_name, "Global 3D current");
-    strcpy(master->trinfo_3d[tn].vector_components, "ovelu ovelv");
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    if (strlen(params->vdata)) {
-      char buf[MAXSTRLEN];
-      if (params->save_force & ROAM)
-	sprintf(buf, "%s(ovelv=v)", params->vdata);
-      else
-	sprintf(buf, "%s", params->vdata);
-      strcpy(master->trinfo_3d[tn].reset_file, buf);
-      strcpy(master->trinfo_3d[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  /* Momentum tendencies */
-  if (params->tendf) {
-    if (tracer_find_index("mom_balance", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "mom_balance");
-      strcpy(master->trinfo_3d[tn].long_name, "Momentum balance maximum");
-      strcpy(master->trinfo_3d[tn].units, "%");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u1_adv", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u1_adv");
-      strcpy(master->trinfo_3d[tn].long_name, "East advective tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Advective current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_adv u2_adv");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u1_hdif", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u1_hdif");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "East horizontal diffusion tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Hdiffusion current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_hdif u2_hdif");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u1_vdif", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u1_vdif");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "East vertical diffusion tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Vdiffusion current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_vdif u2_vdif");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u1_btp", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u1_btp");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "East barotropic pressure gradient tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Barotropic current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_btp u2_btp");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u1_bcp", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u1_bcp");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "East baroclinic pressure tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Baroclinic current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_bcp u2_bcp");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u1_cor", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u1_cor");
-      strcpy(master->trinfo_3d[tn].long_name, "East Coriolis tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Coriolis surrent");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_cor u2_cor");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (params->waves & STOKES_DRIFT) {
-      if (tracer_find_index("u1_sto", master->ntr, master->trinfo_3d) == -1) {
-	strcpy(master->trinfo_3d[tn].name, "u1_sto");
-	strcpy(master->trinfo_3d[tn].long_name, "East Stokes tendency");
-	strcpy(master->trinfo_3d[tn].units, "ms-1");
-	master->trinfo_3d[tn].fill_value_wc = 0.0;
-	master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-	master->trinfo_3d[tn].diagn = 0;
-	master->trinfo_3d[tn].advect = 0;
-	master->trinfo_3d[tn].diffuse = 0;
-	master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-	master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-	strcpy(master->trinfo_3d[tn].vector_name, "Stokes current");
-	strcpy(master->trinfo_3d[tn].vector_components, "u1_sto u2_sto");
-	master->trinfo_3d[tn].m = -1;
-	master->trinfo_3d[tn].n = tn;
-	tn++;
-      }
-    }
-    if (tracer_find_index("u2_adv", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u2_adv");
-      strcpy(master->trinfo_3d[tn].long_name, "North advective tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Advective current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_adv u2_adv");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u2_hdif", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u2_hdif");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "North horizontal diffusion tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Hdiffusion current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_hdif u2_hdif");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u2_vdif", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u2_vdif");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "North vertical diffusion tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Visffusion current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_vdif u2_vdif");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u2_btp", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u2_btp");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "North barotropic pressure gradient tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Barotropic currents");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_btp u2_btp");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u2_bcp", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u2_bcp");
-      strcpy(master->trinfo_3d[tn].long_name,
-             "North baroclinic pressure tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Baroclinic current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_bcp u2_bcp");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("u2_cor", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "u2_cor");
-      strcpy(master->trinfo_3d[tn].long_name, "North Coriolis tendency");
-      strcpy(master->trinfo_3d[tn].units, "ms-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      strcpy(master->trinfo_3d[tn].vector_name, "Coriolis current");
-      strcpy(master->trinfo_3d[tn].vector_components, "u1_cor u2_cor");
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (params->waves & STOKES_DRIFT) {
-      if (tracer_find_index("u2_sto", master->ntr, master->trinfo_3d) == -1) {
-	strcpy(master->trinfo_3d[tn].name, "u2_sto");
-	strcpy(master->trinfo_3d[tn].long_name, "North Stokes tendency");
-	strcpy(master->trinfo_3d[tn].units, "ms-1");
-	master->trinfo_3d[tn].fill_value_wc = 0.0;
-	master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-	master->trinfo_3d[tn].diagn = 0;
-	master->trinfo_3d[tn].advect = 0;
-	master->trinfo_3d[tn].diffuse = 0;
-	master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-	master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-	strcpy(master->trinfo_3d[tn].vector_name, "Stokes current");
-	strcpy(master->trinfo_3d[tn].vector_components, "u1_sto u2_sto");
-	master->trinfo_3d[tn].m = -1;
-	master->trinfo_3d[tn].n = tn;
-	tn++;
-      }
-    }
-  }
-  /* Tracer tendencies */
-  if (strlen(params->trtend)) {
-    if (tracer_find_index("tra_adv", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "tra_adv");
-      strcpy(master->trinfo_3d[tn].long_name, "Tracer advective tendency");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    /*
-    if (tracer_find_index("tra_hdif", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "tra_hdif");
-      strcpy(master->trinfo_3d[tn].long_name, "Tracer horizontal diffusive tendency");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    */
-    if (tracer_find_index("tra_vdif", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "tra_vdif");
-      strcpy(master->trinfo_3d[tn].long_name, "Tracer vertical diffusive tendency");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("tra_ncon", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "tra_ncon");
-      strcpy(master->trinfo_3d[tn].long_name, "Tracer non-conservative tendency");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e35;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e35;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  /* Waves */
-  if (params->waves & SPECTRAL) {
-    master->wave_stke1 = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "wave_stke1");
-    strcpy(master->trinfo_3d[tn].long_name, "Stokes sub-surface velocity along e1");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|WAVE|FORCING;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -100;
-    master->trinfo_3d[tn].valid_range_wc[1] = 100;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-    master->wave_stke2 = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "wave_stke2");
-    strcpy(master->trinfo_3d[tn].long_name, "Stokes sub-surface velocity along e2");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|WAVE|FORCING;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -100;
-    master->trinfo_3d[tn].valid_range_wc[1] = 100;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  /* Diagnostic numbers */
-  if (params->numbers & BRUNT &&
-      tracer_find_index("brunt_vaisala", master->ntr, master->trinfo_3d) == -1) {
-    master->brunt = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "brunt_vaisala");
-    strcpy(master->trinfo_3d[tn].long_name, "Brunt Vaisala Frequency");
-    strcpy(master->trinfo_3d[tn].units, "s-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & INT_WAVE &&
-      tracer_find_index("int_wave_speed", master->ntr, master->trinfo_3d) == -1) {
-    master->int_wave = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "int_wave_speed");
-    strcpy(master->trinfo_3d[tn].long_name, "Internal wave speed");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & RICHARD_GR &&
-      tracer_find_index("richardson_gr", master->ntr, master->trinfo_3d) == -1) {
-    master->rich_gr = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "richardson_gr");
-    strcpy(master->trinfo_3d[tn].long_name, "Gradient Richardson number");
-    strcpy(master->trinfo_3d[tn].units, "");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e308;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e308;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & RICHARD_FL &&
-      tracer_find_index("richardson_fl", master->ntr, master->trinfo_3d) == -1) {
-    master->rich_fl = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "richardson_fl");
-    strcpy(master->trinfo_3d[tn].long_name, "Flux Richardson number");
-    strcpy(master->trinfo_3d[tn].units, "");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e308;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e308;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & REYNOLDS &&
-      tracer_find_index("reynolds", master->ntr, master->trinfo_3d) == -1) {
-    master->reynolds = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "reynolds");
-    strcpy(master->trinfo_3d[tn].long_name, "Reynolds number");
-    strcpy(master->trinfo_3d[tn].units, "");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & FROUDE &&
-      tracer_find_index("froude", master->ntr, master->trinfo_3d) == -1) {
-    master->froude = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "froude");
-    strcpy(master->trinfo_3d[tn].long_name, "Froude number");
-    strcpy(master->trinfo_3d[tn].units, "");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SIGMA_T &&
-      tracer_find_index("sigma_t", master->ntr, master->trinfo_3d) == -1) {
-    master->sigma_t = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "sigma_t");
-    strcpy(master->trinfo_3d[tn].long_name, "Sigma_t");
-    strcpy(master->trinfo_3d[tn].units, "kgm-3");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -100;
-    master->trinfo_3d[tn].valid_range_wc[1] = 100;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & ENERGY &&
-      tracer_find_index("energy", master->ntr, master->trinfo_3d) == -1) {
-    master->energy = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "energy");
-    strcpy(master->trinfo_3d[tn].long_name, "Mechanical energy");
-    strcpy(master->trinfo_3d[tn].units, "Jm-3");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & KINETIC &&
-      tracer_find_index("kenergy", master->ntr, master->trinfo_3d) == -1) {
-    master->kenergy = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "kenergy");
-    strcpy(master->trinfo_3d[tn].long_name, "Kinetic energy");
-    strcpy(master->trinfo_3d[tn].units, "Jm-3");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->do_pt && 
-      tracer_find_index("ptconc", master->ntr, master->trinfo_3d) == -1) {
-    master->ptconc = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "ptconc");
-    strcpy(master->trinfo_3d[tn].long_name, "Particle concentration");
-    strcpy(master->trinfo_3d[tn].units, "kgm-3");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 0;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SOUND &&
-      tracer_find_index("sound", master->ntr, master->trinfo_3d) == -1) {
-    master->sound = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "sound");
-    strcpy(master->trinfo_3d[tn].long_name, "Speed of sound");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 1000;
-    master->trinfo_3d[tn].valid_range_wc[1] = 2000;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SOUND &&
-      tracer_find_index("sound_channel", master->ntr, master->trinfo_3d) == -1) {
-    master->sound = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "sound_channel");
-    strcpy(master->trinfo_3d[tn].long_name, "Sound channel depth");
-    strcpy(master->trinfo_3d[tn].units, "m");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-/*UR    master->trinfo_3d[tn].positive = down; */
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e4;
-/*UR made 100 as not-realistic but theoretically possible limit */
-    master->trinfo_3d[tn].valid_range_wc[1] = 100;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & ROSSBY_IN &&
-      tracer_find_index("rossby_internal", master->ntr, master->trinfo_3d) == -1) {
-    master->rossby_in = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "rossby_internal");
-    strcpy(master->trinfo_3d[tn].long_name, "Internal Rossby radius");
-    strcpy(master->trinfo_3d[tn].units, "metre");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = 0;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SPEED_3D &&
-      tracer_find_index("current_speed_3d", master->ntr, master->trinfo_3d) == -1) {
-    master->speed_3d = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "current_speed_3d");
-    strcpy(master->trinfo_3d[tn].long_name, "Current Speed 3D");
-    strcpy(master->trinfo_3d[tn].units, "ms-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SHEAR_V &&
-      tracer_find_index("shear_vert", master->ntr, master->trinfo_3d) == -1) {
-    master->shear_v = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "shear_vert");
-    strcpy(master->trinfo_3d[tn].long_name, "Vertical velocity shear");
-    strcpy(master->trinfo_3d[tn].units, "s-1");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & BUOY_PROD &&
-      tracer_find_index("buoy_prod", master->ntr, master->trinfo_3d) == -1) {
-    master->b_prod = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "buoy_prod");
-    strcpy(master->trinfo_3d[tn].long_name, "Buoyancy production");
-    strcpy(master->trinfo_3d[tn].units, "m2s-2");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (params->numbers & SHEAR_PROD &&
-      tracer_find_index("shear_prod", master->ntr, master->trinfo_3d) == -1) {
-    master->s_prod = master->tr_wc[tn];
-    strcpy(master->trinfo_3d[tn].name, "shear_prod");
-    strcpy(master->trinfo_3d[tn].long_name, "Shear production");
-    strcpy(master->trinfo_3d[tn].units, "m2s-2");
-    master->trinfo_3d[tn].fill_value_wc = 0.0;
-    master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    master->trinfo_3d[tn].diagn = 1;
-    master->trinfo_3d[tn].advect = 0;
-    master->trinfo_3d[tn].diffuse = 0;
-    master->trinfo_3d[tn].inwc = 1;
-    master->trinfo_3d[tn].insed = 0;
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].m = -1;
-    master->trinfo_3d[tn].n = tn;
-    tn++;
-  }
-  if (!(params->decf & (NONE|DEC_ETA))) {
-    if (tracer_find_index("decorr_e1", master->ntr, master->trinfo_3d) == -1) {
-      master->decv1 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "decorr_e1");
-      strcpy(master->trinfo_3d[tn].long_name, "Decorrelation length scale");
-      strcpy(master->trinfo_3d[tn].units, params->decs);
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0.0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (strlen(params->imp3df)) {
-    strcpy(master->trinfo_3d[tn].name, params->imp3dn);
-    strcpy(master->trinfo_3d[tn].long_name, params->imp3dn);
-    strcpy(master->trinfo_3d[tn].units, params->imp3du);
-    master->trinfo_3d[tn].type = INTER|HYDRO|DIAGNOSTIC;
-    tr_dataset(buf, &master->trinfo_3d[tn], 0.0);
-    master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-    master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-    master->trinfo_3d[tn].n = tn;
-    strcpy(master->trinfo_3d[tn].i_rule, "nn_sibson");
-    if (strlen(params->imp3dt))
-      sprintf(master->trinfo_3d[tn].data, "[data=%s(t=%s)]", params->imp3df, 
-	      params->imp3dt);
-    else
-      sprintf(master->trinfo_3d[tn].data, "[data=%s]", params->imp3df);
-    tn++;
-  }
-  if (params->numbers & DUMMIES) {
-    if (tracer_find_index("tracer1", master->ntr, master->trinfo_3d) == -1) {
-      master->dum1 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tracer1");
-      strcpy(master->trinfo_3d[tn].long_name, "Dummy tracer 1");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("tracer2", master->ntr, master->trinfo_3d) == -1) {
-      master->dum2 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tracer2");
-      strcpy(master->trinfo_3d[tn].long_name, "Dummy tracer 2");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("tracer3", master->ntr, master->trinfo_3d) == -1) {
-      master->dum3 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "tracer3");
-      strcpy(master->trinfo_3d[tn].long_name, "Dummy tracer 3");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->numbers & UNIT) {
-    if (tracer_find_index("unit", master->ntr, master->trinfo_3d) == -1) {
-      master->unit = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "unit");
-      strcpy(master->trinfo_3d[tn].long_name, "Unit tracer");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 1.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->numbers & PASS) {
-    if (tracer_find_index("passive", master->ntr, master->trinfo_3d) == -1) {
-      strcpy(master->trinfo_3d[tn].name, "passive");
-      strcpy(master->trinfo_3d[tn].long_name, "Passive tracer");
-      strcpy(master->trinfo_3d[tn].units, "kgm-3");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 1;
-      master->trinfo_3d[tn].diffuse = 1;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->numbers & GLIDER) {
-    if (tracer_find_index("glider", master->ntr, master->trinfo_3d) == -1) {
-      master->glider = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "glider");
-      strcpy(master->trinfo_3d[tn].long_name, "Glider density");
-      strcpy(master->trinfo_3d[tn].units, "kgm-3");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->numbers1 & U1VHC) {
-    if (tracer_find_index("u1vhc", master->ntr, master->trinfo_3d) == -1) {
-      master->u1vhc = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "u1vhc");
-      strcpy(master->trinfo_3d[tn].long_name, "Horizontal viscosity cell centered");
-      strcpy(master->trinfo_3d[tn].units, "m2s-1");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->numbers1 & VOLCONT) {
-    if (tracer_find_index("vol_cont", master->ntr, master->trinfo_3d) == -1) {
-      master->volcont = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "vol_cont");
-      strcpy(master->trinfo_3d[tn].long_name, "Volume continuity");
-      strcpy(master->trinfo_3d[tn].units, "m3");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->numbers1 & CENTI) {
-    if (tracer_find_index("cell_index", master->ntr, master->trinfo_3d) == -1) {
-      master->centi = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "cell_index");
-      strcpy(master->trinfo_3d[tn].long_name, "Cell centre index");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (strlen(params->nprof)) {
-    if (tracer_find_index("nprof", master->ntr, master->trinfo_3d) == -1) {
-      master->nprof = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "nprof");
-      sprintf(master->trinfo_3d[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (strlen(params->monotr)) {
-    if (tracer_find_index("mono", master->ntr, master->trinfo_3d) == -1) {
-      master->mono = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "mono");
-      sprintf(master->trinfo_3d[tn].long_name, "Monotinicity of %s", params->monotr);
-      strcpy(master->trinfo_3d[tn].units, " ");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 100;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  for (n = 0; n < params->ndhw; n++) {
-    sprintf(buf, "dhw%d", n);    
-    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
-      master->dhw[n] = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, buf);
-      if (strlen(params->dhwt[n]))
-	sprintf(buf, "Degree heating week #%d %s", n, params->dhwt[n]);
-      else
-	sprintf(buf, "Degree heating week #%d", n);
-      strcpy(master->trinfo_3d[tn].long_name, buf);
-      strcpy(master->trinfo_3d[tn].units, "DegC-week");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      /* Set DA_ tag for dhw so that slave-master transfers don't occur. */
-      strcpy(master->trinfo_3d[tn].tag, "DA_");
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      if (params->dhwf[n] & DHW_RT)
-	sprintf(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc%d:dhwt%d)",n,n);
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (params->dhwf[n] & DHW_RT)
-      sprintf(buf, "dhwt%d", n);
-    if (params->dhwf[n] & DHW_NOAA)
-      sprintf(buf, "dhd%d", n);
-    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
-
-      master->dhd[n] = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, buf);
-
-      if (params->dhwf[n] & DHW_RT)
-	sprintf(buf, "Degree heating exposure time #%d", n);
-      if (params->dhwf[n] & DHW_NOAA)
-	sprintf(buf, "Degree heating day #%d",n);
-      strcpy(master->trinfo_3d[tn].long_name, buf);
-
-      if (params->dhwf[n] & DHW_RT)
-	strcpy(buf, "week");
-      if (params->dhwf[n] & DHW_NOAA)
-	strcpy(buf, "DegCday");
-      strcpy(master->trinfo_3d[tn].units, buf);
-
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 7;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    sprintf(buf, "dhwc%d", n);    
-    if (tracer_find_index(buf, master->ntr, master->trinfo_3d) == -1) {
-      master->dhwc[n] = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, buf);
-      sprintf(buf, "Degree heating threshold #%d", n);
-      strcpy(master->trinfo_3d[tn].long_name, buf);
-      strcpy(master->trinfo_3d[tn].units, "Degrees C");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      strcpy(master->trinfo_3d[tn].reset_file, params->dhw[n]);
-      strcpy(master->trinfo_3d[tn].reset_dt, "1 day");
-      tn++;
-    }
-  }
-  if (params->porusplate) {
-    if (tracer_find_index("reef_fraction_e1", master->ntr, master->trinfo_3d) == -1) {
-      master->reefe1 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "reef_fraction_e1");
-      strcpy(master->trinfo_3d[tn].long_name, "Fraction of reef in cell e1 direction");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      /*tr_dataset(params->reef_frac, &master->trinfo_3d[tn], 0.0);*/
-      tn++;
-    }
-    if (tracer_find_index("reef_fraction_e2", master->ntr, master->trinfo_3d) == -1) {
-      master->reefe2 = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "reef_fraction_e2");
-      strcpy(master->trinfo_3d[tn].long_name, "Fraction of reef in cell e2 direction");
-      strcpy(master->trinfo_3d[tn].units, "");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      /*tr_dataset(params->reef_frac, &master->trinfo_3d[tn], 0.0);*/
-      tn++;
-    }
-  }
-  if (params->riverflow == 2) {
-    if (tracer_find_index("flow_salt", master->ntr, master->trinfo_3d) == -1) {
-      master->riversalt = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "flow_salt");
-      strcpy(master->trinfo_3d[tn].long_name, "River flow salinity");
-      strcpy(master->trinfo_3d[tn].units, "psu");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 1;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-  }
-  if (params->swr_type & SWR_3D && strlen(params->swr_attn)) {
-    if (tracer_find_index("swr_attenuation", master->ntr, master->trinfo_3d) == -1) {
-      master->swr_attn = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "swr_attenuation");
-      strcpy(master->trinfo_3d[tn].long_name, "SWR attenuation");
-      strcpy(master->trinfo_3d[tn].units, "m-1");
-      master->trinfo_3d[tn].type = WATER|HYDRO|PARAMETER;
-      trn_dataset(params->swr_attn, master->trinfo_3d, tn, master->ntr, master->atr, master->tr_wc, 0.073);
-      master->trinfo_3d[tn].valid_range_wc[0] = 0;
-      master->trinfo_3d[tn].valid_range_wc[1] = 10;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    } else {
-      int tm = tracer_find_index("swr_attenuation", master->ntr, master->trinfo_3d);
-      trn_dataset(params->swr_attn, master->trinfo_3d, tm, master->ntr, master->atr, master->tr_wc, 0.073);
-    }
-  }
-  if (params->trasc & LAGRANGE) {
-    /*
-    if (tracer_find_index("Vi", master->ntr, master->trinfo_3d) == -1) {
-      master->Vi = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "Vi");
-      strcpy(master->trinfo_3d[tn].long_name, "Volume error");
-      strcpy(master->trinfo_3d[tn].units, "m^3");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    */
-  }
-  if (params->fillf & LOCAL && params->fillf & DIAGNOSE) {
-    if (tracer_find_index("Vcorr", master->ntr, master->trinfo_3d) == -1) {
-      master->vcorr = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "Vcorr");
-      strcpy(master->trinfo_3d[tn].long_name, "Volume correction");
-      strcpy(master->trinfo_3d[tn].units, "%");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
-    }
-    if (tracer_find_index("Acorr", master->ntr, master->trinfo_3d) == -1) {
-      master->acorr = master->tr_wc[tn];
-      strcpy(master->trinfo_3d[tn].name, "Acorr");
-      strcpy(master->trinfo_3d[tn].long_name, "Aij correction");
-      strcpy(master->trinfo_3d[tn].units, "%");
-      master->trinfo_3d[tn].fill_value_wc = 0.0;
-      master->trinfo_3d[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      master->trinfo_3d[tn].diagn = 0;
-      master->trinfo_3d[tn].advect = 0;
-      master->trinfo_3d[tn].diffuse = 0;
-      master->trinfo_3d[tn].inwc = 1;
-      master->trinfo_3d[tn].insed = 0;
-      master->trinfo_3d[tn].valid_range_wc[0] = -1e10;
-      master->trinfo_3d[tn].valid_range_wc[1] = 1e10;
-      master->trinfo_3d[tn].m = -1;
-      master->trinfo_3d[tn].n = tn;
-      tn++;
+      strcpy(master->trinfo_3d[n].long_name, buf);
     }
   }
 
+  /*-----------------------------------------------------------------*/
+  /* Assign the automtically generated 3D pointers and set up the    */
+  /* tracer_info structure. If any of these tracers have been        */
+  /* explicitly defined in the input parameter file, then continue.  */
+  /*
+  set_tracer_3d(params, master, master->ntr, master->trinfo_3d, master->tr_wc);
+  */
+  /*
+  for(tn=0; tn<master->ntr; tn++)
+    printf("%d %s\n",tn,master->trinfo_3d[n].name);
+  */
 #if defined(HAVE_SEDIMENT_MODULE)
   if (params->do_sed) {
-    /* Set up sediment tracers if required */
+    /* Set up sediment tracers if required                           */
     tn = sediment_autotracer_3d(params->prmfd, params->do_sed, params->sed_vars, 
 				params->sed_defs, master->trinfo_3d, master->ntr, tn);
   }
@@ -4272,7 +1136,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
 
 #if defined(HAVE_ECOLOGY_MODULE)
   if (params->do_eco) {
-    /* Set up ecology tracers if required */
+    /* Set up ecology tracers if required                            */
     tn = ecology_autotracer_3d(params->prmfd, params->do_eco, params->eco_vars,
 			       params->eco_defs, params->pre_eco,
 			       master->trinfo_3d, master->ntr, tn);
@@ -4380,9 +1244,869 @@ void calc_density(master_t *master)
 /*------------------------------------------------------------------*/
 
 
+/*------------------------------------------------------------------*/
+/* Sets up the autotracers from the global set in autotracer.c,     */
+/* and sets the pointers for the master to appropriate tracers.     */
+/* This is called to populate the master->trinfo_3d and             */
+/* params->trinfo_3d datastructures. If a tracer array (**tr) is    */
+/* not NULL, then pointers from the master can also be set to the   */
+/* relevant tracer variables (this is not done for params trinfo).  */
+/* Note: when using a groupkey, then set pointers to variables in   */
+/* the same order they are found in the autotracerlist.             */
+/*------------------------------------------------------------------*/
+int set_tracer_3d(parameters_t *params, 
+		  master_t *master,
+		  int ntr, 
+		  tracer_info_t *trinfo, 
+		  double **tr)
+{
+  geometry_t *geom;
+  char buf[MAXSTRLEN];
+  int n, m, ntrp, tn = 0;
+
+  if (master != NULL) geom= master->geom;
+
+  copy_autotracer_by_name("salt", trinfo, ntr, &tn, tr, &master->sal);
+  copy_autotracer_by_name("temp", trinfo, ntr, &tn, tr, &master->temp);
+
+  if (params->means & VEL3D) {
+    n = copy_autotracer_by_groupkey("vel3d_mean", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->u1m = tr[n++];
+      master->u2m = tr[n++];
+      master->wm = tr[n++];
+      memset(master->u1m, 0, geom->sgsiz * sizeof(double));
+      memset(master->u2m, 0, geom->sgsiz * sizeof(double));
+      memset(master->wm, 0, geom->sgsiz * sizeof(double));
+    }
+  }
+  if (params->means & KZ_M) {
+    copy_autotracer_by_name("Kzmean", trinfo, ntr, &tn, tr, &master->Kzm);
+    if (tr != NULL)
+      memset(master->Kzm, 0, geom->sgsiz * sizeof(double));
+  }
+  if (params->means & TS) {
+    n = copy_autotracer_by_groupkey("ts_mean", trinfo, ntr, &tn);	
+    if (tr != NULL) {
+      master->tempm = tr[n++];
+      master->saltm = tr[n++];
+      memset(master->tempm, 0, geom->sgsiz * sizeof(double));
+      memset(master->saltm, 0, geom->sgsiz * sizeof(double));
+    }
+  }
+  if (params->means & MTRA3D) {
+    n = tn;
+    copy_autotracer_by_name("tracer_mean", trinfo, ntr, &tn, 
+			    tr, &master->tram);
+    sprintf(buf, "Mean %s", params->means_tra);
+    strcpy(master->trinfo_3d[n].long_name, buf);
+    memset(master->tram, 0, geom->sgsiz * sizeof(double));
+  }
+  if (strcmp(params->trflux, "NONE") != 0) {
+    n = m = copy_autotracer_by_groupkey("tr_flux", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->fluxe1 = tr[n++]; 
+      master->fluxe2 = tr[n++]; 
+      master->fluxw = tr[n++];
+      master->fluxkz = tr[n++];
+    }
+    sprintf(master->trinfo_3d[m++].long_name, "Advective flux through face %d", 
+	    params->trfd1);
+    sprintf(master->trinfo_3d[m++].long_name, "Advective flux through face %d", 
+	    params->trfd2);
+  }
+  if (strlen(params->regions)) {
+    n = copy_autotracer_by_groupkey("regions", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->regionid = tr[n++];
+      master->regres = tr[n++];
+    }
+  }
+  if (params->trflsh) {
+    copy_autotracer_by_name("flush", trinfo, ntr, &tn, tr, &master->fltr);
+  }
+  if (strlen(params->trage)) {
+    copy_autotracer_by_name("age", trinfo, ntr, &tn, tr, &master->agetr);
+  }
+  if (strcmp(params->trperc, "NONE") != 0) {
+    n = tn;
+    sprintf(buf, "percentile_%s", params->trperc);
+    copy_autotracer_by_name(buf, trinfo, ntr, &tn, tr, &master->perc);
+    strcpy(master->trinfo_3d[n].name, buf);
+    sprintf(buf, "Percentile for %s", params->trperc);
+    strcpy(trinfo[n].long_name, buf);
+  }
+  if (strcmp(params->mixsc, "k-e") == 0) {
+    n = copy_autotracer_by_groupkey("k-e", trinfo, ntr, &tn); 
+    if (tr != NULL) {
+      master->tke = tr[n++];
+      master->diss = tr[n++];
+    }
+  }
+  if (strcmp(params->mixsc, "k-w") == 0) {
+    n = copy_autotracer_by_groupkey("k-w", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->tke = tr[n++];
+      master->omega = tr[n++];
+    }
+  }
+  if (strcmp(params->mixsc, "W88") == 0) {
+    n = copy_autotracer_by_groupkey("k-w", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->tke = tr[n++];
+      master->omega = tr[n++];
+    }
+  }
+  if (strcmp(params->mixsc, "mellor_yamada_2_0") == 0 ||
+      strcmp(params->mixsc, "mellor_yamada_2_0_estuarine") == 0) {
+    n = copy_autotracer_by_groupkey("my2.0", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->L = tr[n++];
+    }
+  }
+  if (strcmp(params->mixsc, "mellor_yamada_2_5") == 0 || 
+      strcmp(params->mixsc, "harcourt") == 0) {
+    n = copy_autotracer_by_groupkey("my2.5", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->Q2 = tr[n++];
+      master->Q2L = tr[n++];
+      master->L = tr[n++];
+      master->Kq = tr[n++];
+    }
+  }
+  if (params->smagorinsky > 0.0) {
+    copy_autotracer_by_name("smagorinsky", trinfo, ntr, &tn, 
+			    tr, &master->sdc);
+  }
+  if (params->show_layers) {
+    copy_autotracer_by_name("layer_thick", trinfo, ntr, &tn, tr, &master->layth);
+  }
+  if (params->save_force & OTEMP) {
+    n = tn;
+    copy_autotracer_by_name("otemp", trinfo, ntr, &tn, tr, &master->otemp);
+    if (strlen(params->odata)) {
+      if (params->save_force & ROAM)
+	sprintf(buf, "%s(otemp=temp)", params->tdata);
+      else
+	sprintf(buf, "%s", params->odata);
+      strcpy(trinfo[n].reset_file, buf);
+      strcpy(trinfo[n].reset_dt, "1 second");
+    }
+  }
+  if (params->save_force & OSALT) {
+    n = tn;
+    copy_autotracer_by_name("osalt", trinfo, ntr, &tn, tr, &master->osalt);
+   if (strlen(params->odata)) {
+      char buf[MAXSTRLEN];
+      if (params->save_force & ROAM)
+	sprintf(buf, "%s(osalt=salt)", params->sdata);
+      else
+	sprintf(buf, "%s", params->odata);
+      strcpy(trinfo[n].reset_file, buf);
+      strcpy(trinfo[n].reset_dt, "1 second");
+    }
+  }
+  if (params->rtemp) {
+    n = tn;
+    copy_autotracer_by_name("rtemp", trinfo, ntr, &tn, tr, &master->rtemp);
+    if (strlen(params->tdata)) {
+      char buf1[MAXSTRLEN];
+      if (params->save_force & ROAM) {
+	sprintf(buf, "%s(rtemp=temp)", params->tdata);
+	strcpy(buf1, "1 day");
+      }
+      else {
+	sprintf(buf, "%s", params->tdata);
+	strcpy(buf1, "1 second");
+      }
+      strcpy(trinfo[n].reset_file, buf);
+      strcpy(trinfo[n].reset_dt, buf1);
+    }
+  }
+  if (params->rsalt) {
+    n = tn;
+    copy_autotracer_by_name("rsalt", trinfo, ntr, &tn, tr, &master->rsalt);
+    if (strlen(params->sdata)) {
+      char buf[MAXSTRLEN];
+      char buf1[MAXSTRLEN];
+      if (params->save_force & ROAM) {
+	sprintf(buf, "%s(rsalt=salt)", params->sdata);
+	strcpy(buf1, "1 day");
+      }
+      else {
+	sprintf(buf, "%s", params->sdata);
+	strcpy(buf1, "1 second");
+      }
+      strcpy(trinfo[n].reset_file, buf);
+      strcpy(trinfo[n].reset_dt, buf1);
+    }
+  }
+  if (params->save_force & FTEMP) {
+    n = tn;
+    copy_autotracer_by_name("temp_force", trinfo, ntr, &tn, tr, &master->ftemp);
+    sprintf(buf, "%s(temp_force=temp)", params->tdata);
+    strcpy(trinfo[n].reset_file, buf);
+    strcpy(trinfo[n].reset_dt, params->ftemp_input_dt);
+    strcpy(trinfo[n].reset_interp, params->ftemp_interp);
+  }
+  if (params->save_force & FSALT) {
+    n = tn;
+    copy_autotracer_by_name("salt_force", trinfo, ntr, &tn, tr, &master->fsalt);
+    sprintf(buf, "%s(salt_force=salt)", params->sdata);
+    strcpy(trinfo[n].reset_file, buf);
+    strcpy(trinfo[n].reset_dt, params->fsalt_input_dt);
+    strcpy(trinfo[n].reset_interp, params->fsalt_interp);
+  }
+  if (params->save_force & FVELU) {
+    n = tn;
+    copy_autotracer_by_name("velu_force", trinfo, ntr, &tn, tr, &master->fvelu);
+    sprintf(buf, "%s(velu_force=u)", params->vdata);
+    strcpy(trinfo[n].reset_file, buf);
+    strcpy(trinfo[n].reset_dt, params->fvelu_input_dt);
+    strcpy(trinfo[n].reset_interp, params->fvelu_interp);
+  }
+  if (params->save_force & FVELV) {
+    n = tn;
+    copy_autotracer_by_name("velv_force", trinfo, ntr, &tn, tr, &master->fvelv);
+    sprintf(buf, "%s(velv_force=v)", params->vdata);
+    strcpy(trinfo[n].reset_file, buf);
+    strcpy(trinfo[n].reset_dt, params->fvelv_input_dt);
+    strcpy(trinfo[n].reset_interp, params->fvelv_interp);
+  }
+  if (params->rtemp & (RLX_ADPT|RLX_REG|RLX_OBC)) {
+    copy_autotracer_by_name("temp_tc", trinfo, ntr, &tn, tr, &master->temp_tc);
+  }  
+  if (params->rsalt & (RLX_ADPT|RLX_REG|RLX_OBC)) {
+    copy_autotracer_by_name("salt_tc", trinfo, ntr, &tn, tr, &master->salt_tc);
+  }
+  if (params->save_force & OVELU) {
+    copy_autotracer_by_name("ovelu", trinfo, ntr, &tn, tr, NULL);
+    if (strlen(params->vdata)) {
+      char buf[MAXSTRLEN];
+      if (params->save_force & ROAM)
+	sprintf(buf, "%s(ovelu=u)", params->vdata);
+      else
+	sprintf(buf, "%s", params->vdata);
+      strcpy(trinfo[tn].reset_file, buf);
+      strcpy(trinfo[tn].reset_dt, "1 second");
+    }
+  }
+  if (params->save_force & OVELV) {
+    copy_autotracer_by_name("ovelv", trinfo, ntr, &tn, tr, NULL);
+    if (strlen(params->vdata)) {
+      char buf[MAXSTRLEN];
+      if (params->save_force & ROAM)
+	sprintf(buf, "%s(ovelv=v)", params->vdata);
+      else
+	sprintf(buf, "%s", params->vdata);
+      strcpy(trinfo[tn].reset_file, buf);
+      strcpy(trinfo[tn].reset_dt, "1 second");
+    }
+  }
+
+
+
+  if (params->tendf) {
+    copy_autotracer_by_groupkey("tend", trinfo, ntr, &tn);
+    if (params->waves & STOKES_DRIFT) {
+      copy_autotracer_by_groupkey("tend_wave", trinfo, ntr, &tn);
+    }
+  }
+  if (strlen(params->trtend)) {
+    copy_autotracer_by_groupkey("tr_tend", trinfo, ntr, &tn);
+  }
+  if (params->waves & SPECTRAL) {
+    n = copy_autotracer_by_groupkey("spec_wave", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->wave_stke1 = tr[n++]; 
+      master->wave_stke2 = tr[n++]; 
+    }
+  }
+  if (params->numbers & BRUNT) {
+    copy_autotracer_by_name("brunt", trinfo, ntr, &tn, 
+			    tr, &master->brunt);
+  }
+  if (params->numbers & INT_WAVE) {
+    copy_autotracer_by_name("int_wave_speed", trinfo, ntr, &tn, 
+			    tr, &master->int_wave);
+  }
+  if (params->numbers & RICHARD_GR) {
+    copy_autotracer_by_name("richardson_gr", trinfo, ntr, &tn, 
+			    tr, &master->rich_gr);
+  }
+  if (params->numbers & RICHARD_FL) {
+    copy_autotracer_by_name("richardson_fl", trinfo, ntr, &tn, 
+			    tr, &master->rich_fl);
+  }
+  if (params->numbers & REYNOLDS) {
+    copy_autotracer_by_name("reynolds", trinfo, ntr, &tn, 
+			    tr, &master->reynolds);
+  }
+  if (params->numbers & FROUDE) {
+    copy_autotracer_by_name("froude", trinfo, ntr, &tn, 
+			    tr, &master->froude);
+  }
+  if (params->numbers & SIGMA_T) {
+    copy_autotracer_by_name("sigma_t", trinfo, ntr, &tn, 
+			    tr, &master->sigma_t);
+  }
+  if (params->numbers & ENERGY) {
+    copy_autotracer_by_name("energy", trinfo, ntr, &tn, 
+			    tr, &master->energy);
+  }
+  if (params->numbers & KINETIC) {
+    copy_autotracer_by_name("kenergy", trinfo, ntr, &tn, 
+			    tr, &master->kenergy);
+  }
+  if (params->do_pt) {
+    copy_autotracer_by_name("ptconc", trinfo, ntr, &tn, 
+			    tr, &master->ptconc);
+  }
+  if (params->numbers & SOUND) {
+    n = copy_autotracer_by_groupkey("sound", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->sound = tr[n++];
+      master->schan = tr[n++];
+    }
+  }
+  if (params->numbers & ROSSBY_IN) {
+    copy_autotracer_by_name("rossby_internal", trinfo, ntr, &tn, 
+			    tr, &master->rossby_in);
+  }
+  if (params->numbers & SPEED_3D) {
+    copy_autotracer_by_name("current_speed_3d", trinfo, ntr, &tn, 
+			    tr, &master->speed_3d);
+  }
+  if (params->numbers & SHEAR_V) {
+    copy_autotracer_by_name("shear_vert", trinfo, ntr, &tn, 
+			    tr, &master->shear_v);
+  }
+  if (params->numbers & BUOY_PROD) {
+    copy_autotracer_by_name("buoy_prod", trinfo, ntr, &tn, 
+			    tr, &master->b_prod);
+  }
+  if (params->numbers & SHEAR_PROD) {
+    copy_autotracer_by_name("shear_prod", trinfo, ntr, &tn, 
+			    tr, &master->s_prod);
+  }
+  if (!(params->decf & (NONE|DEC_ETA))) {
+    copy_autotracer_by_name("decorr_e1", trinfo, ntr, &tn, 
+			    tr, &master->decv1);
+  }
+  if (strlen(params->imp3df)) {
+    n = tn;
+    copy_autotracer_by_name("imp3df", trinfo, ntr, &tn, tr, NULL);
+    strcpy(trinfo[n].name, params->imp3dn);
+    strcpy(trinfo[n].long_name, params->imp3dn);
+    strcpy(trinfo[n].units, params->imp3du);
+    tr_dataset(buf, &trinfo[n], 0.0);
+    strcpy(trinfo[n].i_rule, "nn_sibson");
+    if (strlen(params->imp3dt))
+      sprintf(trinfo[n].data, "[data=%s(t=%s)]", params->imp3df, 
+	      params->imp3dt);
+    else
+      sprintf(trinfo[n].data, "[data=%s]", params->imp3df);
+  }
+  if (params->numbers & DUMMIES) {
+    n = copy_autotracer_by_groupkey("dummies", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->dum1 = tr[n++];
+      master->dum2 = tr[n++];
+      master->dum3 = tr[n++];
+    }
+  }
+  if (params->numbers & UNIT) {
+    copy_autotracer_by_name("unit", trinfo, ntr, &tn, tr, &master->unit);
+  }
+  if (params->numbers & PASS) {
+    copy_autotracer_by_name("passive", trinfo, ntr, &tn, tr, NULL);
+  }
+  if (params->numbers & GLIDER) {
+    copy_autotracer_by_name("glider", trinfo, ntr, &tn, tr, &master->glider);
+  }
+  if (params->numbers1 & U1VHC) {
+    copy_autotracer_by_name("u1vhc", trinfo, ntr, &tn, tr, &master->u1vhc);
+  }
+  if (params->numbers1 & VOLCONT) {
+    copy_autotracer_by_name("vol_cont", trinfo, ntr, &tn, tr, &master->volcont);
+  }
+  if (params->numbers1 & CENTI) {
+    copy_autotracer_by_name("cell_index", trinfo, ntr, &tn, tr, &master->centi);
+  }
+  if (strlen(params->nprof)) {
+    copy_autotracer_by_name("nprof", trinfo, ntr, &tn, tr, &master->nprof);
+  }
+  if (strlen(params->monotr)) {
+    n = tn;
+    copy_autotracer_by_name("mono", trinfo, ntr, &tn, tr, &master->mono);
+    sprintf(trinfo[n].long_name, "Monotinicity of %s", params->monotr);
+  }
+  if (params->porusplate) {
+    n = copy_autotracer_by_groupkey("porusplate", trinfo, ntr, &tn);
+    if (tr != NULL) {
+      master->reefe1 =  tr[n++];
+      master->reefe2 =  tr[n++];
+    }
+  }
+  if (params->riverflow == 2) {
+    copy_autotracer_by_name("flow_salt", trinfo, ntr, &tn, 
+			    tr, &master->riversalt);
+  }
+  if (params->swr_type & SWR_3D && strlen(params->swr_attn)) {
+    n = tn;
+    if (tracer_find_index("swr_attenuation", ntr, trinfo) == -1) {
+      copy_autotracer_by_name("swr_attenuation", trinfo, ntr, &tn, 
+			      tr, &master->swr_attn);
+      if (tr != NULL)
+	trn_dataset(params->swr_attn, trinfo, n, master->ntr, 
+		    master->atr, tr, 0.073);
+    } else {
+      int tm = tracer_find_index("swr_attenuation", ntr, trinfo);
+      if (tr != NULL)
+	trn_dataset(params->swr_attn, trinfo, tm, master->ntr, 
+		    master->atr, tr, 0.073);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Degree heating weeks - special treatment as we don't know how   */
+  /* many of these there will be.                                    */
+  for (n = 0; n < params->ndhw; n++) {
+    sprintf(buf, "dhw%d", n);    
+    if (tracer_find_index(buf, ntr, trinfo) == -1) {
+      if (tr != NULL) master->dhw[n] = master->tr_wc[tn];
+      strcpy(trinfo[tn].name, buf);
+      if (strlen(params->dhwt[n]))
+	sprintf(buf, "Degree heating week #%d %s", n, params->dhwt[n]);
+      else
+	sprintf(buf, "Degree heating week #%d", n);
+      strcpy(trinfo[tn].long_name, buf);
+      strcpy(trinfo[tn].units, "DegC-week");
+      trinfo[tn].fill_value_wc = 0.0;
+      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      trinfo[tn].diagn = 0;
+      trinfo[tn].advect = 0;
+      trinfo[tn].diffuse = 0;
+      trinfo[tn].inwc = 1;
+      trinfo[tn].insed = 0;
+      /* Set DA_ tag for dhw so that slave-master transfers don't occur. */
+      strcpy(trinfo[tn].tag, "DA_");
+      trinfo[tn].valid_range_wc[0] = -1e10;
+      trinfo[tn].valid_range_wc[1] = 1e10;
+      if (params->dhwf[n] & DHW_RT)
+	sprintf(trinfo[tn].tracerstat, "exposure(temp:dhwc%d:dhwt%d)",n,n);
+      trinfo[tn].m = -1;
+      trinfo[tn].n = tn;
+      tn++;
+    }
+    if (params->dhwf[n] & DHW_RT)
+      sprintf(buf, "dhwt%d", n);
+    if (params->dhwf[n] & DHW_NOAA)
+      sprintf(buf, "dhd%d", n);
+    if (tracer_find_index(buf, ntr, trinfo) == -1) {
+      if (tr != NULL) master->dhd[n] = master->tr_wc[tn];
+      strcpy(trinfo[tn].name, buf);
+
+      if (params->dhwf[n] & DHW_RT)
+	sprintf(buf, "Degree heating exposure time #%d", n);
+      if (params->dhwf[n] & DHW_NOAA)
+	sprintf(buf, "Degree heating day #%d",n);
+      strcpy(trinfo[tn].long_name, buf);
+
+      if (params->dhwf[n] & DHW_RT)
+	strcpy(buf, "week");
+      if (params->dhwf[n] & DHW_NOAA)
+	strcpy(buf, "DegCday");
+      strcpy(trinfo[tn].units, buf);
+
+      trinfo[tn].fill_value_wc = 0.0;
+      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      trinfo[tn].diagn = 0;
+      trinfo[tn].advect = 0;
+      trinfo[tn].diffuse = 0;
+      trinfo[tn].inwc = 1;
+      trinfo[tn].insed = 0;
+      trinfo[tn].valid_range_wc[0] = 0;
+      trinfo[tn].valid_range_wc[1] = 7;
+      trinfo[tn].m = -1;
+      trinfo[tn].n = tn;
+      tn++;
+    }
+    sprintf(buf, "dhwc%d", n);    
+    if (tracer_find_index(buf, ntr, trinfo) == -1) {
+      if (tr != NULL) master->dhwc[n] = master->tr_wc[tn];
+      strcpy(trinfo[tn].name, buf);
+      sprintf(buf, "Degree heating threshold #%d", n);
+      strcpy(trinfo[tn].long_name, buf);
+      strcpy(trinfo[tn].units, "Degrees C");
+      trinfo[tn].fill_value_wc = 0.0;
+      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
+      trinfo[tn].diagn = 0;
+      trinfo[tn].advect = 0;
+      trinfo[tn].diffuse = 0;
+      trinfo[tn].inwc = 1;
+      trinfo[tn].insed = 0;
+      trinfo[tn].valid_range_wc[0] = -1e10;
+      trinfo[tn].valid_range_wc[1] = 1e10;
+      trinfo[tn].m = -1;
+      trinfo[tn].n = tn;
+      strcpy(trinfo[tn].reset_file, params->dhw[n]);
+      strcpy(trinfo[tn].reset_dt, "1 day");
+      tn++;
+    }
+  }
+  params->ntr = ntr;
+  return(tn);
+}
+
+/* END set_tracer_3d()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/* Sets up the autotracers from the global set in autotracer.c,     */
+/* and sets the pointers for the master to appropriate tracers.     */
+/* This is called to populate the master->trinfo_2d.                */
+/*------------------------------------------------------------------*/
+int set_tracer_2d(parameters_t *params, 
+		   master_t *master,
+		   int ntr, 
+		   tracer_info_t *trinfo, 
+		   double **tr)
+{
+  geometry_t *geom;
+  char buf[MAXSTRLEN];
+  int n, m, ntrp, tn = 0;
+
+  if (master != NULL) geom= master->geom;
+  sprintf(buf, "%c", '\0');
+
+  if (!(params->cfl & NONE)) {
+    n = set_autotracer_by_groupkey("cfl", trinfo, ntr, &tn, buf);
+    master->cfl2d = tr[n++];
+    master->cfl3d = tr[n++];
+    master->cour = tr[n++];
+    master->lips = tr[n++];
+    master->ahsb = tr[n++];
+    master->courn = tr[n++];
+  }
+  if (!(params->mixlayer & NONE))
+    set_autotracer_by_name("mixed_layer", trinfo, ntr, &tn, tr, &master->mixl, buf);
+  if (params->lnm != 0.0)
+    set_autotracer_by_name("steric", trinfo, ntr, &tn, tr, &master->steric, buf);
+  if (params->vorticity & ABSOLUTE)
+    set_autotracer_by_name("abs_vor", trinfo, ntr, &tn, tr, &master->av, buf);
+  if (params->vorticity & RELATIVE)
+    set_autotracer_by_name("rel_vor", trinfo, ntr, &tn, tr, &master->rv, buf);
+  if (params->vorticity & POTENTIAL)
+    set_autotracer_by_name("pot_vor", trinfo, ntr, &tn, tr, &master->pv, buf);
+  if (params->vorticity & TENDENCY) {
+    n = set_autotracer_by_groupkey("vorticity", trinfo, ntr, &tn, buf);
+    master->rv_drvdt = tr[n++];
+    master->rv_nonlin = tr[n++];
+    master->rv_beta = tr[n++];
+    master->rv_strch = tr[n++];
+    master->rv_jebar = tr[n++];
+    master->rv_wsc = tr[n++];
+    master->rv_bsc = tr[n++];
+  }
+  if (params->diff_scale & VH_REG)
+    set_autotracer_by_name("u1vh_region", trinfo, ntr, &tn, tr, &master->vhreg, buf);
+  if (params->numbers & ROSSBY_EX)
+    set_autotracer_by_name("rossby_external", trinfo, ntr, &tn, tr, &master->rossby_ex, buf);
+  if (params->numbers & SPEED_2D)
+    set_autotracer_by_name("current_speed_2d", trinfo, ntr, &tn, tr, &master->speed_2d, buf);
+  if (params->numbers & SPEED_SQ)
+    set_autotracer_by_name("speed_sq", trinfo, ntr, &tn, tr, &master->speed_sq, buf);
+  if (params->numbers & OBC_PHASE)
+    set_autotracer_by_name("obc_phase", trinfo, ntr, &tn, tr, &master->obc_phase, buf);
+  if (params->numbers & WIND_CD)
+    set_autotracer_by_name("wind_Cd", trinfo, ntr, &tn, tr, &master->wind_Cd, buf);
+  if (params->numbers & CELLRES) {
+    n = set_autotracer_by_groupkey("resolution", trinfo, ntr, &tn, buf);
+    master->cellres = tr[n++];
+    master->sarea = tr[n++];
+    master->searea = tr[n++];
+  }
+  if (params->numbers1 & CELLAREA) {
+    n = set_autotracer_by_groupkey("area", trinfo, ntr, &tn, buf);
+    master->carea = tr[n++];
+    master->earea = tr[n++];
+  }
+  if (params->numbers1 & MESHUN)
+    set_autotracer_by_name("mesh_uniformity", trinfo, ntr, &tn, tr, &master->meshun, buf);
+  if (params->waves & (TAN_RAD|WAVE_FOR) && params->tendf) {
+    n = set_autotracer_by_groupkey("rad_stress", trinfo, ntr, &tn, buf);
+    master->u1_rad = tr[n++];
+    master->u2_rad = tr[n++];
+  }
+  if (params->means & ETA_M)
+    set_autotracer_by_name("eta_mean", trinfo, ntr, &tn, tr, &master->etam, buf);
+  if (params->save_force & FETA) {
+    n = set_autotracer_by_name("eta_force", trinfo, ntr, &tn, tr, &master->feta, buf);
+    sprintf(buf, "%s(eta_force=eta)", params->edata);
+    strcpy(master->trinfo_2d[n].reset_file, buf);
+    strcpy(master->trinfo_2d[n].reset_dt, params->feta_input_dt);
+    strcpy(master->trinfo_2d[n].reset_interp, params->feta_interp);
+  }
+  if (params->means & WIND) {
+    n = set_autotracer_by_groupkey("wind_mean", trinfo, ntr, &tn, buf);
+    master->w1m = tr[n++];
+    master->w2m = tr[n++];
+  }
+  if (params->means & VEL2D) {
+    n = set_autotracer_by_groupkey("vel2d_mean", trinfo, ntr, &tn, buf);
+    master->u1am = tr[n++];
+    master->u2am = tr[n++];
+  }
+  if (params->means & MTRA2D) {
+    char key[MAXSTRLEN];
+    n = set_autotracer_by_name("tracer_mean_2d", trinfo, ntr, &tn, tr, &master->tram, buf);
+    strcpy(master->trinfo_2d[n].name, "tracer_mean");
+    sprintf(key, "Mean %s", params->means_tra);
+    strcpy(master->trinfo_2d[n].long_name, key);
+    memset(master->tram, 0, geom->sgsizS * sizeof(double));
+  }
+  if (params->heatflux & ADVANCED) {
+    n = set_autotracer_by_groupkey("heatflux", trinfo, ntr, &tn, buf);
+    master->nhfd = tr[n++];
+    master->swrd = tr[n++];
+    master->lwrd = tr[n++];
+    master->lhfd = tr[n++];
+    master->shfd = tr[n++];
+  }
+  if (params->heatflux & (INVERSE|COMP_HEAT|COMP_HEAT_MOM))
+    set_autotracer_by_name("nhf", trinfo, ntr, &tn, tr, &master->nhfd, buf);
+  if (params->heatflux & (COMP_HEAT | COMP_HEAT_MOM | COMP_HEAT_NONE)) {
+    n = set_autotracer_by_groupkey("heatcomp", trinfo, ntr, &tn, buf);
+    if (params->heatflux & (COMP_HEAT_MOM | COMP_HEAT_NONE)) {
+      /* See logic in heatflux.c:comp_heat_mom */
+      master->swr = tr[n++];
+    } else 
+      master->swrd = tr[n++];
+    master->lwrn = n++;
+    master->lhfn = n++;
+    master->shfn = n++;
+    if (params->heatflux & COMP_HEAT_NONE) {
+      if (strlen(params->precip)) {
+	n = set_autotracer_by_name("precip", trinfo, ntr, &tn, tr, NULL, buf);
+	master->precipn = n;
+      }
+      if (strlen(params->evap)) {
+	n = set_autotracer_by_name("evap", trinfo, ntr, &tn, tr, NULL, buf);
+	master->evapn = n;
+      }
+    }
+  }
+  if (params->heatflux & NET_HEAT) {
+    n = set_autotracer_by_groupkey("netheat", trinfo, ntr, &tn, buf);
+    master->nhfd = tr[n++];
+    master->swrd = tr[n++];
+  }
+  if (params->saltflux & (ADVANCED | BULK | ORIGINAL))
+    set_autotracer_by_name("nsf", trinfo, ntr, &tn, tr, &master->nsfd, buf);
+  if (params->saltflux & (ADVANCED | ORIGINAL)) {
+    n = set_autotracer_by_groupkey("saltflux", trinfo, ntr, &tn, buf);
+    master->precipn = n++;
+    master->evapn = n++;
+  }
+  if (params->waves & BOT_STR)
+    set_autotracer_by_name("wave_Cd", trinfo, ntr, &tn, tr, &master->wave_Cd, buf);
+  if (params->waves & TAN_RAD) {
+    n = set_autotracer_by_groupkey("rad_force", trinfo, ntr, &tn, buf);
+    master->wave_Sxy = tr[n++];
+    master->wave_Syx = tr[n++];
+  }
+  if (params->waves & WAVE_FOR) {
+    n = set_autotracer_by_groupkey("wave_force", trinfo, ntr, &tn, buf);
+    master->wave_Fx = tr[n++];
+    master->wave_Fy = tr[n++];
+  }
+  if (params->waves & (STOKES|SPECTRAL)) {
+    n = set_autotracer_by_groupkey("wave_stokes", trinfo, ntr, &tn, buf);
+    master->wave_ste1 = tr[n++];
+    master->wave_ste2 = tr[n++];
+    if (params->waves & STOKES_DRIFT) {
+      n = set_autotracer_by_groupkey("wave_stress", trinfo, ntr, &tn, buf);
+      master->tau_w1 = tr[n++];
+      master->tau_w2 = tr[n++];
+      master->tau_diss1 = tr[n++];
+      master->tau_diss2 = tr[n++];
+    }
+  }
+  if (params->waves & NEARSHORE) {
+    n = set_autotracer_by_groupkey("wave_nearshore", trinfo, ntr, &tn, buf);
+    master->wave_Kb = tr[n++];
+    master->wave_k = tr[n++];
+    master->wave_P = tr[n++];
+    master->wave_fwcapx = tr[n++];
+    master->wave_fbrex = tr[n++];
+    master->wave_fbotx = tr[n++];
+    master->wave_fsurx = tr[n++];
+    master->wave_wfdx = tr[n++];
+    master->wave_wovsx = tr[n++];
+    master->wave_frolx = tr[n++];
+    master->wave_fwcapy = tr[n++];
+    master->wave_fbrey = tr[n++];
+    master->wave_fboty = tr[n++];
+    master->wave_fsury = tr[n++];
+    master->wave_wfdy = tr[n++];
+    master->wave_wovsy = tr[n++];
+    master->wave_froly = tr[n++];
+  }
+  if (!(params->do_wave & NONE)) {
+    n = set_autotracer_by_groupkey("waves", trinfo, ntr, &tn, buf);
+    master->ustrcw = tr[n++];
+    master->wave_ub = tr[n++];
+    master->wave_period = tr[n++];
+    master->wave_dir = tr[n++];
+    master->wave_amp = tr[n++];
+  }
+  if (params->etarlx & (RELAX|ALERT|BOUNDARY))
+    set_autotracer_by_name("oeta", trinfo, ntr, &tn, tr, NULL, buf);
+  if (params->etarlx & ETA_TPXO || params->etarlx & ETA_ADPT)
+    set_autotracer_by_name("eta_tc", trinfo, ntr, &tn, tr, &master->eta_tc, buf);
+  if (params->etarlx & ETA_ADPT)
+    set_autotracer_by_name("eta_inc", trinfo, ntr, &tn, tr, &master->eta_inc, buf);
+  if (params->avhrr)
+    set_autotracer_by_name("AVHRR", trinfo, ntr, &tn, tr, &master->avhrr, buf);
+  if (params->ghrsst) {
+    n = set_autotracer_by_groupkey("ghrsst", trinfo, ntr, &tn, buf);
+    strcpy(master->trinfo_2d[n].reset_file, params->ghrsst_path);
+    strcpy(master->trinfo_2d[n].reset_dt, params->ghrsst_dt);
+    if (strlen(params->ghrsst_irule))
+      strcpy(master->trinfo_2d[n].reset_interp, params->ghrsst_irule);
+    master->ghrsst = tr[n++];
+    master->ghrsste = tr[n++];
+  }
+  if (params->show_win) {
+    /* Window index tracer currently not used, as it's the same as  */
+    /* cell_index. In the surface layer cc and w2_t[cc] are the     */
+    /* same for windows.                                            */
+    n = set_autotracer_by_groupkey("windiag", trinfo, ntr, &tn, buf);
+    master->shwin = tr[n++];
+    master->shinx= tr[n++];
+    /*set_autotracer_by_name("windows", trinfo, ntr, &tn, tr, &master->shwin, buf);*/
+  }
+  if (strlen(params->bathystats)) {
+    n = set_autotracer_by_groupkey("bathystat", trinfo, ntr, &tn, buf);
+    master->bathy_range_min = tr[n++];
+    master->bathy_range_max = tr[n++];
+    master->bathy_grad_min = tr[n++];
+    master->bathy_grad_max = tr[n++];
+  }
+  if (contains_token(params->alert, "ACTIVE") != NULL) {
+    n = set_autotracer_by_groupkey("alerts", trinfo, ntr, &tn, buf);
+    master->alert_a = tr[n++];
+    master->alert_c = tr[n++];
+    master->u1vhin = tr[n++];
+    master->u2vhin = tr[n++];
+  }
+  if (params->fillf & (WEIGHTED|MONOTONIC) || (params->tmode & SP_FFSL))
+    set_autotracer_by_name("vol_cons", trinfo, ntr, &tn, tr, &master->vol_cons, buf);
+  if (params->numbers & SOUND)
+    set_autotracer_by_name("sonic_depth", trinfo, ntr, &tn, tr, &master->sonic, buf);
+  if (params->numbers & EKPUMP) {
+    n = set_autotracer_by_groupkey("ekman", trinfo, ntr, &tn, buf);
+    master->sep = tr[n++];
+    master->bep = tr[n++];
+  }
+  if (params->numbers & TIDEFR)
+    set_autotracer_by_name("SH_tide_front", trinfo, ntr, &tn, tr, &master->tfront, buf);
+  if (params->numbers & WET_CELLS)
+    set_autotracer_by_name("wet_cells", trinfo, ntr, &tn, tr, &master->wetcell, buf);
+  if (params->numbers & SURF_LAYER)
+    set_autotracer_by_name("surf_layer", trinfo, ntr, &tn, tr, &master->surfz, buf);
+  if (params->numbers & SLOPE)
+    set_autotracer_by_name("surf_slope", trinfo, ntr, &tn, tr, &master->slope_x, buf);
+  if (params->numbers & BOTSTRESS) {
+    n = set_autotracer_by_groupkey("botstress", trinfo, ntr, &tn, buf);
+    master->tau_be1 = tr[n++];
+    master->tau_be2 = tr[n++];
+    master->tau_bm = tr[n++];
+  }
+  if (strlen(params->swr_babs)) {
+    n = tn;
+    copy_autotracer_by_name("swr_bot_absorb", trinfo, ntr, &tn, tr, &master->swr_babs);
+    trn_dataset(params->swr_babs, trinfo, n, params->ntrS, params->atrS, tr, 1.0);
+  }
+  if (params->swr_type & SWR_2D && strlen(params->swr_attn)) {
+    n = tn;
+    copy_autotracer_by_name("swr_attenuation", trinfo, ntr, &tn, tr, &master->swr_attn);
+    if (strlen(params->swr_regions))
+      trf_dataset(params->swr_attn, trinfo, n, params->ntrS, params->atrS, tr, 0.073);
+    else
+      trn_dataset(params->swr_attn, trinfo, n, params->ntrS, params->atrS, tr, 0.073);
+  }
+  if (strlen(params->swr_attn1)) {
+    n = tn;
+    copy_autotracer_by_name("swr_deep_attenuation", trinfo, ntr, &tn, tr, &master->swr_attn1);
+    tr_dataset(params->swr_attn1, &trinfo[n], 0.073);
+  }
+  if (strlen(params->swr_tran)) {
+    n = tn;
+    copy_autotracer_by_name("swr_transmission", trinfo, ntr, &tn, tr, &master->swr_tran);
+    if (strlen(params->swr_regions))
+      trf_dataset(params->swr_tran, trinfo, n, params->ntrS, params->atrS, tr, 0.26);
+    else
+      trn_dataset(params->swr_tran, trinfo, n, params->ntrS, params->atrS, tr, 0.26);
+  }
+  if (strlen(params->swr_regions)) {
+    n = set_autotracer_by_groupkey("swr_regions", trinfo, ntr, &tn, buf);
+    master->swreg = tr[n++];
+    master->swrms = tr[n++];
+    master->attn_mean = tr[n++];
+    master->tran_mean = tr[n++];
+  }
+  if (params->riverflow) {
+    set_autotracer_by_name("flow", trinfo, ntr, &tn, tr, &master->riverflow, buf);
+    if (params->riverflow == 2)
+      set_autotracer_by_name("flow_depth", trinfo, ntr, &tn, tr, &master->riverdepth, buf);
+  }
+  if (params->tidep)
+    set_autotracer_by_name("equitide", trinfo, ntr, &tn, tr, &master->equitide, buf);
+  if (params->numbers1 & TPXO)
+    set_autotracer_by_name("tpxotide", trinfo, ntr, &tn, tr, &master->tpxotide, buf);
+  if (params->numbers1 & TPXOV) {
+    n = set_autotracer_by_groupkey("tpxo_vel", trinfo, ntr, &tn, buf);
+    master->tpxovelu = tr[n++];
+    master->tpxovelv = tr[n++];
+  }
+  if (params->numbers1 & TPXOT) {
+    n = set_autotracer_by_groupkey("tpxo_tran", trinfo, ntr, &tn, buf);
+    master->tpxotranu = tr[n++];
+    master->tpxotranv = tr[n++];
+  }
+  if (params->numbers1 & TRAN2D) {
+    n = set_autotracer_by_groupkey("transport_2d", trinfo, ntr, &tn, buf);
+    master->uat = tr[n++];
+    master->vat = tr[n++];
+  }
+  if (params->decf & DEC_ETA)
+    set_autotracer_by_name("decorr_e1", trinfo, ntr, &tn, tr, &master->decv1, buf);
+  if (strlen(params->imp2df)) {
+    n = tn;
+    set_autotracer_by_name("imp2df", trinfo, ntr, &tn, tr, NULL, buf);
+    strcpy(trinfo[n].name, params->imp2dn);
+    strcpy(trinfo[n].long_name, params->imp2dn);
+    strcpy(trinfo[n].units, params->imp2du);
+    strcpy(master->trinfo_2d[tn].i_rule, "nn_sibson");
+    if (strlen(params->imp2dt))
+      sprintf(trinfo[n].data, "[data=%s(t=%s)]", params->imp2df, params->imp2dt);
+    else
+      sprintf(trinfo[n].data, "[data=%s]", params->imp2df);
+  }
+  return(tn);
+}
+
+/* END set_tracer_2d()                                               */
+/*-------------------------------------------------------------------*/
+
+
 /*-------------------------------------------------------------------*/
 /* Routine to create the 3D tracers in the params tracer_info.       */
 /* Defaults for auto runmodes are set in this routine.               */
+/* This information is copied to master->trinfo_3d in hd_init().     */
 /*-------------------------------------------------------------------*/
 void create_tracer_3d(parameters_t *params)   /* Input parameters    */
 
@@ -4391,1749 +2115,11 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
   char buf[MAXSTRLEN];
   int n, tn = 0;
 
-  /* Set up the tracer_info structure with mandatory and optional   */
-  /* tracers.                                                       */
-  if ((tracer_find_index("salt", params->ntr, params->trinfo_3d)) < 0) {
-    strcpy(trinfo[tn].name, "salt");
-    strcpy(trinfo[tn].long_name, "Salinity");
-    strcpy(trinfo[tn].units, "PSU");
-    /*UR added */
-    strcpy(trinfo[tn].std_name, "sea_water_salinity");
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 40;
-    trinfo[tn].fill_value_wc = 35.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].dissol = 1;
-    trinfo[tn].advect = 1;
-    trinfo[tn].diffuse = 1;
-    strcpy(trinfo[tn].decay, "0.0");
-    trinfo[tn].diagn = 0;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if ((tracer_find_index("temp", params->ntr, params->trinfo_3d)) < 0) {
-    strcpy(trinfo[tn].name, "temp");
-    strcpy(trinfo[tn].long_name, "Temperature");
-    strcpy(trinfo[tn].units, "degrees C");
-    /*UR added */
-    strcpy(trinfo[tn].std_name, "sea_water_temperature");
-    trinfo[tn].valid_range_wc[0] = -4;
-    trinfo[tn].valid_range_wc[1] = 40;
-    trinfo[tn].fill_value_wc = 20.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].dissol = 1;
-    trinfo[tn].advect = 1;
-    trinfo[tn].diffuse = 1;
-    strcpy(trinfo[tn].decay, "0.0");
-    trinfo[tn].diagn = 0;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  /* 3D mean velocity */
-  if (params->means & VEL3D) {
-    if ((tracer_find_index("u1mean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1mean");
-      strcpy(trinfo[tn].long_name, "Mean 3D east velocity");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC|E1VAR;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -100;
-      trinfo[tn].valid_range_wc[1] = 100;
-      strcpy(trinfo[tn].vector_name, "Mean 3D current");
-      strcpy(trinfo[tn].vector_components, "u1mean u2mean");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2mean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2mean");
-      strcpy(trinfo[tn].long_name, "Mean 3D north velocity");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC|E2VAR;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -100;
-      trinfo[tn].valid_range_wc[1] = 100;
-      strcpy(trinfo[tn].vector_name, "Mean 3D current");
-      strcpy(trinfo[tn].vector_components, "u1mean u2mean");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("wmean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "wmean");
-      strcpy(trinfo[tn].long_name, "Mean w velocity");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -100;
-      trinfo[tn].valid_range_wc[1] = 100;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  if (params->means & TS) {
-    if ((tracer_find_index("temp_mean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "temp_mean");
-      strcpy(trinfo[tn].long_name, "Mean temperature");
-      strcpy(trinfo[tn].units, "deg C");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e10;
-      trinfo[tn].valid_range_wc[1] = 1e10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("salt_mean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "salt_mean");
-      strcpy(trinfo[tn].long_name, "Mean salinity");
-      strcpy(trinfo[tn].units, "psu");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e10;
-      trinfo[tn].valid_range_wc[1] = 1e10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  if (params->means & MTRA3D) {
-    if ((tracer_find_index("tracer_mean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "tracer_mean");
-      sprintf(buf, "Mean %s", params->means_tra);
-      strcpy(trinfo[tn].long_name, buf);
-      strcpy(trinfo[tn].units, "");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e10;
-      trinfo[tn].valid_range_wc[1] = 1e10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* 3D mean volume flux */
-  /*
-  if ((params->means & VOLFLUX) || (params->tmode & SP_FFSL)) {
-    if ((tracer_find_index("u1vmean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1vmean");
-      strcpy(trinfo[tn].long_name, "Mean u1 volume flux");
-      strcpy(trinfo[tn].units, "m3s-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC|E1VAR;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e30;
-      trinfo[tn].valid_range_wc[1] = 1e30;
-      strcpy(trinfo[tn].vector_name, "Mean volume flux");
-      strcpy(trinfo[tn].vector_components, "u1vmean u2vmean");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2vmean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2vmean");
-      strcpy(trinfo[tn].long_name, "Mean u2 volume flux");
-      strcpy(trinfo[tn].units, "m3s-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC|E2VAR;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e30;
-      trinfo[tn].valid_range_wc[1] = 1e30;
-      strcpy(trinfo[tn].vector_name, "Mean volume flux");
-      strcpy(trinfo[tn].vector_components, "u1vmean u2vmean");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  */
-  /* Mean Kz */
-  if (params->means & KZ_M) {
-    if ((tracer_find_index("Kzmean", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "Kzmean");
-      strcpy(trinfo[tn].long_name, "Mean Vertical Diffusivity");
-      strcpy(trinfo[tn].units, "m2s-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Tracer fluxes */
-  if (strcmp(params->trflux, "NONE") != 0) {
-    if ((tracer_find_index("flux_e1", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "flux_e1");
-      sprintf(trinfo[tn].long_name, "Advective flux through face %d", params->trfd1);
-      strcpy(trinfo[tn].units, "kgs-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("flux_e2", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "flux_e2");
-      sprintf(trinfo[tn].long_name, "Advective flux through face %d", params->trfd2);
-      strcpy(trinfo[tn].units, "kgs-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("flux_w", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "flux_w");
-      strcpy(trinfo[tn].long_name, "Vertical advective flux");
-      strcpy(trinfo[tn].units, "kgs-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("flux_kz", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "flux_kz");
-      strcpy(trinfo[tn].long_name, "Vertical diffusive flux");
-      strcpy(trinfo[tn].units, "kgs-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Regions */
-  if (strlen(params->regions)) {
-    if ((tracer_find_index("regionid", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "regionid");
-      strcpy(trinfo[tn].long_name, "Region identifier");
-      strcpy(trinfo[tn].units, "");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1e10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("residence", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "residence");
-      strcpy(trinfo[tn].long_name, "Residence time");
-      strcpy(trinfo[tn].units, "days");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1e10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Flushing tracer */
-  if (params->trflsh) {
-    if ((tracer_find_index("flush", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "flush");
-      strcpy(trinfo[tn].long_name, "Flushing tracer");
-      strcpy(trinfo[tn].units, "mgL-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Age tracer */
-  if (strlen(params->trage)) {
-    if ((tracer_find_index("age", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "age");
-      strcpy(trinfo[tn].long_name, "Age tracer");
-      strcpy(trinfo[tn].units, "days");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1e10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Tracer percentiles */
-  if (strcmp(params->trperc, "NONE") != 0) {
-    char buf[MAXSTRLEN];
-    sprintf(buf, "percentile_%s", params->trperc);
-    if (tracer_find_index(buf, params->ntr, params->trinfo_3d) < 0) {
-      strcpy(trinfo[tn].name, buf);
-      sprintf(buf, "Percentile for %s", params->trperc);
-      strcpy(trinfo[tn].long_name, buf);
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 100;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* k-e closure */
-  if (strcmp(params->mixsc, "k-e") == 0) {
-    if ((tracer_find_index("tke", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "tke");
-      strcpy(trinfo[tn].long_name, "Turbulent Kinetic Energy");
-      strcpy(trinfo[tn].units, "m2s-2");
-      trinfo[tn].fill_value_wc = 7.6e-6;
-      trinfo[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("diss", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "diss");
-      strcpy(trinfo[tn].long_name, "Dissipation");
-      strcpy(trinfo[tn].units, "m2s-3");
-      trinfo[tn].fill_value_wc = 5e-10;
-      trinfo[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* k-w closure */
-  if (strcmp(params->mixsc, "k-w") == 0 || strcmp(params->mixsc, "W88") == 0) {
-    if ((tracer_find_index("tke", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "tke");
-      strcpy(trinfo[tn].long_name, "Turbulent Kinetic Energy");
-      strcpy(trinfo[tn].units, "m2s-2");
-      trinfo[tn].fill_value_wc = 7.6e-6;
-      trinfo[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 100;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("omega", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "omega");
-      strcpy(trinfo[tn].long_name, "Turbulence frequency");
-      strcpy(trinfo[tn].units, "s-1");
-      trinfo[tn].fill_value_wc = 1.0e-12;
-      trinfo[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 100;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Mellor-Yamada 2.5 closure */
-  if (strcmp(params->mixsc, "mellor_yamada_2_5") == 0 ||
-      strcmp(params->mixsc, "harcourt") == 0) {
-    if ((tracer_find_index("tki", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "tki");
-      strcpy(trinfo[tn].long_name, "Turbulent Kinetic Intensity");
-      strcpy(trinfo[tn].units, "m2s-2");
-      trinfo[tn].fill_value_wc = 2.0e-8;
-      trinfo[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 10;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("tki_l", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "tki_l");
-      strcpy(trinfo[tn].long_name,
-	     "Turbulent Kinetic Intensity Length Scale");
-      strcpy(trinfo[tn].units, "m2s-1");
-      trinfo[tn].fill_value_wc = 3.4e-9;
-      trinfo[tn].type = WATER|HYDRO|PROGNOSTIC|CLOSURE;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 1;
-      trinfo[tn].diffuse = 1;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 100;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("lscale", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "lscale");
-      strcpy(trinfo[tn].long_name, "Turbulence length scale");
-      strcpy(trinfo[tn].units, "metre");
-      trinfo[tn].fill_value_wc = 0.17;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1e4;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("Kq", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "Kq");
-      strcpy(trinfo[tn].long_name, "Turbulence mixing");
-      strcpy(trinfo[tn].units, "m2s-1");
-      trinfo[tn].fill_value_wc = 1e-5;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].inwc = 1;
-      trinfo[tn].insed = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1; 
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Smagorinsky diffusion */
-  if (params->smagorinsky > 0.0) {
-    if ((tracer_find_index("smagorinsky", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "smagorinsky");
-      strcpy(trinfo[tn].long_name, "Smagorinsky diffusion");
-      strcpy(trinfo[tn].units, "m2s-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Layer thickness */
-  if (params->show_layers) {
-    if ((tracer_find_index("layer_thick", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "layer_thick");
-      strcpy(trinfo[tn].long_name, "Layer thickness");
-      strcpy(trinfo[tn].units, "metre");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 1;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = 0;
-      trinfo[tn].valid_range_wc[1] = 5000;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Momentum tendencies */
-  if (params->tendf) {
-    if ((tracer_find_index("mom_balance", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "mom_balance");
-      strcpy(trinfo[tn].long_name, "Momentum balance maximum");
-      strcpy(trinfo[tn].units, "%");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u1_adv", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1_adv");
-      strcpy(trinfo[tn].long_name, "u1 advective tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Advective current");
-      strcpy(trinfo[tn].vector_components, "u1_adv u2_adv");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u1_hdif", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1_hdif");
-      strcpy(trinfo[tn].long_name, "u1 horizontal diffusion tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Hdiffusion current");
-      strcpy(trinfo[tn].vector_components, "u1_hdif u2_hdif");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u1_vdif", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1_vdif");
-      strcpy(trinfo[tn].long_name, "u1 vertical diffusion tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Vdiffusion current");
-      strcpy(trinfo[tn].vector_components, "u1_vdif u2_vdif");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u1_btp", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1_btp");
-      strcpy(trinfo[tn].long_name, "u1 barotropic pressure gradient tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Barotropic current");
-      strcpy(trinfo[tn].vector_components, "u1_btp u2_btp");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u1_bcp", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1_bcp");
-      strcpy(trinfo[tn].long_name, "u1 baroclinic pressure tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Baroclinic current");
-      strcpy(trinfo[tn].vector_components, "u1_bcp u2_bcp");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u1_cor", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u1_cor");
-      strcpy(trinfo[tn].long_name, "u1 Coriolis tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Coriolis current");
-      strcpy(trinfo[tn].vector_components, "u1_cor u2_cor");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if (params->waves & STOKES_DRIFT) {
-      if ((tracer_find_index("u1_sto", params->ntr, params->trinfo_3d)) < 0) {
-	strcpy(trinfo[tn].name, "u1_sto");
-	strcpy(trinfo[tn].long_name, "u1 Stokes tendency");
-	strcpy(trinfo[tn].units, "ms-1");
-	trinfo[tn].fill_value_wc = 0.0;
-	trinfo[tn].type = WATER;
-	trinfo[tn].diagn = 0;
-	trinfo[tn].advect = 0;
-	trinfo[tn].diffuse = 0;
-	trinfo[tn].valid_range_wc[0] = -1e35;
-	trinfo[tn].valid_range_wc[1] = 1e35;
-	strcpy(trinfo[tn].vector_name, "Stokes current");
-	strcpy(trinfo[tn].vector_components, "u1_sto u2_sto");
-	trinfo[tn].m = tn;
-	tn++;
-      }
-    }
-    if ((tracer_find_index("u2_adv", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2_adv");
-      strcpy(trinfo[tn].long_name, "u2 advective tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Advective current");
-      strcpy(trinfo[tn].vector_components, "u1_adv u2_adv");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2_hdif", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2_hdif");
-      strcpy(trinfo[tn].long_name,
-	     "u2 horizontal diffusion tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Hdiffusion current");
-      strcpy(trinfo[tn].vector_components, "u1_hdif u2_hdif");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2_vdif", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2_vdif");
-      strcpy(trinfo[tn].long_name,
-	     "u2 vertical diffusion tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Vdiffusion current");
-      strcpy(trinfo[tn].vector_components, "u1_vdif u2_vdif");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2_btp", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2_btp");
-      strcpy(trinfo[tn].long_name,
-	     "u2 barotropic pressure gradient tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Barotropic current");
-      strcpy(trinfo[tn].vector_components, "u1_btp u2_btp");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2_bcp", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2_bcp");
-      strcpy(trinfo[tn].long_name,
-	     "u2 baroclinic pressure tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Baroclinic current");
-      strcpy(trinfo[tn].vector_components, "u1_bcp u2_bcp");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if ((tracer_find_index("u2_cor", params->ntr, params->trinfo_3d)) < 0) {
-      strcpy(trinfo[tn].name, "u2_cor");
-      strcpy(trinfo[tn].long_name, "u2 Coriolis tendency");
-      strcpy(trinfo[tn].units, "ms-1");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      strcpy(trinfo[tn].vector_name, "Coriolis current");
-      strcpy(trinfo[tn].vector_components, "u1_cor u2_cor");
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if (params->waves & STOKES_DRIFT) {
-      if ((tracer_find_index("u2_sto", params->ntr, params->trinfo_3d)) < 0) {
-	strcpy(trinfo[tn].name, "u2_sto");
-	strcpy(trinfo[tn].long_name, "u2 Stokes tendency");
-	strcpy(trinfo[tn].units, "ms-1");
-	trinfo[tn].fill_value_wc = 0.0;
-	trinfo[tn].type = WATER;
-	trinfo[tn].diagn = 0;
-	trinfo[tn].advect = 0;
-	trinfo[tn].diffuse = 0;
-	trinfo[tn].valid_range_wc[0] = -1e35;
-	trinfo[tn].valid_range_wc[1] = 1e35;
-	strcpy(trinfo[tn].vector_name, "Stokes current");
-	strcpy(trinfo[tn].vector_components, "u1_sto u2_sto");
-	trinfo[tn].m = tn;
-	tn++;
-      }
-    }
-  }
-  /* Tracer tendencies */
-  if (strlen(params->trtend)) {
-    if (tracer_find_index("tra_adv", params->ntr, params->trinfo_3d) == -1) {
-      strcpy(trinfo[tn].name, "tra_adv");
-      strcpy(trinfo[tn].long_name, "Tracer advective tendency");
-      strcpy(trinfo[tn].units, "");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    /*
-    if (tracer_find_index("tra_hdif", params->ntr, params->trinfo_3d) == -1) {
-      strcpy(trinfo[tn].name, "tra_hdif");
-      strcpy(trinfo[tn].long_name, "Tracer horizontal diffusive tendency");
-      strcpy(trinfo[tn].units, "");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    */
-    if (tracer_find_index("tra_vdif", params->ntr, params->trinfo_3d) == -1) {
-      strcpy(trinfo[tn].name, "tra_vdif");
-      strcpy(trinfo[tn].long_name, "Tracer vertical diffusive tendency");
-      strcpy(trinfo[tn].units, "");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-    if (tracer_find_index("tra_ncon", params->ntr, params->trinfo_3d) == -1) {
-      strcpy(trinfo[tn].name, "tra_ncon");
-      strcpy(trinfo[tn].long_name, "Tracer non-conservative tendency");
-      strcpy(trinfo[tn].units, "");
-      trinfo[tn].fill_value_wc = 0.0;
-      trinfo[tn].type = WATER;
-      trinfo[tn].diagn = 0;
-      trinfo[tn].advect = 0;
-      trinfo[tn].diffuse = 0;
-      trinfo[tn].valid_range_wc[0] = -1e35;
-      trinfo[tn].valid_range_wc[1] = 1e35;
-      trinfo[tn].m = tn;
-      tn++;
-    }
-  }
-  /* Waves */
-  if (params->waves & SPECTRAL) {
-    strcpy(trinfo[tn].name, "wave_stke1");
-    strcpy(trinfo[tn].long_name, "Stokes sub-surface velocity along e1");
-    strcpy(trinfo[tn].units, "ms-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER|WAVE|FORCING;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -100.0;
-    trinfo[tn].valid_range_wc[1] = 100.0;
-    trinfo[tn].m = tn;
-    tn++;
-    strcpy(trinfo[tn].name, "wave_stke2");
-    strcpy(trinfo[tn].long_name, "Stokes sub-surface velocity along e2");
-    strcpy(trinfo[tn].units, "ms-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER|WAVE|FORCING;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -100.0;
-    trinfo[tn].valid_range_wc[1] = 100.0;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  /* Diagnostic numbers */
-  if (params->numbers & BRUNT) {
-    strcpy(trinfo[tn].name, "brunt_vaisala");
-    strcpy(trinfo[tn].long_name, "Brunt Vaisala Frequency");
-    strcpy(trinfo[tn].units, "s-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & INT_WAVE) {
-    strcpy(trinfo[tn].name, "int_wave_speed");
-    strcpy(trinfo[tn].long_name, "Internal wave speed");
-    strcpy(trinfo[tn].units, "ms-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & RICHARD_GR) {
-    strcpy(trinfo[tn].name, "richardson_gr");
-    strcpy(trinfo[tn].long_name, "Gradient Richardson number");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e308;
-    trinfo[tn].valid_range_wc[1] = 1e308;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & RICHARD_FL) {
-    strcpy(trinfo[tn].name, "richardson_fl");
-    strcpy(trinfo[tn].long_name, "Flux Richardson number");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e308;
-    trinfo[tn].valid_range_wc[1] = 1e308;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & REYNOLDS) {
-    strcpy(trinfo[tn].name, "reynolds");
-    strcpy(trinfo[tn].long_name, "Reynolds number");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & FROUDE) {
-    strcpy(trinfo[tn].name, "froude");
-    strcpy(trinfo[tn].long_name, "Froude number");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & SIGMA_T) {
-    strcpy(trinfo[tn].name, "sigma_t");
-    strcpy(trinfo[tn].long_name, "Sigma_t");
-    strcpy(trinfo[tn].units, "kgm-3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & ENERGY) {
-    strcpy(trinfo[tn].name, "energy");
-    strcpy(trinfo[tn].long_name, "Mechanical energy");
-    strcpy(trinfo[tn].units, "Jm-3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & KINETIC) {
-    strcpy(trinfo[tn].name, "kenergy");
-    strcpy(trinfo[tn].long_name, "Kinetic energy");
-    strcpy(trinfo[tn].units, "Jm-3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->do_pt) {
-    strcpy(trinfo[tn].name, "ptconc");
-    strcpy(trinfo[tn].long_name, "Particle concentration");
-    strcpy(trinfo[tn].units, "kgm-3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & SOUND) {
-    strcpy(trinfo[tn].name, "sound");
-    strcpy(trinfo[tn].long_name, "Speed of sound");
-    strcpy(trinfo[tn].units, "ms-1");
-    /*UR added */
-    strcpy(trinfo[tn].std_name, "speed_of_sound_in_sea_water");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 1000.;
-    trinfo[tn].valid_range_wc[1] = 2000.;
-    trinfo[tn].m = tn;
-    tn++;
-    strcpy(trinfo[tn].name, "sound_channel");
-    strcpy(trinfo[tn].long_name, "Sound channel depth");
-    strcpy(trinfo[tn].units, "m");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e4;
-/*UR made 100 as not-realistic but theoretically possible limit */
-    trinfo[tn].valid_range_wc[1] = 100;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & ROSSBY_IN) {
-    strcpy(trinfo[tn].name, "rossby_internal");
-    strcpy(trinfo[tn].long_name, "Internal Rossby radius");
-    strcpy(trinfo[tn].units, "metre");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & SPEED_3D) {
-    strcpy(trinfo[tn].name, "current_speed_3d");
-    strcpy(trinfo[tn].long_name, "Current Speed 3D");
-    strcpy(trinfo[tn].units, "ms-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -100;
-    trinfo[tn].valid_range_wc[1] = 100;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & SHEAR_V) {
-    strcpy(trinfo[tn].name, "shear_vert");
-    strcpy(trinfo[tn].long_name, "Vertical velocity shear");
-    strcpy(trinfo[tn].units, "s-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & BUOY_PROD) {
-    strcpy(trinfo[tn].name, "buoy_prod");
-    strcpy(trinfo[tn].long_name, "Buoyancy production");
-    strcpy(trinfo[tn].units, "m2s-2");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & SHEAR_PROD) {
-    strcpy(trinfo[tn].name, "shear_prod");
-    strcpy(trinfo[tn].long_name, "Shear production");
-    strcpy(trinfo[tn].units, "m2s-2");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (!(params->decf & (NONE|DEC_ETA))) {
-    strcpy(trinfo[tn].name, "decorr_e1");
-    strcpy(trinfo[tn].long_name, "Decorrelation length scale e1");
-    strcpy(trinfo[tn].units, params->decs);
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-    strcpy(trinfo[tn].name, "decorr_e2");
-    strcpy(trinfo[tn].long_name, "Decorrelation length scale e2");
-    strcpy(trinfo[tn].units, params->decs);
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->save_force & OTEMP) {
-    strcpy(trinfo[tn].name, "otemp");
-    strcpy(trinfo[tn].long_name, "OFAM temperature");
-    strcpy(trinfo[tn].units, "degrees C");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -4;
-    trinfo[tn].valid_range_wc[1] = 40;
-    trinfo[tn].m = tn;
-    if (strlen(params->odata)) {
-      if (params->save_force & ROAM)
-	sprintf(buf, "%s(otemp=temp)", params->tdata);
-      else
-	sprintf(buf, "%s", params->odata);
-      strcpy(trinfo[tn].reset_file, buf);
-      strcpy(trinfo[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  if (params->save_force & OSALT) {
-    strcpy(trinfo[tn].name, "osalt");
-    strcpy(trinfo[tn].long_name, "OFAM salinity");
-    strcpy(trinfo[tn].units, "PSU");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 40;
-    trinfo[tn].m = tn;
-    if (strlen(params->odata)) {
-      if (params->save_force & ROAM)
-	sprintf(buf, "%s(osalt=salt)", params->sdata);
-      else
-	sprintf(buf, "%s", params->odata);
-      strcpy(trinfo[tn].reset_file, buf);
-      strcpy(trinfo[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  if (params->rtemp) {
-    strcpy(trinfo[tn].name, "rtemp");
-    strcpy(trinfo[tn].long_name, "Relaxation temperature");
-    strcpy(trinfo[tn].units, "degrees C");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -4;
-    trinfo[tn].valid_range_wc[1] = 40;
-    trinfo[tn].m = tn;
-    if (strlen(params->tdata)) {
-      char buf[MAXSTRLEN];
-      char buf1[MAXSTRLEN];
-      char buf2[MAXSTRLEN];
-      if (params->save_force & ROAM) {
-	/* See if temp is being variable substituted */
-	if (find_token(params->tdata, "temp=", buf2, ')'))
-	  sprintf(buf, "%s(rtemp=%s)", params->tdata, buf2);
-	else 
-	  sprintf(buf, "%s(rtemp=temp)", params->tdata);
-	strcpy(buf1, "1 day");
-      }
-      else {
-	sprintf(buf, "%s", params->tdata);
-	strcpy(buf1, "1 second");
-      }
-      strcpy(trinfo[tn].reset_file, buf);
-      strcpy(trinfo[tn].reset_dt, buf1);
-    }
-    tn++;
-  }
-  if (params->rsalt) {
-    strcpy(trinfo[tn].name, "rsalt");
-    strcpy(trinfo[tn].long_name, "Relaxation salinity");
-    strcpy(trinfo[tn].units, "PSU");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 40;
-    trinfo[tn].m = tn;
-    if (strlen(params->sdata)) {
-      char buf[MAXSTRLEN];
-      char buf1[MAXSTRLEN];
-      char buf2[MAXSTRLEN];
-      if (params->save_force & ROAM) {
-	/* See if salt is being variable substituted */
-	if (find_token(params->sdata, "salt=", buf2, ')'))
-	  sprintf(buf, "%s(rsalt=%s)", params->sdata, buf2);
-	else
-	  sprintf(buf, "%s(rsalt=salt)", params->sdata);
-	strcpy(buf1, "1 day");
-      }
-      else {
-	sprintf(buf, "%s", params->sdata);
-	strcpy(buf1, "1 second");
-      }
-      strcpy(trinfo[tn].reset_file, buf);
-      strcpy(trinfo[tn].reset_dt, buf1);
-    }
-    tn++;
-  }
-  if (params->rtemp & (RLX_ADPT|RLX_REG|RLX_OBC)) {
-    strcpy(trinfo[tn].name, "temp_tc");
-    strcpy(trinfo[tn].long_name, "Relaxation temperature time constant");
-    strcpy(trinfo[tn].units, "days");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->rsalt & (RLX_ADPT|RLX_REG|RLX_OBC)) {
-    strcpy(trinfo[tn].name, "salt_tc");
-    strcpy(trinfo[tn].long_name, "Relaxation salinity time constant");
-    strcpy(trinfo[tn].units, "days");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->save_force & OVELU) {
-    strcpy(trinfo[tn].name, "ovelu");
-    strcpy(trinfo[tn].long_name, "OFAM east velocity");
-    strcpy(trinfo[tn].units, "ms-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -100;
-    trinfo[tn].valid_range_wc[1] = 100;
-    strcpy(trinfo[tn].vector_name, "Global 3D current");
-    strcpy(trinfo[tn].vector_components, "ovelu ovelv");
-    trinfo[tn].m = tn;
-    if (strlen(params->vdata)) {
-      if (params->save_force & ROAM) {
-	char buf2[MAXSTRLEN];
-	/* See if u is being variable substituted */
-	if (find_token(params->vdata, "u=", buf2, ')'))
-	  sprintf(buf, "%s(ovelu=%s)", params->vdata, buf2);
-	else
-	  sprintf(buf, "%s(ovelu=u)", params->vdata);
-      } else
-	sprintf(buf, "%s", params->vdata);
-      strcpy(trinfo[tn].reset_file, buf);
-      strcpy(trinfo[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  if (params->save_force & OVELV) {
-    strcpy(trinfo[tn].name, "ovelv");
-    strcpy(trinfo[tn].long_name, "OFAM north velocity");
-    strcpy(trinfo[tn].units, "ms-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -100;
-    trinfo[tn].valid_range_wc[1] = 100;
-    strcpy(trinfo[tn].vector_name, "Global 3D current");
-    strcpy(trinfo[tn].vector_components, "ovelu ovelv");
-    trinfo[tn].m = tn;
-    if (strlen(params->vdata)) {
-      if (params->save_force & ROAM) {
-	char buf2[MAXSTRLEN];
-	/* See if v is being variable substituted */
-	if (find_token(params->vdata, "v=", buf2, ')'))
-	  sprintf(buf, "%s(ovelv=%s)", params->vdata, buf2);
-	else
-	  sprintf(buf, "%s(ovelv=v)", params->vdata);
-      } else
-	sprintf(buf, "%s", params->vdata);
-      strcpy(trinfo[tn].reset_file, buf);
-      strcpy(trinfo[tn].reset_dt, "1 second");
-    }
-    tn++;
-  }
-  if (params->porusplate) {
-    strcpy(trinfo[tn].name, "reef_fraction_e1");
-    strcpy(trinfo[tn].long_name, "Fraction of reef in cell e1 direction");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    /*tr_dataset(params->reef_frac, &params->trinfo_3d[tn], 0.0);*/
-    tn++;
-    strcpy(trinfo[tn].name, "reef_fraction_e2");
-    strcpy(trinfo[tn].long_name, "Fraction of reef in cell e2 direction");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    /*tr_dataset(params->reef_frac, &params->trinfo_3d[tn], 0.0);*/
-    tn++;
-  }
-  if (strlen(params->imp3df)) {
-    strcpy(trinfo[tn].name, params->imp3dn);
-    strcpy(trinfo[tn].long_name, params->imp3dn);
-    strcpy(trinfo[tn].units, params->imp3du);
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    if (strlen(params->imp3dt))
-      sprintf(trinfo[tn].data, "[data=%s(t=%s)]", params->imp3df, 
-	      params->imp3dt);
-    else
-      sprintf(trinfo[tn].data, "[data=%s]", params->imp3df);
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & DUMMIES) {
-    strcpy(trinfo[tn].name, "tracer1");
-    strcpy(trinfo[tn].long_name, "Dummy tracer 1");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-    strcpy(trinfo[tn].name, "tracer2");
-    strcpy(trinfo[tn].long_name, "Dummy tracer 2");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-    strcpy(trinfo[tn].name, "tracer3");
-    strcpy(trinfo[tn].long_name, "Dummy tracer 3");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & UNIT) {
-    strcpy(trinfo[tn].name, "unit");
-    strcpy(trinfo[tn].long_name, "Unit tracer");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 1.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 1;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & PASS) {
-    strcpy(trinfo[tn].name, "passive");
-    strcpy(trinfo[tn].long_name, "Passive tracer");
-    strcpy(trinfo[tn].units, "kgm-3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 1;
-    trinfo[tn].diffuse = 1;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers & GLIDER) {
-    strcpy(trinfo[tn].name, "glider");
-    strcpy(trinfo[tn].long_name, "Glider density");
-    strcpy(trinfo[tn].units, "kgm-3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers1 & U1VHC) {
-    strcpy(trinfo[tn].name, "u1vhc");
-    strcpy(trinfo[tn].long_name, "Horizontal viscosity cell centered");
-    strcpy(trinfo[tn].units, "m2s-1");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers1 & VOLCONT) {
-    strcpy(trinfo[tn].name, "vol_cont");
-    strcpy(trinfo[tn].long_name, "Volume continuity");
-    strcpy(trinfo[tn].units, "m3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (params->numbers1 & CENTI) {
-    strcpy(trinfo[tn].name, "cell_index");
-    strcpy(trinfo[tn].long_name, "Cell centre index");
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (strlen(params->nprof)) {
-    strcpy(trinfo[tn].name, "nprof");
-    sprintf(trinfo[tn].long_name, "Normalized  vertical profile of %s", params->nprof);
-    strcpy(trinfo[tn].units, "");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 100;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  if (strlen(params->monotr)) {
-    strcpy(trinfo[tn].name, "mono");
-    sprintf(trinfo[tn].long_name, "Monotinicity of %s", params->monotr);
-    strcpy(trinfo[tn].units, " ");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 100;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  for (n = 0; n < params->ndhw; n++) {
-    sprintf(buf, "dhw%d", n);
-    strcpy(trinfo[tn].name, buf);
-    if (strlen(params->dhwt[n]))
-      sprintf(buf, "Degree heating week #%d %s", n, params->dhwt[n]);
-    else
-      sprintf(buf, "Degree heating week #%d", n);
-    strcpy(trinfo[tn].long_name, buf);
-    strcpy(trinfo[tn].units, "DegC-week");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    strcpy(trinfo[tn].tag, "DA_");
-    if (params->dhwf[n] & DHW_RT)
-      sprintf(master->trinfo_3d[tn].tracerstat, "exposure(temp:dhwc%d:dhwt%d)",n,n);
-    trinfo[tn].m = -1;
-    trinfo[tn].n = tn;
-    tn++;
-
-    if (params->dhwf[n] & DHW_RT)
-      sprintf(buf, "dhwt%d", n);
-    if (params->dhwf[n] & DHW_NOAA)
-      sprintf(buf, "dhd%d", n);
-    strcpy(trinfo[tn].name, buf);
-    if (params->dhwf[n] & DHW_RT)
-      sprintf(buf, "Degree heating exposure time #%d", n);
-    if (params->dhwf[n] & DHW_NOAA)
-      sprintf(buf, "Degree heating day #%d", n);
-    strcpy(trinfo[tn].long_name, buf);
-    if (params->dhwf[n] & DHW_RT)
-      strcpy(buf, "week");
-    if (params->dhwf[n] & DHW_NOAA)
-      strcpy(buf, "DegCday");
-    strcpy(trinfo[tn].units, buf);
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 7;
-    trinfo[tn].m = -1;
-    trinfo[tn].n = tn;
-    tn++;
-
-    sprintf(buf, "dhwc%d", n);
-    strcpy(trinfo[tn].name, buf);
-    sprintf(buf, "Degree heating threshold #%d", n);
-    strcpy(trinfo[tn].long_name, buf);
-    strcpy(trinfo[tn].units, "Degrees C");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = -1;
-    trinfo[tn].n = tn;
-    strcpy(trinfo[tn].reset_file, params->dhw[n]);
-    strcpy(trinfo[tn].reset_dt, "1 day");
-    tn++;
-  }
-  if (params->riverflow == 2) {
-    strcpy(trinfo[tn].name, "flow_salt");
-    strcpy(trinfo[tn].long_name, "River flow salinity");
-    strcpy(trinfo[tn].units, "psu");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER|HYDRO|DIAGNOSTIC;
-    trinfo[tn].diagn = 1;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].n = tn;
-    tn++;
-  }
-  if (params->swr_type & SWR_3D && strlen(params->swr_attn)) {
-    strcpy(trinfo[tn].name, "swr_attenuation");
-    strcpy(trinfo[tn].long_name, "SWR attenuation");
-    strcpy(trinfo[tn].units, "m-1");
-    trinfo[tn].type = WATER|HYDRO|PARAMETER;
-    tr_dataset(params->swr_attn, &params->trinfo_3d[tn], 0.073);
-    trinfo[tn].valid_range_wc[0] = 0;
-    trinfo[tn].valid_range_wc[1] = 10;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].n = tn;
-    tn++;
-  }
-  /*
-  if (params->trasc & LAGRANGE) {
-    strcpy(trinfo[tn].name, "Vi");
-    strcpy(trinfo[tn].long_name, "Volume error");
-    strcpy(trinfo[tn].units, "m^3");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
-  */
-  if (params->fillf & LOCAL && params->fillf & DIAGNOSE) {
-    strcpy(trinfo[tn].name, "Vcorr");
-    strcpy(trinfo[tn].long_name, "Volume correction");
-    strcpy(trinfo[tn].units, "%");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-    strcpy(trinfo[tn].name, "Acorr");
-    strcpy(trinfo[tn].long_name, "Aij correction");
-    strcpy(trinfo[tn].units, "%");
-    trinfo[tn].fill_value_wc = 0.0;
-    trinfo[tn].type = WATER;
-    trinfo[tn].diagn = 0;
-    trinfo[tn].advect = 0;
-    trinfo[tn].diffuse = 0;
-    trinfo[tn].inwc = 1;
-    trinfo[tn].insed = 0;
-    trinfo[tn].valid_range_wc[0] = -1e10;
-    trinfo[tn].valid_range_wc[1] = 1e10;
-    trinfo[tn].m = tn;
-    tn++;
-  }
+  tn = set_tracer_3d(params, NULL, params->ntr, params->trinfo_3d, NULL);
 
 #if defined(HAVE_SEDIMENT_MODULE)
   if (params->do_sed) {
-    /* Set up sediment tracers if required */
+    /* Set up sediment tracers if required                           */
     tn = sediment_autotracer_3d(params->prmfd, params->do_sed, params->sed_vars, 
 				params->sed_defs, trinfo, params->ntr, tn);
   }
@@ -6141,7 +2127,7 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
 
 #if defined(HAVE_ECOLOGY_MODULE)
   if (params->do_eco) {
-    /* Set up ecology tracers if required */
+    /* Set up ecology tracers if required                            */
     tn = ecology_autotracer_3d(params->prmfd, params->do_eco, params->eco_vars, 
 			       params->eco_defs, params->pre_eco,
 			       trinfo, params->ntr, tn);
@@ -7202,6 +3188,39 @@ int value_init_regions(master_t *master, char *dname, double *tr, int mode)
 
 
 /*-------------------------------------------------------------------*/
+/* Populates a 2D array with a regionalisation.                      */
+/* Note that the input to read_regioni() is a 3D array, so we copy   */
+/* the surface layer into the returning array.                       */
+/*-------------------------------------------------------------------*/
+int set_regions(master_t *master, char *dname, double *regionid)
+{
+  geometry_t *geom = master->geom;
+  char *files[MAXSTRLEN * MAXNUMARGS];
+  int cc, c, nf, nr;
+  double *reg;
+
+  reg = d_alloc_1d(geom->szc);
+  nf = parseline(dname, files, MAXNUMARGS);
+  if(strcmp(files[0], "region") == 0) {
+    nr = read_regioni(master, files[1], reg);
+    if (nr) {
+      for (cc = 1; cc <= geom->b2_t; cc++) {
+	c = geom->w2_t[cc];
+	regionid[c] = reg[c];
+      }
+      d_free_1d(reg);
+      return(1);
+    } else
+      return(0);
+  }
+  return(0);
+}
+
+/* END get_regions()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to initialise a 3d array from a number, array or file     */
 /* input.                                                            */
 /*-------------------------------------------------------------------*/
@@ -7395,7 +3414,10 @@ void value_init_3d(master_t *master,     /* Master data              */
     timeseries_t *ts;
     int id; 
 
-    ts = hd_ts_read(master, fname, 0);
+    if (i_rule && strlen(i_rule))
+      ts = hd_ts_read_us(master, fname, 0, i_rule);
+    else
+      ts = hd_ts_read(master, fname, 0);
 
     /* Infer if this is a plain ascii file (as opposed to a          */
     /* timeseries file) by the absence of the allocation of the time */
@@ -7446,8 +3468,8 @@ void value_init_3d(master_t *master,     /* Master data              */
 	hd_warn("val_init_3d: The file '%s' does not contain the tracer '%s'\n", fname, vname);
       else {
 	/* Use a sparse interpolation for 'standard' files           */
-	if (value_init_sparse3d(master, ret, fname, vname, i_rule,
-				schedule->start_time, NULL) == 1) {
+	/*if (value_init_sparse3d(master, ret, fname, vname, i_rule,
+	  schedule->start_time, NULL, ts) == 1) {*/
 	  /* Otherwise interpolate as a gridded file                 */
 	  for (cc = 1; cc <= nvec; cc++) {
 	    c = vec[cc];
@@ -7457,7 +3479,7 @@ void value_init_3d(master_t *master,     /* Master data              */
 				 geom->celly[cs],
 				 geom->cellz[c]);
 	  }
-	}
+	
       }
       if (master->trfilter & TRF_FILL3D) {
 	if ((n = tracer_find_index(vname, master->ntr, master->trinfo_3d)) >= 0)
@@ -7487,8 +3509,9 @@ void value_init_3d(master_t *master,     /* Master data              */
 
 /*-------------------------------------------------------------------*/
 /* Valid bathymetry netCDF dimension names                           */
-static char *in_dims[4][8] = {
+static char *in_dims[5][8] = {
   {"botz", "i_centre", "j_centre", "k_centre", "x_centre", "y_centre", "z_centre", "t"},
+  {"botz", "i", "j", "k", "longitude", "latitude", "zc", "time"},
   {"height", "longitude", "latitude", "zc", "lon", "lat", "zc", "time"},
   {"height", "ni", "nj", "nk", "x", "y", "z", "t"},
   {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
@@ -7581,9 +3604,9 @@ int set_variable(master_t *master, char *tag, double *ret, double *tin)
       if (strlen(i_rule)) {
 	/*interp_data_us(master, buf1, iname, tr, mode, i_rule, NULL, t);*/
 	if (mode == 2)
-	  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, NULL);
+	  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, NULL, NULL);
 	if (mode == 3)
-	  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, NULL);
+	  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, NULL, NULL);
       } else
 	interp_data_s(master, buf1, iname, tr, mode, NULL, t);
       return(1);
@@ -7638,9 +3661,9 @@ int set_variable(master_t *master, char *tag, double *ret, double *tin)
 	      if (strlen(i_rule)) {
 		/*interp_data_us(master, buf1, iname, tr, mode, i_rule, mask, t);*/
 		if (mode == 2)
-		  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, mask);
+		  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, mask, NULL);
 		if (mode == 3)
-		  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, mask);
+		  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, mask, NULL);
 	      } else
 		interp_data_s(master, buf1, iname, tr, mode, mask, t);
 	      continue;
@@ -7832,7 +3855,8 @@ int value_init_sparse2d(master_t *master, /* Master data             */
 			char *vname,      /* Variable name           */
 			char *in_rule,    /* Interpolation type      */
 			double t,         /* Time for temporal data  */
-			int *rask         /* Mask for vec (optional) */
+			int *rask,        /* Mask for vec (optional) */
+			timeseries_t *ts  /* Timeseries structure    */
 			)
 {
   geometry_t *geom = master->geom;
@@ -7892,7 +3916,11 @@ int value_init_sparse2d(master_t *master, /* Master data             */
 
   /* Get the time index                                              */
   if (t != NOTVALID) {
-    ti = dump_choose_by_time_m(master, fid, t);
+    double rfrac;
+    if (ts != NULL) 
+      df_find_record(ts->df, t, &ti, &i, &rfrac);
+    else
+      ti = dump_choose_by_time_m(master, fid, t);
     if (ti == -1) return(1);
   }
 
@@ -7956,8 +3984,8 @@ int value_init_sparse2d(master_t *master, /* Master data             */
     count[1] = nce2;
     count[2] = nce1;
     count[3] = 0;
-
-  }
+ 
+ }
   nc_get_vara_double(fid, ncw_var_id(fid, vname), start, count, var[0]);
 
   /*-----------------------------------------------------------------*/
@@ -8057,7 +4085,8 @@ int value_init_sparse3d(master_t *master, /* Master data             */
 			char *vname,      /* Variable name           */
 			char *in_rule,    /* Interpolation type      */
 			double t,         /* Time for temporal data  */
-			int *rask         /* Mask for vec (optional) */
+			int *rask,        /* Mask for vec (optional) */
+			timeseries_t *ts  /* Timeseries structure    */
 			)
 {
   geometry_t *geom = master->geom;
@@ -8121,10 +4150,18 @@ int value_init_sparse3d(master_t *master, /* Master data             */
 
   /* Get the time index                                              */
   if (t != NOTVALID) {
-    if (intime == 0)
-      ti = dump_choose_by_time_m(master, fid, t);
-    else
-      ti = dump_choose_by_time_mom(master, fid, t);
+    double rfrac;
+    if (intime == 0) {
+      if (ts != NULL) 
+	df_find_record(ts->df, t, &ti, &i, &rfrac);
+      else
+	ti = dump_choose_by_time_m(master, fid, t);
+    } else {
+      if (ts != NULL) 
+	df_find_record(ts->df, t, &ti, &i, &rfrac);
+      else
+	ti = dump_choose_by_time_mom(master, fid, t);
+    }
     if (ti == -1) return(1);
   }
 
@@ -8220,7 +4257,7 @@ int value_init_sparse3d(master_t *master, /* Master data             */
     y = d_alloc_1d(nvar);
     v = d_alloc_1d(nvar);
   } else
-    hd_quit("value_init_sparse2d: Can't find valid %s values in file %s.\n", vname, fname);
+    hd_quit("value_init_sparse3d: Can't find valid %s values in file %s.\n", vname, fname);
 
   for (j = 0; j < nce2; j++) {
     for (i = 0; i < nce1; i++) {
@@ -9514,8 +5551,11 @@ void value_init_2d(master_t *master,     /* Master data              */
     timeseries_t *ts;
     int id; 
 
-    ts = hd_ts_read(master, fname, 0);
-	
+    if (strlen(i_rule))
+      ts = hd_ts_read_us(master, fname, 0, i_rule);
+    else
+      ts = hd_ts_read(master, fname, 0);
+
     /* Infer if this is a plain ascii file (as opposed to a          */
     /* timeseries file) by the absence of the allocation of the time */
     /* field.                                                        */
@@ -9559,14 +5599,14 @@ void value_init_2d(master_t *master,     /* Master data              */
     } else {
       /* Sanity check to see if the variable is in this datafile     */
       id = ts_get_index(ts, fv_get_varname(fname, vname, buf));
-	
+
       if (id < 0)
 	hd_warn("val_init_3d: The file '%s' does not contain the tracer '%s'\n", fname, vname);
       else {
 
 	/* Use a sparse interpolation for 'standard' files           */
 	if (value_init_sparse2d(master, ret, fname, vname, i_rule,
-				schedule->start_time, NULL) == 1) {
+				schedule->start_time, NULL, ts) == 1) {
 	  /* Otherwise interpolate as a gridded file                 */
 	  for (cc = 1; cc <= nvec; cc++) {
 	    c = vec[cc];
@@ -9783,6 +5823,173 @@ void value_init_sed(master_t *master,      /* Master data            */
 /*-------------------------------------------------------------------*/
 
 
+/*-------------------------------------------------------------------*/
+/* Finds an autotracer in the global list by its name                */
+/*-------------------------------------------------------------------*/
+int find_autotracer_by_name(char *name)
+{
+  int i;
+  for (i = 0; i < NAUTOTR; i++)
+    if (strcmp(autotracerlist[i].name, name) == 0) break;
+  return(i);
+}
+
+/* END find_autotracer_by_name()                                     */
+/*-------------------------------------------------------------------*
+
+
+/*-------------------------------------------------------------------*/
+/* Copies an autotracer attributes to a tracer info structure given  */
+/* a tracer name.                                                    */
+/*-------------------------------------------------------------------*/
+void copy_autotracer_by_name(char *name, 
+			     tracer_info_t tr[], 
+			     int ntr, 
+			     int *n, 
+			     double **tra, 
+			     double **trp)
+{
+  int tn;
+  if ((tn = tracer_find_index(name, ntr, tr)) < 0) {
+    int i;
+    for (i = 0; i < NAUTOTR; i++)
+      if (strcmp(autotracerlist[i].name, name) == 0) break;
+    tracer_copy(&tr[*n], &autotracerlist[i]);
+    tr[*n].n = tr[*n].m = *n;
+    if (tra != NULL && trp != NULL) *trp = tra[*n];
+    *n += 1;
+  } else
+    duplicate_error(name, tn);
+}
+
+/* END copy_autotracer_by_name()                                     */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Same as copy_autotracer_by_name() except includes tracer          */
+/* initialisation.                                                   */
+/*-------------------------------------------------------------------*/
+int set_autotracer_by_name(char *name, tracer_info_t tr[], int ntr, 
+			    int *n, double **tra, double **trp, char *buf)
+{
+  int tn, sn = *n;
+  if ((tn = tracer_find_index(name, ntr, tr) < 0)) {
+    int i;
+    for (i = 0; i < NAUTOTR; i++)
+      if (strcmp(autotracerlist[i].name, name) == 0) break;
+    tracer_copy(&tr[*n], &autotracerlist[i]);
+    tr[*n].n = tr[*n].m = *n;
+    tr_dataset(buf, &tr[*n], 0.0);
+    if (tra != NULL && trp != NULL) *trp = tra[*n];
+    *n += 1;
+  } else
+    duplicate_error(name, tn);
+  return(sn);
+}
+
+/* END set_autotracer_by_name()                                      */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Finds an autotracer in the global list by its group key           */
+/*-------------------------------------------------------------------*/
+void find_autotracer_by_groupkey(char *name, int *tra, int *n)
+{
+  int i;
+
+  *n = 0;
+  for (i = 0; i < NAUTOTR; i++) {
+    if (strcmp(autotracerlist[i].groupkey, name) == 0) {
+      tra[*n] = i;
+      *n += 1;
+    }
+  }
+}
+
+/* END find_autotracer_by_groupkey()                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Copies an autotracer attributes to a tracer info structure given  */
+/* a tracer groupkey.                                                */
+/*-------------------------------------------------------------------*/
+int copy_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, int *n)
+{
+  int i, j;
+  int nf, nt = 0;
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  char buf[MAXSTRLEN];
+  int tn, sn = *n;
+
+  for (i = 0; i < NAUTOTR; i++) {
+    if (strlen(autotracerlist[i].groupkey) == 0) continue;
+    if (strcmp(autotracerlist[i].groupkey, "NONE") == 0) continue;
+    strcpy(buf, autotracerlist[i].groupkey); 
+    nf = parseline(buf, fields, MAXNUMARGS);
+    for (j = 0; j < nf; j++) {
+      if (strcmp(fields[j], name) == 0) {
+	if ((tn = tracer_find_index(autotracerlist[i].name, ntr, tr)) < 0) {
+	  tracer_copy(&tr[*n], &autotracerlist[i]);
+	  tr[*n].n = tr[*n].m = *n;
+	  *n += 1;
+	} else
+	  duplicate_error(name, tn);
+      }
+    }
+  }
+  return(sn);
+}
+
+int set_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, 
+			       int *n, char *key)
+{
+  int i, j;
+  int nf, nt = 0;
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  char buf[MAXSTRLEN];
+  int tn, sn = *n;
+
+  for (i = 0; i < NAUTOTR; i++) {
+    if (strlen(autotracerlist[i].groupkey) == 0) continue;
+    strcpy(buf, autotracerlist[i].groupkey); 
+    nf = parseline(buf, fields, MAXNUMARGS);
+    for (j = 0; j < nf; j++) {
+      if (strcmp(fields[j], name) == 0) {
+	if ((tn = tracer_find_index(autotracerlist[i].name, ntr, tr)) < 0) {
+	  tracer_copy(&tr[*n], &autotracerlist[i]);
+	  tr_dataset(key, &tr[*n], tr[*n].fill_value_wc);
+	  tr[*n].n = tr[*n].m = *n;
+	  *n += 1;
+	} else
+	  duplicate_error(name, tn);
+      }
+    }
+  }
+  return(sn);
+}
+
+/* END find_autotracer_by_groupkey()                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Prints an error if an autotracer is also explicitly defined.      */
+/* Note: this can be over-ridden if the keyword and tracer are       */
+/* included in tracer_setup().                                       */
+/*-------------------------------------------------------------------*/
+void duplicate_error(char *name, int tn)
+{
+  if (strcmp(name, "temp") == 0 || strcmp(name, "salt") == 0) return;
+  hd_quit("ERROR autotracers: duplicate TRACER %s: remove from tracer list or remove autotracer keyword.\n",
+	  name);
+}
+
+/* END duplicate_error()                                             */
+/*-------------------------------------------------------------------*/
+
 void read_tsfile(timeseries_t *ts, char *name, char *t_units)
 {
   ts_read(name,ts);
@@ -9905,3 +6112,300 @@ void tr_dataset(char *data, tracer_info_t *tr, double def)
   }
 }
 
+#define AUTO_REM 0x002
+#define AUTO_ADD 0x004
+#define AUTO_UPD 0x008
+
+/*-------------------------------------------------------------------*/
+/* Updates the autotracer list                                       */
+/*-------------------------------------------------------------------*/
+void update_autotracer(tracer_info_t tr[], int ntr, int *atr, int *mtr)
+{
+  int n, tn;
+  char buf[MAXSTRLEN];
+  int found, flag;
+
+  for (n = 0; n < ntr; n++) {
+    found = 0;
+    strcpy(buf, tr[n].tag);
+    if (strlen(buf)) {
+      if (contains_token(buf, "auto_update") != NULL) flag = AUTO_UPD;
+      if (contains_token(buf, "auto_remove") != NULL) flag = AUTO_REM;
+      if (contains_token(buf, "auto_add") != NULL) flag = AUTO_ADD;
+      for (tn = 0; tn < NAUTOTR; tn++) {
+	if (strcmp(tr[n].name, autotracerlist[tn].name) == 0) {
+	  if (flag & AUTO_UPD) {
+	    tracer_copy(&autotracerlist[tn], &tr[n]);
+	    atr[tn] |= AUTO_UPD;
+	    hd_warn("update_autotracer: Updating auto tracer %s\n", tr[n].name);
+	    found = AUTO_UPD;
+	  }
+	  if (flag & AUTO_REM) {
+	    atr[tn] |= AUTO_REM;
+	    found = AUTO_REM;
+	    hd_warn("update_autotracer: Removing auto tracer %s\n", tr[n].name);
+	  }
+	}
+      }
+      if (flag & AUTO_UPD && !(found & AUTO_UPD))
+	hd_warn("update_autotracer: Can't find auto tracer %s to update - 'auto_add' first.\n", tr[n].name);
+      if (flag & AUTO_REM && !(found & AUTO_REM))
+	hd_warn("update_autotracer: Can't find auto tracer %s to remove\n", tr[n].name);
+      if (flag & AUTO_ADD) {
+	mtr[n] |= AUTO_ADD;
+	hd_warn("update_autotracer: Adding tracer %s to autotracers\n", tr[n].name);
+      }
+    }
+  }
+}
+
+/* END update_autotracer()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Writes a C module containing the autotracer list                  */
+/*-------------------------------------------------------------------*/
+void write_autotracer(master_t *master)
+{
+  FILE *fp;
+  int n, m, trt, tc;
+  int ntr = NAUTOTR;
+  long t;
+  int *atr, *m3d, *m2d;
+  char *autoname = "autotracer.c";
+  char buf[MAXSTRLEN];
+
+  /* Allocate                                                        */
+  atr = i_alloc_1d(ntr);
+  m3d = i_alloc_1d(master->ntr);
+  m2d = i_alloc_1d(master->ntrS);
+  memset(atr, 0, ntr * sizeof(int));
+  memset(m3d, 0, master->ntr * sizeof(int));
+  memset(m2d, 0, master->ntrS * sizeof(int));
+
+  /* Update the autotracers and count the total                      */
+  update_autotracer(master->trinfo_3d, master->ntr, atr, m3d);
+  update_autotracer(master->trinfo_2d, master->ntrS, atr, m2d);
+  trt = ntr;
+  for (n = master->ntrS-1; n >= 0; n--) {
+    if (m2d[n] & AUTO_ADD) trt += 1;
+  }
+  for (n = master->ntr-1; n >= 0; n--) {
+    if (m3d[n] & AUTO_ADD) trt += 1;
+  }
+  for (n = ntr-1; n >= 0; n--) {
+    if (atr[n] & AUTO_REM) trt -= 1;
+  }
+
+  /* Open the autotracer module                                      */
+  if (strlen(master->autotrpath)) {
+    if (endswith(master->autotrpath, "/"))
+      sprintf(buf, "%s%s", master->autotrpath, autoname);
+    else
+      sprintf(buf, "%s/%s", master->autotrpath, autoname);
+  } else
+    sprintf(buf, "%s", autoname);
+  fp = fopen(buf, "w");
+  hd_warn("write_autotracer: writing autotracer module to %s\n", buf);
+
+  /* Write the autotracer list                                       */
+  time(&t);
+  fprintf(fp,"/*\n");
+  fprintf(fp," *\n");
+  fprintf(fp," *  ENVIRONMENTAL MODELLING SUITE (EMS)\n");
+  fprintf(fp," *\n");  
+  fprintf(fp," *  File: model/hd-us/tracers/autotracer.c\n");
+  fprintf(fp," *\n");
+  fprintf(fp," *  Description:\n");
+  fprintf(fp," *  Autotracer list.\n");
+  fprintf(fp," *  \n");
+  fprintf(fp," *  Copyright:\n");
+  fprintf(fp," *  Copyright (c) 2018. Commonwealth Scientific and Industrial\n");
+  fprintf(fp," *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights\n");
+  fprintf(fp," *  reserved. See the license file for disclaimer and full\n");
+  fprintf(fp," *  use/redistribution conditions.\n");
+  fprintf(fp," *  \n");
+  fprintf(fp," *  $Id: load_tracer.c 7380 2023-07-26 04:36:43Z her127 $\n", version, ctime(&t));
+  fprintf(fp," *\n");
+  fprintf(fp," */\n\n");
+
+  fprintf(fp,"#include <stdio.h>\n");
+  fprintf(fp,"#include <math.h>\n");
+  fprintf(fp,"#include \"hd.h\"\n");
+  fprintf(fp,"#include \"tracer.h\"\n\n");
+
+  fprintf(fp, "int NAUTOTR = %d;\n", trt);
+  fprintf(fp, "tracer_info_t autotracerlist[] = {\n");
+  tc = 1;
+  for (n = 0; n < ntr; n++) {
+    if (atr[n] & AUTO_REM) continue;
+    m = (tc == trt) ? 0 : 1;
+    write_auto_atts(fp, &autotracerlist[n], m);
+    tc++;
+  }
+  for (n = 0; n < master->ntr; n++) {
+    if (m3d[n] & AUTO_ADD) {
+      m = (tc == trt) ? 0 : 1;
+      write_auto_atts(fp, &master->trinfo_3d[n], m);
+      tc++;
+    }
+  }
+  for (n = 0; n < master->ntrS; n++) {
+    if (m2d[n] & AUTO_ADD) {
+      m = (tc == trt) ? 0 : 1;
+      write_auto_atts(fp, &master->trinfo_2d[n], m);
+      tc++;
+    }
+  }
+  fprintf(fp, "};\n");
+  i_free_1d(atr);
+  i_free_1d(m3d);
+  i_free_1d(m2d);
+  fclose(fp);
+}
+
+/* END write_autotracer()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Writes tracer attributes to the autotracerlist file               */
+/*-------------------------------------------------------------------*/
+void write_auto_atts(FILE *fp, tracer_info_t *tr, int mode)
+{
+  char tname[MAXSTRLEN];
+
+  fprintf(fp, "  {\n");
+  fprintf(fp, "    .name = \"%s\",\n", tr->name);
+  fprintf(fp, "    .long_name = \"%s\",\n", tr->long_name);
+  if (strlen(tr->std_name))
+    fprintf(fp, "    .std_name = \"%s\",\n", tr->std_name);
+  fprintf(fp, "    .units = \"%s\",\n", tr->units);
+  fprintf(fp, "    .valid_range_wc[0] = %4.2e,\n", tr->valid_range_wc[0]);
+  fprintf(fp, "    .valid_range_wc[1] = %4.2e,\n", tr->valid_range_wc[1]);
+  fprintf(fp, "    .fill_value_wc = %4.2f,\n", tr->fill_value_wc);
+  if (tr->type & SEDIMENT) {
+    fprintf(fp, "    .fill_value_sed = %4.2f,\n", tr->fill_value_sed);
+    fprintf(fp, "    .valid_range_sed[0] = %4.2e,\n", tr->valid_range_sed[0]);
+    fprintf(fp, "    .valid_range_sed[1] = %4.2e,\n", tr->valid_range_sed[1]);
+  }
+  typename(tr->type, tname);
+  fprintf(fp, "    .type = %s,\n", tname);
+  /*fprintf(fp, "    .type = 0x%x,\n", tr->type);*/
+  fprintf(fp, "    .inwc = %d,\n", tr->inwc);
+  if (tr->insed)
+    fprintf(fp, "    .insed = %d,\n", tr->insed);
+  if (tr->dissol)
+    fprintf(fp, "    .dissol = %d,\n", tr->dissol);
+  if (tr->partic)
+    fprintf(fp, "    .partic = %d,\n", tr->partic);
+  fprintf(fp, "    .advect = %d,\n", tr->advect);
+  fprintf(fp, "    .diffuse = %d,\n", tr->diffuse);
+  fprintf(fp, "    .diagn = %d,\n", tr->diagn);
+  if (strlen(tr->decay))
+    fprintf(fp, "    .decay = \"%s\",\n", tr->decay);
+  /*fprintf(fp, "    .m = %d,\n", tr->m);*/
+  fprintf(fp, "    .m = -1,\n");
+  if (strlen(tr->tag) && strcmp(tr->tag, "auto_add") != 0 && strcmp(tr->tag, "auto_update") != 0)
+    fprintf(fp, "    .tag = \"%s\",\n", tr->tag);
+  if (tr->flag)
+    fprintf(fp, "    .flag = %d,\n", tr->flag);
+  if (strlen(tr->data))
+    fprintf(fp, "    .data = \"%s\",\n", tr->data);
+  if (strlen(tr->i_rule))
+    fprintf(fp, "    .i_rule = \"%s\",\n", tr->i_rule);
+  if (tr->scale)
+    fprintf(fp, "    .scale = %5.2f,\n", tr->scale);
+  if (strlen(tr->relax_file)) {
+    fprintf(fp, "    .relax_file = \"%s\",\n", tr->relax_file);
+    fprintf(fp, "    .relax_dt = \"%s\",\n", tr->relax_dt);
+    fprintf(fp, "    .r_rate = \"%s\",\n", tr->r_rate);
+    fprintf(fp, "    .tctype = \"%d\",\n", tr->tctype);
+  }
+  if (strlen(tr->reset_file)) {
+    fprintf(fp, "    .reset_file = \"%s\",\n", tr->reset_file);
+    fprintf(fp, "    .reset_dt = \"%s\",\n", tr->reset_dt);
+  }
+  if (strlen(tr->reset_interp))
+    fprintf(fp, "    .reset_interp = \"%s\",\n", tr->reset_interp);
+  if (strlen(tr->vector_name))
+    fprintf(fp, "    .vector_name = \"%s\",\n", tr->vector_name);
+  if (strlen(tr->vector_components))
+    fprintf(fp, "    .vector_components = \"%s\",\n", tr->vector_components);
+  if (strlen(tr->tracerstat))
+    fprintf(fp, "    .tracerstat = \"%s\",\n", tr->tracerstat);
+  if (strlen(tr->trstat_tag))
+    fprintf(fp, "    .dt = \"%s\",\n", tr->trstat_tag);
+  if (strlen(tr->groupkey))
+    fprintf(fp, "    .groupkey = \"%s\"\n", tr->groupkey);
+  else
+    fprintf(fp, "    .groupkey = \"NONE\"\n");
+  if (mode)
+    fprintf(fp, "  },\n");
+  else
+    fprintf(fp, "  }\n");
+}
+
+/* END write_auto_atts()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Converts a tracer type to a string                                */
+/*-------------------------------------------------------------------*/
+void typename(int code, char *name)
+{
+  int found = 0;
+
+  if (code & WATER) {
+    strcpy(name, "WATER");
+    found = 1;
+  }
+  if (code & SEDIM) {
+    if (found)
+      sprintf(name, "%s|SEDIM", name);
+    else {
+      strcpy(name, "SEDIM");
+      found = 1;
+    }
+  }
+  if (code & INTER) {
+    if (found)
+      sprintf(name, "%s|INTER", name);
+    else {
+      strcpy(name, "INTER");
+      found = 1;
+    }
+  }
+  if (code & HYDRO)
+    sprintf(name, "%s|HYDRO", name);
+  if (code & SEDIMENT)
+    sprintf(name, "%s|SEDIMENT", name);
+  if (code & ECOLOGY)
+    sprintf(name, "%s|ECOLOGY", name);
+  if (code & WAVE)
+    sprintf(name, "%s|WAVE", name);
+  if (code & TRACERSTAT)
+    sprintf(name, "%s|TRACERSTAT", name);
+  if (code & PROGNOSTIC)
+    sprintf(name, "%s|PROGNOSTIC", name);
+  if (code & DIAGNOSTIC)
+    sprintf(name, "%s|DIAGNOSTIC", name);
+  if (code & PARAMETER)
+    sprintf(name, "%s|PARAMETER", name);
+  if (code & FORCING)
+    sprintf(name, "%s|FORCING", name);
+  if (code & E1VAR)
+    sprintf(name, "%s|E1VAR", name);
+  if (code & E2VAR)
+    sprintf(name, "%s|E2VAR", name);
+  if (code & CLOSURE)
+    sprintf(name, "%s|CLOSURE", name);
+  if (code & OPTICAL)
+    sprintf(name, "%s|OPTICAL", name);
+
+}
+
+/* END typename()                                                    */
+/*-------------------------------------------------------------------*/

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 6730 2021-03-30 00:36:38Z her127 $
+ *  $Id: sparse.h 7371 2023-07-26 04:33:12Z her127 $
  *
  */
 
@@ -128,6 +128,7 @@ typedef struct {
   int *rmap;                    /* Reverse exchange boundary map */
   int *gmap;                    /* Window to global boundary map */
   int obcz;                     /* Open boundary zone */
+  int com;                      /* Mesh index of the centre of mass */
   double t;                     /* Time */
   double pt;                    /* Previous time */
   double dt;                    /* TS output time interval */
@@ -231,6 +232,115 @@ typedef struct {
   int *npt;                /* Number of triangles i-th point belongs to */
   int **pt;                /* Index of j-th triangle i-th point belongs to */
 } npt_t;
+
+
+typedef struct {
+  master_t *master;
+  double *swan_eta;
+  double *swan_uav;
+  double *swan_vav;
+  double *swan_wx;
+  double *swan_wy;
+  double *swan_dep;
+  double *swan_amp;
+  double *swan_per;
+  double *swan_dir;
+  double *swan_ub;
+  double *swan_Fx;
+  double *swan_Fy;
+  double *swan_ste1;
+  double *swan_ste2;
+  double *swan_Kb;
+  double *swan_k;
+  double *swan_fwcapx;          /* Wave whitecapping, x component */
+  double *swan_fwcapy;          /* Wave whitecapping, y component */
+  double *swan_fbrex;           /* Wave depth-induced breaking, x component */
+  double *swan_fbrey;           /* Wave depth-induced breaking, y component */
+  double *swan_fbotx;           /* Wave bottom friction dissapation, x component */
+  double *swan_fboty;           /* Wave bottom friction dissapation, y component */
+  double *swan_fsurx;           /* Wave surface streaming, x component */
+  double *swan_fsury;           /* Wave surface streaming, y component */
+  double *swan_wfdx;            /* Wave form drag, x component */
+  double *swan_wfdy;            /* Wave form drag, y component */
+  double *swan_wovsx;           /* Wave ocean viscous stress, x component */
+  double *swan_wovsy;           /* Wave ocean viscous stress, y component */
+  double *swan_frolx;           /* Wave rollers, x component */
+  double *swan_froly;           /* Wave rollers, y component */
+  double *swan_dum1;
+  double *swan_dum2;
+  int nw2c;
+  int no2_t;
+  int *obc_t;
+  double dt;
+  int flag;
+  int swan_hs;
+#if defined(HAVE_WAVE_MODULE)
+  wave_t *wave;                 /* Pointer to wave structure */
+#endif
+} swan_data_t;
+
+
+typedef struct {
+  double *h2au1;
+  double *h1au1;
+  double *u1x;
+  double *u1y;
+  double *thetau1;
+  double *gridx;
+  double *gridy;
+  double *dualarea;
+  double **dualareap;
+  double *fv;
+  double *cellarea;
+} ldata_t;
+
+typedef struct {
+  short n;       /* Total number of edges */
+  short nv;      /* Number of unique vertices */
+  short ne;      /* Number of unique edges */
+  short c1;      /* Index of 1st centre */
+  short c2;      /* Index of 2nd centre */
+  short c1s, c1e; /* KE limits for 1st centre */
+  short c2s, c2e; /* KE limits for 2nd centre */
+  short nve;     /* Number of vertices at edge ends (including duplicates, nve > nv) */
+  short *lem;    /* Edge vector to stencil index map */
+  short *lvm;    /* Vertex vector to stencil index map */
+  short *lcm;    /* Centre vector to stencil index map */
+  short *lcc;    /* Index of v2c map */
+  short *lee;    /* Index of c2e map */
+  short *leSv;   /* Sign for vertex (1=left, -1=right) */
+  short *leSc;   /* Sign for centre (1=out, -1=in) */
+  short *e2n;    /* Mapping of duplicate edges */
+  short *v2n;    /* Mapping of duplicate vertices */
+  short *vIc;    /* Vertec to centre index */
+} lvector_t;
+
+typedef struct {
+  int e;        /* Main edge */
+  int es;       /* 2D main edge */
+  short ne;     /* Number of local edges */
+  int *le;      /* Local to global edge map */
+  short nc;     /* Number of centres */
+  int *lc;      /* Local to global centre map */
+  short nv;     /* Number of vertices */
+  int *lv;      /* Local to global vertex map */
+  short nee;    /* Number of Thuburn weights */
+  short *npe;    /* Number of edges/vertices from a centre */
+  short *nve;    /* Number of edges from a vertex */
+  short *nvc;    /* Number of centres from a vertex */
+  short **e2c;   /* Edge to centre map */
+  short **e2v;   /* Edge to vertex map */
+  short **v2c;   /* Vertex to centre map */
+  short **v2e;   /* Vertex to edge map */
+  short **c2e;   /* Centre to edge map */
+  short **c2v;   /* Centre to vertex map */
+  short **vIc;   /* Vertex sign vector */
+  short **eSv;   /* Vertex index vector */
+  short **eSc;   /* Edge sign vector */
+  double *wAe;   /* Thuburn weights */
+  ldata_t *d;    /* Local data */
+  lvector_t *v; /* Local vector */    
+} local_t;
 
 
 /*------------------------------------------------------------------*/
@@ -353,6 +463,8 @@ struct win_priv {
   int osl;                      /* Order of semi-Lagrange */
   int nosl;                     /* Number of elements in weight array */
   int mosl;                     /* Middle elements in weight array */
+  int kinetic;                  /* Kinetic energy formulation flag */
+  double kfact;                 /* Kinetic energy weighting factor */
   int visc_method;              /* Horizontal diffusion method */
   double smagorinsky;           /* Smagorinsky horizontal diffusion flag */
   double visc_fact;              /* Partitioning fraction for Laplacian / biharmonic mixing */
@@ -433,6 +545,7 @@ struct win_priv {
   double u2vh0;                 /* Horizontal e2 viscosity (m2s-1) */
   double u1kh0;                 /* Horizontal e1 diffusivity (m2s-1) */
   double u2kh0;                 /* Horizontal e2 diffusivity (m2s-1) */
+  int eta_ib;                   /* Inverse barometer compensation */
   int etarlx;                   /* Eta relaxation flag */
   int velrlx;                   /* Velocity relaxation flag */
   int exmapf;                   /* Explicit map flag */
@@ -442,6 +555,7 @@ struct win_priv {
   int conserve;                 /* Volume conservation */
   int do_closure;               /* Do vertical mixing (transport mode) */
   int do_pt;                    /* Do particle tracking */
+  int do_lag;                   /* Do Lagrangian streamline tracing */
   int compatible;               /* Backwards compatible flag */
   int sh_f;                     /* Data input type for specific humidity */
   int filter;                   /* Filtering options */
@@ -454,6 +568,11 @@ struct win_priv {
   int monon;                    /* Monotinicity tracer number */
   double monomn;                /* Monotinicity minimum */
   double monomx;                /* Monotinicity maximum */
+  int errornorm;                /* Error norm flag */
+  int normt1;                   /* Error norm tracer #1 */
+  int normt2;                   /* Error norm tracer #2 */
+  double enorm[9];              /* Error norm work array */
+  int ghrsst_type;              /* Type of ghrsst product */
   int attn_tr;
   int tran_tr;
 
@@ -465,6 +584,7 @@ struct win_priv {
   double *swC;                  /* Matrix term for vertical diffusion */
   double swr_next;              /* Next swr estimation event */
   double swr_dt;                /* swr estimation time increment */
+  double swr_ens[6];            /* SWR ensemble limits */
 
   /* Alert thresholds */
   double amax;
@@ -580,6 +700,8 @@ struct win_priv {
   double *sd1;                  /* 1D sediment work array #1 */
   double *one;                  /* 2D work array set to 1.0 */
   double *tendency;             /* Buffer array for tendency diagnostics */
+  double *us;                   /* Normal 3D Stokes velocity to edge (ms-1) */
+  double *uavs;                 /* Normal 2D Stokes velocity to edge (ms-1) */
   double **wgt;                 /* Semi-Lagrange weights */
   double **tr_rk;               /* Runge-Kutta stage tracer values */
   double **tr_gr;               /* Runge-Kutta stage time tendencies */
@@ -641,6 +763,7 @@ struct win_priv {
   int npss;
   short *agemsk;                /* Age tracer mask */
   short *percmsk;                /* ATracer percentile tracer mask */
+  double t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t13; /* Timings */
 
   /* FCT work arrays */
   double *Fxh, *Fzh;
@@ -811,6 +934,10 @@ struct geometry {
   int szmS;                     /* Maximum 2D size */
   int *tri2c;                   /* Triangulation to unstructured map */
   int *c2tri;                   /* Unstructured map to triangulation */
+  int *w2c;                     /* SWAN nvert mapping to COMPAS */
+  int *c2w;                     /* COMPAS mapping to SWAN nvert */
+  int nw2c;                     /* Size of c2w */
+  int nobcw;                    /* Number of wave open boundary points */
   delaunay *d;                  /* Delaunay data structure for xytoi */
   char i_rule[MAXSTRLEN];       /* Unstructured interpolation method */
 
@@ -921,6 +1048,7 @@ struct geometry {
   int *wgst;                    /* Ghost cells for windows */
   int *cask;                    /* Cell centre codes */
   int *eask;                    /* Edge codes */
+  int *maske;                   /* OBC mask */
 
   /* Cells which need to be transferred from master to slave.  */
   /* These arrays are only defined for windows.  */
@@ -1067,7 +1195,8 @@ struct geometry {
   /* Multi-grid transport maps */
   int *mgm;           /* Maps source cell centre to the target origin */
   GRID_SPECS **gs;
-  int **c2p;          /* Cell to Delaunay index map */
+  int **c2p;          /* 2D cell to Delaunay index map */
+  int *cp;            /* 3D cell to Delaunay index map */
   int **gcm;          /* Ghost cell mask */
   xytoij_tree_t *xyij_tree;     /* A xytoij_tree_t for XYtoIJ routines */
 
@@ -1075,6 +1204,11 @@ struct geometry {
   int *sask;                    /* Stencil mask */
   double b1, b2, b3, b4;
   df_filter_t **filter;
+  /* Local stencils */
+  int *lfe;
+  int *lfc;
+  int *lfv;
+  local_t **l;
 };
 
 
@@ -1107,6 +1241,7 @@ typedef struct {
   char runcode[MAXSTRLEN];      /* Unique run identification code */
   char rev[MAXSTRLEN];          /* Version number for parameter file */
   int gridcode;                 /* Code to specify grid type */
+  double initt;                 /* Time taken for initialisation */
   grid_rect_t *rg;              /* Rectangular grid information */
   grid_polar_t *pg;             /* Polar grid information */
   double flon, flat;            /* False pole coordinates */
@@ -1155,19 +1290,25 @@ typedef struct {
   double mlat, mlon;            /* Interior point for expansion */
   int **neic;                   /* Neighbour cell mapping */
   int **neij;                   /* Neighbour face mapping */
+  char mesh_reorder[MAXSTRLEN]; /* Reorder mesh indices */
+  int mrf;                      /* Mesh reorder flag */
   unsigned long **flag;
 
   /* Flags */
   int runmode;                  /* Operation mode */
   int history;                  /* History log flag */
+  int hrun;                     /* Historical run number */
   int nwindows;                 /* Number of windows */
   double *win_size;             /* Window partition */
+  int metis_opts;               /* METIS options */
   int win_reset;                /* Number of steps to reset window loads */
   int show_win;                 /* Create plot of windowing */
   int win_type;                 /* Type of partitioning */
   int win_block;                /* Blocking dimension */
+  int map_type;                 /* geom/window map IO type */
   char win_file[MAXSTRLEN];     /* Window map file; read */
   char wind_file[MAXSTRLEN];    /* Window map file; write */
+  char geom_file[MAXSTRLEN];    /* geom map file; read & write */
   char dp_mode[MAXSTRLEN];      /* Distributed processing mode */
   int trasc;                    /* Advection scheme type flag (tracers) */
   int momsc;                    /* Advection scheme type flag (velocity) */
@@ -1176,6 +1317,8 @@ typedef struct {
   int osl;                      /* Order of semi-Lagrange */
   int rkstage;                  /* Number of Runge-Kutta stages */
   int ultimate;                 /* ULTIMATE filter flag */
+  int kinetic;                  /* Kinetic energy formulation flag */
+  double kfact;                 /* Kinetic energy weighting factor */
   char smag[MAXSTRLEN];         /* Smagorisnky input */
   double smagorinsky;           /* Smagorinsky horizontal diffusion flag */
   double sue1, sue2;            /* Momentum Smagorinsky coefficients */
@@ -1232,6 +1375,8 @@ typedef struct {
   char monotr[MAXSTRLEN];       /* Monotinicity variable */
   double monomn;                /* Monotinicity minimum */
   double monomx;                /* Monotinicity maximum */
+  char errornorm[MAXSTRLEN];    /* Error norm diagnostic */
+  double enorm_dt;              /* Output interval for error norms */
   int sharp_pyc;                /* Pycnocline sharpening for ROAM */
   int vorticity;                /* Vorticity diagnostic */
   int numbers, numbers1;        /* Numbers diagnostic */
@@ -1258,8 +1403,12 @@ typedef struct {
   int avhrr;                    /* Include AVHRR SST */
   char avhrr_path[MAXSTRLEN];   /* AVHRR SST data path */
   int ghrsst;                   /* Include GHRSST SST */
+  int ghrsst_type;              /* Type of ghrsst product */
   char ghrsst_path[MAXSTRLEN];  /* GHRSST SST data path */
   char ghrsst_opt[MAXSTRLEN];   /* GHRSST SST data options */
+  char ghrsst_name[MAXSTRLEN];  /* GHRSST SST data name */
+  char ghrsst_dt[MAXSTRLEN];    /* GHRSST SST data reset dt */
+  char ghrsst_irule[MAXSTRLEN]; /* GHRSST SST interpolation method */
   char alert[MAXSTRLEN];        /* Create alert log */
   char alert_dt[MAXSTRLEN];     /* Time step for alert ts file */
   int eta_f;                    /* Alert action on elevation          */
@@ -1314,11 +1463,13 @@ typedef struct {
   double dbgtime;               /* Time to commence debugging */
   char bdry_file[MAXSTRLEN];    /* Point array boundary file name */
   int do_pt;                    /* Particle tracking flag */
+  int do_lag;                   /* Do Lagrangian streamline tracing */
   char ptinname[MAXSTRLEN];     /* Particle input file */
   int gint_errfcn;              /* Generic interface error handling flag */
   int riverflow;                /* Include river flow diagnostic tracer */
   char nprof[MAXSTRLEN];        /* Normalized profile flag */
   char nprof2d[MAXSTRLEN];      /* Surface field for normalized profile */
+  char crf[MAXSTRLEN];          /* Crash recovery flag */
   /* DATA ASSIM */
   int da;                       /* Data assimilation */
   double da_dt;                 /* Data assimilation time step */
@@ -1353,7 +1504,10 @@ typedef struct {
   char **da_obs_locs;
   double *da_obs_dt;
   double *da_obs_errs;
-  
+  char crashname[MAXSTRLEN];
+  char histname[MAXSTRLEN];
+  char histnamem[MAXSTRLEN];        /* Master history filename */
+
   /* Constants */
   char prmname[MAXSTRLEN];      /* Parameter file name */
   char idumpname[MAXSTRLEN];    /* Input dump file name */
@@ -1361,6 +1515,7 @@ typedef struct {
   char codeheader[MAXSTRLEN];
   char parameterheader[MAXSTRLEN];
   char reference[MAXSTRLEN];
+  char notes[MAXSTRLEN];
   char trl[MAXSTRLEN];
   char projection[MAXSTRLEN];
   char grid_desc[MAXSTRLEN];
@@ -1457,6 +1612,7 @@ typedef struct {
   tracer_info_t *trinfo_3d;     /* 3D Tracer info data structure */
   tracer_info_t *trinfo_2d;     /* 2D Tracer info data structure */
   tracer_info_t *trinfo_sed;    /* Sediment Tracer info data structure */
+  char autotrpath[MAXSTRLEN];   /* Path to write autotracer file */
 
   /* Number of OMP threads to use in transport mode */
 #ifdef HAVE_OMP
@@ -1493,6 +1649,13 @@ typedef struct {
   char tide_con_file[MAXSTRLEN];/* Tidal constituent file */
   char bdrypath[MAXSTRLEN];     /* Path for boundary files */
 
+  char rendername[MAXSTRLEN];   /* Name for rendered ecosed configuration*/
+  char renderpath[MAXSTRLEN];   /* Path to put rendered files */
+  char renderdesc[MAXSTRLEN];   /* Description for rendered files */
+  char rendertype[MAXSTRLEN];   /* Model to render */
+  char renderopts[MAXSTRLEN];   /* Render options */
+  char renderrem[MAXSTRLEN];    /* Configurations to remove */
+  char ecosedconfig[MAXSTRLEN]; /* Reconfigure ecosed configuration */
 #if defined(HAVE_WAVE_MODULE)
   int do_wave;                  /* Wave flag */
   double wavedt;                /* wave timestep */
@@ -1519,9 +1682,9 @@ typedef struct {
   int sednz;                    /* Number of sediment layers */
   double *gridz_sed;            /* Depths of the sediment layer faces */
 
-  /* Forcing files */
   /* Surface elevation */
   char eta_init[MAXSTRLEN];     /* Name of eta initialisation file */
+  int eta_ib;                   /* Inverse barometer compensation */
   int etarlx;                   /* Eta relaxation flag */
   char etarlxn[MAXSTRLEN];      /* Elevation relaxation filename */
   double etarlxdt;              /* Elevation relaxation input time */
@@ -1537,6 +1700,7 @@ typedef struct {
 
   /* Wind */
   char wind[MAXSTRLEN];         /* Name of wind input file */
+  char wind_interp[MAXSTRLEN];  /* i_rule for wind interpolations */
   double wind_dt;               /* Wind input time-step */
   double wind_scale;            /* Wind stress scaling factor */
   double dlv0;                  /* Drag law v0 */
@@ -1563,6 +1727,8 @@ typedef struct {
   double albedo_l;              /* Albedo for light */
   char swr_regions[MAXSTRLEN];  /* Short wave estimation regions file */
   char swr_data[MAXSTRLEN];     /* Short wave estimation data */
+  char swr_ensemble[MAXSTRLEN]; /* Short wave estimation ensemble ranges */
+  double swr_ens[6];            /* SWR ensemble limits */
   double swreg_dt;              /* Short wave estimation time increment */
   int hfadf;                    /* Advection flag */
   int bulkf;                    /* Bulk scheme for heatflux */
@@ -1572,23 +1738,31 @@ typedef struct {
   double hf_dt;                 /* Heat flux input time-step */
   double hftc;                  /* Time constant for heatflux temp */
   char airtemp[MAXSTRLEN];      /* Name of air temperature file */
+  char airtemp_interp[MAXSTRLEN]; /* i_rule for airtemp interpolations */
   double airtemp_dt;            /* Air temperature input time-step */
   char evap[MAXSTRLEN];         /* Name of evaporation file */
+  char evap_interp[MAXSTRLEN];  /* i_rule for evap interpolations */
   double evap_dt;               /* Evaporation input time-step */
   char cloud[MAXSTRLEN];        /* Name of cloud cover file */
+  char cloud_interp[MAXSTRLEN]; /* i_rule for cloud interpolations */
   double cloud_dt;              /* Cloud cover input time-step */
   char patm[MAXSTRLEN];         /* Name of atmospheric pressure file */
+  char patm_interp[MAXSTRLEN];  /* i_rule for patm interpolations */
   double patm_dt;               /* Atmospheric pressure input time-step */
   char precip[MAXSTRLEN];       /* Name of precipitation file */
+  char precip_interp[MAXSTRLEN];/* i_rule for precip interpolations */
   double precip_dt;             /* Precipitation input time-step */
   char rh[MAXSTRLEN];           /* Name of relative humidity file */
   double rh_dt;                 /* Relative humidity input time-step */
   char swr[MAXSTRLEN];          /* Name of short wave radiation file */
   double swr_dt;                /* Short wave radiation input time-step */
+  char lwri[MAXSTRLEN];         /* Name of incoming long wave radiation file */
+  double lwri_dt;               /* Incoming long wave radiation input time-step */
   char webf[MAXSTRLEN];         /* Name of wave enhanced friction file */
   double webf_dt;               /* Wave friction input time-step */
   char webf_interp[MAXSTRLEN];  /* Interpolation method for webf vars */
   char wetb[MAXSTRLEN];         /* Name of wet bulb temperature file */
+  char wetb_interp[MAXSTRLEN];  /* i_rule for wetb interpolations */
   double wetb_dt;               /* Wet bulb temperature input time-step */
   char light[MAXSTRLEN];        /* Name of light radiation file */
   double light_dt;              /* Light input time-step */
@@ -1603,6 +1777,18 @@ typedef struct {
   char sdata[MAXSTRLEN];        /* Salt initialisation data */
   char edata[MAXSTRLEN];        /* Eta initialisation data */
   char vdata[MAXSTRLEN];        /* Velocity data */
+
+  /* Forcing files */
+  char feta_input_dt[MAXSTRLEN];
+  char fsalt_input_dt[MAXSTRLEN];
+  char ftemp_input_dt[MAXSTRLEN];
+  char fvelu_input_dt[MAXSTRLEN];
+  char fvelv_input_dt[MAXSTRLEN];
+  char feta_interp[MAXSTRLEN];
+  char fsalt_interp[MAXSTRLEN];
+  char ftemp_interp[MAXSTRLEN];
+  char fvelu_interp[MAXSTRLEN];
+  char fvelv_interp[MAXSTRLEN];
 
   /* Explicit maps */
   int exmapf;                   /* Explicit map flag */
@@ -1663,6 +1849,8 @@ struct master {
   int osl;                      /* Order of semi-Lagrange */
   int rkstage;                  /* Number of Runge-Kutta stages */
   int ultimate;                 /* ULTIMATE filter flag */
+  int kinetic;                  /* Kinetic energy formulation flag */
+  double kfact;                 /* Kinetic energy weighting factor */
   int diff_scale;               /* Horizontal diffusion scaling method */
   int visc_method;              /* Horizontal diffusion method */
   int stab;                     /* Stability compensation method */
@@ -1751,12 +1939,19 @@ struct master {
   int monon;                    /* Monotinicity tracer number */
   double monomn;                /* Monotinicity minimum */
   double monomx;                /* Monotinicity maximum */
-
+  int errornorm;                /* Error norm flag */
+  int normt1;                   /* Error norm tracer #1 */
+  int normt2;                   /* Error norm tracer #2 */
+  double enorm_dt;              /* Output interval for error norms */
+  double enorm[9];              /* Error norm work array */
+  int ghrsst_type;              /* Type of ghrsst product */
   int gint_errfcn;              /* Generic interface error handling flag */
   int ntrmap_s2m_3d;            /* Number of tracers to transfer from
 				   slave to master. This is ntr minus
 				   some number */
   int *trmap_s2m_3d;            /* The actual map for the above */
+  char smooth_v[MAXSTRLEN];     /* Smoothing flag for other variables */
+  char scale_v[MAXSTRLEN];      /* Scaling flag for other variables */
 
   /* Constants */
   double g;                     /* Acceleration due to gravity (ms-2) */
@@ -1912,6 +2107,7 @@ struct master {
   double *ghrsst;               /* GHRSST SST */
   double *ghrsste;              /* GHRSST SST error */
   double *shwin;                /* Window partitioning */
+  double *shinx;                /* Window indexing */
   double *alert_a;              /* Actual alert diagnostic */
   double *alert_c;              /* Cumulative alert diagnostic */
   double *u1vhin;               /* Initial e1 horizontal viscosity */
@@ -1945,6 +2141,7 @@ struct master {
   double *searea;               /* sqrt(edge_area) */
   double *earea;                /* Mean edge area */
   double *meshun;               /* Mesh uniformity indicator */
+  double *vhreg;                /* Regions for u1vh regionalisation */
   char bathystats[MAXSTRLEN];   /* Bathy file for bathymetry statistics */
   double *bathy_range_max;
   double *bathy_range_min;
@@ -2071,6 +2268,7 @@ struct master {
   double *temp;                 /* Pointer to temperature tracer */
   int tno;                      /* Tracer number for temperature */
   int sno;                      /* Tracer number for salinity */
+  char autotrpath[MAXSTRLEN];   /* Path to write autotracer file */
 
   /* Mixing constants and variables */
   double *Kz;                   /* Vertical eddy diffusivity (m2s-1) */
@@ -2112,6 +2310,7 @@ struct master {
   double etarlxdt;              /* Elevation relaxation input time */
   double etarlxtc;              /* Elevation relaxation time constant */
   char etarlxtcs[MAXSTRLEN];    /* Elevation time constant string */
+  int eta_ib;                   /* Inverse barometer compensation */
 
   /* Density variables */
   double *dens;                 /* Density (kgm-3) */
@@ -2152,6 +2351,7 @@ struct master {
   double *swrms;                /* RMS error from swr estimation */
   double *attn_mean;            /* Mean swr attenuation */
   double *tran_mean;            /* Mean swr transmission */
+  double swr_ens[6];            /* SWR ensemble limits */
   int attn_tr;
   int tran_tr;
 
@@ -2173,6 +2373,7 @@ struct master {
   double *shfd;                 /* Sensible heat flux diagnostic */
   double *lhfd;                 /* Latent heat flux diagnostic */
   double *lwro;                 /* Long wave output radiation */
+  double *lwri;                 /* Long wave input radiation */
   int lwrn;                     /* Tracer number for lwr */
   int lhfn;                     /* Tracer number for lhf */
   int shfn;                     /* Tracer number for shf */
@@ -2198,12 +2399,14 @@ struct master {
   double visc_fact;             /* Partitioning fraction for Laplacian / biharmonic mixing */
   double sue1;                  /* Momentum Smagorinsky coefficients */
   double kue1, kue2;            /* Tracer Smagorinsky coefficients */
-  double bsue1;                 /* Base momentum mixing */
-  double bkue1, bkue2;          /* Base tracer mixing */
+  double bsue1, u1vhi;          /* Base momentum mixing */
+  double bkue1, bkue2, u1khi;   /* Base tracer mixing */
   double *basev;                /* Spatially varying base rate */
   double *smagv;                /* Spatially varying Smag */
   double *basek;                /* Spatially varying base rate */
   double *smagk;                /* Spatially varying Smag */
+  char u1vhci[MAXSTRLEN];       /* Horizontal viscosity input, e1 direction */
+  char u1khci[MAXSTRLEN];       /* Horizontal diffusivity input, e1 direction */
 
   /* Relaxation */
   int etarlx;                   /* Eta relaxation flag */
@@ -2225,6 +2428,7 @@ struct master {
 
   /* particle variables */
   int do_pt;                    /* Particle tracking flag */
+  int do_lag;                   /* Do Lagrangian streamline tracing */
   long ptn;                     /* Total number of particles */
   particle_t *ptp;              /* Array of particles */
   char ptinname[MAXLINELEN];    /* particle input file name */
@@ -2316,8 +2520,68 @@ struct master {
   double *tau_diss2;            /* Wave to ocean e2 stress */
   double *wave_stke1;           /* Stokes sub-surface velocity, e1 */
   double *wave_stke2;           /* Stokes sub-surface velocity, e2 */
+  double *wave_Kb;              /* Wave Bernoulli head */
+  double *wave_k;               /* Wavenumber */ 
+  double *wave_P;               /* Wave averaged sea state */
+  double *wave_fwcapx;          /* Wave whitecapping, x component */
+  double *wave_fwcapy;          /* Wave whitecapping, y component */
+  double *wave_fbrex;           /* Wave depth-induced breaking, x component */
+  double *wave_fbrey;           /* Wave depth-induced breaking, y component */
+  double *wave_fbotx;           /* Wave bottom friction dissapation, x component */
+  double *wave_fboty;           /* Wave bottom friction dissapation, y component */
+  double *wave_fsurx;           /* Wave surface streaming, x component */
+  double *wave_fsury;           /* Wave surface streaming, y component */
+  double *wave_wfdx;            /* Wave form drag, x component */
+  double *wave_wfdy;            /* Wave form drag, y component */
+  double *wave_wovsx;           /* Wave ocean viscous stress, x component */
+  double *wave_wovsy;           /* Wave ocean viscous stress, y component */
+  double *wave_frolx;           /* Wave rollers, x component */
+  double *wave_froly;           /* Wave rollers, y component */
+  double *wave_dum1;            /* Wave dummy variable */
+  double *wave_dum2;            /* Wave dummy variable */
   double *freq;
   int nsfr;
+  double *swan_eta;
+  double *swan_uav;
+  double *swan_vav;
+  double *swan_wx;
+  double *swan_wy;
+  double *swan_dep;
+  double *swan_amp;
+  double *swan_per;
+  double *swan_dir;
+  double *swan_ub;
+  double *swan_Fx;
+  double *swan_Fy;
+  double *swan_ste1;
+  double *swan_ste2;
+  double *swan_Kb;
+  double *swan_k;
+  double *swan_fwcapx;          /* Wave whitecapping, x component */
+  double *swan_fwcapy;          /* Wave whitecapping, y component */
+  double *swan_fbrex;           /* Wave depth-induced breaking, x component */
+  double *swan_fbrey;           /* Wave depth-induced breaking, y component */
+  double *swan_fbotx;           /* Wave bottom friction dissapation, x component */
+  double *swan_fboty;           /* Wave bottom friction dissapation, y component */
+  double *swan_fsurx;           /* Wave surface streaming, x component */
+  double *swan_fsury;           /* Wave surface streaming, y component */
+  double *swan_wfdx;            /* Wave form drag, x component */
+  double *swan_wfdy;            /* Wave form drag, y component */
+  double *swan_wovsx;           /* Wave ocean viscous stress, x component */
+  double *swan_wovsy;           /* Wave ocean viscous stress, y component */
+  double *swan_frolx;           /* Wave rollers, x component */
+  double *swan_froly;           /* Wave rollers, y component */
+  double *swan_dum1;
+  double *swan_dum2;
+  int swan_hs;
+
+  char rendername[MAXSTRLEN];   /* Name for rendered ecosed configuration*/
+  char renderpath[MAXSTRLEN];   /* Path to put rendered files */
+  char renderdesc[MAXSTRLEN];   /* Description for rendered files */
+  int renderopts;               /* Render options */
+  int rendertype;               /* Model to render */
+  char renderrem[MAXSTRLEN];    /* Configurations to remove */
+  char ecosedconfig[MAXSTRLEN]; /* Reconfigure ecosed configuration */
 
 #if defined(HAVE_WAVE_MODULE)
   int do_wave;                  /* Wave flag */
@@ -2462,7 +2726,15 @@ struct master {
   int ntrvarsS;                 /* Number of 2D transport variables */
   double *vol_cons;             /* Volume conservation diagnostic */
   int togn;                     /* Origin for tri-linear interpolation */
-  
+  int **k2e, **k2c, **k2v;      /* Reverse maps for UGRID */
+
+  /* Forcing input */
+  double *feta;
+  double *fsalt;
+  double *ftemp;
+  double *fvelu;
+  double *fvelv;
+
   /* Miscillaneous */
   xytoij_tree_t *xyij_tree;     /* A xytoij_tree_t for XYtoIJ routines */
   void *custdata;               /* Point to a custom data handle */
@@ -2485,6 +2757,7 @@ struct master {
                                 /* for one of the output files. */
   int ***i1, ***i2;
   double *d2, *d3;
+  ugrid_t *ug;
 
   /* Tidal energy extraction */
   int nturb;
@@ -2671,10 +2944,12 @@ struct window {
   double *shfd;                 /* Sensible heat flux diagnostic */
   double *lhfd;                 /* Latent heat flux diagnostic */
   double *lwro;                 /* Long wave output radiation */
+  double *lwri;                 /* Long wave input radiation */
   double *avhrr;                /* AVHRR SST */
   double *ghrsst;               /* GHRSST SST */
   double *ghrsste;              /* GHRSST SST error */
   double *shwin;                /* Window partitioning */
+  double *shinx;                /* Window indexing */
   double *alert_a;              /* Actual alert diagnostic */
   double *alert_c;              /* Cumulative alert diagnostic */
   double *u1vhin;               /* Initial e1 horizontal viscosity */
@@ -2829,6 +3104,8 @@ struct window {
   double **dhwc;                /* Offset degree heating day */
   double **dhw;                 /* Degree heating day */
   double *mono;                 /* Monotinicity diagnostic */
+  double *monon;                /* Monotinicity diagnostic */
+  double *monox;                /* Monotinicity diagnostic */
   double sederrstep;            /* Sediment error step */
   double ecoerrstep;            /* Ecology error step */
   int ntot;                     /* Number of additional total tracers */
@@ -2854,9 +3131,65 @@ struct window {
   double *tau_diss2;            /* Wave to ocean e2 stress */
   double *wave_stke1;           /* Stokes sub-surface velocity, e1 */
   double *wave_stke2;           /* Stokes sub-surface velocity, e2 */
+  double *wave_Kb;              /* Wave Bernoulli head */
+  double *wave_k;               /* Wavenumber */ 
+  double *wave_P;               /* Wave averaged sea state */
+  double *wave_fwcapx;          /* Wave whitecapping, x component */
+  double *wave_fwcapy;          /* Wave whitecapping, y component */
+  double *wave_fbrex;           /* Wave depth-induced breaking, x component */
+  double *wave_fbrey;           /* Wave depth-induced breaking, y component */
+  double *wave_fbotx;           /* Wave bottom friction dissapation, x component */
+  double *wave_fboty;           /* Wave bottom friction dissapation, y component */
+  double *wave_fsurx;           /* Wave surface streaming, x component */
+  double *wave_fsury;           /* Wave surface streaming, y component */
+  double *wave_wfdx;            /* Wave form drag, x component */
+  double *wave_wfdy;            /* Wave form drag, y component */
+  double *wave_wovsx;           /* Wave ocean viscous stress, x component */
+  double *wave_wovsy;           /* Wave ocean viscous stress, y component */
+  double *wave_frolx;           /* Wave rollers, x component */
+  double *wave_froly;           /* Wave rollers, y component */
+  double *wave_dum1;            /* Wave dummy variable */
+  double *wave_dum2;            /* Wave dummy variable */
   double *freq;
   int nsfr;
-
+  double *swan_eta;
+  double *swan_uav;
+  double *swan_vav;
+  double *swan_wx;
+  double *swan_wy;
+  double *swan_dep;
+  double *swan_amp;
+  double *swan_per;
+  double *swan_dir;
+  double *swan_ub;
+  double *swan_Fx;
+  double *swan_Fy;
+  double *swan_ste1;
+  double *swan_ste2;
+  double *swan_Kb;
+  double *swan_k;
+  double *swan_fwcapx;          /* Wave whitecapping, x component */
+  double *swan_fwcapy;          /* Wave whitecapping, y component */
+  double *swan_fbrex;           /* Wave depth-induced breaking, x component */
+  double *swan_fbrey;           /* Wave depth-induced breaking, y component */
+  double *swan_fbotx;           /* Wave bottom friction dissapation, x component */
+  double *swan_fboty;           /* Wave bottom friction dissapation, y component */
+  double *swan_fsurx;           /* Wave surface streaming, x component */
+  double *swan_fsury;           /* Wave surface streaming, y component */
+  double *swan_wfdx;            /* Wave form drag, x component */
+  double *swan_wfdy;            /* Wave form drag, y component */
+  double *swan_wovsx;           /* Wave ocean viscous stress, x component */
+  double *swan_wovsy;           /* Wave ocean viscous stress, y component */
+  double *swan_frolx;           /* Wave rollers, x component */
+  double *swan_froly;           /* Wave rollers, y component */
+  double *swan_dum1;
+  double *swan_dum2;
+  int swan_hs;                  /* SWAN hotstart flag */
+  /*
+  double *swan_sdir;
+  double *swan_ssig;
+  int swan_mdc, swan_msc;
+  */
 #if defined(HAVE_SEDIMENT_MODULE)
   /* Sediments */
   /* 2D sediment variable pointers */
@@ -2983,7 +3316,7 @@ struct ts_point{
    * and locations, such as glider data
    */
   timeseries_t ts; /* Input ts file */
-  int varids[3];   /* lon,lat,depth */
+  int varids[3];    /* lon,lat,depth */
   /* Inline data comparison */
   int ndata;                  /* Number of forcing files              */
   timeseries_t **tsdata;      /* Forcing files                        */

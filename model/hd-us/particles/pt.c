@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 6743 2021-03-30 00:43:20Z her127 $
+ *  $Id: pt.c 7241 2022-10-25 00:26:55Z her127 $
  *
  */
 
@@ -51,6 +51,7 @@ void pt_new(master_t *master, long np, particle_t *p);
 int hd_pt_create(master_t *master, char *name);
 int get_pos_m(master_t *master, particle_t *p, int c, int ci, double u, double v, double w,
 	      double *cx, double *cy, double *cz, double dt);
+void pt_auto_init(master_t *master);
 
 /*-------------------------------------------------------------------*/
 /* Event called by the time scheduler. This routine writes out the   */
@@ -191,6 +192,10 @@ void pt_params_init(master_t *master, FILE * fp)
   prm_set_errfn(hd_silent_warn);
   if (master->do_pt == 0) {
     /* No particle tracking input file - so nothing further to do    */
+    return;
+  }
+  if (master->do_pt == 2) {
+    pt_auto_init(master);
     return;
   }
 
@@ -555,10 +560,11 @@ void pt_params_init(master_t *master, FILE * fp)
       /*
       master->ptp[i].e1 = master->pt_x1[0];
       master->ptp[i].e2 = master->pt_y1[0];
-      */
+
       master->ptp[i].e1 = 0.0;
       master->ptp[i].e2 = 0.0;
       master->ptp[i].e3 = 0.0;
+      */
     }
     if (restart) {
       ptgrid_xytoij(master, master->ptn, master->ptp);
@@ -600,6 +606,132 @@ void pt_params_init(master_t *master, FILE * fp)
 }
 
 /* END pt_params_init()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to set up auto particle releases                          */
+/*-------------------------------------------------------------------*/
+void pt_auto_init(master_t *master)
+{
+  parameters_t *params = master->params;
+  char buf[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int n, m, i;
+
+  master->mage = master->magec = 0.0;
+  master->shist = 0;
+  master->phist = NULL;
+  master->pt_svel = NULL;
+
+  /* Read particle tracking file parameters                          */
+  prm_set_errfn(hd_silent_warn);
+  if (master->do_pt == 0) {
+    /* No particle tracking input file - so nothing further to do    */
+    return;
+  }
+  master->ptinrec = 0;
+  sprintf(master->ptoutname, "%spt.nc", master->opath);
+  master->ptstart = master->tstart;
+  master->ptend = schedule->stop_time;
+  master->ptoutinc = 3600.0;
+  master->ptstep = 600.0;
+  master->ptreset = master->ptend - master->ptstart;
+  master->pt_kh = 1.0;
+  master->pt_kz_mult = 1.0;
+  master->pt_mass = 1.0;
+  master->pt_stickybdry = 0;
+  master->pt_agelim = master->ptend - master->ptstart;
+  master->pt_dumpf |= PT_AGE;
+  master->shist = HIST_SCALE * master->pt_agelim / 86400;
+  master->pt_sizelim = 0;
+  master->wvel_i = NULL;
+  master->uvel_i = NULL;
+  master->vvel_i = NULL;
+  master->mort_i = NULL;
+  n = parseline(params->particles, fields, MAXNUMARGS);
+  master->pt_nsource = n / 4;
+  master->pt_rate = d_alloc_1d(master->pt_nsource);
+  master->pt_colour = (short *)malloc(sizeof(short) * master->pt_nsource);
+  master->pt_x1 = d_alloc_1d(master->pt_nsource);
+  master->pt_y1 = d_alloc_1d(master->pt_nsource);
+  master->pt_z1 = d_alloc_1d(master->pt_nsource);
+  master->pt_x2 = d_alloc_1d(master->pt_nsource);
+  master->pt_y2 = d_alloc_1d(master->pt_nsource);
+  master->pt_z2 = d_alloc_1d(master->pt_nsource);
+  master->pt_accum = d_alloc_1d(master->pt_nsource);
+  master->pt_size = d_alloc_1d(master->pt_nsource);
+  master->pt_decay = d_alloc_1d(master->pt_nsource);
+  master->pt_svel = d_alloc_1d(master->pt_nsource);
+  master->pt_dens = d_alloc_1d(master->pt_nsource);
+  master->svel_type = i_alloc_1d(master->pt_nsource);
+  master->pt_sper = d_alloc_1d(master->pt_nsource);
+  memset(master->pt_svel, 0, master->pt_nsource*sizeof(double)); 
+
+  for (i = 0; i < master->pt_nsource; ++i) {
+    int colourBit = 0;
+    master->pt_accum[i] = master->pt_size[i] = 0.0;
+
+    master->pt_rate[i] = 0.000555555556; /* 2 particles / hour       */
+    colourBit = i + 2;
+    master->pt_colour[i] = 1 << colourBit;
+    master->pt_colour[i] &= ~(PT_ACTIVE | PT_LOST);
+    master->pt_size[i] = master->pt_decay[i] = 0.0;
+    master->svel_type[i] = NONE;
+    master->pt_svel[i] = 0.0;
+    m = i * 4;
+    master->pt_x1[i] = atof(fields[m]);
+    master->pt_y1[i] = atof(fields[m + 1]);
+    master->pt_z1[i] = atof(fields[m + 2]);
+    master->pt_x2[i] = atof(fields[m]);
+    master->pt_y2[i] = atof(fields[m + 1]);
+    master->pt_z2[i] = atof(fields[m + 3]);
+  }
+  /* Allocate the memory for the particle concentrations, and */
+  /* initialise to NaN.  */
+  for (i = 1; i < geom->sgsiz; i++) {
+    master->ptconc[i] = NaN;
+  }
+
+  /* Read particles and convert to grid coords */
+  pt_read(master->ptinname,
+          master->ptinrec, &master->ptn, &master->ptp, NULL, NULL, NULL);
+
+  /* Allocate memory for the particle to source map */
+  master->pt_sm = s_alloc_1d(master->ptn);
+
+  if (master->pt_nsource > 0) {
+    pt_new(master, master->ptn, master->ptp);
+  }
+
+  /* Initialise the particle concentrations */
+  particles_to_conc(master, master->ptn, master->ptp);
+
+  /* Allocate array for max vert diffusion values */
+  master->maxdiffw = f_alloc_1d(geom->sgsizS);
+
+  /* Register an interest with the tscheduler for dumping the output */
+  /* output particle file.  */
+  sched_register(schedule, "particles", ptrack_init,
+                 ptrack_event, ptrack_cleanup, master, NULL, NULL);
+
+  /* Throw away some random numbers. This is an attempt to avoid rather
+     bizzare behaviour which can occur under certain circustances. If the
+     utility used to generate initial particle positions uses the same set
+     of random numbers as those used on the first timestep for
+     diffusivities (see ptmove below), the particle positions and
+     diffusivities are correlated, which can lead to unexpected and
+     entertaining results for the first time step! It probably isn't
+     necessary to throw away as many as shown below, but it probably
+     doesn't hurt, either. */
+  for (i = 0; i < master->ptn; i++) {
+    int raninit = 0;
+    ran3(&raninit);
+    ran3(&raninit);
+    ran3(&raninit);
+  }
+}
+/* END pt_auto_init()                                                */
 /*-------------------------------------------------------------------*/
 
 
@@ -1333,6 +1465,7 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
     r = (w < 0.0) ? wincon[wn]->dzz[c] : wincon[wn]->dzz[window[wn]->zm1[c]];
     tmin = SCALE * fabs(q / ua);
     tmin = (r) ? min(tmin, SCALE * fabs(r / w)) : tmin;
+    tmin = min(tmin, tleft);
 
     /*---------------------------------------------------------------*/
     /* Get the new location and cell the particle resides in         */
@@ -1481,8 +1614,10 @@ int get_pos_m(master_t *master,   /* Window geometry                 */
     /* Update the origin location                                    */
     sinth = sin(dir);
     costh = cos(dir);
-    slon = xin - dist * costh;
-    slat = yin - dist * sinth;
+    /* Note: we're not back-tracing the streamline (as in Lagrange)  */
+    /* so the distance increment is added.                           */
+    slon = xin + dist * costh;
+    slat = yin + dist * sinth;
   }
 
   /* Get the cell the new horizontal location resides in, i.e. at    */
@@ -1501,18 +1636,22 @@ int get_pos_m(master_t *master,   /* Window geometry                 */
     /* Unstructured meshes: walk through the Voronoi mesh            */
     cn = found = find_cell(geom, c, slon, slat, &nx, &ny);
     cns = geom->m2d[cn];
+
   }
+  if (cn <= 0)
+    hd_warn("Can't find horizontal streamline position: destination = %d[%f %f]->[%f %f]. Intersection=[%f %f]\n",
+	    c, geom->cellx[cs], geom->celly[cs], slon, slat, nx, ny);
 
   /* Get the vertical layer of the source cell                       */
   if (cn == geom->zm1[cn]) cn = geom->zp1[cn];
   if (geom->wgst[cn]) cn = geom->wgst[cn];
   k = geom->s2k[cn];
   if (k > geom->nz - 1) 
-    hd_quit("Can't find streamline position: destination = %d[%f %f]\n",
+    hd_quit("Can't find vertical streamline position: destination = %d[%f %f]\n",
 	    c, geom->cellx[cs], geom->celly[cs]);
 
-  /* If the new location ixs a ghost cell, send it inside the mesh.   */
-  if (geom->gcm[k][cns] & L_GHOST) isghost = 1;
+  /* If the new location is a ghost cell, send it inside the mesh.   */
+  if (geom->gcm[k][cns] & (L_GHOST|L_OBC)) isghost = 1;
   if (isghost) {
     if (master->pt_stickybdry) {
       if (geom->us_type & US_IJ) {

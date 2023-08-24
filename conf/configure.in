@@ -218,8 +218,10 @@ if test -z "$JIGSAW_PATH" ; then
    JIGSAWDIR=
 else
    dnl There must be a more standard way of doing this ...
-   m4_include([/usr/share/aclocal/ax_cxx_compile_stdcxx_11.m4])
-   AX_CXX_COMPILE_STDCXX_11()
+   m4_include([/usr/share/aclocal/ax_cxx_compile_stdcxx.m4])
+   dnl m4_include([/usr/share/aclocal/ax_cxx_compile_stdcxx_11.m4])
+   dnl m4_include([/usr/share/aclocal/ax_require_defined.m4])
+   AX_CXX_COMPILE_STDCXX(11)
    AC_DEFINE(HAVE_JIGSAWLIB)
    dnl Make this all relative to model/hd-us
    JIGSAWINC=-I../../${JIGSAW_PATH}/inc
@@ -232,6 +234,34 @@ AC_SUBST(JIGSAWLIB)
 AC_SUBST(JIGSAWINC)
 AC_SUBST(JIGSAWRPATH)
 AC_SUBST(JIGSAWDIR)
+
+dnl ###########################################################################
+dnl #### CHECK FOR SWAN library
+dnl ###########################################################################
+SWANLIB=
+SWANRPATH=
+SWANDIR=
+AC_ARG_ENABLE(swan, [  --enable-swan         enables building with the SWAN library], HAVE_SWAN=yes, HAVE_SWAN=)
+if test "$HAVE_SWAN"; then
+   AC_FIND_MODULE(${EXT_LIB_PATH}swan, SWAN_PATH=$module_path, SWAN_PATH=)
+   if test -z "$SWAN_PATH" ; then
+      AC_MSG_WARN('SWAN library not found - linking disabled')
+   else
+      AC_PROG_FC([gfortran g95])
+      if test -z "$GFC" ; then
+      	 AC_MSG_ERROR('gfortran/g95 not found to build SWAN')
+      fi
+      AC_DEFINE(HAVE_SWAN)
+      dnl Make this all relative to model/hd-us
+      SWANLIB="-L../../${SWAN_PATH}/lib -lswan"
+      SWANRPATH="-Xlinker -rpath=${PWD}/${SWAN_PATH}/lib"
+      SWANDIR=${SWAN_PATH}/src
+      AC_BUILD_MODULE_DEPS(${SWANDIR})
+   fi
+fi
+AC_SUBST(SWANLIB)
+AC_SUBST(SWANRPATH)
+AC_SUBST(SWANDIR)
 
 dnl ###########################################################################
 dnl #### CHECK FOR SEDIMENT
@@ -284,6 +314,83 @@ dnl ###########################################################################
 AC_ARG_ENABLE(do-timing, [  --enable-do-timing      enables timing profile], DO_TIMING=yes, DO_TIMING=)
 if test "$DO_TIMING"; then
    AC_DEFINE(DO_TIMING)
+fi
+
+dnl Alternate MKL
+AC_ARG_ENABLE(mkl, [  --enable-mkl      enables building with MKL], ENABLE_MKL=yes, ENABLE_MKL=)
+if test "$ENABLE_MKL"; then
+   MKL_INC="-I${ICC_BASE}/mkl/include"
+   MKL_LIB="-mkl "
+   AC_SUBST(MKL_INC)
+   AC_SUBST(MKL_LIB)
+   AC_DEFINE(HAVE_MKL)
+fi
+
+dnl ###########################################################################
+dnl #### Intel Math Kernel Library (MKL)
+dnl ###########################################################################
+AC_ARG_WITH(mkl, [  --with-mkl=<path>       Path to mkl root], MKL_ROOT=$withval, MKL_ROOT=)
+if test "$MKL_ROOT"; then
+   oldincludedir=$includedir
+   oldlibdir=$libdir
+
+   includedir="$includedir $MKL_ROOT/include"
+   libdir="$libdir $MKL_ROOT/lib/em64t"
+
+   AC_FIND_HEADER(mkl.h, MKL_INC=$header_path, MKL_INC=)
+   if test -z "$MKL_INC"; then
+      AC_MSG_ERROR('Unable to find mkl.h in $MKL_ROOT/include')
+   fi
+   AC_FIND_LIB(mkl_core, MKL_LIB=$lib_path, MKL_LIB=)
+   if test -z "$MKL_LIB"; then
+      AC_MSG_ERROR('Unable to find libmkl_core in $MKL_ROOT/lib/64')
+   fi
+   MKL_INC="-I${MKL_INC}"
+   dnl if test $CC = "icc"; then
+   dnl    MKL_LIB=' -mkl'
+   dnl else
+   dnl    AC_MSG_ERROR('MKL is only available for the Intel compiler')
+   dnl fi
+   dnl xxx GCC only
+   MKL_LIB="-L${MKL_LIB} -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -liomp5"
+   AC_SUBST(MKL_INC)
+   AC_SUBST(MKL_LIB)
+   AC_DEFINE(HAVE_MKL)
+
+   includedir=$oldincludedir
+   libdir=$oldlibdir
+fi
+
+dnl ###########################################################################
+dnl #### GNU Scientific Library (GSL)
+dnl ###########################################################################
+AC_ARG_WITH(gsl, [  --with-gsl=<path>       Path to gsl root], GSL_ROOT=$withval, GSL_ROOT=)
+if test "$GSL_ROOT"; then
+   oldincludedir=$includedir
+   oldlibdir=$libdir
+
+   includedir="$includedir $GSL_ROOT/include"
+   libdir="$libdir $GSL_ROOT/lib"
+
+   AC_FIND_HEADER(gsl/gsl_vector.h, GSLINC=$header_path, GSLINC=)
+   if test -z "$GSLINC"; then
+      AC_MSG_ERROR('Unable to find gsl/gsl_vector.h in $GSL_ROOT/include')
+   fi
+   AC_FIND_LIB(gsl, GSLLIB=$lib_path, GSLLIB=)
+   if test -z "$GSLLIB"; then
+      AC_MSG_ERROR('Unable to find libgsl in $GSL_ROOT/lib')
+   fi
+   GSLINC="-I${GSLINC}"
+   GSLLIB="-L${GSLLIB} -lgsl"
+   if test -z "$MKL_LIB"; then
+      GSLLIB+=" -lgslcblas"
+   fi
+   AC_SUBST(GSLINC)
+   AC_SUBST(GSLLIB)
+   AC_DEFINE(HAVE_GSL)
+
+   includedir=$oldincludedir
+   libdir=$oldlibdir
 fi
 
 dnl ###########################################################################
@@ -468,7 +575,7 @@ oldincludedir=$includedir
 oldlibdir=$libdir
 if test -n $NETCDF_ROOT ; then
    includedir="$includedir $NETCDF_ROOT/include"
-   libdir="$libdir $NETCDF_ROOT/lib"
+   libdir="$libdir $NETCDF_ROOT/lib $NETCDF_ROOT/lib64"
 fi
 AC_FIND_HEADER(netcdf.h, NETCDFINC=$header_path, NETCDFINC=)
 if test -z "$NETCDFINC" ; then

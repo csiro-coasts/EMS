@@ -14,16 +14,37 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.h 6548 2020-05-08 03:34:53Z bai155 $
+ *  $Id: ecology.h 7107 2022-04-20 11:44:57Z bai155 $
  *
  */
 
 #if !defined(_ECOLOGY_H)
+#include "ems.h"
 #include "stringtable.h"
 #include "ecology_version.h"
 
 struct ecology;
 typedef struct ecology ecology;
+
+/* Ecology tracer attribute private dtat structure */
+typedef struct {
+  int type;              /* Private data type */
+  char name[MAXSTRLEN];  /* Name of the default list */
+  char trname[MAXSTRLEN]; /* Name of the tracer */
+  int obc;               /* Open boundary condition */
+  int flag;              /* General purpose flag */
+  char optical_file[MAXSTRLEN];
+  char absorp_name[MAXSTRLEN];
+  char scatter_name[MAXSTRLEN];
+  char backscat_name[MAXSTRLEN];
+  char specresp3d_name[MAXSTRLEN];
+  char abtance_name[MAXSTRLEN];
+  char refltce_name[MAXSTRLEN];
+  char trnmiss_name[MAXSTRLEN];
+  char benreflt_name[MAXSTRLEN];
+  char specresp2d_name[MAXSTRLEN];
+  
+} trinfo_priv_eco_t;
 
 /** Ecology constructor.
  * @param model Pointer to host model
@@ -89,6 +110,8 @@ void ecology_printstats(ecology* e, FILE* f);
 void eco_write_setup(ecology *e, const char *str, ...);
 
 void ecology_find_rsr_waves(ecology *e);
+
+void ecology_find_ed_waves(ecology *e);
 
 /* Generic interface routines */
 

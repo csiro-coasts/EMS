@@ -49,7 +49,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: timeseries.c 5833 2018-06-27 00:21:35Z riz008 $
+ *  $Id: timeseries.c 7149 2022-07-07 00:27:30Z her127 $
  */
 
 #include <stdio.h>
@@ -84,6 +84,7 @@ void ts_read(char *name, timeseries_t *ts)
   emslog(LTRACE,"Reading timeseries from file: %s \n",name);
   
   df_read(name, df);
+
   if (df->records == NULL) {
     index = df_get_index(df, "t");
     if (index >= 0)
@@ -94,7 +95,13 @@ void ts_read(char *name, timeseries_t *ts)
       df_set_record(df, index);
     else if ((index = df_get_index(df, "TIME")) >= 0)
       df_set_record(df, index);
+    else if ((index = df_get_index(df, "MT")) >= 0) /* MH: HYCOM */
+      df_set_record(df, index);
   }
+  if (strlen(ts->i_rule))
+    strcpy(df->i_rule, ts->i_rule);
+  else
+    memset(df->i_rule, 0, sizeof(df->i_rule));
 
   /* Copy the convenience variables over */
   if (df->type != DFT_ASCII) {

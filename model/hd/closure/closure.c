@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: closure.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: closure.c 7357 2023-05-09 04:07:20Z riz008 $
  *
  */
 
@@ -137,8 +137,7 @@ void closure_init(parameters_t *params, /* Parameter data structure */
 	master->calc_closure = mixing_list[i].calc;
       }
     }
-  } else
-    strcpy(params->mixsc, "");
+  }
 
   /* Set the stability function if required */
   if (params->s_func != NULL) {

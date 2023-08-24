@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryfuncs.c 6385 2019-11-21 22:54:56Z her127 $
+ *  $Id: bdryfuncs.c 7151 2022-07-07 02:30:05Z her127 $
  *
  */
 
@@ -42,6 +42,8 @@ void getuv(double t, double x, double y, double z, int nts,
 	   char *uname, char * vname);
 tsfiles_t *tsfiles_alloc(master_t *master, bdry_details_t *data);
 void read_bdry_zone_std(master_t *master, open_bdrys_t *open, int cc, int mode);
+void build_gauss_ref(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		     double dist, double gscale, double tstart);
 
 /*------------------------------------------------------------------*/
 /*------------------------------------------------------------------*/
@@ -517,6 +519,58 @@ void bf_uv_to_u2_t(master_t *master, open_bdrys_t *open_w,
 }
 
 
+/*------------------------------------------------------------------*/
+/*------------------------------------------------------------------*/
+/* Convert UGRID OBC velocity data into a U1                        */
+/*------------------------------------------------------------------*/
+void bf_ug_to_u1_init_m(master_t *master, open_bdrys_t *open,
+                        bdry_details_t *data)
+{
+  tsfiles_t *tsf = tsfiles_alloc(master, data);
+
+  data->custdata = tsf;
+
+  if (schedule != NULL) {
+    hd_ts_multifile_check(tsf->ntsfiles, tsf->tsfiles, tsf->filenames, "u1",
+                          schedule->start_time, schedule->stop_time);
+  }
+}
+
+/*------------------------------------------------------------------*/
+/* UGRID to normal velocity. Normal transfer vectors are filled     */
+/* first, so read the normal and tangential velocities as a block   */
+/* into the u1 transfer vector. The tangential velocities are       */
+/* copied to the transfer_u2 vector if bf_ug_to_u2_m() is called.   */
+/*------------------------------------------------------------------*/
+void bf_ug_to_u1_m(geometry_t *geom, master_t *master,
+                   open_bdrys_t *open, bdry_details_t *data)
+{
+  tsfiles_t *tsf = (tsfiles_t *)data->custdata;
+  int ee;
+
+  hd_ts_multifile_eval_isparse(tsf->ntsfiles, tsf->tsfiles, tsf->filenames, "u1",
+			      master->d3, master->t, open->to3_e1, master->thIO);
+  for (ee = 1; ee <= open->to3_e1; ee++)
+    open->transfer_u1[ee] = master->d3[ee - 1];
+}
+
+/*------------------------------------------------------------------*/
+/* UGRID to tangential velocity. Copy to the transfer_u2 vector     */
+/* from the transfer_u1 vector (previously read as a data block).   */
+/*------------------------------------------------------------------*/
+void bf_ug_to_u2_m(geometry_t *geom, master_t *master,
+                   open_bdrys_t *open, bdry_details_t *data)
+{
+  int ee;
+
+  for (ee = open->no3_e1 + 1; ee <= open->to3_e1; ee++) {
+    open->transfer_u2[ee] = open->transfer_u1[ee];
+  }
+}
+
+
+
+
 void getuv_from_hdstd(double t, double x, double y, double z,
                       int nts, timeseries_t **ts, cstring * filenames,
                       double *u, double *v)
@@ -565,7 +619,8 @@ tsfiles_t *tsfiles_alloc(master_t *master, bdry_details_t *data)
     hd_warn("Attempting to read file %s for OBC function %s variable %s\n", data->args[0], data->custom_tag, data->name);
 
   tsf->ntsfiles = data->nargs;
-  tsf->tsfiles = hd_ts_multifile_read(master, data->nargs, data->args);
+  tsf->tsfiles = hd_ts_multifile_read_us(master, data->nargs, data->args,
+					 data->i_rule);
   tsf->filenames = (cstring *) malloc(sizeof(cstring) * tsf->ntsfiles);
   for (i = 0; i < tsf->ntsfiles; ++i) {
     /* strcpy(tsf->filenames[i], ((char**)data->args)[i]); */
@@ -1204,6 +1259,472 @@ void read_bdry_zone_std(master_t *master, open_bdrys_t *open, int cc, int mode)
 }
 
 /* END read_bdry_zone_std()                                          */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Master initialisation routine for u1 river forcing                */
+/*-------------------------------------------------------------------*/
+void bf_gauss_init_m(master_t *master, open_bdrys_t *open,
+		     bdry_details_t *d)
+{
+  tra_data_t *data = (tra_data_t *)malloc(sizeof(tra_data_t));
+  geometry_t *geom = master->geom;
+  int cc, c, c2;
+  double d1;
+
+  /* Initialise */
+  memset(data, 0, sizeof(tra_data_t));
+  d->custdata = (void *)data;
+
+  /* Mid point of the boundary */
+  /* R5000 
+  data->tstart = 10.0;
+  data->mid = open->no2_t / 2 + 1;
+  */
+  /* R200 
+  data->tstart = 10.0 - 18.0/3600.0;
+  data->mid = open->no2_t / 2;
+  */
+
+  data->tstart = 10.0 - 1.0/24.0;
+  data->mid = open->no2_t / 2;
+
+  data->x = d_alloc_1d(open->no2_t + 1);
+  data->cells = i_alloc_1d(open->no2_t + 1);
+  data->ncells = open->no2_t;
+  strcpy(data->name, "passive");
+  
+  /* Get the distances along the boundary                            */
+  d1 = 0.0;
+  for (cc = data->mid; cc <= open->no2_t; cc++) {
+    c = open->obc_t[cc];
+    data->x[cc] = d1;
+    data->cells[cc] = c;
+    d1 += sqrt(geom->cellarea[c]);
+  }
+  data->dist = d1;
+
+  cc = data->mid;
+  c = open->obc_t[cc];
+  d1 = sqrt(geom->cellarea[c]);
+  for (cc = data->mid-1; cc >= 1; cc--) {
+    c = open->obc_t[cc];
+    data->x[cc] = d1;
+    data->cells[cc] = c;
+    d1 += sqrt(geom->cellarea[c]);
+  }
+}
+
+/* END bf_gauss_init_m()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Window initialisation routine for u1 river forcing                */
+/*-------------------------------------------------------------------*/
+void bf_gauss_init_w(geometry_t *window,  /* Window geometry structure */
+                       open_bdrys_t *open,  /* OBC data */
+                       bdry_details_t *d, /* Custom boundary data for
+                                             window */
+                       bdry_details_t *din  /* Custom boundary data from
+                                               master */
+  )
+{
+  tra_data_t *data = (tra_data_t *)malloc(sizeof(tra_data_t));
+  tra_data_t *data_in = din->custdata;
+  int cc, c, cn, i;
+  double d1, d2;
+
+  /* Initialise */
+  memset(data, 0, sizeof(tra_data_t));
+  d->custdata = (void *)data;
+  data->dist = data_in->dist;
+  data->mid = data_in->mid;
+  data->x = d_alloc_1d(open->no2_t + 1);
+  data->cells = i_alloc_1d(open->no2_t + 1);
+  data->tstart = data_in->tstart;
+  data->flag = 0x01;
+  strcpy(data->name, data_in->name);
+  for (cc = 1; cc <= open->no2_t; cc++) {
+    c = open->obc_t[cc];
+    if((cn = ANY(c, data_in->cells, data_in->ncells))) {
+      data->cells[cc] = cn;
+      data->x[cc] = data_in->x[cn];
+    }
+  }
+}
+
+/* END bf_gauss_init_w()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Calling routine from the master for river forcing. This routine   */
+/* reads the flow rate from file and stores it in the custom data    */
+/* structure. The window and master share the same bdry_details_t    */
+/* structure, hence all windows may also access this flow rate.      */
+/*-------------------------------------------------------------------*/
+void bf_gauss_m(geometry_t *geom, master_t *master,
+		open_bdrys_t *open, bdry_details_t *d)
+{
+  return;
+}
+
+/* END bf_gauss_m()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Calling routine from the window for u1 river forcing. This        */
+/* calculates the river profile and returns a velocity for the u1    */
+/* boundary variable. This routine uses the flow rate read from file */
+/* on the master and stored in data->flow.                           */
+/*-------------------------------------------------------------------*/
+double bf_gauss_w(geometry_t *window, window_t *windat,
+		  win_priv_t *wincon, open_bdrys_t *open, double t,
+		  int c, int c2, bdry_details_t *d)
+{
+  tra_data_t *data = (tra_data_t *)d->custdata;
+  int cc, cc2, tn, tm, j, e;
+  double x, y, d1, vel, dist, gscale = 0.25 * data->dist;
+
+  if (data->flag & 0x01) {
+    if (windat->dum1) build_gauss_ref(window, windat, wincon, 
+				      data->dist, gscale, data->tstart);
+    data->flag = 0;
+  }
+  /* Find the tracer */
+  /*
+  tn = tracer_find_index(data->name, wincon->ntr, wincon->trinfo_3d);
+  tm = open->trm[tn];
+  */
+
+  /* Find the index in the boundary array */
+  for (cc = 1; cc <= open->no3_t; cc++) {
+    if (c == open->obc_t[cc])
+      break; 
+  }
+  for (cc2 = 1; cc2 <= open->no2_t; cc2++) {
+    if (c2 == open->obc_t[cc2])
+      break; 
+  }
+
+  /* Get the average inward boundary velocity */
+  vel = d1 = 0.0;
+  for (j = 1; j <= window->npe[c2]; j++) {
+    if ((e = open->bec[j][cc]) && open->bcc[j][cc] > 0) {
+      vel += windat->u1[e];
+      d1 += 1.0;
+    }
+  }
+  vel /= d1;
+
+  /* Reconstruct the Gaussian function */
+  d1 = 0.0;
+  if (t >= data->tstart * 86400.0) {
+
+    x = data->x[cc2];
+    dist = vel * (t - data->tstart * 86400);
+    if (dist < data->dist) 
+      y = data->dist - dist;
+    else if (dist > 2.0 * data->dist)
+      y = 2.0 * data->dist;
+    else
+      y = dist - data->dist;
+
+    d1 = wgt_gaussian_2d(x, y, gscale);    
+  }
+  return(d1);
+}
+
+void bf_gauss_t(master_t *master,  /* Master data */
+               open_bdrys_t *open_w,  /* OBC structure in the window */
+               bdry_details_t *data,  /* Custom data for this OBC */
+               geometry_t *window,  /* Window geometry */
+               window_t *windat /* Window data */
+  )
+{
+  tra_data_t *d = (tra_data_t *)data->custdata;
+  d->flag = 0x01;
+  return;
+}
+
+void bf_gauss_free(master_t *master, bdry_details_t *d)
+{
+  tra_data_t *data = (tra_data_t *)d->custdata;
+  d_free_1d(data->x);
+  i_free_1d(data->cells);
+  free((void **)d->custdata);
+}
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+void build_gauss_ref(geometry_t *window,
+		     window_t *windat,
+		     win_priv_t *wincon,
+		     double dist,
+		     double gscale,
+		     double tstart
+		     )
+{
+  int c, cs, cc;
+  int cm;
+  int tn;
+  double d1 = 0.0, d2, d3, d4;
+  double *tr;
+  double x0, y0;
+  double d, x, y;
+  double L2, Linf;
+  double u, v;
+  double ts = 10.5, te = 12.5;
+  double tps = 11.5;
+  double tpe = 12.5;
+  int type = 5;
+  int res = 500.0; /* Only for type = 4 */
+  int as = 0; /* 0=ffsl, 1=quick, 2=vl */
+
+  if (as == 0)
+    tn = tracer_find_index("passivet", wincon->ntr, wincon->trinfo_3d);
+  else
+    tn = tracer_find_index("passive", wincon->ntr, wincon->trinfo_3d);
+  tr =  windat->tr_wc[tn];
+
+  if (type == 0) {
+    /*---------------------------------------------------------------*/
+    /* Use the location of maximum concentration as the location of  */
+    /* the center for the analytic solution.                         */
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      c = window->w2_t[cc];
+      if (tr[c] > d1) {
+	d1 = tr[c];
+	cm = c;
+      }
+    }
+    x0 = window->cellx[cm];
+    y0 = window->celly[cm];
+    /*
+    tps = 11.125;
+    tpe = 11.5;
+    tps=11.709;
+    tpe=11.75;
+    */
+  } else if (type == 4) {
+    /*---------------------------------------------------------------*/
+    /* Track the position of the quickest solution for each          */
+    /* resolution from when the center enters the domain to 12.5     */
+    /* days.                                                         */
+    double ts, xs, ys, xe, ye, tinc;
+    if (res == 5000) {
+      ts = 10.75;
+      xs = 2500.0;
+      ys = 12500.0;
+      xe = 37500.0;
+      ye = 12500.0;
+    }
+    if (res == 2500) {
+      /* ffsl: c = 52, ts = 10.5, te = 12.5 */
+      /* q : c=52, ts = 10.5, te = 12.5 */
+      /* vl: c = 52, ts = 10.375 te = 12 */
+      ts = (as == 0) ? 10.5 : 10.375;
+      te = (as == 0) ? 12.5 : 12.0;
+      xs = 500.0;
+      ys = 11500.0;
+      xe = 38750.0;
+      ye = 11250.0;
+    }
+    if (res == 1000) {
+      /* ffsl: c = 468, ts = 10.5, te = 12.5 */
+      /* q : c=469, ts = 10.5, te = 12.5 */
+      /* vl: c = 469, ts = 10.375 te = 12.5 */
+      ts = 10.5;
+      te = 12.5;
+      xs = 500.0;
+      ys = 11500.0;
+      xe = (as == 0) ? 36500.0 : 37500.0;
+      ye = 11500.0;
+    }
+    if (res == 500) {
+      ts = 10.5;
+      xs = 250.0;
+      ys = 12250.0;
+      xe = (as == 0) ? 34250 : 35250.0;
+      ye = 12750.0;
+    }
+    if (res == 200) {
+      /*
+      ts = 10.5;
+      xs = 100.0;
+      ys = 12300.0;
+      */
+      ts = 11.5;
+      xs = 16900.0;
+      ys = 13100.0;
+      xe = 35900.0;
+      ye = 13100.0;
+    }
+
+    tinc = 86400.0 * (te - ts);
+    u = (xe - xs) / tinc;
+    v = (ye - ys) / tinc;
+    if (windat->days < ts) {
+      x0 = xs;
+      y0 = ys;
+    } else {
+      x0 = xs + u * 86400.0 * (windat->days - ts);
+      y0 = ys + v * 86400.0 * (windat->days - ts);
+      d1 = 1.0;
+    }
+  } else if (type == 5) {
+    /*---------------------------------------------------------------*/
+    /* Track the position of the 200m quickest solution from 11.5 to */
+    /* 12.5 days.                                                    */
+    double ts, xs, ys, xe, ye, tinc;
+    ts = 11.5;
+    te = 12.5;
+    xs = 16900.0;
+    ys = 13100.0;
+    xe = 35900.0;
+    ye = 13100.0;
+
+    tinc = 86400.0 * (te - ts);
+    u = (xe - xs) / tinc;
+    v = (ye - ys) / tinc;
+    if (windat->days < ts) {
+      x0 = xs;
+      y0 = ys;
+    } else {
+      x0 = xs + u * 86400.0 * (windat->days - ts);
+      y0 = ys + v * 86400.0 * (windat->days - ts);
+      d1 = 1.0;
+    }
+  } else {
+    /*---------------------------------------------------------------*/
+    /* Lagrangian tracking of the center using the velocity mean     */
+    /* over the whole domain.                                        */
+    if (type == 1) {
+      u = v = 0.0;
+      for (cc = 1; cc <= window->b3_t; cc++) {
+	c = window->w3_t[cc];
+	u += windat->u[c];
+	v += windat->v[c];
+      }
+      u /= (double)window->b3_t;
+      v /= (double)window->b3_t;
+    }
+    /*---------------------------------------------------------------*/
+    /* Lagrangian tracking of the center using the mean of depth     */
+    /* average velocity.                                             */
+    if (type == 2) { /* Mean of depth average */
+      u = v = d1 = d2 = d3 = 0.0;
+      for (cc = 1; cc <= window->b2_t; cc++) {
+	c = window->w2_t[cc];
+	while (c != window->zm1[c]) {
+	  u += (windat->u[c] * wincon->dz[c]);
+	  v += (windat->v[c] * wincon->dz[c]);
+	  d1 += wincon->dz[c];
+	  c = window->zm1[c];
+	}
+	d2 += (u / d1);
+	d3 += (v / d1);
+      }
+      u = d2 / (double)window->b2_t;
+      v = d3 / (double)window->b2_t;
+    }
+    /*---------------------------------------------------------------*/
+    /* Lagrangian tracking of the center using the 3D current        */
+    if (type == 3) {
+      u = windat->u[c];
+      v = windat->v[c];
+    }
+    if (windat->days < tstart) {
+      wincon->a1 = 1125;
+      wincon->a2 = 500.0;
+      wincon->a3 = 11500.0;
+    } else {
+      int i = -1, j = -1;
+      c = cs = (int)wincon->a1;
+      d1 = u * windat->dttr;
+      d2 = v * windat->dttr;
+      wincon->a2 += d1;
+      wincon->a3 += d2;
+      grid_xytoij(window->xyij_tree, wincon->a2, wincon->a3, &i, &j);
+      wincon->a1 = (double)window->map[geom->nz - 1][j][i];
+    }
+
+    /* Get the cell with maximum concentration                       */
+    x0 = wincon->a2;
+    y0 = wincon->a3;
+  }
+
+  /*printf("%f %d : %f %f\n", windat->days,(int)wincon->a1,x0,y0);*/
+  if (d1 == 0.0) return;
+
+  /* Make a gaussian concentration centered on cm                    */
+  d1 = d2 = d3 = d4 = 0.0;
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    windat->dum1[c] = windat->dum2[c] = 0.0;
+    x = fabs(window->cellx[c] - x0);
+    y = fabs(window->celly[c] - y0);
+    d = sqrt(x * x + y * y);
+    if (d <= dist) {
+      windat->dum1[c] = wgt_gaussian_2d(x, y, gscale);
+    }
+    windat->dum2[c] = fabs(tr[c] - windat->dum1[c]);
+    d1 += windat->dum2[c] * windat->dum2[c];
+    d2 += windat->dum1[c] * windat->dum1[c];
+    if (windat->dum2[c] > d3) d3 = windat->dum2[c];
+    if (windat->dum1[c] > d4) d4 = windat->dum1[c];
+  }
+  /*
+  L2 = sqrt(d1) / sqrt(d2);
+  Linf = d3 / d4;
+  */
+  L2 = L2_norm(window, tr, windat->dum1);
+  Linf = Linf_norm(window, tr, windat->dum1);
+
+  if (windat->days > tps && windat->days <= tpe) 
+    printf("%f %f %f\n",windat->days, L2, Linf);
+
+}
+
+double L2_norm(geometry_t *window, double *mod, double *ref)
+{
+  int c, cc;
+  double L2, dif;
+  double d1, d2, sa;
+
+  d1 = d2 = sa = 0.0;
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    dif = fabs(mod[c] - ref[c]);
+    sa += window->cellarea[c];
+    d1 += dif * dif  * window->cellarea[c];
+    d2 += ref[c] * ref[c] * window->cellarea[c];
+  }
+  L2 = sqrt(d1/sa) / sqrt(d2/sa);
+  return L2;
+}
+
+double Linf_norm(geometry_t *window, double *mod, double *ref)
+{
+  int c, cc;
+  double Linf, dif;
+  double d1, d2, sa;
+
+  d1 = d2 = sa = 0.0;
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    dif = fabs(mod[c] - ref[c]);
+    if (dif > d1) d1 = dif;
+    if (ref[c] > d2) d2 = ref[c];
+  }
+  Linf = d1 / d2;
+  return Linf;
+}
+
+/* END build_gauss_ref()                                             */
 /*-------------------------------------------------------------------*/
 
 /* EOF */

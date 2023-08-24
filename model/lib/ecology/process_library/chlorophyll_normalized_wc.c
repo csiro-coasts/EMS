@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: chlorophyll_normalized_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: chlorophyll_normalized_wc.c 7203 2022-09-15 04:53:37Z bai155 $
  *
  */
 
@@ -45,7 +45,6 @@
 #include "stringtable.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 /* REPLACE filename below with the header file of you process */
 #include "chlorophyll_normalized_wc.h"
 

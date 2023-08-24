@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: wind.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: wind.c 7362 2023-06-09 03:23:05Z riz008 $
  *
  */
 
@@ -456,7 +456,7 @@ double windstress_kondo(master_t *master, wind_data_t *data,
   double wspd = sqrt((*wx) * (*wx) + (*wy) * (*wy));
   double qs = NOTVALID;  /* Specific humidity at surface (kg/kg)     */
   double q = NOTVALID;   /* Specific humidity at 10m (kg/kg)         */
-  double es;       /* Vapour pressure at the air temp (HPa)          */
+  double es = 0.;        /* Vapour pressure at the air temp (HPa)    */
   double esat;     /* Saturation vapour pressure (HPa)               */
   double ew;       /* Vapour pressure at water temp. (Hpa)           */
   double rh;       /* Relative humidity (%)                          */
@@ -464,6 +464,8 @@ double windstress_kondo(master_t *master, wind_data_t *data,
   /* Convert pressure to HPa                                         */
   pres /= 100.0;
 
+  hd_quit("windstress kondo not supported. Please consider using a different scheme. eg. L&P\n");
+  
   if (!data->neutral && master->sh_f !=NONE) {
     /* Saturation vapour pressure over the water. Since the wet bulb */
     /* temp. over water is not available, ew represents the maximum  */

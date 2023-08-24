@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundary.h 6457 2020-02-18 23:42:08Z her127 $
+ *  $Id: boundary.h 7161 2022-07-07 02:32:47Z her127 $
  *
  */
 
@@ -160,6 +160,7 @@ struct bdry_details {
   int nargs;                    /* Number of custom arguments */
   cstring *args;                /* String arguments */
   char custom_tag[MAXSTRLEN];   /* Custom function name */
+  char i_rule[MAXSTRLEN];       /* Interpolation rule */
   int type;                     /* Type flag (e.g. normal or tangential) */
   bdrycustom_init_m init_m;     /* Master custom initialisation */
   bdrycustom_init_w init_w;     /* Slave custom initialisation */
@@ -223,12 +224,14 @@ struct open_bdrys {
   int no2_t;                    /* Number of 2D cells for elevation */
   int no2_a;                    /* Number of 2D auxiliary cells */
   int no3_a;                    /* Number of 3D auxiliary cells */
+  int no2_ta;                   /* Number of 2D tangential auxiliary cells */
   int *obc_t;                   /* Sparse OBC cells for tracers */
   int *oi1_t;                   /* Sparse 1 interior cell for tracers */
   int *oi2_t;                   /* Sparse 2 interior cells for tracers */
   int *cyc_t;                   /* Sparse cyclic OBC cells for tracers */
   int *ogc_t;                   /* Sparse ghost OBC cells for tracers */
   int *obc_a;                   /* Boundary auxiliary cells */
+  int *obc_ta;                  /* Boundary tangential auxiliary cells */
   int *bot_t;                   /* Bottom cell centered sparse coordinate */
   int no3_e1;                   /* Number of 3D cells for u1 velocity */
   int no2_e1;                   /* Number of 2D cells for u1 velocity */
@@ -365,6 +368,7 @@ struct open_bdrys {
   double *dsv;                  /* Bottom density scaling value */
   double file_dt;               /* Time increment for FILEIN input */
   double file_next;             /* Time of next FILEIN input */
+  int flag;                     /* General purpose flag */
   int bstdf;                    /* Standard OBC in use */
   int sbcond;                   /* Standard boundary code */
   int nbstd;                    /* Number of standard OBCs */
@@ -387,6 +391,7 @@ struct open_bdrys {
   double maxlat, minlat;
   double maxlon, minlon;
   int nedges, *edges;
+  char i_rule[MAXSTRLEN];       /* Interpolation rule          */
 
   /* Time series input data */
   char tsfn[MAXSTRLEN];         /* Time seris Filenames */
@@ -427,6 +432,19 @@ typedef struct {
   int options;                  /* Riverflow options */
 } flow_data_t;
 
+
+/*-------------------------------------------------------------------*/
+/* Custom data for tracer function reconstructions                   */
+typedef struct {
+  char name[MAXSTRLEN];
+  int mid;
+  int ncells;
+  int *cells;
+  double *x;
+  double dist;
+  double tstart;
+  int flag;
+} tra_data_t;
 
 /*-------------------------------------------------------------------*/
 /* MIKE : Include boundary routines                                  */

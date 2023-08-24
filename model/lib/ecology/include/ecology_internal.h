@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_internal.h 5976 2018-09-26 00:30:13Z riz008 $
+ *  $Id: ecology_internal.h 6903 2021-09-07 06:55:37Z bai155 $
  *
  */
 
@@ -269,6 +269,10 @@ struct ecology {
     /* Reflectance info */
     int num_rsr_waves;
     double *rsr_waves;
+  
+    /* Downwelling irradiance info */
+    int num_ed_waves;
+    double *ed_waves;
 
     /* Ecology setup.txt file */
     FILE *eco_setup;

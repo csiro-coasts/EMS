@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_epi.c 6553 2020-05-11 06:23:26Z bai155 $
+ *  $Id: massbalance_epi.c 7219 2022-09-20 10:14:06Z bai155 $
  *
  */
 
@@ -29,10 +29,12 @@
 #include "eprocess.h"
 #include "column.h"
 #include "cell.h"
-#include "einterface.h"
+// #include "einterface.h"
 #include "stringtable.h"
 #include "constants.h"
 #include "massbalance_epi.h"
+
+void ginterface_get_ij(void* model, int col, int *ij);
 
 /* definition of MASSBALANCE_EPS to common header file ecology/constants.h */
 
@@ -65,7 +67,9 @@ typedef struct {
   int O2_flux_i;
   int Oxygen_wc_i;
   int Oxygen_sed_i;
-
+  int COD_flux_wc_i;
+  int COD_flux_sed_i;
+  
   int NO3_wc_i;
   int NO3_sed_i;
 
@@ -95,6 +99,21 @@ void massbalance_epi_init(eprocess* p)
     /*
      * tracers
      */
+
+    ws->BOD_wc_i = -1;
+    ws->COD_wc_i = -1;
+    ws->Nfix_wc_i = -1;
+    ws->CO2_flux_i = -1;
+    ws->O2_flux_i = -1;
+    ws->Den_fl_wc_i = -1;
+    ws->Amm_fl_wc_i = -1;
+    ws->COD_flux_wc_i = -1;
+
+    ws->BOD_sed_i = -1;
+    ws->COD_sed_i = -1;
+    ws->Amm_fl_sed_i = -1;
+    ws->COD_flux_sed_i = -1;
+
     ws->TN_wc_i = e->find_index(tracers, "TN", e);
     ws->TP_wc_i = e->find_index(tracers, "TP", e);
     ws->TC_wc_i = e->find_index(tracers, "TC", e);
@@ -107,6 +126,7 @@ void massbalance_epi_init(eprocess* p)
 
     ws->Den_fl_wc_i = e->find_index(tracers, "Den_fl", e);
     ws->Amm_fl_wc_i = e->try_index(tracers, "Amm_fl", e);
+    ws->COD_flux_wc_i = e->try_index(tracers, "COD_flux", e);
 
     ws->NO3_wc_i = e->find_index(tracers, "NO3", e);
 
@@ -124,10 +144,15 @@ void massbalance_epi_init(eprocess* p)
     ws->Amm_fl_sed_i = e->try_index(tracers, "Amm_fl", e);
     if (ws->Amm_fl_sed_i > -1)
 	     ws->Amm_fl_sed_i += OFFSET_SED;
+
+    ws->COD_flux_sed_i = e->try_index(tracers, "COD_flux", e);
+    if (ws->COD_flux_sed_i > -1)
+	     ws->COD_flux_sed_i  += OFFSET_SED;
     /*
      * epis
      */
 
+    ws->Gnet_i = -1;
     ws->Gnet_i = e->try_index(epis, "Gnet", e);
     if (ws->Gnet_i > -1) 
 	 ws->Gnet_i  += OFFSET_EPI;
@@ -137,6 +162,8 @@ void massbalance_epi_init(eprocess* p)
     ws->TC_epi_i = e->find_index(epis, "EpiTC", e) + OFFSET_EPI;
 
     ws->mb_oxygen = 0;
+
+    ws->TO_old_i = -1;
 
     if (ws->COD_wc_i > -1){
       ws->mb_oxygen = 1;
@@ -154,7 +181,7 @@ void massbalance_epi_init(eprocess* p)
     stringtable_add_ifabscent(e->cv_model, "massbalance_wc", -1);
     stringtable_add_ifabscent(e->cv_model, "massbalance_epi", -1);
     stringtable_add_ifabscent(e->cv_model, "massbalance_sed", -1);
-    eco_write_setup(e,"\nMass balance in epibenthic to fractional difference of %e \n",MASSBALANCE_EPS*1000.0);
+    eco_write_setup(e,"\nMass balance in epibenthic to fractional difference of %e \n",MASSBALANCE_EPI_EPS);
 }
 
 void massbalance_epi_postinit(eprocess* p)
@@ -228,14 +255,16 @@ void massbalance_epi_postcalc(eprocess* p, void* pp)
     double CO2_flux = (ws->CO2_flux_i >= 0) ? y[ws->CO2_flux_i] : 0.0;
     double O2_flux = (ws->O2_flux_i >= 0) ? y[ws->O2_flux_i] : 0.0;
     double Gnet = (ws->Gnet_i >= 0) ? y[ws->Gnet_i] : 0.0;
+    double COD_flux_wc = (ws->COD_flux_wc_i >= 0) ? y[ws->COD_flux_wc_i] : 0.0;
+    double COD_flux_sed = (ws->COD_flux_sed_i >= 0) ? y[ws->COD_flux_sed_i] : 0.0;
 
     int ij[2];
 
     double porosity = c->porosity;
 
-    double TO = (y[ws->Oxygen_wc_i] - y[ws->COD_wc_i] - y[ws->BOD_wc_i] + y[ws->NO3_wc_i] / 14.01 * 48.0 ) * dz_wc;
+    double TO = (y[ws->Oxygen_wc_i] - y[ws->COD_wc_i] + COD_flux_wc - y[ws->BOD_wc_i] + y[ws->NO3_wc_i] / 14.01 * 48.0 ) * dz_wc;
 
-    TO += (y[ws->Oxygen_sed_i] - y[ws->COD_sed_i] + y[ws->NO3_sed_i] / 14.01 * 48.0) * dz_sed * porosity - y[ws->BOD_sed_i] * dz_sed; 
+    TO += (y[ws->Oxygen_sed_i] - y[ws->COD_sed_i] + COD_flux_sed + y[ws->NO3_sed_i] / 14.01 * 48.0) * dz_sed * porosity - y[ws->BOD_sed_i] * dz_sed; 
 
     TO += - y[ws->BOD_epi_i];
 
@@ -256,14 +285,14 @@ void massbalance_epi_postcalc(eprocess* p, void* pp)
 
     double eps = fabs(TN - cv[ws->TN_old_i]) / (TN + cv[ws->TN_old_i]);
 
-    if (eps > MASSBALANCE_EPS*1000.0){
-      einterface_get_ij(c->e->model,c->b,ij);
+    if (eps > MASSBALANCE_EPI_EPS){
+      ginterface_get_ij(c->e->model,c->b,ij);
       e_warn("ecology: error: N balance (%e,%e) violation in epibenthic cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d <%u %u>\n", TN,cv[ws->TN_old_i], eps, e->nstep, c->nsubstep, c->col->b,(p->type == PT_WC) ? c->k_wc : c->k_sed,ij[0],ij[1]);
         }
     eps = fabs(TP - cv[ws->TP_old_i]) / (TP + cv[ws->TP_old_i]);
 
-    if (eps > MASSBALANCE_EPS*1000.0){
-      einterface_get_ij(c->e->model,c->b,ij);
+    if (eps > MASSBALANCE_EPI_EPS){
+      ginterface_get_ij(c->e->model,c->b,ij);
       e_warn("ecology: error: P balance (%e,%e) violation in epibenthic cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d <%u %u>\n", TP,cv[ws->TP_old_i], eps, e->nstep, c->nsubstep, c->col->b,(p->type == PT_WC) ? c->k_wc : c->k_sed,ij[0],ij[1]);
     }
     if (CO2_flux == 0.0){
@@ -271,7 +300,7 @@ void massbalance_epi_postcalc(eprocess* p, void* pp)
       /* Can't do mass balance on epi when there is only one water column layer as it does not know that it is having only called massbalance_wc once */
   
     eps = fabs(TC - cv[ws->TC_old_i]) / (TC + cv[ws->TC_old_i]);
-      if (eps > MASSBALANCE_EPS*1000.0)
+      if (eps > MASSBALANCE_EPI_EPS)
         e_warn("ecology: error: C balance (%e,%e) violation in epibenthic cell by %.3g, nstep = %d, nsubstep = %d, b = %d\n", TC,cv[ws->TC_old_i],eps, e->nstep, c->nsubstep, c->col->b);
       }
 
@@ -283,7 +312,7 @@ void massbalance_epi_postcalc(eprocess* p, void* pp)
 
 	eps = fabs(TO - cv[ws->TO_old_i]) / max(fabs(TO + cv[ws->TO_old_i]),8000.0);
 
-	if (eps > MASSBALANCE_EPS*1000.0){
+	if (eps > MASSBALANCE_EPI_EPS){
 	  e_warn("ecology: error: O2 balance (%e,%e) violation in epibenthic cell by %.3g, nstep = %d, nsubstep = %d, b = %d\n", TO,cv[ws->TO_old_i],eps, e->nstep, c->nsubstep, c->col->b);
 	}
       }

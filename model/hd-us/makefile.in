@@ -1,7 +1,7 @@
 #
 # makefile.in - Input makefile for the configure script.
 #
-# $Id: makefile.in 6597 2020-09-03 05:29:26Z riz008 $
+# $Id: makefile.in 7267 2022-12-05 05:29:53Z riz008 $
 #
 
 SHELL=/bin/sh
@@ -63,7 +63,10 @@ WAVELIB=@WAVELIB@
 WAVEINC=@WAVEINC@
 DALIB=@DALIB@
 DAINC=@DAINC@
+GSLINC=@GSLINC@
 GSLLIB=@GSLLIB@
+MKLINC=@MKL_INC@
+MKLLIB=@MKL_LIB@
 MPI_INC=@MPI_INC@
 MPI_LIB=@MPI_LIB@
 METIS_INC=@METIS_INC@
@@ -72,7 +75,9 @@ METIS_LIB=@METIS_LIB@
 JIGSAWINC=@JIGSAWINC@
 JIGSAWLIB=@JIGSAWLIB@
 
-LDFLAGS:=$(LDFLAGS) -rdynamic @JIGSAWRPATH@
+SWANLIB=@SWANLIB@
+
+LDFLAGS:=$(LDFLAGS) -rdynamic @JIGSAWRPATH@ @SWANRPATH@
 
 # Generate include/svn_rev.h
 JUNK:=$(shell ../../conf/gen_svn_rev.sh ../..)
@@ -100,9 +105,11 @@ FRCOBJS=forcings/airtemp.o forcings/cloud.o forcings/evap.o \
 forcings/forcings.o forcings/patm.o forcings/precip.o forcings/rh.o \
 forcings/swr.o forcings/webf.o forcings/wind.o forcings/wetbulb.o \
 forcings/hftemp.o forcings/heatflux.o forcings/storm.o forcings/eta_relax.o \
-forcings/vel_relax.o forcings/crash.o forcings/regulate.o forcings/dhw.o
+forcings/vel_relax.o forcings/crash.o forcings/regulate.o forcings/dhw.o forcings/swan.o
 
 GINTEROBJS = ginterface/ginterface.o
+
+RENDEROBJS = render/render_manager.o render/render_globals.o
 
 INOBJS= inputs/sourcesink.o inputs/choosedump.o inputs/opendump.o \
 inputs/readdump.o inputs/readparam.o inputs/readparam_t.o inputs/readparam_r.o inputs/meshes.o
@@ -130,11 +137,11 @@ SLAVEOBJS= slaves/windows.o slaves/zoom.o slaves/transfers.o slaves/any.o
 
 TRACEROBJS= tracers/tracers.o tracers/relaxation.o tracers/reset.o \
 tracers/load_tracer.o tracers/tracer_decay.o tracers/tracer_info.o \
-tracers/transport.o tracers/regions.o
+tracers/transport.o tracers/regions.o tracers/autotracer.o
 
 
 MODELOBJS=$(BDRYOBJS) $(CTRLOBJS) $(DASSIMOBJ) $(DEBUGOBJS) $(DENOBJS) $(DIAGOBJS) \
-$(ECOOBJS) $(FRCOBJS) $(GINTEROBJS) $(INOBJS) $(MASTOBJS) $(MISCOBJS) $(MIXOBJS) $(MOMOBJS) \
+$(ECOOBJS) $(FRCOBJS) $(GINTEROBJS) $(RENDEROBJS) $(INOBJS) $(MASTOBJS) $(MISCOBJS) $(MIXOBJS) $(MOMOBJS) \
 $(OUTOBJS) $(PTOBJS) $(SEDOBJS) $(SLAVEOBJS) $(TRACEROBJS)
 
 ALLINCS=include/boundary.h include/hd.h \
@@ -166,10 +173,10 @@ tests/test5/1layer \
 tests/test5/20layer  
 
 .c.o:;
-	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC) $*.c -o $*.o
+	$(CC) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(GSLINC) $(MKLINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC) $*.c -o $*.o
 
 .cpp.o:
-	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC)  $*.cpp -o $*.o
+	$(CXX) -c $(CFLAGS) -Iinclude $(NETCDFINC) $(EMSINC) $(SEDINC) $(ECOINC) $(TSINC) $(WAVEINC) $(GSLINC) $(MKLINC) $(DAINC) $(JIGSAWINC) $(MPI_INC) $(METIS_INC)  $*.cpp -o $*.o
 
 all: $(PROGRAMS)
 
@@ -200,7 +207,7 @@ installdocs: docs
 	chmod -R o+rX /home/software/WWW/models/meco
 
 compas:    $(ALLINCS) $(MODELOBJS)
-	$(CXX) $(CFLAGS) -o $@ $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GSLLIB) $(DALIB) $(JIGSAWLIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(METIS_LIB) $(MLIB)  
+	$(CXX) $(CFLAGS) -o $@ $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GSLLIB) $(MKLLIB) $(DALIB) $(JIGSAWLIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(METIS_LIB) $(SWANLIB) $(MLIB)
 
 # Clean-up target
 clean: cleantests

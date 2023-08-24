@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: landfill.c 6713 2021-03-29 00:56:01Z her127 $
+ *  $Id: landfill.c 6946 2021-12-03 01:33:29Z her127 $
  *
  */
 
@@ -393,7 +393,7 @@ void cs_fill_land(dump_data_t *dumpdata)
           dumpdata->wind1[j][i] = dumpdata->wind1[cj][ci];
           dumpdata->wind2[j][i] = dumpdata->wind2[cj][ci];
 	  for (n = 0; n < dumpdata->ntrS; ++n) {
-	    if(isnan(dumpdata->tr_wcS[n][j][i])) {
+	    if(isnan(dumpdata->tr_wcS[n][cj][ci])) {
 	      find_closest_nonnan(dumpdata, dumpdata->tr_wcS[n], i, j, k,
 				  &ci, &cj);
 	      dumpdata->fmap_i[k][j][i] = ci;

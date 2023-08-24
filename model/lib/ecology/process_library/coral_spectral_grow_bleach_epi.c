@@ -9,6 +9,9 @@
  *  This process contains a coral model with autotrophic and heterotrophic growth, zooxanthellae physiology, 
  *  xanthophyll cycle, reaction centre dynamics and reative oxygen build-up.
  *
+ *  If the process "symbiodinium_spectral_free" is called, then additional processes are expulsion and innocation of 
+ *        zooxanthellae populations.
+ *
  *  References:
  * 
  *  Gustafsson et al. (2013) The interchangeability of autotrophic 
@@ -28,7 +31,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_grow_bleach_epi.c 6681 2021-01-08 02:36:02Z bai155 $
+ *  $Id: coral_spectral_grow_bleach_epi.c 7359 2023-06-03 06:22:47Z bai155 $
  *
  */
 
@@ -44,6 +47,8 @@
 #include "column.h"
 #include "constants.h"
 #include "coral_spectral_grow_bleach_epi.h"
+
+double ginterface_cellarea(void* hmodel, int b);
 
 #define unitch 1000.0
 
@@ -65,6 +70,9 @@ typedef struct {
   double Plank_resp;
   double CSmort_t0;
   double CHmort_t0;
+  double CH_tau_critical;
+  double CH_tau_efold;
+  double CH_max_mort;
   double C2Chlmin;
   double KO_aer;
 
@@ -86,6 +94,10 @@ typedef struct {
   double CSmaxbleachrate;
   double photon2ros;
 
+  double F_CSviable_unbleached;
+  double F_CSviable_bleached;
+  double Innoculation_piston_velocity;
+
   /*
    * epis
    */
@@ -106,6 +118,21 @@ typedef struct {
   int CS_Qi_i;
   int CS_RO_i;
 
+  int CS_N_free_i;    /* Coral symbiont - free microalgae */
+  int CS_Chl_free_i;
+
+  int CS_NR_free_i;
+  int CS_PR_free_i;
+  int CS_I_free_i;
+
+  int CS_Xh_free_i;
+  int CS_Xp_free_i;
+
+  int CS_Qred_free_i;
+  int CS_Qox_free_i;
+  int CS_Qi_free_i;
+  int CS_RO_free_i;
+
   int CS_tempfunc_i;  
 
   int temp_clim_wc_i;
@@ -118,6 +145,8 @@ typedef struct {
   int EpiTC_i;
   int EpiBOD_i;
 
+  int CH_shear_mort_i;
+  
   /*
    * tracers
    */
@@ -172,6 +201,7 @@ typedef struct {
   int CHarea_cv_i;
 
   int recom;   // flag
+  int free_symbiont;
 } workspace;
 
 void coral_spectral_grow_bleach_epi_init(eprocess* p)
@@ -207,6 +237,28 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
     }
     ws->CSmort_t0 = get_parameter_value(e, "CSmort");
     ws->CHmort_t0 = get_parameter_value(e, "CHmort");
+
+    ws->CH_tau_critical = try_parameter_value(e, "CH_tau_critical");
+    if (isnan(ws->CH_tau_critical)){
+      ws->CH_tau_critical = 300.0;
+      eco_write_setup(e,"Code default (so high as to never occur): CH_tau_critical = %e \n",ws->CH_tau_critical);
+    }
+
+    ws->CH_tau_efold = try_parameter_value(e, "CH_tau_efold");
+    if (isnan(ws->CH_tau_efold)){
+      ws->CH_tau_efold = 3.0 * 3600.0; // make quick
+      eco_write_setup(e,"Code default: CH_tau_efold = %e \n",ws->CH_tau_efold);
+    }
+
+    ws->CH_max_mort = try_parameter_value(e, "CH_max_mort");
+    if (isnan(ws->CH_max_mort)){
+      ws->CH_max_mort = 4.0/86400.0; // make quick
+      eco_write_setup(e,"Code default: CH_max_mort = %e \n",ws->CH_max_mort);
+    }
+
+    ws->CH_shear_mort_i = e->try_index(epis, "CH_shear_mort", e);
+    if (ws->CH_shear_mort_i > -1)
+      ws->CH_shear_mort_i += OFFSET_EPI;
 
     ws->CHremin = get_parameter_value(e, "CHremin");
     ws->Splank = get_parameter_value(e, "Splank");
@@ -257,6 +309,7 @@ void coral_spectral_grow_bleach_epi_init(eprocess* p)
     ws->photon2ros = try_parameter_value(e, "CS_photon2ros");
     if (isnan(ws->photon2ros)){
       ws->photon2ros = 7000.0;  // empirical fit to field observations
+      ws->photon2ros = 3500.0;  // empirical fit to Ellis lab experiments.
       eco_write_setup(e,"Code default of photon2ros = %e \n",ws->photon2ros);
     }
 
@@ -398,6 +451,7 @@ void coral_spectral_grow_bleach_epi_postinit(eprocess* p)
 {
     ecology* e = p->ecology;
     workspace* ws = p->workspace;
+    stringtable* tracers = e->tracers;
 
     ws->do_mb = (try_index(e->cv_model, "massbalance_epi", e) >= 0) ? 1 : 0;
     ws->KI_CS_i = find_index_or_add(e->cv_cell, "KI_CS", e);
@@ -407,6 +461,40 @@ void coral_spectral_grow_bleach_epi_postinit(eprocess* p)
     if (process_present(e,PT_WC,"recom_extras"))
       ws->recom = 1;
 
+    ws->free_symbiont = 0;
+    if (process_present(e,PT_WC,"symbiodinium_spectral_free")){
+      ws->free_symbiont = 1;
+      eco_write_setup(e,"Symbiodinium expulsion to and innoculation from  water column is resolved.\n");
+      ws->CS_N_free_i = e->find_index(tracers, "CS_N_free", e);
+      ws->CS_Chl_free_i = e->find_index(tracers, "CS_Chl_free", e);
+      ws->CS_NR_free_i = e->find_index(tracers, "CS_NR_free", e);
+      ws->CS_PR_free_i = e->find_index(tracers, "CS_PR_free", e);
+      ws->CS_I_free_i = e->find_index(tracers, "CS_I_free", e);
+      ws->CS_Xh_free_i = e->find_index(tracers, "CS_Xh_free", e);
+      ws->CS_Xp_free_i = e->find_index(tracers, "CS_Xp_free", e);
+      ws->CS_Qred_free_i = e->find_index(tracers, "CS_Qred_free", e);
+      ws->CS_Qox_free_i = e->find_index(tracers, "CS_Qox_free", e);
+      ws->CS_Qi_free_i = e->find_index(tracers, "CS_Qi_free", e);
+      ws->CS_RO_free_i = e->find_index(tracers, "CS_RO_free", e);
+
+      ws->F_CSviable_unbleached = try_parameter_value(e, "F_CSviable_unbleached");
+      if (isnan(ws->F_CSviable_unbleached)){
+	ws->F_CSviable_unbleached = 0.6;   //
+	eco_write_setup(e,"Code default of F_CSviable_unbleached = %e \n",ws->F_CSviable_unbleached);
+      }
+
+      ws->F_CSviable_bleached = try_parameter_value(e, "F_CSviable_bleached");
+      if (isnan(ws->F_CSviable_bleached)){
+	ws->F_CSviable_bleached = 0.4;   //
+	eco_write_setup(e,"Code default of F_CSviable_bleached = %e \n",ws->F_CSviable_bleached);
+      }
+
+      ws->Innoculation_piston_velocity = try_parameter_value(e, "CS_Innocu_PV");
+      if (isnan(ws->Innoculation_piston_velocity)){
+	ws->Innoculation_piston_velocity = 3.0;   //
+	eco_write_setup(e,"Code default of Innoculation_piston_velocity (m/s), CS_Innocu_PV = %e \n",ws->Innoculation_piston_velocity);
+      }
+    }
 }
 
 void coral_spectral_grow_bleach_epi_destroy(eprocess* p)
@@ -449,7 +537,7 @@ void coral_spectral_grow_bleach_epi_precalc(eprocess* p, void* pp)
       
       /* do calculation based on area on present cell dimension */
       
-      area = einterface_cellarea(c->col->model,c->b); 
+      area = ginterface_cellarea(c->col->model,c->b); 
       cv[ws->CHarea_cv_i] = 1.0;
       RR = sqrt(area/PI);
       if (RR > 200.0)
@@ -500,7 +588,6 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     double* cv = c->cv;
     double dz_wc = c->dz_wc;
 
-    // double temp_wc = y[ws->temp_wc_i]; - now used in precalc
     double CS_Chl = y[ws->CS_Chl_i];
 
     double CS_NR = y[ws->CS_NR_i];
@@ -534,7 +621,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     double CHumax = cv[ws->CHumax_i];  /* s-1 */
     double CSumax = cv[ws->CSumax_i];  /* s-1 */
-    double CHmort = cv[ws->CHmort_i];  /* s-1 */
+    double CHmort = cv[ws->CHmort_i];  /* s-1 */    
     double CSmort = cv[ws->CSmort_i];  /* s-1 */
 
     double CHarea = cv[ws->CHarea_cv_i];
@@ -662,6 +749,12 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
     /* translocation of organic N from symbiont to host - in mg N */
 
     double CHremin = ws->CHremin;  /* fraction of host death that is passes to symbiont  */
+
+    /* Add linear mortality and shear stress mortality */
+
+    double shear_stress_mort = min(ws->CH_max_mort,max((tau*1000.0 - ws->CH_tau_critical)/ws->CH_tau_critical, 0.0) * (1.0 / ws->CH_tau_efold));
+
+    CHmort = CHmort + shear_stress_mort;
 
     /* Mortality needs to be multipled by respective biomass to get rate
        Also, biomass concentrated so I need to divide by ws->CHarea */
@@ -829,6 +922,16 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     double ARO = CSumax * Nquota * Iquota * Pquota * CS_RO;  // rate of detoxification.
 
+    /* Additions based on Sophia Ellis tank experiments. - CS_RO here is ROS m-2 */
+
+    ARO = 0.0;
+
+    if ((CS_RO/cellnum > ws->ROSthreshold/2.0) && (CS_RO/cellnum <= ws->ROSthreshold)){
+      ARO = CSumax * Nquota * Iquota * Pquota * (CS_RO/cellnum - ws->ROSthreshold/2.0) * cellnum;
+    }else if (CS_RO/cellnum > ws->ROSthreshold){
+      ARO = CSumax * Nquota * Iquota * Pquota * (ws->ROSthreshold/2.0) * cellnum;
+    }
+
     /* We are assuming that the oxygen in this cascade is not part of the oxygen balance (i.e. came from H20) */
 
     double absorb = kI * cellnum * ws->photon2rcii * 1000.0; //   units now mmol rcii m-2 s-1 
@@ -870,6 +973,7 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     double expulsion = max(0.0,min(ws->CSmaxbleachrate,ws->ROSmult * (ROSpercell - ws->ROSthreshold)/ws->ROSthreshold/86400.0));
 
+    // If symbiodinium_spectral_free then send into water column, otherwise it becomes detritus.
 
     y1[ws->CS_N_i] -= expulsion * CS_N;
     y1[ws->CS_Chl_i] -= expulsion * CS_Chl;
@@ -885,26 +989,96 @@ void coral_spectral_grow_bleach_epi_calc(eprocess* p, void* pp)
 
     y1[ws->CS_RO_i] -= expulsion * CS_RO;
 
-    /* put expelled symbionts back in water column to conserve mass */
+    if (ws->free_symbiont){
 
-    y1[ws->DetPL_N_wc_i] += expulsion * CS_N / dz_wc;
+      double viable = ws->F_CSviable_unbleached;
 
-    y1[ws->NH4_wc_i] +=  (expulsion * CS_N * Nquota) / dz_wc;
-    y1[ws->DIP_wc_i] +=  (expulsion * CS_N * red_W_P * Pquota)/ dz_wc;
-    y1[ws->DIC_wc_i] +=  (expulsion * CS_N * red_W_C * Iquota) / dz_wc;
+      if (ROSpercell > ws->ROSthreshold)
+	viable = ws->F_CSviable_bleached;	
 
+      //  enter here reduced viability due to physiological stress.
+
+      /* put expelled symbionts back in water column to conserve mass */
+
+      y1[ws->CS_N_free_i] += viable * expulsion * CS_N / dz_wc;
+      y1[ws->CS_Chl_free_i] += viable * expulsion * CS_Chl / dz_wc;
+      y1[ws->CS_Xp_free_i] += viable * expulsion * CS_Xp / dz_wc;
+      y1[ws->CS_Xh_free_i] += viable * expulsion * CS_Xh / dz_wc;
+      y1[ws->CS_I_free_i] += viable * expulsion * CS_I / dz_wc;
+      y1[ws->CS_NR_free_i] += viable * expulsion * CS_NR / dz_wc;
+      y1[ws->CS_PR_free_i] += viable * expulsion * CS_PR / dz_wc;
+      
+      y1[ws->CS_Qox_free_i] += viable * expulsion * CS_Qox / dz_wc;
+      y1[ws->CS_Qred_free_i] += viable * expulsion * CS_Qred / dz_wc;
+      y1[ws->CS_Qi_free_i] += viable * expulsion * CS_Qi / dz_wc;
+      
+      y1[ws->CS_RO_free_i] += viable * expulsion * CS_RO / dz_wc;
+
+      /* Unviable component becomes detritus - see comments below on detritus generation. */
+
+      y1[ws->DetPL_N_wc_i] += (1.0 - viable) * expulsion * CS_N / dz_wc;
+      y1[ws->NH4_wc_i] +=  (1.0 - viable) * (expulsion * CS_N * Nquota) / dz_wc;
+      y1[ws->DIP_wc_i] +=  (1.0 - viable) * (expulsion * CS_N * red_W_P * Pquota)/ dz_wc;
+      y1[ws->DIC_wc_i] +=  (1.0 - viable) * (expulsion * CS_N * red_W_C * Iquota) / dz_wc;
+      y1[ws->Oxygen_wc_i] -= (1.0 - viable) * (expulsion * CS_N * red_W_C * Iquota * C_O_W) / dz_wc * sigmoid;
+      if (ws->COD_wc_i > -1){
+	y1[ws->COD_wc_i] += (1.0 - viable) * (expulsion * CS_N * red_W_C * Iquota) / dz_wc * C_O_W * (1.0-sigmoid);
+      }
+
+      /* Innoculate from water column, conserving mass */
+
+      double piston_velocity = SA * ws->Innoculation_piston_velocity / 86400.0; // m s-1
+
+      y1[ws->CS_N_i] += piston_velocity * y[ws->CS_N_free_i];
+      y1[ws->CS_Chl_i] += piston_velocity * y[ws->CS_Chl_free_i];
+      y1[ws->CS_Xp_i] += piston_velocity * y[ws->CS_Xp_free_i];
+      y1[ws->CS_Xh_i] += piston_velocity * y[ws->CS_Xh_free_i];
+      y1[ws->CS_I_i] += piston_velocity * y[ws->CS_I_free_i];
+      y1[ws->CS_NR_i] += piston_velocity * y[ws->CS_NR_free_i];
+      y1[ws->CS_PR_i] += piston_velocity * y[ws->CS_PR_free_i];
+      
+      y1[ws->CS_N_free_i] -= piston_velocity * y[ws->CS_N_free_i] / dz_wc;
+      y1[ws->CS_Chl_free_i] -= piston_velocity * y[ws->CS_Chl_free_i] / dz_wc;
+      y1[ws->CS_Xp_free_i] -= piston_velocity * y[ws->CS_Xp_free_i] / dz_wc;
+      y1[ws->CS_Xh_free_i] -= piston_velocity * y[ws->CS_Xh_free_i] / dz_wc;
+      y1[ws->CS_I_free_i] -= piston_velocity * y[ws->CS_I_free_i] / dz_wc;
+      y1[ws->CS_NR_free_i] -= piston_velocity * y[ws->CS_NR_free_i] / dz_wc;
+      y1[ws->CS_PR_free_i] -= piston_velocity * y[ws->CS_PR_free_i] / dz_wc;
+      
+      y1[ws->CS_Qox_i] += piston_velocity * y[ws->CS_Qox_free_i];
+      y1[ws->CS_Qred_i] += piston_velocity * y[ws->CS_Qred_free_i];
+      y1[ws->CS_Qi_i] += piston_velocity * y[ws->CS_Qi_free_i];
+      y1[ws->CS_RO_i] += piston_velocity * y[ws->CS_RO_free_i];
+      
+      y1[ws->CS_Qox_free_i] -= piston_velocity * y[ws->CS_Qox_free_i] / dz_wc;
+      y1[ws->CS_Qred_free_i] -= piston_velocity * y[ws->CS_Qred_free_i] / dz_wc;
+      y1[ws->CS_Qi_free_i] -= piston_velocity * y[ws->CS_Qi_free_i] / dz_wc;
+      y1[ws->CS_RO_free_i] -= piston_velocity * y[ws->CS_RO_free_i] / dz_wc;
+         
+    }else{
+
+      y1[ws->DetPL_N_wc_i] += expulsion * CS_N / dz_wc;
+      
+      y1[ws->NH4_wc_i] +=  (expulsion * CS_N * Nquota) / dz_wc;
+      y1[ws->DIP_wc_i] +=  (expulsion * CS_N * red_W_P * Pquota)/ dz_wc;
+      y1[ws->DIC_wc_i] +=  (expulsion * CS_N * red_W_C * Iquota) / dz_wc;
+      
     /* need to careful when oxygen approaches zero */
 
-    y1[ws->Oxygen_wc_i] -= (expulsion * CS_N * red_W_C * Iquota * C_O_W) / dz_wc * sigmoid;
-
-    if (ws->COD_wc_i > -1){
-      y1[ws->COD_wc_i] += (expulsion * CS_N * red_W_C * Iquota) / dz_wc * C_O_W * (1.0-sigmoid);
+      y1[ws->Oxygen_wc_i] -= (expulsion * CS_N * red_W_C * Iquota * C_O_W) / dz_wc * sigmoid;
+      
+      if (ws->COD_wc_i > -1){
+	y1[ws->COD_wc_i] += (expulsion * CS_N * red_W_C * Iquota) / dz_wc * C_O_W * (1.0-sigmoid);
+      }
     }
-    
+
     if (ws->CS_bleach_i > -1)
       y1[ws->CS_bleach_i] = expulsion * 86400.0;  /* d-1 */
     
     /* Update diagnostics */
+
+    if (ws->CH_shear_mort_i > -1)
+      y1[ws->CH_shear_mort_i] = shear_stress_mort * 86400.0;
 
     if (ws->IN_up_i > -1)
       y1[ws->IN_up_i] = S_DIN * SA * DIN_wc;

@@ -12,18 +12,29 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: advect.c 6737 2021-03-30 00:40:18Z her127 $
+ *  $Id: advect.c 7333 2023-04-11 02:33:37Z her127 $
  *
  */
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "hd.h"
 #include "tracer.h"
 
 double porus_plate_e1(geometry_t *window, window_t *windat, win_priv_t *wincon, int c);
 double porus_plate_e2(geometry_t *window, window_t *windat, win_priv_t *wincon, int c);
-int cg;
+int nonlin_coriolis_3dl(geometry_t *window, window_t *windat, win_priv_t *wincon, int e);
+int nonlin_coriolis_3dl2(geometry_t *window, window_t *windat, win_priv_t *wincon, int e);
+int nonlin_coriolis_3d_gsl(geometry_t *window, window_t *windat, win_priv_t *wincon, int e, double dtu, double dtm);
+int nonlin_coriolis_3d_gslv(geometry_t *window, window_t *windat, win_priv_t *wincon, int e, double dtu, double dtm);
+double get_tke_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, int e, int j);
+void tke_upwind_1st(geometry_t *window, window_t *windat, win_priv_t *wincon, double *kgrad, int *cells, int vc);
+void tke_upwind_2nd(geometry_t *window, window_t *windat, win_priv_t *wincon, double *kgrad, int *cells, int vc);
+void tke_centered_2nd(geometry_t *window, window_t *windat, win_priv_t *wincon, double *kgrad, int *cells, int vc);
+void tke_centered_4th(geometry_t *window, window_t *windat, win_priv_t *wincon, double *kgrad, int *cells, int vc);
+double get_tke_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, int e, int j);
+
 #define SMALL 1e-10             /* Minimum value for velocity bounds */
 
 /*-------------------------------------------------------------------*/
@@ -47,7 +58,9 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
   double iarea;             /* 1 / area                              */
   double fs = 1.0;          /* Flux scaling                          */
   double *dzv = wincon->w1;
+  double *kgrad = wincon->w4; /* Kinetic energy gradient             */
   double *vel;              /* Velocity to use in spatial gradients  */
+  double *stk;              /* Stokes drift velocity                 */
   double dtu, dtm;          /* Leapfrog and forward sub-step         */
   double trem;              /* Time remaining in leapfrog step       */
   double tremf;             /* Time remaining in forward step        */
@@ -62,6 +75,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
   /* Initialize                                                      */
   windat->dtu1 = windat->dtf;
   vel = windat->u1;
+  stk = wincon->w1;
 
   if (wincon->thin_merge) {
     set_thin_u1(window, windat, wincon);
@@ -333,7 +347,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 
 	      /* Angle of outward pointing vector normal to edge     */
 	      av = (vu == window->e2v[e][0]) ? window->thetau1[es1] - PI2 : window->thetau1[es1] + PI2;
-	      /* Dot product is magnitude of vectots * cos of angle  */
+	      /* Dot product is magnitude of vectors * cos of angle  */
 	      /* between them.                                       */
 	      av -= ae;
 	      d1 += d3 * windat->nrvore[e] * cos(av) * window->h2au1[es1] * iarea;
@@ -361,6 +375,7 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
       /* Compute the kinetic energy at cell centres. Used in the     */
       /* decomposition of momentum advection, e.g. Eq. 4, Ringler et */
       /* al, 2010.                                                   */
+      /* Kinetic energy is given by Eq. 63, Ringler et al, 2010.     */
       /* Divergence is given by Eq. 21, Ringler et al, 2010.         */
       memset(windat->kec, 0, window->szc * sizeof(double));
       memset(windat->div, 0, window->szc * sizeof(double));
@@ -377,26 +392,157 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 	}
       }
 
+      /* Get the kinetic energy at vertices if required              */
+      if (wincon->kinetic & (K_GASS|K_YU)) {
+	memset(wincon->w1, 0, window->szv * sizeof(double));
+	for (vv = 1; vv <= window->a3_e2; vv++) {
+	  v = window->w3_e2[vv];
+	  vs = window->m2dv[v];
+	  for (ee = 1; ee <= window->nve[vs]; ee++) {
+	    e = window->v2e[v][ee];
+	    if (e) {
+	      es = window->m2de[e];
+	      wincon->w1[v] += 0.25 * window->h1au1[es] * window->h2au1[es] * vel[e] * vel[e];
+	    }
+	  }
+	  wincon->w1[v] /= window->dualarea[vs];
+	}
+      }
+      /* Add the vertex centered kinetic energy if required.         */
+      /* Skamarock et al (2012), Mon. Wea, Rev., 140, 3090-3105,     */
+      /* Eq. 11.                                                     */
+      /* See Skamarock et al (2012) Section 4 for alpha, where:      */
+      /* 0.2 <= alpha <= 0.45. Default is alpha = 0.375.             */
+      /* See also Gassmann (2013) Q. J. R. Meteorol. Soc.139,152-175 */
+      /* Appendix B.                                                 */
+      if (wincon->kinetic & K_GASS) {
+	double alpha = wincon->kfact;
+	double ralpha = (1.0 - alpha);
+	/* Area averaged kenetic energy at cell centre               */
+	for(cc = 1; cc <= window->a3_t; cc++) {
+	  c = window->w3_t[cc];
+	  cs = window->m2d[c];
+	  d1 = 0.0;
+	  for (n = 1; n <= window->npe[cs]; n++) {
+	    j = window->vIc[n][cs];
+	    v = window->c2v[n][c];
+	    vs = window->m2dv[v];
+	    d1 += (wincon->w1[v] * window->dualareap[vs][j]  / window->cellarea[cs]);
+	  }
+	  /* Updated kinetic energy                                  */
+	  windat->kec[c] = alpha * windat->kec[c] + ralpha * d1;
+	}
+      }
+
+      /* Kinetic enegy formulation according to Yu et al (2020)      */
+      /* Mon. Wea. Rev. 148, 4009-4033. Section 4b, Eq. 12.          */
+      if (wincon->kinetic & K_YU) {
+	double alpha = wincon->kfact;
+	double ralpha = (1.0 - alpha);
+	/* Tagential gradient of kinetic energy                      */
+	memset(wincon->w2, 0, window->sze * sizeof(double));
+	for(ee = 1; ee <= window->a3_e1; ee++) {
+	  e = window->w3_e1[ee];
+	  es = window->m2de[e];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  wincon->w2[e] = (wincon->w1[v2] - wincon->w1[v1]) / 
+	    window->h1au1[es];
+	}
+	/* Project onto the normal component at edges. Note: the     */
+	/* normal component derived from tangential vectors uses the */
+	/* inverse Thuburn weights, which is just the negative value */
+	/* (see Yu et al (2020), Appendix C).                        */
+	memset(wincon->w1, 0, window->sze * sizeof(double));
+	for (ee = 1; ee <= vc; ee++) {
+	  e = cells[ee];
+	  es = window->m2de[e];
+	  for (n = 1; n <= window->nee[es]; n++) {
+	    eoe = window->eSe[n][e];
+	    fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
+	    if (!eoe) continue;
+	    wincon->w1[e] -= fs * window->wAe[n][e] * wincon->w2[eoe];
+	  }
+	}
+	/* Get the gradient of kinetic energy. We use a weighted sum */
+	/* of the normal and projected gradients here. A weight of   */
+	/* 0.0 will only use the Yu formulation.                     */
+	for (ee = 1; ee <= vc; ee++) {
+	  e = cells[ee];
+	  es = window->m2de[e];
+	  c1 = window->e2c[e][0];
+	  c2 = window->e2c[e][1];
+	  d1 = (windat->kec[c1] - windat->kec[c2]) / window->h2au1[es];
+	  d2 = wincon->w1[e];
+	  kgrad[e] = alpha * d1 + ralpha * d2;
+	}
+      } else {
+	/* Get the gradient of kinetic energy                        */
+	/*
+	for (ee = 1; ee <= vc; ee++) {
+	  e = cells[ee];
+	  es = window->m2de[e];
+	  c1 = window->e2c[e][0];
+	  c2 = window->e2c[e][1];
+	  d1 = 1.0 / window->h2au1[es];
+	  kgrad[e] = (windat->kec[c1] - windat->kec[c2]) * d1;
+	}
+	*/
+	
+      if (wincon->kinetic & ORDER2)    /* 2nd order centered         */
+	tke_centered_2nd(window, windat, wincon, kgrad, cells, vc);
+      if (wincon->kinetic & ORDER1)    /* 1st order upwind           */
+	tke_upwind_1st(window, windat, wincon, kgrad, cells, vc);
+      if (wincon->kinetic & ORDER2_UW) /* 2nd order upwind           */
+	tke_upwind_2nd(window, windat, wincon, kgrad, cells, vc);
+      if (wincon->kinetic & ORDER4)    /* 4th order centered         */
+	tke_centered_4th(window, windat, wincon, kgrad, cells, vc);
+      }
+
+      /* Get the normal component of Stokes drift, and store in stk  */
+      if (wincon->waves & STOKES_DRIFT)
+	get_sdc_e1(window, windat, wincon);
+      else
+	memset(stk, 0, window->sze * sizeof(double));
+
       /*-------------------------------------------------------------*/
       /* Compute the nonlinear Coriolis tendency. The tangential     */
       /* velocity is computed using the primal to dual mesh mapping  */
       /* (Eq. 24, Ringler et al, 2010) and a mean of absolute        */
       /* vorticity at the edge in question. The gradient of kinetic  */
       /* energey is also added (see Eq. A.39, Ringler et al, 2013).  */
+
+      /* The tangential velocity is rotated clockwise from the       */
+      /* vector; te = k x ne (Ringler, 2010, Sect. 3.1 & Fig 3).     */
+      /* The Thuburn weights deliver a velocity in this tangential   */
+      /* (clockwise) direction. He defines that if a vertex is at    */
+      /* the left end of an edge it's in the k x ne direction to the */
+      /* normal vector.                                              */
+      /* Thuburn (2008) states tangential velocities are required    */
+      /* for the Coriolis term in the -k x ne (anti-clockwise)       */
+      /* direction (p8324).                                          */
+      /* Ringler (2010) shows the discrete form as Eq. 20, where the */
+      /* nonlinear Coriolis term is added to the RHS.                */
+      /* Ringler (2013) shows the horizontal discretization as A.39  */
+      /* where the nonlinear Coriolis is negative on the RHS.        */
+      /* Here we take the negative of the Thuburn weights to deliver */
+      /* the velocity in the anti-clockwise direction, and so must   */
+      /* add the nonlinear Coriolis tendency to the RHS.             */
       if (wincon->u1_f & ADVECT) {
 	memset(windat->nrvore, 0, window->sze * sizeof(double));
 	memset(windat->kec, 0, window->sgsiz * sizeof(double));
       }
       if (wincon->u1_f & CORIOLIS)
 	memset(windat->npvore, 0, window->sze * sizeof(double));
-
       for (ee = 1; ee <= vc; ee++) {
 	e = cells[ee];
 	es = window->m2de[e];
 	c1 = window->e2c[e][0];
 	c2 = window->e2c[e][1];
 	d1 = 1.0 / window->h2au1[es];
-	d2 = 0.0; 
+	d2 = 0.0;
+	wincon->tend3d[T_ADV][e] = 0.0;
+	wincon->tend3d[T_STK][e] = 0.0;
 	for (n = 1; n <= window->nee[es]; n++) {
 	  eoe = window->eSe[n][e];
 	  if (!eoe) continue;
@@ -406,16 +552,31 @@ int nonlin_coriolis_3d(geometry_t *window,  /* Window geometry       */
 	  /* Note: adjust the weight for cell geometry (Thuburn et   */
 	  /* al. (2009) Eq. 8 and Ringler et al. (2010) Eq. 24).     */
 	  fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
+	  d2 = fs * window->wAe[n][e] * d3 * windat->dzu1[eoe];
 	  /* Note : need to subtract tangential velocity * vorticity */
 	  /* to get the tendency term, however the weights are       */
-	  /* negative to deliver tangential velocity in the k x u    */
+	  /* negative to deliver tangential velocity in the -k x u   */
 	  /* direction, so we add the terms.                         */
-	  d2 += fs * window->wAe[n][e] * vel[eoe] * d3 * windat->dzu1[eoe];
+	  wincon->tend3d[T_ADV][e] += (vel[eoe] * d2);
+
+	  /* Add the Stokes Coriolis (Moon. 2005, Eq. 14) and the    */
+	  /* Stokes vortex (Moon, 2005, Eq. 15) if required.         */
+	  /* According to Uchiyama (2010), vortex force is computed  */
+	  /* directly (Eq. 5) and included in the advective terms in */
+	  /* Eq. 1. The 2D mode then just includes the vertical      */
+	  /* integral of the vortex force.                           */
+	  wincon->tend3d[T_STK][e] += (stk[eoe] * d2);
+	  /*d2 += fs * window->wAe[n][e] * (vel[eoe] + stk[eoe]) * d3 * windat->dzu1[eoe];*/
 	}
-	d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;
-	wincon->u1inter[es] += (d3 * dtm * windat->dzu1[e]);
-	wincon->tend3d[T_ADV][e] = d3 * dtu;
-	windat->nu1[e] += wincon->tend3d[T_ADV][e];
+	/* Subtract kinetic energy gradient                          */
+	/*wincon->tend3d[T_ADV][e] -= (windat->kec[c1] - windat->kec[c2]) * d1;*/
+	wincon->tend3d[T_ADV][e] -= kgrad[e];
+	/* Vertically integrate for the 2D mode                      */
+	wincon->u1inter[es] += ((wincon->tend3d[T_ADV][e] + wincon->tend3d[T_STK][e]) * dtm * windat->dzu1[e]);
+	/* Add the tendencies                                        */
+	wincon->tend3d[T_ADV][e] *= dtu;
+	wincon->tend3d[T_STK][e] *= dtu;
+	windat->nu1[e] += (wincon->tend3d[T_ADV][e]);
 	/*windat->nu1[e] += d3 * dtu;*/
       }
       if (wincon->u1_f & ADVECT)
@@ -476,7 +637,6 @@ double pv_enstrophy_conserve(window_t *windat, /* Window data        */
 			     int v2            /* Vertex coordinate  */
 			     )
 {
-
   return(windat->nrvore[e] + windat->npvore[e]);
 }
 
@@ -496,7 +656,6 @@ double pv_enstrophy_dissipate(window_t *windat, /* Window data       */
 			      )
 {
   double ret;
-
   ret = (windat->u2[e] >=0) ? (windat->nrvor[v2] + windat->npvor[v2]) :
     (windat->nrvor[v1] + windat->npvor[v1]);
   return(ret);
@@ -511,7 +670,7 @@ double pv_enstrophy_dissipate(window_t *windat, /* Window data       */
 /* using sub-time stepping to render the scheme unconditionally      */
 /* stable.                                                           */
 /* Old code - no longer used for unstructured grids since we use     */
-/* nonlin_coriolis_3d() instead. We retain this code for a possible  */
+/* nonlin_corilois_3d() instead. We retain this code for a possible  */
 /* future tensor approach.                                           */
 /*-------------------------------------------------------------------*/
 int advect_u1_3d(geometry_t *window,  /* Processing window           */
@@ -1181,12 +1340,14 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
   double iarea;             /* 1 / area                              */
   double fs = 1.0;          /* Flux scaling                          */
   double *dzv = wincon->w1;
+  double *kgrad = wincon->d2; /* Kinetic energy gradient             */
   double dtu, dtm, lr;
   double *vel;              /* Velocity to use in spatial gradients  */
   double trem;              /* Time remaining in leapfrog step       */
   double tremf;             /* Time remaining in forward step        */
   double *prv = windat->rv_drvdt;
   double PI2 = PI / 2.0;
+  double *stk = wincon->d1;
 
   /*-----------------------------------------------------------------*/
   /* Get the sub-timestep                                            */
@@ -1446,6 +1607,107 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
       }
       */
 
+      /* Get the kinetic energy at vertices if required              */
+      if (wincon->kinetic & (K_GASS|K_YU)) {
+	memset(wincon->d1, 0, window->szvS * sizeof(double));
+	for (vv = 1; vv <= window->a2_e2; vv++) {
+	  v = window->w2_e2[vv];
+	  vs = window->m2dv[v];
+	  for (ee = 1; ee <= window->nve[vs]; ee++) {
+	    e = window->v2e[v][ee];
+	    if (e) {
+	      es = window->m2de[e];
+	      wincon->d1[v] += 0.25 * window->h1au1[es] * window->h2au1[es] * 
+		windat->u1av[e] * windat->u1av[e];
+	    }
+	  }
+	  wincon->d1[v] /= window->dualarea[vs];
+	}
+      }
+
+      /* Add the vertex centered kinetic energy if required.         */
+      /* Skamarock et al (2012), Mon. Wea, Rev., 140, 3090-3105,     */
+      /* Eq. 11.                                                     */
+      /* See Skamarock et al (2012) Section 4 for alpha.             */
+      if (wincon->kinetic & K_GASS) {
+	double alpha = wincon->kfact;
+	double ralpha = (1.0 - alpha);
+	/* Area averaged kenetic energy at cell centre               */
+	for(cc = 1; cc <= window->a2_t; cc++) {
+	  c = window->w2_t[cc];
+	  cs = window->m2d[c];
+	  d1 = 0.0;
+	  for (n = 1; n <= window->npe[cs]; n++) {
+	    j = window->vIc[n][cs];
+	    v = window->c2v[n][c];
+	    vs = window->m2dv[v];
+	    d1 += (wincon->d1[v] * window->dualareap[vs][j])  / window->cellarea[cs];
+	  }
+	  /* Updated kinetic energy                                  */
+	  windat->kec[c] = alpha * windat->kec[c] + ralpha * d1;
+	}
+      }
+
+      if (wincon->kinetic & K_YU) {
+	double alpha = wincon->kfact;
+	double ralpha = (1.0 - alpha);
+	/* Tangential gradient of kinetic energy                     */
+	memset(wincon->w2, 0, window->szeS * sizeof(double));
+	for(ee = 1; ee <= window->a2_e1; ee++) {
+	  e = window->w2_e1[ee];
+	  es = window->m2de[e];
+	  v1 = window->e2v[e][0];
+	  v2 = window->e2v[e][1];
+	  wincon->w2[e] = (wincon->d1[v2] - wincon->d1[v1]) / 
+	    window->h1au1[es];
+	}
+	/* Project onto the normal component at edges                */
+	memset(wincon->w1, 0, window->sze * sizeof(double));
+	for (ee = 1; ee <= wincon->vcs; ee++) {
+	  e = wincon->s3[ee];
+	  es = window->m2de[e];
+	  for (n = 1; n <= window->nee[es]; n++) {
+	    eoe = window->eSe[n][e];
+	    if (!eoe) continue;
+	    fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
+	    wincon->w1[e] -= fs * window->wAe[n][e] * wincon->w2[eoe];
+	  }
+	}
+	/* Get the gradient of kinetic energy                        */
+	for (ee = 1; ee <= wincon->vcs; ee++) {
+	  e = wincon->s3[ee];
+	  c1 = window->e2c[e][0];
+	  c2 = window->e2c[e][1];
+	  d1 = (windat->kec[c1] - windat->kec[c2]) / window->h2au1[e];
+	  d2 = wincon->w1[e];
+	  kgrad[e] = alpha * d1 + ralpha * d2;
+	}
+      } else {
+	/* Get the gradient of kinetic energy                        */
+	/*
+	for (ee = 1; ee <= wincon->vcs; ee++) {
+	  e = wincon->s3[ee];
+	  c1 = window->e2c[e][0];
+	  c2 = window->e2c[e][1];
+	  d1 = 1.0 / window->h2au1[e];
+	  kgrad[e] = (windat->kec[c1] - windat->kec[c2]) * d1;
+	}
+	*/
+	if (wincon->kinetic & ORDER2)    /* 2nd order centered       */
+	  tke_centered_2nd(window, windat, wincon, kgrad, wincon->s3, wincon->vcs);
+	if (wincon->kinetic & ORDER1)    /* 1st order upwind         */
+	  tke_upwind_1st(window, windat, wincon, kgrad, wincon->s3, wincon->vcs);
+	if (wincon->kinetic & ORDER2_UW) /* 2nd order upwind         */
+	  tke_upwind_2nd(window, windat, wincon, kgrad, wincon->s3, wincon->vcs);
+	if (wincon->kinetic & ORDER4)    /* 4th order centered       */
+	  tke_centered_4th(window, windat, wincon, kgrad, wincon->s3, wincon->vcs);
+      }
+
+      /* Get the normal component of Stokes drift, and store in stk. */
+      /* Note: 2D Stokes vortex & Coriolis is included as the        */
+      /* vertical integral of 3D quantities in u1inter.              */
+      if (wincon->waves & STOKES_DRIFT) stk = wincon->uavs;
+
       /*-------------------------------------------------------------*/
       /* Compute the nonlinear Coriolis tendency. The tangential     */
       /* velocity is computed using the primal to dual mesh mapping  */
@@ -1470,7 +1732,7 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
 	c2 = window->e2c[e][1];
 	
 	d1 = 1.0 / window->h2au1[es];
-	d2 = 0.0; 
+	d2 = 0.0;
 	for (n = 1; n <= window->nee[es]; n++) {
 	  eoe = window->eSe[n][e];
 	  if (!eoe) continue;
@@ -1479,7 +1741,9 @@ int nonlin_coriolis_2d(geometry_t *window,  /* Window geometry       */
 	  fs = window->h1au1[eoe] / window->h2au1[es];
 	  d2 += fs * window->wAe[n][e] * windat->u1av[eoe] * d3 * windat->depth_e1[eoe];
 	}
-	d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;
+
+	/*d3 = d2 - (windat->kec[c1] - windat->kec[c2]) * d1;*/
+	d3 = d2 - kgrad[e];
 	wincon->u1adv[e] -= (dtm * d3);
 	wincon->tend2d[T_ADV][e] = (dtu * d3);
 	windat->nu1av[e] += wincon->tend2d[T_ADV][e];
@@ -1891,5 +2155,194 @@ double porus_plate_e1(geometry_t *window,    /* Processing window    */
 /*-------------------------------------------------------------------*/
 
 
+/*-------------------------------------------------------------------*/
+/* Interpolates tke values for high order schemes                    */
+/*-------------------------------------------------------------------*/
+double get_tke_value(geometry_t *window,       /* Processing window  */
+		     window_t *windat,         /* Window data        */
+		     win_priv_t *wincon,       /* Window constants   */
+		     double *tr,               /* Tracer array       */
+		     int e,                    /* Edge index         */
+		     int j                     /* Edge direction     */
+		     )
+{
+  int i, jj, n, c, ci;
+  int nuc = 3;    /* Number of polynomial coefficients to use        */
+  int npem;
+  double coeff[nuc];
+  double x, v;
+  double tmx = -HUGE;
+  double tmn = HUGE;
+  double sc;
+  double m2deg = 1.0 / (60.0 * 1852.0);
+  int has_proj = (strlen(projection) > 0);
+  int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
+  if (!is_geog) m2deg = 1.0;
+
+  npem  = wincon->nBcell[e];
+  memset(coeff, 0, nuc * sizeof(double));
+  sc = (j == 0) ? 1.5 * m2deg : -1.5 * m2deg;
+  /*sc = (j == 0) ? 3.0 : -3.0;*/
+
+  /* Get the weights for the edge                                    */
+  for (n = 0; n < npem; n++) {
+    c = wincon->Bcell[e][n];
+    tmx = max(tmx, tr[c]);
+    tmn = min(tmn, tr[c]);
+    for (jj = 0; jj < nuc; jj++) {
+      coeff[jj] += tr[c] * wincon->B[e][n][jj];
+    }
+  }
+
+  /* Get the value                                                   */
+  c = window->e2c[e][j];
+  if ((ci = window->wgst[c])) return(tr[ci]);
+
+  jj = window->e2e[e][j];
+  x = sc * window->hacell[jj][window->m2d[c]];
+  v = coeff[0] + coeff[1] * x + coeff[2] * x * x;
+  v = min(tmx, max(tmn, v));
+  return(v);
+}
+
+/* END get_tke_value()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* 1st order upwind tke gradient                                     */
+/*-------------------------------------------------------------------*/
+void tke_upwind_1st(geometry_t *window,  /* Processing window        */
+		    window_t *windat,    /* Window data              */
+		    win_priv_t *wincon,  /* Window constants         */
+		    double *kgrad,       /* tke gradient             */
+		    int *cells,          /* Cells to process         */
+		    int vc               /* Size of cells            */
+		    )
+{
+  int ee, e, es;
+  int c1, c2;
+  double t1, t2, tc;
+
+  for (ee = 1; ee <= vc; ee++) {
+    e = cells[ee];
+    es = window->m2de[e];
+    c1 = window->e2c[e][0];
+    c2 = window->e2c[e][1];
+
+    t1 = windat->kec[c1];
+    t2 = windat->kec[c2];
+    tc = 0.5 * (windat->kec[c1] + windat->kec[c2]);
+    if (windat->u1[e] >= 0)
+      kgrad[e] = (tc - t2) / (window->h2au1[es]);
+    else
+      kgrad[e] = (t1 - tc) / (window->h2au1[es]);
+  }
+}
+
+/* END tke_upwind_1st()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* 2nd order upwind tke gradient                                     */
+/*-------------------------------------------------------------------*/
+void tke_upwind_2nd(geometry_t *window,  /* Processing window        */
+		    window_t *windat,    /* Window data              */
+		    win_priv_t *wincon,  /* Window constants         */
+		    double *kgrad,       /* tke gradient             */
+		    int *cells,          /* Cells to process         */
+		    int vc               /* Size of cells            */
+		    )
+{
+  int ee, e, es;
+  int c1, c2;
+  double t1, t2, trp, trm, tc;
+
+  for (ee = 1; ee <= vc; ee++) {
+    e = cells[ee];
+    es = window->m2de[e];
+    c1 = window->e2c[e][0];
+    c2 = window->e2c[e][1];
+
+    t1 = windat->kec[c1];
+    t2 = windat->kec[c2];
+    tc = 0.5 * (windat->kec[c1] + windat->kec[c2]);
+    trp = get_tke_value(window, windat, wincon, windat->kec, e, 0);
+    trm = get_tke_value(window, windat, wincon, windat->kec, e, 1);
+    if (windat->u1[e] >= 0)
+      kgrad[e] = (3.0 * tc - 4.0 * t2 + trm) / (2.0 * window->h2au1[es]);
+    else
+      kgrad[e] = (-trp + 4.0 * t1 - 3.0 * tc) / (2.0 * window->h2au1[es]);
+  }
+}
+
+/* END tke_upwind_2nd()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* 2nd order centered tke gradient                                   */
+/*-------------------------------------------------------------------*/
+void tke_centered_2nd(geometry_t *window,  /* Processing window      */
+		      window_t *windat,    /* Window data            */
+		      win_priv_t *wincon,  /* Window constants       */
+		      double *kgrad,       /* tke gradient           */
+		      int *cells,          /* Cells to process       */
+		      int vc               /* Size of cells          */
+		      )
+{
+  int ee, e, es;
+  int c1, c2;
+  double d1;
+
+  for (ee = 1; ee <= vc; ee++) {
+    e = cells[ee];
+    es = window->m2de[e];
+    c1 = window->e2c[e][0];
+    c2 = window->e2c[e][1];
+    d1 = 1.0 / window->h2au1[es];
+    kgrad[e] = (windat->kec[c1] - windat->kec[c2]) * d1;
+  }
+}
+
+/* END tke_centered_2nd()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* 4th order centered tke gradient                                   */
+/*-------------------------------------------------------------------*/
+void tke_centered_4th(geometry_t *window,  /* Processing window      */
+		      window_t *windat,    /* Window data            */
+		      win_priv_t *wincon,  /* Window constants       */
+		      double *kgrad,       /* tke gradient           */
+		      int *cells,          /* Cells to process       */
+		      int vc               /* Size of cells          */
+		      )
+{
+  int ee, e, es;
+  int c1, c2;
+  double t1, t2, trp, trm, tc;
+
+
+  for (ee = 1; ee <= vc; ee++) {
+    e = cells[ee];
+    es = window->m2de[e];
+    c1 = window->e2c[e][0];
+    c2 = window->e2c[e][1];
+
+    t1 = windat->kec[c1];
+    t2 = windat->kec[c2];
+    tc = 0.5 * (windat->kec[c1] + windat->kec[c2]);
+    trp = get_tke_value(window, windat, wincon, windat->kec, e, 0);
+    trm = get_tke_value(window, windat, wincon, windat->kec, e, 1);
+    kgrad[e] = 4.0 * (t1 - t2) / (6.0 * window->h2au1[es]) - 
+      (trp - trm) / (12.0 * window->h2au1[es]);
+  }
+}
+
+/* END tke_centered_4th()                                            */
+/*-------------------------------------------------------------------*/
 
 

@@ -21,7 +21,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_carb_epi.c 6058 2019-02-07 02:59:39Z bai155 $
+ *  $Id: coral_spectral_carb_epi.c 7216 2022-09-18 01:20:11Z bai155 $
  *
  */
 
@@ -37,6 +37,8 @@
 #include "column.h"
 #include "constants.h"
 #include "coral_spectral_carb_epi.h"
+
+double ginterface_cellarea(void* hmodel, int b);
 
 typedef struct {
   /*
@@ -248,7 +250,7 @@ void coral_spectral_carb_epi_precalc(eprocess* p, void* pp)
     
     /* do calculation based on area on present cell dimension: */
     
-    area = einterface_cellarea(c->col->model,c->b); 
+    area = ginterface_cellarea(c->col->model,c->b); 
     cv[ws->CHarea_cv_i] = 1.0;
     RR = sqrt(area/PI);
     if (RR > 200.0)

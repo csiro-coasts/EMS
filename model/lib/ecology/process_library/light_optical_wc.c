@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_optical_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_optical_wc.c 7211 2022-09-16 21:12:57Z bai155 $
  *
  */
 
@@ -46,9 +46,10 @@
 #include "stringtable.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 /* REPLACE filename below with the header file of you process */
 #include "light_optical_wc.h"
+
+double ginterface_getlighttop(void *model, int b);
 
 #define EPS_KD 1.0e-10
 #define AW_490 0.015
@@ -293,7 +294,7 @@ void light_optical_wc_precalc(eprocess* p, void* pp)
 	   Kd = EPS_KD;
 	
 	if (isnan((col->cv[ws->lighttop_i])[0]))
-	    (col->cv[ws->lighttop_i])[0] = einterface_getlighttop(col->model, col->b) * ws->k_swr_par;
+	    (col->cv[ws->lighttop_i])[0] = ginterface_getlighttop(col->model, col->b) * ws->k_swr_par;
 	lighttop = (col->cv[ws->lighttop_i])[0];
 	
 	lightbot = lighttop * exp(-Kd * dz);

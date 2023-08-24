@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: massbalance_sed.c 6689 2021-03-24 00:54:38Z wil00y $
+ *  $Id: massbalance_sed.c 7219 2022-09-20 10:14:06Z bai155 $
  *
  */
 
@@ -47,6 +47,7 @@ typedef struct {
   int Den_fl_i;
   int Amm_fl_i;
   int NO3_i;
+  int COD_flux_i;
   
   /*
    * common cell variables
@@ -69,6 +70,13 @@ void massbalance_sed_init(eprocess* p)
     /*
      * tracers
      */
+    
+    ws->BOD_i = -1;
+    ws->COD_i = -1;
+    ws->Den_fl_i = -1;
+    ws->Amm_fl_i = -1;
+    ws->COD_flux_i = -1;
+
     ws->TN_i = e->find_index(tracers, "TN", e);
     ws->TP_i = e->find_index(tracers, "TP", e);
     ws->TC_i = e->find_index(tracers, "TC", e);
@@ -78,13 +86,16 @@ void massbalance_sed_init(eprocess* p)
     ws->Den_fl_i = e->find_index(tracers, "Den_fl", e);
     ws->Amm_fl_i = e->try_index(tracers, "Amm_fl", e);
     ws->NO3_i = e->find_index(tracers, "NO3", e);
-
+    ws->COD_flux_i = e->try_index(tracers, "COD_flux", e);
+    
     /*
      * common cell variables
      */
     ws->TN_old_i = find_index_or_add(e->cv_cell, "TN_old", e);
     ws->TP_old_i = find_index_or_add(e->cv_cell, "TP_old", e);
     ws->TC_old_i = find_index_or_add(e->cv_cell, "TC_old", e);
+
+    ws->TO_old_i = -1;
 
     if (ws->COD_i > -1){
       ws->TO_old_i = find_index_or_add(e->cv_cell, "TO_old", e);
@@ -96,7 +107,7 @@ void massbalance_sed_init(eprocess* p)
 
     stringtable_add_ifabscent(e->cv_model, "massbalance_sed", -1);
 
-    eco_write_setup(e,"\n Mass balance in sediment to fractional difference of %e \n",MASSBALANCE_EPS*1000.0);
+    eco_write_setup(e,"\n Mass balance in sediment to fractional difference of %e \n",MASSBALANCE_EPS);
 }
 
 void massbalance_sed_destroy(eprocess* p)
@@ -143,7 +154,7 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
     cell* c = (cell*) pp;
     double* cv = c->cv;
     double* y;
-    double TN, TP, TC, TO, TO_old, eps;
+    double TN, TP, TC, TO, TO_old, eps, COD_flux;
 
     /*
      * if this is a child cell, return, the parent should take care of
@@ -160,20 +171,22 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
     TP = y[ws->TP_i];
     TC = y[ws->TC_i];
 
+    COD_flux = (ws->COD_flux_i >= 0) ? y[ws->COD_flux_i] : 0.0;
+
     if (ws->Amm_fl_i > -1){
       TN += y[ws->Amm_fl_i] / SEC_PER_DAY / c->dz_sed ;
     }
 
     eps = fabs(TN - cv[ws->TN_old_i]) / (TN + cv[ws->TN_old_i]);
-    if (eps > MASSBALANCE_EPS*1000.0)
+    if (eps > MASSBALANCE_EPS)
         e_warn("ecology: error: N balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
     eps = fabs(TP - cv[ws->TP_old_i]) / (TP + cv[ws->TP_old_i]);
 
-    if (eps > MASSBALANCE_EPS*1000.0)
+    if (eps > MASSBALANCE_EPS)
         e_warn("ecology: error: P balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
     eps = fabs(TC - cv[ws->TC_old_i]) / (TC + cv[ws->TC_old_i]);
 
-    if (eps > MASSBALANCE_EPS*1000.0)
+    if (eps > MASSBALANCE_EPS)
         e_warn("ecology: error: C balance violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", eps, e->nstep, c->nsubstep, c->col->b, c->k_sed);
 
     if (ws->COD_i > -1){
@@ -190,11 +203,11 @@ void massbalance_sed_postcalc(eprocess* p, void* pp)
 
       /* because TO can be close to zero */
 
-      eps = fabs(TO - cv[ws->TO_old_i]) / max(fabs(TO + cv[ws->TO_old_i]),8000.0);
+      eps = fabs(TO - cv[ws->TO_old_i] + COD_flux * porosity) / max(fabs(TO + COD_flux * porosity + cv[ws->TO_old_i]),8000.0);
      
       /* The balance for oxygen is Oxygen - Biological Ocean Demand  */ 
       
-      if (eps > MASSBALANCE_EPS*1000.0)
+      if (eps > MASSBALANCE_EPS)
        	e_warn("ecology: error: Oxygen - BOD - COD imbalance (%e,%e) violation in sediment cell by %.3g, nstep = %d, nsubstep = %d, b = %d, k = %d\n", TO, cv[ws->TO_old_i], eps, e->nstep, c->nsubstep, c->col->b, c->k_wc);
     }
 }

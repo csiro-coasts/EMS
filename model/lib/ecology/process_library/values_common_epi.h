@@ -13,13 +13,14 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: values_common_epi.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: values_common_epi.h 6905 2021-09-07 07:03:11Z bai155 $
  *
  */
 
 #if !defined(_VALUES_COMMON_EPI_H)
 
 void values_common_epi_init(eprocess* p);
+void values_common_epi_postinit(eprocess* p);
 void values_common_epi_destroy(eprocess* p);
 void values_common_epi_precalc(eprocess* p, void* pp);
 void values_common_epi_postcalc(eprocess* p, void* pp);

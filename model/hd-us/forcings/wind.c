@@ -13,13 +13,15 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: wind.c 6674 2020-10-05 03:17:34Z riz008 $
+ *  $Id: wind.c 7362 2023-06-09 03:23:05Z riz008 $
  *
  */
 
 #include <math.h>
 #include <string.h>
 #include "hd.h"
+
+#define RHO_0 (1025.0) /* Reference density */
 
 /* Prototypes */
 typedef struct wind_data wind_data_t;
@@ -34,6 +36,7 @@ double windstress_kitiag(master_t *master, wind_data_t *data,
 		       double *wx, double *wy, int c);
 double windstress_kondo(master_t *master, wind_data_t *data, 
 		      double *wx, double *wy, int c);
+void wind_center(master_t *master, double *wx, double *wy);
 
 struct wind_data{
   double dt;                    /* Time step */
@@ -80,7 +83,11 @@ int wind_init(sched_event_t *event)
   for (t = 0; t < data->ntsfiles; ++t)
      strcpy(filenames[t], ((char **)files)[t]);
 
-  data->tsfiles = hd_ts_multifile_read(master, data->ntsfiles, filenames);
+  if (strlen(params->wind_interp))
+    data->tsfiles = hd_ts_multifile_read_us(master, data->ntsfiles, filenames,
+					    params->wind_interp);
+  else
+    data->tsfiles = hd_ts_multifile_read(master, data->ntsfiles, filenames);
   if (data->tsfiles == NULL) {
     free(filenames);
     free(data->tsfiles);
@@ -103,14 +110,9 @@ int wind_init(sched_event_t *event)
                             schedule->start_time, schedule->stop_time);
 
   } else if ((hd_ts_multifile_get_index(data->ntsfiles, data->tsfiles,
-                  filenames, "wind_e1", data->varids_u) > 0) &&
-      (hd_ts_multifile_get_index(data->ntsfiles, data->tsfiles,
-                  filenames, "wind_e2", data->varids_v) > 0)) {
+                  filenames, "wind1", data->varids_u) > 0)) {
       hd_ts_multifile_check(data->ntsfiles, data->tsfiles,
-                            filenames, "wind_e1",
-                            schedule->start_time, schedule->stop_time);
-      hd_ts_multifile_check(data->ntsfiles, data->tsfiles,
-                            filenames, "wind_e2",
+                            filenames, "wind1",
                             schedule->start_time, schedule->stop_time);
       data->wcs = 1;
   } else {
@@ -155,7 +157,7 @@ double wind_event(sched_event_t *event, double t)
   geometry_t *geom = master->sgrid;
 
   if (t >= (event->next_event - SEPS)) {
-    int ii, i, c, ee, e;
+    int ii, i, cc, c, ee, e;
     double windx, windy;
     double cd;
 
@@ -185,8 +187,8 @@ double wind_event(sched_event_t *event, double t)
 	}
       } else {
 	/*-----------------------------------------------------------*/
-	/* Read the e1 and e2 wind speed components and directly     */
-	/* apply on the grid.                                        */
+	/* Read the normal wind speed component and directly apply   */
+	/* on the grid.                                              */
 	/* Wind e1 component at u1 points                            */
 	for (ee = 1; ee <= geom->b2_e1; ++ee) {
 	  i = geom->w2_e1[ee];
@@ -247,11 +249,22 @@ double wind_event(sched_event_t *event, double t)
 				      t, geom->u1x[i], geom->u1y[i]);
 	  master->wind1[i] = windx * geom->costhu1[i]
 	    + windy * geom->sinthu1[i];
+
+	  /* Wind speed at cell centres from wind stress             */
+	  stresswind(&windx, &windy, data->dlv0, data->dlv1, data->dlc0,
+		     data->dlc1);
+	  master->windspeed[i] = sqrt(windx * windx + windy * windy);
+	  master->winddir[i] = 0.0;
+	  if (master->windspeed[i] > 0.0) {
+	    master->winddir[i] = acos(windy / master->windspeed[i]);
+	    if (windx < 0)
+	      master->winddir[i] *= -1.0;
+	  }
 	}
       } else {
 	/*-----------------------------------------------------------*/
-	/* Read the e1 and e2 wind stress components and directly    */
-	/* apply on the grid.                                        */
+	/* Read the normal wind stress components and directly apply */
+	/* on the grid.                                              */
 	/* Wind stress e1 component at u1 points                     */
 	for (ee = 1; ee <= geom->b2_e1; ++ee) {
 	  i = geom->w2_e1[ee];
@@ -259,36 +272,40 @@ double wind_event(sched_event_t *event, double t)
 	    * hd_ts_multifile_eval_xy(data->ntsfiles, data->tsfiles,
 				      data->varids_u,
 				      t, geom->u1x[i], geom->u1y[i]);
-	  windy = 0.0;
 	  master->wind1[i] = windx;
 	}
-      }
-      /*-------------------------------------------------------------*/
-      /* Wind speed at cell centres from wind stress                 */
-      for (ee = 1; ee <= geom->b2_e1; ++ee) {
-	i = geom->w2_e1[ee];
-	windx = data->wind_scale
-          * hd_ts_multifile_eval_xy(data->ntsfiles, data->tsfiles,
-				    data->varids_u,
-				    t, geom->u1x[i], geom->u1y[i]);
-	windy = data->wind_scale
-          * hd_ts_multifile_eval_xy(data->ntsfiles, data->tsfiles,
-				    data->varids_v,
-				    t, geom->u1x[i], geom->u1y[i]);
-	stresswind(&windx, &windy, data->dlv0, data->dlv1, data->dlc0,
-		   data->dlc1);
-	master->windspeed[i] = sqrt(windx * windx + windy * windy);
-	master->winddir[i] = 0.0;
-	if (master->windspeed[i] > 0.0) {
-	  master->winddir[i] = acos(windy / master->windspeed[i]);
-	  if (windx < 0)
-	    master->winddir[i] *= -1.0;
+	/* Wind speed at cell centres from wind stress             */
+	for (ee = 1; ee <= geom->b2_e1; ++ee) {
+	  int n, eoe;
+	  double fs = 1.0;
+	  i = geom->w2_e1[ee];
+	  windx = master->wind1[i];
+	  windy = 0.0;
+	  for (n = 1; n <= geom->nee[i]; n++) {
+	    eoe = geom->eSe[n][i];
+	    fs = geom->h1au1[geom->m2de[eoe]] / geom->h2au1[i];
+	    if (!eoe) continue;
+	    windy += fs * geom->wAe[n][i] * master->wind1[eoe];
+	  }
+	  stresswind(&windx, &windy, data->dlv0, data->dlv1, data->dlc0,
+		     data->dlc1);
+	  master->windspeed[i] = sqrt(windx * windx + windy * windy);
+	  master->winddir[i] = 0.0;
+	  if (master->windspeed[i] > 0.0) {
+	    master->winddir[i] = acos(windy / master->windspeed[i]);
+	    if (windx < 0)
+	      master->winddir[i] *= -1.0;
+	  }
 	}
       }
     }
     event->next_event += data->dt;
 
     /* Remove the contribution that goes into the waves if required. */
+    /* Wave form drag (tau_w) and breaking disapation (tau_diss) are */
+    /* input directly (e.g. from WWIII).                             */
+    /* Note: tau_diss should be negative (overall we add the         */
+    /* dissapation to stress); see webf.c.                           */
     if (master->waves & STOKES_DRIFT) {
       if (master->tau_w1 && master->tau_diss1) {
 	double tau_w, tau_diss;
@@ -300,6 +317,23 @@ double wind_event(sched_event_t *event, double t)
 	}
       }
     }
+    /* Wave form drag and breaking (whitecapping, depth induced wave */
+    /* breaking and rollers) are computed by SWAN and passed to the  */
+    /* wave variables. Wave form drag and wave surface streaming are */
+    /* is also computed by SWAN and subtracted from wind stress.     */
+    if (master->waves & NEARSHORE) {
+      double tau_w, tau_diss;
+      for (ee = 1; ee <= geom->b2_e1; ++ee) {
+	i = geom->w2_e1[ee];
+	tau_w = vel_c2e(geom, master->wave_wfdx, master->wave_wfdy, i);
+	tau_diss = fabs(vel_c2e(geom, master->wave_fwcapx, master->wave_fwcapy, i));
+	tau_diss += fabs(vel_c2e(geom, master->wave_fbrex, master->wave_fbrey, i));
+	tau_diss += fabs(vel_c2e(geom, master->wave_fsurx, master->wave_fsury, i));
+	/*master->wind1[i] -= ((tau_w + tau_diss) / RHO_0);*/
+	master->wind1[i] -= (tau_w + tau_diss);
+      }
+    }
+
     /* Get the tangential component of the wind                      */
     for (ee = 1; ee <= geom->b2_e1; ee++) {
       double fs;
@@ -312,6 +346,18 @@ double wind_event(sched_event_t *event, double t)
 	master->wind2[e] += fs * geom->wAe[i][e] * master->wind1[ii];
       }
     }
+
+    /* Get the cell centered components of the wind                  */
+#if defined(HAVE_WAVE_MODULE)
+    if (master->do_wave & W_SWAN) {
+      wind_center(master, master->swind1, master->swind2);
+      for (cc = 1; cc <= geom->b2_t; cc++) {
+	c = geom->w2_t[cc];
+	stresswind(&master->swind1[c], &master->swind2[c], 
+		   data->dlv0, data->dlv1, data->dlc0, data->dlc1);
+      }
+    }
+#endif
   }
   return event->next_event;
 }
@@ -417,7 +463,7 @@ double windstress_kondo(master_t *master, wind_data_t *data,
   double dtw;            /* Wet bulb temperature                     */
   double qs = NOTVALID;  /* Specific humidity at surface (kg/kg)     */
   double q = NOTVALID;   /* Specific humidity at 10m (kg/kg)         */
-  double es;       /* Vapour pressure at the air temp (HPa)          */
+  double es = 0.;        /* Vapour pressure at the air temp (HPa)    */
   double esat;     /* Saturation vapour pressure (HPa)               */
   double ew;       /* Vapour pressure at water temp. (Hpa)           */
   double rh;       /* Relative humidity (%)                          */
@@ -425,6 +471,8 @@ double windstress_kondo(master_t *master, wind_data_t *data,
   /* Convert pressure to HPa                                         */
   pres /= 100.0;
 
+  hd_quit("windstress kondo not supported. Please consider using a different scheme. eg. L&P\n");
+  
   if (!data->neutral && master->sh_f !=NONE) {
     /* Saturation vapour pressure over the water. Since the wet bulb */
     /* temp. over water is not available, ew represents the maximum  */
@@ -472,4 +520,32 @@ void stresswind(double *wx, double *wy,
   else
     cd = c0 + (c1 - c0) * (w0 - v0) / (v1 - v0);
   *wy = sgn * sqrt((fabs(*wy)) / (cd * air_dens));
+}
+
+void wind_center(master_t *master, double *wx, double *wy)
+{
+  geometry_t *geom = master->geom;
+  int cc, c, ee, e;
+  double nu, nv;
+  double a;
+
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+
+    wx[c] = 0.0;
+    wy[c] = 0.0;
+    nu = nv = 0.0;
+
+    for (ee = 1; ee <= geom->npe[c]; ee++) {
+      e = geom->c2e[ee][c];
+      a = 0.5 * geom->h1au1[e] * geom->h2au1[e];
+      /* Get the cell centered east and north velocity               */
+      wx[c] += a * (master->wind1[e] * geom->costhu1[e] + master->wind2[e] * geom->costhu2[e]);
+      nu += a;
+      wy[c] += a * (master->wind1[e] * geom->sinthu1[e] + master->wind2[e] * geom->sinthu2[e]);
+      nv += a;
+    }
+    wx[c] = (nu) ? wx[c] / nu : 0.0;
+    wy[c] = (nv) ? wy[c] / nv : 0.0;
+  }
 }

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ems.h 6598 2020-09-03 05:42:12Z riz008 $
+ *  $Id: ems.h 7355 2023-05-08 05:36:40Z riz008 $
  */
 
 #ifndef	_EMS_H
@@ -69,12 +69,15 @@ int strncasecmp(const char *s1, const char *s2, int n);
 #include "stringtable.h"
 #include "cstmesh.h"
 #include "moon.h"
+#include "meshes.h"
+#include "lagrange.h"
+
 /*
   #include "dyn_loading.h"
 */
 #include "underwater.h"
 
-// #include "svn_rev.h"
+#include "svn_rev.h"
 
 /* gcc-7.x does not define this */
 #ifndef HUGE
@@ -95,8 +98,8 @@ int strncasecmp(const char *s1, const char *s2, int n);
 
 /* Release verions and getters */
 #define EMSLIB_MAJOR_VERSION 1
-#define EMSLIB_MINOR_VERSION 2
-#define EMSLIB_PATCH_VERSION 1
+#define EMSLIB_MINOR_VERSION 3 
+#define EMSLIB_PATCH_VERSION 0
 
 int get_emslib_major_vers(void);
 int get_emslib_minor_vers(void);
@@ -117,6 +120,7 @@ void    tm_to_julsecs(double j, int *y, int *mo, int *d, int *h, int *mi,
                    int *s);
 int     tm_scale_to_secs(char *str, double *sec);
 char*   tm_time_to_datestr(double t, char *u);
+char*   tm_time_to_datestrc(double t, char *u);
 double  tm_datestr_to_julsecs(char *d, char *u);
 double  tm_time_to_julsecs(char *d);
 void    tm_change_time_units(char *oepoch, char *nepoch, double *times,

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 6719 2021-03-29 00:59:00Z her127 $
+ *  $Id: tracers.c 6844 2021-06-30 00:15:15Z her127 $
  *
  */
 
@@ -7734,10 +7734,10 @@ void swr_params_init(master_t *master, geometry_t **window)
 	}
 	if (windat->swr_tran[c] <= 0.0) {
 	  windat->tran_mean[c] = windat->swr_tran[c] = 0.0;
-	  master->tran_mean[c] = master->swr_tran[c] = 0.0;
+	  master->tran_mean[lc] = master->swr_tran[lc] = 0.0;
 	} else {
 	  windat->tran_mean[c] = -windat->swr_tran[c];
-	  master->tran_mean[c] = master->swr_tran[c] = 0.0;
+	  master->tran_mean[lc] = -master->swr_tran[lc];
 	}
       }
     }
@@ -7966,12 +7966,19 @@ double swr_params_event(geometry_t *window,
   /* Repopulate the mean parameters with input values for            */
   /* regionalised estimation with resets for the fixed regional      */
   /* values.                                                         */
-  for (cc = 1; cc <= window->b2_t; cc++) {
-    c = window->w2_t[cc];
-    if (wincon->swr_type & SWR_ATTN && windat->attn_mean[c] < 0.0)
-      windat->attn_mean[c] = -windat->tr_wcS[wincon->attn_tr][c];
-    if (wincon->swr_type & SWR_TRAN && windat->tran_mean[c] < 0.0) 
-      windat->tran_mean[c] = -windat->tr_wcS[wincon->tran_tr][c];
+  if (wincon->attn_tr >= 0 && wincon->swr_type & SWR_ATTN) {
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      c = window->w2_t[cc];
+      if (windat->attn_mean[c] < 0.0)
+	windat->attn_mean[c] = -windat->tr_wcS[wincon->attn_tr][c];
+    }
+  }
+  if (wincon->tran_tr >= 0 && wincon->swr_type & SWR_TRAN) {
+    for (cc = 1; cc <= window->b2_t; cc++) {
+      c = window->w2_t[cc];
+      if (windat->tran_mean[c] < 0.0) 
+	windat->tran_mean[c] = -windat->tr_wcS[wincon->tran_tr][c];
+    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -7979,6 +7986,16 @@ double swr_params_event(geometry_t *window,
   i1s = i2s = 0;
   i1e = i2e = 10;
   i1i = i2i = 1;
+  /* Default range spans attn 0.02-0.07 with tran around the BGC     */
+  /* estimate of 0.6.                                                */
+
+  /* Spans the attenuation of Jerlov classes (0.03-0.127) and full   */
+  /* transmission range.                                             */
+  attns = trans = 1.0;
+  attn0 = 0.037;
+  attni = 0.01;
+  tran0 = 0.0;
+  trani = 0.1;
   /*
   if (wincon->swr_type & SWR_ATTN) {
     i2s = i2e = 0;

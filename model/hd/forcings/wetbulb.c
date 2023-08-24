@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: wetbulb.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: wetbulb.c 6956 2021-12-17 03:15:50Z her127 $
  *
  */
 
@@ -55,7 +55,7 @@ int wetbulb_init_single(sched_event_t *event)
                               &data->id, &master->wetb))
     master->sh_f = DEWPOINT;
   else
-    master->sh_f = NONE;
+    if (!(master->sh_f & (RELHUM|SPECHUM))) master->sh_f = NONE;
 
   if (data->ts == NULL) {
     free(data);
@@ -116,7 +116,7 @@ int wetbulb_init(sched_event_t *event)
 						 &data->ntsfiles, &master->wetb, 1))
     master->sh_f = DEWPOINT;
   else
-    master->sh_f = NONE;
+    if (!(master->sh_f & (RELHUM|SPECHUM))) master->sh_f = NONE;
 
   if (data->tsfiles == NULL) {
     free(data);

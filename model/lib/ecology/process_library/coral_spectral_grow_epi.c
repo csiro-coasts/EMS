@@ -36,7 +36,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: coral_spectral_grow_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: coral_spectral_grow_epi.c 7216 2022-09-18 01:20:11Z bai155 $
  *
  */
 
@@ -52,6 +52,8 @@
 #include "column.h"
 #include "constants.h"
 #include "coral_spectral_grow_epi.h"
+
+double ginterface_cellarea(void* hmodel, int b);
 
 #define unitch 1000.0
 
@@ -311,7 +313,7 @@ void coral_spectral_grow_epi_precalc(eprocess* p, void* pp)
       
       /* do calculation based on area on present cell dimension */
       
-      area = einterface_cellarea(c->col->model,c->b); 
+      area = ginterface_cellarea(c->col->model,c->b); 
       ws->CHarea = 1.0;
       RR = sqrt(area/PI);
       if (RR > 200.0)
@@ -372,10 +374,6 @@ void coral_spectral_grow_epi_calc(eprocess* p, void* pp)
     if (ws->omega_ar_i > -1){
 
       if ((CS_N < 1e-12)||(CH_N < 1e-9)){
-	
-	/* Still need to dissolve carbonate sands if on shelf */
-	// wcbotk = einterface_getwcbotk(c->col->model, c->b);
-	// z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
 	
 	y1[ws->DIC_wc_i] += 12.01 *  ws->dissCaCO3_shelf / dz_wc ;
 	y1[ws->ALK_wc_i] += 2.0 *  ws->dissCaCO3_shelf / dz_wc ;

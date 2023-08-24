@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_spectral_grow_wc.c 6547 2020-05-08 03:33:21Z bai155 $
+ *  $Id: microphytobenthos_spectral_grow_wc.c 7221 2022-09-25 23:06:34Z bai155 $
  *
  */
 
@@ -26,10 +26,11 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "microphytobenthos_spectral_grow_wc.h"
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
+
+double ginterface_get_svel(void* model, char *name);
 
 typedef struct {
   int do_mb;                  /* flag */  
@@ -158,9 +159,9 @@ void microphytobenthos_spectral_grow_wc_postinit(eprocess* p)
    * Define KI's here
    */
  
-    if (!process_present(e,PT_WC, "light_spectral_wc"))
+    if (!process_present(e,PT_WC, "light_spectral_wc") && !process_present(e,PT_COL, "light_spectral_col"))
       emstag(LPANIC, "eco:microphytobenthos_spectral_grow_wc_init",
-	  "MPB grow is specified to be spectral but light_spectral_wc process not found!");
+	  "MPB grow is specified to be spectral but light_spectral_wc or light_spectral_col process not found!");
     ws->KI_MPB_i = find_index_or_add(e->cv_cell, "KI_MPB", e);
     ws->yCfac_MPB_i = find_index_or_add(e->cv_cell, "yCfac_MPB", e);
 
@@ -168,11 +169,11 @@ void microphytobenthos_spectral_grow_wc_postinit(eprocess* p)
    * Not valid during a pre_build (RECOM)
    */
   if (!e->pre_build) {
-    v1 = einterface_gettracersvel(e->model,"MPB_N");
-    v2 = einterface_gettracersvel(e->model,"MPB_NR");
-    v3 = einterface_gettracersvel(e->model,"MPB_PR");
-    v4 = einterface_gettracersvel(e->model,"MPB_Chl");
-    v5 = einterface_gettracersvel(e->model,"MPB_I");
+    v1 = ginterface_get_svel(e->model,"MPB_N");
+    v2 = ginterface_get_svel(e->model,"MPB_NR");
+    v3 = ginterface_get_svel(e->model,"MPB_PR");
+    v4 = ginterface_get_svel(e->model,"MPB_Chl");
+    v5 = ginterface_get_svel(e->model,"MPB_I");
     
     if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
       printf("Mass conservation violation due to microalgae reserves \n");

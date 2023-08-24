@@ -31,6 +31,8 @@
  *
  *  Calculated as a sea - air flux - negative is into the water. This
  *  is the climate community convention.
+ *
+ *  Note: postcalc calculation of oxygen saturation uses T at t-1 of the output time.
  *  
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
@@ -38,7 +40,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: gas_exchange_wc.c 6545 2020-05-06 06:57:00Z bai155 $
+ *  $Id: gas_exchange_wc.c 7259 2022-10-31 11:30:07Z bai155 $
  *
  */
 
@@ -50,7 +52,8 @@
 #include "utils.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+
+double ginterface_get_windspeed(void *model, int b);
 
 /* routines in old exchange files. Should be moved to ultils.h */
 
@@ -176,7 +179,7 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
   }
   /* return if this is layer is less than 20 cm thick */
   
-  if ((c->dz_wc < 0.2)){ // || (c->k_wc != einterface_getwcbotk(model, c->b)))
+  if ((c->dz_wc < 0.2)){ // || (c->k_wc != ginterface_getwcbotk(model, c->b)))
     if (ws->CO2_flux_i > -1)
       y[ws->CO2_flux_i] = 0.0;
     if (ws->O2_flux_i > -1)
@@ -186,7 +189,7 @@ void gas_exchange_wc_precalc(eprocess* p, void* pp)
 
   double temp= y[ws->temp_i];
 
-  double U = einterface_get_windspeed(model, c->b);
+  double U = ginterface_get_windspeed(model, c->b);
 
   if (isnan(U))
     U = 5.0; // = gentle breeze;

@@ -28,10 +28,11 @@
 #include "stringtable.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "filter_feeder_epi.h"
 
-  
+double ginterface_getcellz(void *model, int b, int k);
+
 typedef struct {
   int do_mb;                  /* flag */
   int with_df;                /* flag */
@@ -314,9 +315,10 @@ workspace* ws = p->workspace;
     double* y1 = ia->y1;
     double dz_wc = c->dz_wc;
 
-    // Bail out if deeper than 20m - does this also have to be in calc??
-    double z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
-    if (z_centre < -24.0)
+    // Bail out if deeper than 50m - does this also have to be in calc??
+    double z_centre = ginterface_getcellz(c->col->model,c->b,c->k_wc);
+    //    if (z_centre < -24.0)
+    if (z_centre < -52.0)
       return;
 
 /*LOCAL DECLARATION*/

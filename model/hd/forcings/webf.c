@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: webf.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: webf.c 7361 2023-06-09 03:22:40Z riz008 $
  *
  */
 
@@ -182,7 +182,7 @@ int webf_init(sched_event_t *event)
 		data->ts[t]->name);
 
       if (master->waves & SPECTRAL) {
-	size_t nsfr;
+	size_t nsfr = 0;
 	size_t start[4];
 	size_t count[4];
 	start[0] = 0;
@@ -200,6 +200,9 @@ int webf_init(sched_event_t *event)
 	nc_get_vara_double(cdfid, ncw_var_id(cdfid, "frequency"), start, count,
 			   master->freq);
 	*/
+
+	hd_quit("webf_init: SPECTRAL not supported\n");
+	
 	data->ss1_id = i_alloc_2d(MAXNUMTSFILES, master->nsfr);
 	data->ss2_id = i_alloc_2d(MAXNUMTSFILES, master->nsfr);
 	for (n = 0; n < master->nsfr; n++) {

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: variable_parameter.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: variable_parameter.c 7198 2022-09-14 06:02:52Z bai155 $
  *
  */
 
@@ -28,10 +28,11 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "variable_parameter.h"
 
-
+int ginterface_getwcbotk(void *model, int b);
+double ginterface_getcellz(void *model, int b, int k);
 
 typedef struct {
 
@@ -98,9 +99,8 @@ void variable_parameter_postcalc(eprocess* p, void* pp)
   if ((ws->PhyL_sv_i > -1) )
 {
 
-
-  wcbotk = einterface_getwcbotk(c->col->model, c->b);
-    z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
+  wcbotk = ginterface_getwcbotk(c->col->model, c->b);
+    z_bot = ginterface_getcellz(c->col->model,c->b,wcbotk);
     
   if (z_bot > -200.0){
     y[ws->PhyL_sv_i] = 0.0;}

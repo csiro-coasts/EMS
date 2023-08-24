@@ -14,13 +14,14 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: forcings.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: forcings.c 7156 2022-07-07 02:31:40Z her127 $
  *
  */
 
 #include <math.h>
 #include <string.h>
 #include "hd.h"
+
 
 void forcings_init(master_t *master)
 {
@@ -118,6 +119,7 @@ void forcings_end(void)
   sched_deregister(schedule, "forcings:eta_relax");
   sched_deregister(schedule, "forcings:heatf");
   sched_deregister(schedule, "forcings:hftemp");
+  sched_deregister(schedule, "forcings:swan");
 }
 
 
@@ -243,6 +245,74 @@ timeseries_t **frc_read_cell_ts_mult(master_t *master, char *fname, double i_dt,
   return ts;
 }
 
+
+timeseries_t **frc_read_cell_ts_mult_us(master_t *master, char *fname, double i_dt,
+					char *i_rule, char *varname, char *varunit, 
+					double *dt, int *id, int *ntsfiles, double **p,
+					int quitmode)
+{
+  timeseries_t **ts;
+  char buf[MAXLINELEN];
+  geometry_t *geom = master->geom;
+  char files[MAXNUMTSFILES][MAXSTRLEN];
+  cstring *filenames;
+  int t;
+
+  if (strlen(fname) == 0)
+    return NULL;
+
+  *dt = i_dt;
+
+  *ntsfiles = parseline(fname, (char **)files, MAXNUMTSFILES);
+  filenames = (cstring *)malloc(sizeof(cstring) * *ntsfiles);
+  for (t = 0; t < *ntsfiles; ++t)
+     strcpy(filenames[t], ((char **)files)[t]);
+
+  if (strlen(i_rule))
+    ts = hd_ts_multifile_read_us(master, *ntsfiles, filenames, i_rule);
+  else
+    ts = hd_ts_multifile_read(master, *ntsfiles, filenames);
+  if (ts == NULL) {
+    free(filenames);
+    free(ts);
+    return NULL;
+  }
+  if (hd_ts_multifile_get_index(*ntsfiles, ts, filenames, varname, id) > 0) {
+    for(t = 0; t < *ntsfiles; t++) {
+      if (id[t] >= 0) {
+	if (strcasecmp(ts[t]->varunit[id[t]], varunit) != 0) {
+	  if (quitmode)
+	    hd_quit("forcings: file %s %s units must be %s\n", filenames[t],
+		    varname, varunit);
+	  else {
+	    hd_warn("forcings: file %s %s units must be %s\n", filenames[t],
+		    varname, varunit);
+	    return NULL;
+	  }
+	}
+      } else
+	hd_warn("forcings: Can't find variable '%s' in timeseries file %s.\n", 
+		varname, filenames[t]);
+    }
+    hd_ts_multifile_check(*ntsfiles, ts, filenames, varname,
+			  schedule->start_time, schedule->stop_time);
+    if (p)
+      *p = d_alloc_1d(geom->szcS);
+
+  } else {
+    if (quitmode)
+      hd_quit("forcings: Can't find variable '%s' in any timeseries file %s.\n", 
+	      varname, fname);
+    else {
+      hd_warn("forcings: Can't find variable '%s' in any timeseries file %s.\n", 
+	      varname, fname);
+      return NULL;
+    }
+  }
+  return ts;
+}
+
+
 timeseries_t *frcw_read_cell_ts(master_t *master, char *fname, double i_dt,
 				char *varname, char *varunit, double *dt,
 				int *id, double **p)
@@ -302,6 +372,27 @@ void frc_ts_eval_grid_mult(master_t *master, double t, timeseries_t **ts, int *i
 
   if (ts[0]->nt <= 0)
     hd_quit("frc_ts_eval_grid: Bad time series\n");
+
+  /* If the file is ugrid, read it straight in                       */
+  if (df_is_ugrid(ts[0]->df)) {
+    frc_multifile_eval_ugrid2D(master, ntsfiles, ts, id,
+			       p, t, geom->b2_t, master->thIO);
+    return;
+  }
+  /*
+	hd_trans_multifile_eval(master, reset->ntsfiles, reset->tsfiles,
+				reset->tsnames, "eta", master->eta, tsin,
+				vc2, nc2, (mode|VEL2D));
+
+void hd_trans_multifile_eval(master_t *master, 
+			     int ntsfiles, timeseries_t **tsfiles,
+			     cstring * names, char *var, double *v, double t,
+			     int *vec, int nvec, int mode)
+    vc3 = geom->w2_t;
+    nc3 = geom->b2_t;
+    ve3 = geom->w2_e1;
+    ne3 = geom->n2_e1;
+  */
 
   /* Evaluate values at cell centres */
   for (cc = 1; cc <= geom->b2_t; ++cc) {
@@ -412,7 +503,3 @@ void trunc_data(geometry_t *window,      /* Window geometry            */
 
 /* END truncate()                                                    */
 /*-------------------------------------------------------------------*/
-
-
-
-

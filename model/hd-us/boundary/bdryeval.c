@@ -15,13 +15,14 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryeval.c 6384 2019-11-21 22:54:21Z her127 $
+ *  $Id: bdryeval.c 7150 2022-07-07 02:29:44Z her127 $
  *
  */
 
 #include <stdio.h>
 #include "hd.h"
 
+void bdry_update_dt_m(geometry_t *geom, master_t *master);
 void read_bdry_zone(master_t *master, open_bdrys_t *open, int cc, int mode);
 double adjust_OBC_mass(geometry_t *window, window_t *windat, win_priv_t *wincon, open_bdrys_t *open, int tn);
 double adjust_OBC_maccready(geometry_t *window, window_t *windat, win_priv_t *wincon, open_bdrys_t *open, int tn);
@@ -104,6 +105,7 @@ void bdry_init_m(master_t *master)
     /* Initialize boundary data for tracers                          */
     for (t = 0; t < open[n]->ntr; ++t) {
       if (open[n]->bdata_t[t].init_m != NULL) {
+
         open[n]->bdata_t[t].init_m(master, open[n], &open[n]->bdata_t[t]);
       } else if (!open[n]->bdata_t[t].explct &&
                  open[n]->bcond_tra[t] & FILEIN) {
@@ -190,6 +192,31 @@ double bdry_value_w(geometry_t *window, /* Window geometry           */
 
 
 /*-------------------------------------------------------------------*/
+/* Updates the file_dt for boundaries. Should be called after the    */
+/* last entry to master boundary updates (currently eta).            */
+/*-------------------------------------------------------------------*/
+void bdry_update_dt_m(geometry_t *geom,  /* Global geometry          */
+		      master_t *master   /* Global data              */
+  )
+{
+  int n;                        /* Counters */
+  int c, cc;                    /* Sparse coordinates / counters */
+  open_bdrys_t **open = geom->open;
+
+  /*-----------------------------------------------------------------*/
+  /* Loop through the open boundaries */
+  for (n = 0; n < geom->nobc; n++) {
+    if (open[n]->file_dt) {
+      if (master->t >= open[n]->file_next - DT_EPS)
+	open[n]->file_next += open[n]->file_dt;
+    }
+  }
+}
+/* END bdry_update_dt_m()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /*-------------------------------------------------------------------*/
 /* Routine to invoke custom routines for u1 velocity on the master.  */
 /* This routine is called when the master is filled with nu1         */
@@ -208,6 +235,7 @@ void bdry_eval_u1_m(geometry_t *geom, /* Global geometry             */
   /*-----------------------------------------------------------------*/
   /* Loop through the open boundaries                                */
   for (n = 0; n < geom->nobc; n++) {
+    if (open[n]->file_dt && master->t < open[n]->file_next - DT_EPS) continue;
     /* Set the normal velocity to the boundary                       */
     if (open[n]->bcond_nor & (FILEIN | CUSTOM)) {
       bdry_details_t *data = &open[n]->datau1;
@@ -278,6 +306,9 @@ void bdry_eval_u1_m(geometry_t *geom, /* Global geometry             */
   }
   if (master->regf == RS_OBCSET) 
     sprintf(master->runerror, "OBC %d u1\n",open[n]->id);
+
+  /* Set the next update by incrementing file_next (if required)     */
+  /*bdry_update_dt_m(geom, master);*/
 }
 
 /* END bdry_eval_u1_m()                                              */
@@ -401,21 +432,46 @@ void bdry_eval_eta_m(geometry_t *geom,  /* Global geometry */
 	if (open[n]->file_dt && master->t < open[n]->file_next - DT_EPS)
 	  continue;
 
-        for (cc = 1; cc <= open[n]->no2_t; cc++) {
-          c = open[n]->obc_t[cc];
-          x = geom->cellx[c];
-          y = geom->celly[c];
-          z = geom->cellz[c] * master->Ds[c];
-          open[n]->transfer_eta[cc] = ramp *
-            hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
-					     open[n]->tsfiles,
-					     open[n]->filenames, 
-					     data->name,
-					     master->t3d,
-					     /*master->t + master->dt2d, */
-					     x, y, z);
-        }
-	open[n]->file_next += open[n]->file_dt;
+	/* Read a block of data directly into the transfer vector    */
+	/* for UGRID3 file input using FILEIN.                       */
+	if (open[n]->options & OP_UGRID) {
+	  if (open[n]->flag & FI_ETA) {
+	    hd_ts_multifile_eval_isparse(open[n]->ntsfiles, 
+					open[n]->tsfiles,
+					open[n]->filenames, 
+					data->name,
+					master->d3,
+					master->t,
+					open[n]->no2_t, 
+					master->thIO);
+	  open[n]->flag &= ~FI_ETA;
+	  for (cc = 1; cc <= open[n]->no2_t; cc++)
+	    open[n]->transfer_eta[cc] = master->d3[cc-1];
+	  }
+	  bdry_update_dt_m(geom, master);
+	} else {
+	  /* Interpolate onto the tranfer vector for other file      */
+	  /* types.                                                  */
+	  if (open[n]->flag & FI_ETA) {
+	    for (cc = 1; cc <= open[n]->no2_t; cc++) {
+	      c = open[n]->obc_t[cc];
+	      x = geom->cellx[c];
+	      y = geom->celly[c];
+	      z = geom->cellz[c] * master->Ds[c];
+	      open[n]->transfer_eta[cc] = ramp *
+		hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
+						 open[n]->tsfiles,
+						 open[n]->filenames, 
+						 data->name,
+						 master->t3d,
+						 /*master->t + master->dt2d, */
+						 x, y, z);
+	    }
+	    open[n]->flag &= ~FI_ETA;
+	    open[n]->file_next += open[n]->file_dt;
+	  }
+	}
+	/*open[n]->file_next += open[n]->file_dt;*/
       }
     }
     if (master->regf == RS_OBCSET) 
@@ -522,52 +578,73 @@ void bdry_eval_tr_m(geometry_t *geom, /* Global geometry             */
 	    }
 	  }
         } else if (open[n]->bcond_tra[tn] & (TRCONC|TRCONF)) {
-	  /* TRCONC : interpolate data into OBC ghost cells          */
-	  /* Write into OBC cell centres if required.                */
-	  if (open[n]->options & OP_OWRITE) {
-	    for (cc = 1; cc <= open[n]->no3_e1; cc++) {
-	      c = open[n]->obc_t[ee];
+	  if (open[n]->file_dt && master->t < open[n]->file_next - DT_EPS)
+	    continue;
+ 	  /* Read a block of data directly into transfer vectors for   */
+	  /* UGRID3 file input using TRCONC|TRCONF.                    */
+	  if (open[n]->options & OP_UGRID) {
+	    tm = open[n]->trm[tn];
+	    hd_ts_multifile_eval_isparse(open[n]->ntsfiles, 
+					open[n]->tsfiles,
+					open[n]->filenames, 
+					data->name,
+					master->d3,
+					master->t,
+					open[n]->ttsz-1, 
+					master->thIO);
+	    for (cc = 1; cc <= open[n]->ttsz; cc++)
+	      open[n]->t_transfer[tm][cc] = master->d3[cc-1];
+
+	  } else {
+	    /* Interpolate data into the transfer vectors for other    */
+	    /* file types.                                             */
+	    /* Write into OBC cell centres if required.                */
+	    if (open[n]->options & (OP_OWRITE|OP_IWRITE)) {
+	      for (cc = 1; cc <= open[n]->no3_t; cc++) {
+		c = open[n]->obc_t[cc];
+		c2 = geom->m2d[c];
+		z = geom->cellz[c] * master->Ds[c2];
+		tm = open[n]->trm[tn];
+		x = geom->cellx[c2];
+		y = geom->celly[c2];
+		open[n]->t_transfer[tm][cc] =
+		  hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
+						   open[n]->tsfiles,
+						   open[n]->filenames, 
+						   data->name,
+						   master->t, x, y, z);
+
+	      }
+	    }
+	    /* TRCONC : interpolate data into OBC ghost cell centres   */ 
+	    for (ee = 1; ee <= open[n]->no3_e1; ee++) {
+	      c = open[n]->obc_e2[ee];
+	      e = open[n]->obc_e1[ee];
 	      c2 = geom->m2d[c];
 	      z = geom->cellz[c] * master->Ds[c2];
 	      tm = open[n]->trm[tn];
-	      x = geom->cellx[c2];
-	      y = geom->celly[c2];
-	      open[n]->t_transfer[tm][cc] =
-		hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
-						 open[n]->tsfiles,
-						 open[n]->filenames, 
-						 data->name,
-						 master->t, x, y, z);
+	      for(m = 1; m <= open[n]->bgz; m++) {
+		double tr;
+		cc = open[n]->t_imap[ee][m];
+		c2 = open[n]->omape[ee][c2];
+		x = geom->cellx[c2];
+		y = geom->celly[c2];
+		tr = hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
+						      open[n]->tsfiles,
+						      open[n]->filenames, 
+						      data->name,
+						      master->t, x, y, z);
+		/* NaN check : if interpolating from a depth below     */
+		/* the sea bed, and the interpolated value is NaN,     */
+		/* then set to the layer above.                        */
+		if (isnan(tr))
+		  hd_quit("bdry_eval_tr_m: NaN found in boundary data for tracer %d.\n", tn);
+
+		open[n]->t_transfer[tm][cc] = tr;
+	      }
 	    }
 	  }
-
-	  /* Write into OBC ghost centres                            */
-	  for (ee = 1; ee <= open[n]->no3_e1; ee++) {
-	    c = open[n]->obc_e2[ee];
-	    e = open[n]->obc_e1[ee];
-	    c2 = geom->m2d[c];
-	    z = geom->cellz[c] * master->Ds[c2];
-	    tm = open[n]->trm[tn];
-	    for(m = 1; m <= open[n]->bgz; m++) {
-	      double tr;
-	      cc = open[n]->t_imap[ee][m];
-	      c2 = open[n]->omape[ee][c2];
-	      x = geom->cellx[c2];
-	      y = geom->celly[c2];
-	      tr = hd_ts_multifile_eval_xyz_by_name(open[n]->ntsfiles, 
-						    open[n]->tsfiles,
-						    open[n]->filenames, 
-						    data->name,
-						    master->t, x, y, z);
-	      /* NaN check : if interpolating from a depth below the */
-	      /* sea bed, and the interpolated value is NaN, then    */
-	      /* set to the layer above.                             */
-	      if (isnan(tr))
-		hd_quit("bdry_eval_tr_m: NaN found in boundary data for tracer %d.\n", tn);
-
-	      open[n]->t_transfer[tm][cc] = tr;
-	    }
-	  }
+	  open[n]->flag |= FI_ETA;
 	} else {
 	  /* Read the forcing data from file                         */
 	  for (cc = 1; cc <= open[n]->no3_t; cc++) {
@@ -984,6 +1061,21 @@ void OBC_bgz_nogradb(geometry_t *window, open_bdrys_t *open, double *tr)
   int ee, c, cb, m;
 
   for (ee = 1; ee <= open->no3_e1; ee++) {
+    c = open->ogc_t[ee];
+    cb = open->obc_e2[ee];
+    for (m = 0; m < open->bgz; m++) {
+      tr[c] = tr[cb];
+      c = open->omape[ee][c];
+    }
+  }
+}
+
+void OBC_bgz_nogradb2d(geometry_t *window, open_bdrys_t *open, double *tr)
+{
+
+  int ee, c, cb, m;
+
+  for (ee = 1; ee <= open->no2_e1; ee++) {
     c = open->ogc_t[ee];
     cb = open->obc_e2[ee];
     for (m = 0; m < open->bgz; m++) {

@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: opendump.c 6633 2020-09-08 01:39:20Z her127 $
+ *  $Id: opendump.c 7373 2023-07-26 04:34:15Z her127 $
  *
  */
 
@@ -450,7 +450,6 @@ void convert_structured_obc(parameters_t *params)
       /* a coordinate type, we must set intype to O_UPC here so that */
       /* the conversion is handled correctly in convert_obc_list().  */
       open->intype = O_UPC;
-    
       for (nn = 0; nn < open->npts; nn++) {
 
 	i = open->iloc[nn];
@@ -472,9 +471,9 @@ void convert_structured_obc(parameters_t *params)
 	*/
 	for (cc = 1; cc <= params->ns2; cc++) {
 	  if (i == params->ic[cc] && j == params->jc[cc]) {
-	    open->locu[nn] = cc;
             /* L_EDGE                                                */
 	    if (open->type & U1BDRY && (i == 0 || (i > 0 && bathy[j][i-1] < params->layers[0]))) {
+	      open->locu[nn] = cc;
 	      open->posx[nn][0] = params->x[cc][1];
 	      open->posy[nn][0] = params->y[cc][1];
 	      open->posx[nn][1] = params->x[cc][2];
@@ -482,6 +481,7 @@ void convert_structured_obc(parameters_t *params)
 	    }
             /* B_EDGE                                                */
 	    if (open->type & U2BDRY && (j == 0 || (j > 0 && bathy[j-1][i] < params->layers[0]))) {
+	      open->locu[nn] = cc;
 	      open->posx[nn][0] = params->x[cc][1];
 	      open->posy[nn][0] = params->y[cc][1];
 	      open->posx[nn][1] = params->x[cc][4];
@@ -490,9 +490,9 @@ void convert_structured_obc(parameters_t *params)
 	  }
 
 	  if (i - 1 == params->ic[cc] && j == params->jc[cc]) {
-	    open->locu[nn] = cc;
             /* R_EDGE                                                */
 	    if (open->type & U1BDRY && (i == nce1 || (i < nce1 && bathy[j][i] < params->layers[0]))) {
+	      open->locu[nn] = cc;
 	      open->posx[nn][0] = params->x[cc][3];
 	      open->posy[nn][0] = params->y[cc][3];
 	      open->posx[nn][1] = params->x[cc][4];
@@ -500,9 +500,9 @@ void convert_structured_obc(parameters_t *params)
 	    }
 	  }
 	  if (i == params->ic[cc] && j - 1 == params->jc[cc]) {
-	    open->locu[nn] = cc;
             /* F_EDGE                                                */
 	    if (open->type & U2BDRY && (j == nce2 || (j < nce2 && bathy[j][i] < params->layers[0]))) {
+	      open->locu[nn] = cc;
 	      open->posx[nn][0] = params->x[cc][2];
 	      open->posy[nn][0] = params->y[cc][2];
 	      open->posx[nn][1] = params->x[cc][3];

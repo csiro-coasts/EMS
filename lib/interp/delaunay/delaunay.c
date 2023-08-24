@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: delaunay.c 6161 2019-03-05 04:49:33Z riz008 $
+ *  $Id: delaunay.c 6924 2021-10-08 04:41:47Z her127 $
  *
  */
 
@@ -29,11 +29,13 @@
 #include "nan.h"
 #include "delaunay.h"
 #include "emsmath.h"
+#include "emsalloc.h"
 
 //
 int verbose = 0;
 
 int intri(delaunay *d, int id, point *p);
+int dedge_sort_compare (void const *x1, void const *x2);
 
 /*
  * This parameter is used in search of tricircles containing a given point:
@@ -959,6 +961,96 @@ delaunay* delaunay_voronoi_build(int np, point points[], int ns, int segments[],
     tio_destroy(&vio_out);
 
     return d;
+}
+
+/* Neighbour maps from delaunay structure */
+void delaunay_neighbour_finder(delaunay* d, int ***neic)
+{
+  int cc, c1, c2, j, next, n, nn, j1, j2;
+  int **edge, **eic;
+  int mnpe = 3;
+  int ns2 = d->ntriangles;
+  int nedge = ns2 * 3;
+  triangle *t;
+
+  edge = i_alloc_2d(4, nedge);
+  /* Populate the edge structure                                     */
+  next = 0;
+  for (cc = 0; cc < ns2; cc++) {
+    t = &d->triangles[cc];
+    for (n = 0; n < 3; n++) {
+      nn = (n == 2) ? 0 : n + 1;
+      j1 = t->vids[n];
+      j2 = t->vids[nn];
+      if (j1 < j2) {
+	edge[next][0] = j1;
+	edge[next][1] = j2;
+      } else {
+	edge[next][0] = j2;
+	edge[next][1] = j1;
+      }
+      edge[next][2] = cc;
+      edge[next][3] = n;
+      next++;
+    }
+  }
+
+  /* Sort edges, duplicates are consecutive!                         */
+  qsort(edge[0], nedge, sizeof(int)*4, dedge_sort_compare);
+
+  /* Create the mappings                                             */
+  eic = i_alloc_2d(ns2, mnpe);
+  for (cc = 0; cc < ns2; cc++) {
+    for (j = 0; j < mnpe; j++) {
+      eic[j][cc] = -1;
+    }
+  }
+
+  /* Create the mappings                                             */
+  for (cc = 0; cc < nedge-1; cc++) {
+    if ((edge[cc][0] == edge[cc+1][0]) &&
+	(edge[cc][1] == edge[cc+1][1])) {
+      c1 = edge[cc][2];
+      c2 = edge[cc+1][2];
+      j1 = edge[cc][3];
+      j2 = edge[cc+1][3];
+      eic[j1][c1] = c2;
+      eic[j2][c2] = c1;
+    }
+  }
+  *neic = eic;
+  i_free_2d(edge);
+}
+
+/*-------------------------------------------------------------------*/
+/* Edge sort function for dual row / index sorting                   */
+/* Written by Darren Engwirda, 9/2017                                */
+/* return -1 if "edge-1" < "edge-2"                                  */
+/* return +1 if "edge-1" > "edge-2"                                  */
+/* return +0 if "edge-1" = "edge-2"                                  */
+/*-------------------------------------------------------------------*/
+int dedge_sort_compare (void const *x1, void const *x2)
+{
+  int  const *e1 = (int *)x1 ;
+  int  const *e2 = (int *)x2 ;
+    
+  if (e1[0]  < e2[0]) {         /* less on 1st col. */
+    return -1 ;
+  } else {
+    if (e1[0]  > e2[0]) {       /* more on 1st col. */
+      return +1 ;
+    } else {
+      if (e1[0] == e2[0]) {     /* test on 2nd col. */
+	if (e1[1]  < e2[1]) {   /* less on 2nd col. */
+	  return -1 ;
+	} else {
+	  if (e1[1]  > e2[1])   /* more on 2nd col. */
+	    return +1 ;
+	}
+      }
+    }
+  }
+  return +0 ;                   /* have exact match */
 }
 
 // EOF

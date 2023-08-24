@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: eprocess.h 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: eprocess.h 6770 2021-06-04 01:49:23Z riz008 $
  *
  */
 
@@ -43,10 +43,11 @@ typedef enum {
     PT_GEN = 0,
     PT_WC = 1,
     PT_SED = 2,
-    PT_EPI = 3
+    PT_EPI = 3,
+    PT_COL = 4,
 } EPROCESSTYPE;
 
-#define N_EPROCESS_TYPES (PT_EPI + 1)
+#define N_EPROCESS_TYPES (PT_COL + 1)
 
 typedef struct {
     EPROCESSTYPE type;

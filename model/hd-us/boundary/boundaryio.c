@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 6723 2021-03-30 00:32:17Z her127 $
+ *  $Id: boundaryio.c 7152 2022-07-07 02:30:28Z her127 $
  *
  */
 
@@ -542,6 +542,9 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     sprintf(buf, "%s%s", params->bdrypath, open->tsfn);
     strcpy(open->tsfn, buf);
   }
+  sprintf(open->i_rule, "%c", '\0');
+  sprintf(keyword, "BOUNDARY%1d.INTERP_RULE", n);
+  prm_read_char(fp, keyword, open->i_rule);
 
   /*-----------------------------------------------------------------*/
   /* Check if a custom boundary condition has been specified.        */
@@ -666,12 +669,18 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 	open->options |= OP_MACREADY;
       if (contains_token(buf, "OVERWRITE") != NULL)
 	open->options |= OP_OWRITE;
+      if (contains_token(buf, "OBCWRITE") != NULL)
+	open->options |= OP_IWRITE;
+      if (contains_token(buf, "UGRID") != NULL)
+	open->options |= OP_UGRID;
       if (contains_token(buf, "SCALE_FA") != NULL)
 	open->options |= OP_FAS;
       if (contains_token(buf, "SCALE_FAT") != NULL)
 	open->options |= OP_FAT;
       if (contains_token(buf, "TILED") != NULL)
 	open->options |= OP_TILED;
+      if (contains_token(buf, "WAVES") != NULL)
+	open->options |= OP_WAVES;
     }
   }
 
@@ -739,6 +748,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->stagger = OUTFACE;
   sprintf(open->bflow, "%c", '\0');
   sprintf(open->nzone, "%c", '\0');
+  sprintf(open->i_rule, "%c", '\0');
   open->rlen = 0.0;
   open->bhc = NOTVALID;
   open->bgz = 0;
@@ -754,6 +764,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->mlon = open->mlat = NOTVALID;
   open->intype = 0;
   open->nedges = 0;
+  open->flag = FI_ETA;
   if (open->ntr > 0) {
     /*UR-FIX assign extra element  bcond_tra - otherwise read 
      * from uninitialised value 
@@ -885,6 +896,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->file_next = io->file_next;
   strcpy(open->tsfn, io->tsfn);
   strcpy(open->nzone, io->nzone);
+  strcpy(open->i_rule, io->i_rule);
   open->sbcond = io->sbcond;
   open->bstdf = io->bstdf;
   open->nbstd = io->nbstd;
@@ -900,6 +912,10 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->maxlon = io->maxlon;
   open->minlon = io->minlon;
   open->nedges = io->nedges;
+  open->slon = io->slon; open->slat = io->slat;
+  open->elon = io->elon; open->elat = io->elat;
+  open->mlon = io->mlon; open->mlat = io->mlat;
+
   /*
   if (io->nedges) {
     io->edges = i_alloc_1d(open->nedges);
@@ -1570,10 +1586,11 @@ void bdry_custom_init(master_t *master, open_bdrys_t *open,
       open->ntsfiles = 0;
       strcpy(open->filenames[0], files[0]);
     } else {
-      for (t = 0; t < open->ntsfiles; ++t)
+      for (t = 0; t < open->ntsfiles; ++t) {
 	strcpy(open->filenames[t], ((char **)files)[t]);
-      open->tsfiles = hd_ts_multifile_read(master, open->ntsfiles,
-                                           open->filenames);
+      }
+      open->tsfiles = hd_ts_multifile_read_us(master, open->ntsfiles,
+					      open->filenames, open->i_rule);
     }
   }
 
@@ -1669,6 +1686,7 @@ int read_bdry_custom(open_bdrys_t *open,  /* Open boundary structure */
     char *fields[MAXSTRLEN * MAXNUMARGS];
     int nf = parseline(cusname, fields, MAXNUMARGS);
     data->explct = 1;
+    strcpy(data->i_rule, open->i_rule);
 
     /*---------------------------------------------------------------*/
     /* Check if it is a function                                     */
@@ -1805,6 +1823,7 @@ void bdry_data_copy(bdry_details_t *data, bdry_details_t *din)
   strcpy(data->name, din->name);
   data->fill_value = din->fill_value;
   data->type = din->type;
+  strcpy(data->i_rule, din->i_rule);
   strcpy(data->custom_tag, din->custom_tag);
   data->nargs = din->nargs;
   if (data->nargs) {
@@ -1875,6 +1894,13 @@ void locate_boundary_function(open_bdrys_t *open, const char *tag,
      bf_uv_to_u2_m, bf_uv_to_u2_w, bf_uv_to_u2_t,
      bf_ts_free, bf_void_free},
 
+    {"ugrid_to_u1", bf_ug_to_u1_init_m, bf_uv_to_u1_init_w,
+     bf_ug_to_u1_m, bf_uv_to_u1_w, bf_uv_to_u1_t,
+     bf_ts_free, bf_void_free},
+    {"ugrid_to_u2", bf_ug_to_u1_init_m, bf_uv_to_u1_init_w,
+     bf_ug_to_u2_m, bf_uv_to_u2_w, bf_uv_to_u2_t,
+     bf_ts_free, bf_void_free},
+
     {"uv_to_u1av", bf_uv_to_u1_init_m, bf_uv_to_uav_init_w,
      bf_uv_to_u1av_m, bf_uv_to_u1av_w, bf_uvav_to_u1av_t,
      bf_ts_free, bf_c2cc_free},
@@ -1896,6 +1922,8 @@ void locate_boundary_function(open_bdrys_t *open, const char *tag,
      bf_flow_free, bf_void_free},
     {"use_eqn", bf_use_eqn_init_m, NULL, bf_use_eqn_m, bf_use_eqn_w, 
      bf_use_eqn_trans, bf_eqn_free, bf_void_free},
+    {"tra_gauss", bf_gauss_init_m, bf_gauss_init_w, bf_gauss_m, bf_gauss_w, 
+     bf_gauss_t, bf_gauss_free, bf_void_free},
     {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
   };
 
@@ -2162,6 +2190,7 @@ int bdry_reinit(geometry_t *geom,        /* Global geometry          */
 	  open_w->afr = open->afr;
 	  open_w->inverse_barometer = open->inverse_barometer;
 	  strcpy(open_w->bflow, open->bflow);
+	  strcpy(open_w->i_rule, open->i_rule);
 	  open_w->bhc = open->bhc;
 	  open_w->rlen = open->rlen;
 	  open_w->options = open->options;
@@ -2174,6 +2203,9 @@ int bdry_reinit(geometry_t *geom,        /* Global geometry          */
 	  open_w->ntsfiles = open->ntsfiles;
 	  open_w->tsfiles = open->tsfiles;
 	  open_w->filenames = open->filenames;
+	  open_w->slon = open->slon; open_w->slat = open->slat;
+	  open_w->elon = open->elon; open_w->elat = open->elat;
+	  open_w->mlon = open->mlon; open_w->mlat = open->mlat;
 	  /* u1 or u2 custom boundary routines                       */
 	  if (strlen(open->datau1.name))
 	    bdry_data_copy(&open_w->datau1, &open->datau1);
@@ -2651,7 +2683,6 @@ void convert_obc_list(parameters_t *params, /* Parameters info       */
       yb2 = open->posy[cc][1];
       cco = open->locu[cc];	
       c = cmap[cco];
-
       if (open->intype & O_UPI) {
 	/* OBC indices do not need to be remapped in                 */
 	/* convert_mesh_input(); set mesh->loc[n][0] = NOTVALID to   */

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 6741 2021-03-30 00:42:20Z her127 $
+ *  $Id: vel3d.c 7335 2023-04-11 02:34:41Z her127 $
  *
  */
 
@@ -40,10 +40,12 @@ void set_w_dry(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void set_wvel(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 	      double *wvel, int mode);
 void mom_balance(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void get_sdc_e1(geometry_t *window, window_t *windat, win_priv_t *wincon);
 double gridze(geometry_t *geom, int e);
 void set_sur_u1(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void bernoulli_head(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void wave_av_sbc(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon);
+void filter_variable(geometry_t *window, double *in, double *out, int nvec, int *vec, int type);
 
 	
 /*-------------------------------------------------------------------*/
@@ -122,8 +124,13 @@ void mode3d_step_window_p1(master_t *master,   /* Master data        */
   wincon->hor_mix->pre(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
+  /* Get the low order Bernoulli head if required                    */
+  if(wincon->waves & NEARSHORE)
+    wave_av_sbc(window, windat, wincon);
+
+  /*-----------------------------------------------------------------*/
   /* Check for fatal wind instabilities                              */
-  if (check_unstable(window, windat, wincon, WIND)) return;
+  if ((windat->cc2 = check_unstable(window, windat, wincon, WIND))) return;
 
   /*-----------------------------------------------------------------*/
   /* Transfer grid spacings and mixing coefficients to the master.   */
@@ -203,7 +210,7 @@ void mode3d_post_window_p1(master_t *master,   /* Master data        */
   alerts_w(window, VEL3D);
 
   /* Check for fatal instabilties                                   */
-  if (check_unstable(window, windat, wincon, VEL3D)) return;
+  if ((windat->cc2 = check_unstable(window, windat, wincon, VEL3D))) return;
 
   /* Adjust  the  velocities. 3D  fluxes calculated  below must  use */
   /* the adjusted velocities.                                        */
@@ -534,9 +541,12 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
   } else {
     if (advect_u1_3d(window, windat, wincon)) return;
   }
-  if (wincon->tendf && wincon->tendency)
+  if (wincon->tendf && wincon->tendency) {
     get_tendv(window, wincon->s1, wincon->vc,
 	      wincon->tend3d[T_ADV], windat->u1_adv, windat->u2_adv);
+    get_tendv(window, wincon->s1, wincon->vc,
+	      wincon->tend3d[T_STK], windat->u1_sto, windat->u2_sto);
+  }
   debug_c(window, D_U, D_ADVECT);
 
   if (dwe > 0) {
@@ -597,15 +607,14 @@ void vel_u1_update(geometry_t *window,  /* Window geometry           */
   }
 
   /*-----------------------------------------------------------------*/
-  /* Include the Coriolis term                                       */
-  if (!(wincon->momsc & RINGLER)) {
-    if (!(wincon->u1_f & CORIOLIS))
-      coriolis_u1(window, windat, wincon);
-  }
+  /* Include the Coriolis term (nonlinear Coriolis formulation       */
+  /* includes Coriolis in nonlinear_coriolis_3d()).                  */
+  if (!(wincon->momsc & RINGLER) && !(wincon->u1_f & CORIOLIS))
+    coriolis_u1(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
   /* Include Stokes forcing                                          */
-  if (!(wincon->u1_f & CORIOLIS))
+  if (!(wincon->momsc & RINGLER) && !(wincon->u1_f & CORIOLIS))
     stokes_u1(window, windat, wincon);
 
   /*-----------------------------------------------------------------*/
@@ -1540,6 +1549,16 @@ int vdiff_u1(geometry_t *window,  /* Window geometry                 */
       val = botdz / windat->dt;
     f_bot[es] = -val * windat->u1b[eb];
   }
+
+  /* Add the wave bottom streaming if required                       */
+  if (wincon->waves & NEARSHORE) {
+    for (ee = 1; ee <= wincon->vcs; ee++) {
+      e = wincon->s1[ee];         /* 3D cell to process              */
+      es = window->m2de[e];       /* 2D cell corresponding to e      */
+      val = fabs(vel_c2e(window, windat->wave_fbotx, windat->wave_fboty, es));
+      f_bot[es] -= val;
+    }
+  }
   if (wincon->vorticity & TENDENCY)
     memcpy(windat->rv_bsc, f_bot, window->szeS * sizeof(double));
   if (wincon->numbers & BOTSTRESS)
@@ -1625,8 +1644,10 @@ void stokes_u1(geometry_t *window,  /* Window geometry               */
   int e, ee, es;                /* Sparse coordinates / counters     */
   double *midx;                 /* Total depth at edge               */
   int v, vv, vs, v1, v2;
-  double d2, iarea;
+  int n, eoe;
+  double d2, iarea, fs;
   double sdc, vf;
+  double *tans = wincon->w2;
   double *tend;
 
   if(!(wincon->waves & STOKES_DRIFT)) return;
@@ -1637,6 +1658,7 @@ void stokes_u1(geometry_t *window,  /* Window geometry               */
     tend = windat->nu1;
   else
     tend = wincon->tend3d[T_STK];
+  memset(tans, 0, window->sze * sizeof(double));
 
   /*-----------------------------------------------------------------*/
   /* Stokes drift                                                    */
@@ -1644,7 +1666,14 @@ void stokes_u1(geometry_t *window,  /* Window geometry               */
   for (ee = 1; ee <= wincon->vc; ee++) {
     e = wincon->s1[ee];
     es = window->m2de[e];
-    sdc = wincon->u1c5[es] * wincon->w1[e] * midx[es];
+    /* Tangential component of Stokes                                */
+    for (n = 1; n <= window->nee[es]; n++) {
+      eoe = window->eSe[n][e];
+      fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
+      if (!eoe) continue;
+      tans[e] += fs * window->wAe[n][e] * wincon->w1[eoe];
+    }
+    sdc = wincon->u1c5[es] * tans[e] * midx[es];
     tend[e] += windat->dt * sdc;
     wincon->u1inter[es] += sdc * windat->dzu1[e];
   }
@@ -1670,7 +1699,7 @@ void stokes_u1(geometry_t *window,  /* Window geometry               */
     es = window->m2de[e];
     v1 = window->e2v[e][0];
     v2 = window->e2v[e][1];
-    sdc = wincon->w1[e] * midx[es] * 0.5 * (windat->nrvor[v1] + windat->nrvor[v2]);
+    sdc = tans[e] * midx[es] * 0.5 * (windat->rvor[v1] + windat->rvor[v2]);
     tend[e] += windat->dt * sdc;
     wincon->u1inter[es] += sdc * windat->dzu1[e];
   }
@@ -1797,6 +1826,12 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
     tend1 = wincon->tend3d[T_BTP];
     tend2 = wincon->tend3d[T_BCP];
   }
+  /*
+  dens = wincon->w10;
+  memcpy(dens, windat->dens, window->szc * sizeof(double));
+  TRF_SMOO TRF_SHUM TRF_SHAP TRF_MEDI 
+  filter_variable(window, windat->dens, dens, window->b3_t, window->w3_t, TRF_SMOO);
+  */
 
   /* For the 2D mode when baroclinic pressure is omitted, set        */
   /* surface and average density to the surface density, and return. */
@@ -2158,6 +2193,10 @@ void pressure_u1(geometry_t *window,  /* Window geometry             */
     get_tendv(window, wincon->s1, wincon->vc,
 	      wincon->tend3d[T_BCP], windat->u1_bcp, windat->u2_bcp);
   }
+
+  /* Get the nearshore wave processes if required                    */
+  if (wincon->waves & NEARSHORE)
+    bernoulli_head(window, windat, wincon);
 }
 
 /* END pressure_u1()                                                 */
@@ -2602,7 +2641,6 @@ double vel_c2e(geometry_t *window, double *u, double *v, int e)
 
   if (window->wgst[c1]) c1 = window->wgst[c1];
   if (window->wgst[c2]) c2 = window->wgst[c2];
-
   u1 = u[c1] * window->costhu1[es] + v[c1] * window->sinthu1[es];
   u2 = u[c2] * window->costhu1[es] + v[c2] * window->sinthu1[es];
   return(0.5 * (u1 + u2));
@@ -3117,19 +3155,34 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
 {
   int c, cc, cs;                /* Sparse coodinate / counter        */
   int e, ee, es;                /* Sparse coodinate / counter        */
-  double *u;
+  double *u = wincon->w1;
   int n;
 
   /*-----------------------------------------------------------------*/
   /* Set pointers and initialise                                     */
+  memcpy(u, windat->u1, window->sze * sizeof(double));
+  /*
   if (mode & TRANSPORT) {
     u = windat->u1;
   } else {
     u = windat->u1;
   }
+  */
+
+  /* Add Stokes drift if required. Adding stokes here includes       */
+  /* Stokes in the horizontal fluxes so that vertical velocity is    */
+  /* the divergence of u1+us and the tracers conservation equation   */
+  /* includes Stokes velocity; Uchiyama (2010) Eq. 19. Vertical      */
+  /* advection of momentum (source term in implicit vertical mixing) */
+  /* will also use w+ws; Eq. 5 and 1.                                */  
+  if(wincon->waves & STOKES_DRIFT) {
+    for (ee = 1; ee <= window->a3_e1; ee++) {
+      e = window->w3_e1[ee];
+      u[e] += wincon->us[e];
+    }
+  }
   
   memset(windat->u1flux3d, 0, window->sze * sizeof(double));
-
   /* If using flux-form advection scheme in transport mode, transfer */
   /* u1vm to u1flux3d and u2vm to u2flux3d.                          */
 
@@ -3148,75 +3201,73 @@ void set_flux_3d(geometry_t *window,    /* Window geometry           */
       windat->u1flux3d[e] = windat->u1vm[e];
     }
     return;
-
   }
 
   /*-----------------------------------------------------------------*/
   /* Fluxes through the edges                                        */
+  for (ee = 1; ee <= window->b3_e1; ee++) {
+    e = window->w3_e1[ee];
+    es = window->m2de[e];
+    windat->u1flux3d[e] = u[e] * windat->dzu1[e] * window->h1au1[es] *
+      wincon->mdx[es];
+  }
+
+  /* Set the fluxes for cells one cell deep                          */
+  for (ee = 1; ee <= wincon->ncbot_e1; ee++) {
+    e = wincon->cbot_e1[ee];
+    es = window->m2de[e];
+    windat->u1flux3d[e] = windat->u1flux[es]/windat->dt;
+  }
+  /* Zero fluxes above the surface                                   */
+  for (ee = 1; ee <= window->b2_e1; ee++) {
+    e = window->w2_e1[ee];
+    es = window->sur_e1[ee];
+    while (e < es) {
+      windat->u1flux3d[e] = 0.0;
+      e = window->zm1e[e];
+    }
+  }
+
+  /* Get the mean u1 velocity if required                            */
+  if (wincon->means & VEL3D && windat->u1m) {
+    double t = windat->dtf;
+    
     for (ee = 1; ee <= window->b3_e1; ee++) {
       e = window->w3_e1[ee];
       es = window->m2de[e];
-      windat->u1flux3d[e] = u[e] * windat->dzu1[e] * window->h1au1[es] *
-	wincon->mdx[es];
+      c = window->e2c[e][0];
+      if (window->wgst[c]) c = window->e2c[e][1];
+      cs = window->m2d[c];
+      /* Averaging when layers are wet can lead to time normanlization  */
+      /* issues when free surface drops out of layers; use the       */
+      /* no-gradient on u1 to get a surface mean in the top layer.   */
+      windat->ume[e] = (windat->ume[e] * windat->meanc[cs] + 
+			windat->u1[e] * t) / (windat->meanc[cs] + t);
     }
+    for (cc = 1; cc <= window->b3_t; cc++) {
+      c = window->w3_t[cc];
+      cs = window->m2d[c];
+      windat->u1m[c] = (windat->u1m[c] * windat->meanc[cs] + 
+			windat->u[c] * t) / (windat->meanc[cs] + t);
+      windat->u2m[c] = (windat->u2m[c] * windat->meanc[cs] + 
+			windat->v[c] * t) / (windat->meanc[cs] + t);
+    }
+  }
 
-    /* Set the fluxes for cells one cell deep                        */
-    for (ee = 1; ee <= wincon->ncbot_e1; ee++) {
-      e = wincon->cbot_e1[ee];
+  /* Get the mean u1 volume flux if required                         */
+  if (wincon->means & VOLFLUX && windat->u1vm) {
+    double t = windat->dtf;
+    if (wincon->means & TRANSPORT) windat->meanc[0] += 1.0;
+    for (ee = 1; ee <= window->b3_e1; ee++) {
+      e = window->w3_e1[ee];
       es = window->m2de[e];
-      windat->u1flux3d[e] = windat->u1flux[es]/windat->dt;
+      cs = window->e2c[es][0];
+      c=window->e2c[e][0];
+      if (window->wgst[cs]) cs = window->e2c[es][1];
+      windat->u1vm[e] = (windat->u1vm[e] * windat->meanc[cs] + 
+			 windat->u1flux3d[e] * t) / (windat->meanc[cs] + t);
     }
-    /* Zero fluxes above the surface                                 */
-    for (ee = 1; ee <= window->b2_e1; ee++) {
-      e = window->w2_e1[ee];
-      es = window->sur_e1[ee];
-      while (e < es) {
-        windat->u1flux3d[e] = 0.0;
-        e = window->zm1e[e];
-      }
-    }
-
-    /* Get the mean u1 velocity if required                          */
-    if (wincon->means & VEL3D && windat->u1m) {
-      double t = windat->dtf;
-
-      for (ee = 1; ee <= window->b3_e1; ee++) {
-	e = window->w3_e1[ee];
-	es = window->m2de[e];
-	c = window->e2c[e][0];
-	if (window->wgst[c]) c = window->e2c[e][1];
-	cs = window->m2d[c];
-	/*if (windat->u1flux3d[c])
-	  Averaging when layers are wet can lead to time normanlization  */
-	/* issues when free surface drops out of layers; use the     */
-	/* no-gradient on u1 to get a surface mean in the top layer. */
-	windat->ume[e] = (windat->ume[e] * windat->meanc[cs] + 
-			  windat->u1[e] * t) / (windat->meanc[cs] + t);
-      }
-      for (cc = 1; cc <= window->b3_t; cc++) {
-	c = window->w3_t[cc];
-	cs = window->m2d[c];
-	windat->u1m[c] = (windat->u1m[c] * windat->meanc[cs] + 
-			  windat->u[c] * t) / (windat->meanc[cs] + t);
-	windat->u2m[c] = (windat->u2m[c] * windat->meanc[cs] + 
-			  windat->v[c] * t) / (windat->meanc[cs] + t);
-      }
-    }
-
-    /* Get the mean u1 volume flux if required                       */
-    if (wincon->means & VOLFLUX && windat->u1vm) {
-      double t = windat->dtf;
-      if (wincon->means & TRANSPORT) windat->meanc[0] += 1.0;
-      for (ee = 1; ee <= window->b3_e1; ee++) {
-	e = window->w3_e1[ee];
-	es = window->m2de[e];
-	cs = window->e2c[es][0];
-	c=window->e2c[e][0];
-	if (window->wgst[cs]) cs = window->e2c[es][1];
-	windat->u1vm[e] = (windat->u1vm[e] * windat->meanc[cs] + 
-			   windat->u1flux3d[e] * t) / (windat->meanc[cs] + t);
-      }
-    }
+  }
 }
 
 /* END set_flux_3d()                                                 */
@@ -3459,7 +3510,7 @@ void vel_w_update(geometry_t *window, /* Window geometry             */
   int zp1, zm1;       /* Sparse coordinate below cell c              */
   double hf, vf, cnt; /* Diagnostics for continuity                  */
   int dc = 0;         /* Diagnostic continuity surface coordinate    */
-  int dw = 1;         /* Window for diagnostic continuity            */
+  int dw = 0;         /* Window for diagnostic continuity            */
   double detadt;      /* Rate of change of elevation                 */
   double *deta;       /* Elevation rate of change for SIGMA          */
   double d1;          /* Dummy                                       */
@@ -4146,10 +4197,18 @@ void vel_w_bounds(geometry_t *window, /* Window geometry             */
   /* Set the surface velocity. Note: this cannot be retreived from   */
   /* the u1 array since neighbours are required and with a cell      */
   /* drying the neighbour may not be the surface.                    */
-  for (ee = 1; ee <= window->a2_t; ee++) {
-    e = window->w2_t[ee];
+  for (ee = 1; ee <= window->a2_e1; ee++) {
+    e = window->w2_e1[ee];
     es = window->m2de[e];
     u1top[es] = windat->u1[e];
+  }
+  /* Add Stokes drift if required                                    */
+  if(wincon->waves & STOKES_DRIFT) {
+    for (ee = 1; ee <= window->a2_e1; ee++) {
+      e = window->w2_e1[ee];
+      es = window->m2de[e];
+      u1top[es] += wincon->us[e];
+    }
   }
   for (ee = 1; ee <= window->b2_e1; ee++) {
     eb = window->bot_e1[ee];  /* 3D bottom coordinate                */
@@ -4601,17 +4660,23 @@ void mom_balance(geometry_t *window, /* Window geometry              */
 		 win_priv_t *wincon  /* Window constants             */
 		 )
 {
-  int e, ee;
-  double v, v1, v2, v3, v4, v5, v6, vm, vt;
+  int c, cc;
+  double v, v1, v2, v3, v4, v5, v6, v7, vm, vt;
 
-  for (ee = 1; ee <= window->b3_e1; ee++) {
-    e = window->w3_e1[ee];
-    v1 = fabs(windat->u1_adv[e]);
-    v2 = fabs(windat->u1_hdif[e]);
-    v3 = fabs(windat->u1_vdif[e]);
-    v4 = fabs(windat->u1_cor[e]);
-    v5 = fabs(windat->u1_btp[e]);
-    v6 = fabs(windat->u1_bcp[e]);
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    v1 = sqrt(windat->u1_adv[c] * windat->u1_adv[c] +
+	      windat->u2_adv[c] * windat->u2_adv[c]);
+    v2 = sqrt(windat->u1_hdif[c] * windat->u1_hdif[c] +
+	      windat->u2_hdif[c] * windat->u2_hdif[c]);
+    v3 = sqrt(windat->u1_vdif[c] * windat->u1_vdif[c] +
+	      windat->u2_vdif[c] * windat->u2_vdif[c]);
+    v4 = sqrt(windat->u1_cor[c] * windat->u1_cor[c] +
+	      windat->u2_cor[c] * windat->u2_cor[c]);
+    v5 = sqrt(windat->u1_btp[c] * windat->u1_btp[c] +
+	      windat->u2_btp[c] * windat->u2_btp[c]);
+    v6 = sqrt(windat->u1_bcp[c] * windat->u1_bcp[c] +
+	      windat->u2_bcp[c] * windat->u2_bcp[c]);
 
     vt = v1 + v2 + v3 + v4 + v5 + v6;
     v = 1.0;                    /* 1 = advection                     */
@@ -4626,7 +4691,13 @@ void mom_balance(geometry_t *window, /* Window geometry              */
     vm = (v5 > vm) ? v5 : vm;
     v = (v6 > vm) ? 32.0 : v;   /* 32 = baroclinic pressure          */
     vm = (v6 > vm) ? v6 : vm;
-    windat->mom_bal[e] = v;
+    if (wincon->waves & STOKES_DRIFT) {
+      v7 = sqrt(windat->u1_sto[c] * windat->u1_sto[c] +
+		windat->u2_sto[c] * windat->u2_sto[c]);
+      v = (v7 > vm) ? 64.0 : v;   /* 64 = Stokes drift               */
+      vm = (v7 > vm) ? v7 : vm;
+    }
+    windat->mom_bal[c] = v;
   }
 }
 
@@ -4635,7 +4706,8 @@ void mom_balance(geometry_t *window, /* Window geometry              */
 
 
 /*-------------------------------------------------------------------*/
-/* Computs the stokes velocity profile at edges                      */
+/* Computs the stokes velocity profile at edges. The profile is      */
+/* based on the depth dependency given by Moon (2005), Eq. 16.       */
 /*-------------------------------------------------------------------*/
 void get_sdc_e1(geometry_t *window, /* Window geometry               */
 		window_t *windat,   /* Window data                   */
@@ -4643,30 +4715,365 @@ void get_sdc_e1(geometry_t *window, /* Window geometry               */
 		)
 {
   int e, ee, es;
+  int cc, c, ci, n;
   int c1, c2;
   double w;                                      /* Angular freq     */
   double k;                                      /* Wave number      */
-  double uso, u1, u2, depth, period;
+  double uso, u1, u2, depth, h, period;
   double ramp = (wincon->rampf & STOKES) ? windat->rampval : 1.0;
+  int dos = 1;
 
-  for (ee = 1; ee <= window->b2_e1; ee++) {
+  /* Set a no-gradient in ghost cells                                */
+  for (cc = 1; cc <= window->nbptS; cc++) {
+    c = window->bpt[c];
+    ci = window->bin[cc];
+    windat->wave_amp[c] = windat->wave_amp[ci];
+    windat->wave_period[c] = windat->wave_period[ci];
+  }
+  /* Set a no-gradient on open boundaries                            */
+  for (n = 0; n < window->nobc; n++) {
+    open_bdrys_t *open = window->open[n];
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = open->obc_t[cc];
+      ci = open->oi1_t[cc];
+      windat->wave_amp[c] = windat->wave_amp[ci];
+      windat->wave_period[c] = windat->wave_period[ci];
+    }
+  }
+  /* Set a no-gradient across OBC ghost cells                        */
+  for (ee = 0; ee < window->nobc; ee++) {
+    OBC_bgz_nogradb2d(window, window->open[ee], windat->wave_amp);
+    OBC_bgz_nogradb2d(window, window->open[ee], windat->wave_period);
+  }
+
+  memset(wincon->uavs, 0, window->szeS * sizeof(double));
+  for (ee = 1; ee <= window->a2_e1; ee++) {
     e = window->w2_e1[ee];
     es = window->m2de[e];
     c1 = window->e2c[es][0];
     c2 = window->e2c[es][1];
-    period = 0.5 * (windat->wave_period[c1] + windat->wave_period[c2]);
-    w = (period) ? 2.0 * PI / period : 0.0;
-    k = w * w / wincon->g;
+    if (dos && wincon->do_wave & W_SWAN && windat->wave_k)
+      k = 0.5 * (windat->wave_k[c1] + windat->wave_k[c2]);
+    else {
+      period = 0.5 * (windat->wave_period[c1] + windat->wave_period[c2]);
+      w = (period) ? 2.0 * PI / period : 0.0;
+      k = w * w / wincon->g;
+    }
     uso = ramp * vel_c2e(window, windat->wave_ste1, windat->wave_ste2, e);
+    h = 0.0;
     while (e != window->zm1e[e]) {
       depth = min(0.0, window->cellz[c1]);
+      /* Stokes drift at each level                                  */
       wincon->w1[e] = uso * exp(2.0 * k * depth);
+      /* Vertically integrated Stokes drift                          */
+      h += windat->dzu1[e] * wincon->mdx[es];
+      wincon->uavs[es] += (wincon->w1[e] * windat->dzu1[e] * wincon->mdx[es]);
       e = window->zm1e[e];
     }
+    wincon->uavs[es] = (h) ? wincon->uavs[es] / h : 0.0;
   }
+  memcpy(wincon->us, wincon->w1, window->sze * sizeof(double));
 }
 
 /* END get_sdc_e1()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Wave averaged forcing surface boundary condition. Uchiyama (2010) */
+/* Eq. 9. We also include the low order wave terms from Eq. 33.      */
+/*-------------------------------------------------------------------*/
+void wave_av_sbc(geometry_t *window, window_t *windat, win_priv_t *wincon)
+{
+  int cc, c, cs, cb, zm1, zp1, n;
+  double depth, sig, w, A;
+  double d1, dzav;
+  double *P = windat->wave_P;
+  double *k = windat->wave_k;
+  double *V = wincon->w1;
+  double *dvdz = wincon->w2;
+  double *dvdz2 = wincon->w3;
+  double afm = 0.001;           /* Angular frequency when period = 0 */
+  int dos = 1;
+
+  memset(P, 0, window->szcS * sizeof(double));
+
+  /* Get the wavenumber                                              */
+  /* cg = w /k where cg = phase velocity and w = 2PI/period          */
+  /* Shallow water: cp = sqrt(gH) so k = w / sqrt(gH)                */
+  /* Deep water: cp = g(period)/2PI, so k = w2 / g                   */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    /* Sanity check                                                  */
+    if (windat->wave_period[c] <= 0.0) {
+      windat->wave_period[c] = 2.0 * PI / afm;
+      windat->wave_amp[c] = 0.0;
+    }
+    if (dos && wincon->do_wave & W_SWAN) {
+      /* From SWAN                                                   */
+      if (windat->wave_k) k[c] = windat->wave_k[c];
+    } else {
+      w = 2.0 * PI / windat->wave_period[c];
+      /* Deep water                                                  */
+      /*k[c] = w * w / wincon->g;*/
+      /* Shallow water                                               */
+      k[c] = w / sqrt(wincon->g * (windat->eta[c] -  window->botz[c]));
+    }
+  }
+  /* Smooth, limit 
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    if (k[c] == 0.0) {
+      if (windat->dum2) windat->dum2[c] = k[c];
+      d1 = 1.0;
+      for (n = 1; n <= window->npe[c]; n++) {
+	cs = window->c2c[n][c];
+	if (!window->wgst[cs]) {
+	  d1 += 1.0;
+	  k[c] += k[cs];
+	}
+      }
+      k[c] /= d1;
+      k[c] = min(k[c], 0.03);
+    if (windat->dum1) windat->dum1[c] = k[c];
+  }
+  */
+
+  /* Get the product of wave number and horizontal flow.             */
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    cs = window->m2d[c];
+    V[c] = k[cs] * sqrt(windat->u[c] * windat->u[c] + 
+			windat->v[c] * windat->v[c]);
+  }
+  /* No-gradient across the sediments                                */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->bot_t[cc];     /* 3D bottom coordinate               */
+    zm1 = window->zm1[c];      /* Sediment coordinate                */
+    V[zm1] = V[c];             /* V : no-gradient across bottom      */
+  }
+  /* Interpolate V onto the layer faces                              */
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    zm1 = window->zm1[c];
+    dzav = wincon->dz[zm1] / (wincon->dz[zm1] + wincon->dz[c]);
+    dvdz[zm1] = (dzav * (V[zm1] - V[c]) + V[c]);
+  }
+  /* Surface and bottom faces                                        */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    int zp1;
+    c = cs = window->w2_t[cc];
+    dvdz[c] = V[c];
+    c = window->bot_t[cc];     /* 3D bottom coordinate               */
+    zm1 = window->zm1[c];      /* Sediment coordinate                */
+    /* Bottom face                                                   */
+    dvdz[zm1] = V[c];
+    /* Sediment face                                                 */
+    c = window->zm1[c];
+    zm1 = window->zm1[c];
+    dvdz[zm1] = V[c];
+  }
+  /* Get the vertical gradient                                       */
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    zm1 = window->zm1[c];
+    dvdz[c] = (dvdz[c] - dvdz[zm1]) / wincon->dz[c];
+  }
+  /* Get the second derivative                                       */
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    zm1 = window->zm1[c];
+    zp1 = window->zp1[c];
+    dvdz2[c] = (V[zp1] + V[zm1] - 2.0 * V[c]) / 
+	       (0.5 * (wincon->dz[zp1] + wincon->dz[zm1]) + wincon->dz[c]);
+  }
+
+  /* Vertically integrate the second derivetive.                     */
+  /* Note: cosh = (exp(x) + exp(-x)), P can get large at depth.      */
+  for (cc = 1; cc <= window->b3_t; cc++) {
+    c = window->w3_t[cc];
+    cs = window->m2d[c];
+    P[cs] += dvdz2[c] * cosh(2.0 * k[cs] * window->cellz[c]) * wincon->dz[c];
+
+    /*if (isnan(P[c])) hd_quit("p1 P=NaN @ wn%d c=%d k=%f dvdz=%f\n",window->wn, c, k[c], dvdz2[c]);*/
+  }
+
+  /* Get the sbc                                                     */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    cb = window->bot_t[cc];
+    A = windat->wave_amp[c];
+    depth = k[c] * (windat->eta[c] - window->botz[c]);
+    sig = sqrt(wincon->g * k[c] * tanh(depth));
+
+    /* Uchiyama (2010) Eq. 9                                         */
+    d1 = wincon->g * A * A / (2.0 * sig);
+    P[c] = tanh(depth) * (P[c] + cosh(2.0*depth) * dvdz[cb] - dvdz[c]) / sinh(2.0 * depth);
+
+    /*if (isnan(P[c])) hd_quit("p2 P=NaN @ wn%d c=%d layer%d k=%f depth=%f dvdz=%f %f : %f %f %f\n",window->wn, c, window->s2k[c], k[c], depth, dvdz[cb], dvdz[c], tanh(depth), cosh(2.0*depth), sinh(2.0 * depth));*/
+
+    P[c] = d1 * (P[c] - 2.0 * k[c] * tanh(depth) * V[c]);
+
+    /*if (isnan(P[c])) hd_quit("p3 P=NaN @ wn%d c=%d layer%d z=%f k=%f d1=%f V=%f depth=%f\n",window->wn, c, window->s2k[c], window->cellz[c], k[c], d1, V[c], depth);*/
+
+    /* Kumar (2012) Eq. 9                                            */
+    /*
+    d1 = wincon->g * A * A / (8.0 * sig);
+    P[c] = tanh(depth) * (P[c] + cosh(2.0*depth) * dvdz[cb] - dvdz[c]) / sinh(2.0 * depth);
+    P[c] = d1 * (P[c] - 2.0 * k[c] * tanh(depth) * V[c]);
+    */
+  }
+
+  /* Filtering
+  for (cc = 1; cc <= window->a2_t; cc++) {
+    c = window->w2_t[cc];
+    wincon->d3[c] = con_median(window, P, 1e2, c, ST_SIZED);
+  }
+  memcpy(P, wincon->d3, window->szcS * sizeof(double));
+  */
+  for (cc = 1; cc <= window->b2_t; cc++) {
+    c = window->w2_t[cc];
+    A = windat->wave_amp[c];
+    depth = k[c] * (windat->eta[c] - window->botz[c]);
+    /* Get the wave averaged setup/setdown component of the quasi    */
+    /* static sea level, Uchiyama (2010) Eq. 7, second term.         */
+    d1 = (k[c] * A * A) / (2.0 * sinh(2.0 * depth));
+    /* Kumar (2012) Eq. 7                                            */
+    /*d1 = (k[c] * A * A) / (8.0 * sinh(2.0 * depth));*/
+
+    /* Add the surface terms that contribute to the low order        */
+    /* Bernoulli head and store in P. The horizontal gradient of     */
+    /* this is computed in the 2D mode, and added to the 3D mode     */
+    /* via velocity_adjust().                                        */
+    /* Note: in the 2D mode g is included in topdensu1, and we       */
+    /* also divide by densavu1. Hence divide by g here and leave eta */
+    /* without multiplication by g.                                  */
+    /* Possible error: Uchiyama (2010) Eq. 8 or 20 include g x sea   */
+    /* level in the surface boundary condition. The gradient of sea  */
+    /* level should enter the equation when horizontal integration   */
+    /* is brought inside the vertical integration of density, and    */
+    /* Leibniz's rule creates the gradient of sea level, not in the  */
+    /* surface B.C. explicitly. If this were used without wave terms */
+    /* then sea level gradient appears twice. Here we remove this    */
+    /* term.                                                         
+    P[c] = windat->eta[c] + d1 - (P[c] - windat->wave_Kb[c]) / wincon->g;
+    windat->wave_Kb[c] = 0.0;
+    */
+    P[c] = d1 - (P[c] - windat->wave_Kb[c]) / wincon->g;
+    /*if (isnan(P[c])) hd_quit("P=NaN @ wn%d c=%d KB=%f d1=%f k=%f\n",window->wn, c, windat->wave_Kb[c], d1, k[c]);*/
+  }
+}
+
+/* END wave_av_sbc()                                                 */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Get the Bernoulli head. We start with Uchiyama (2010) Eq. 33 and  */
+/* split the geopotential Eq. 18. Substitute the quasi static sea    */
+/* level component, Eq. 7, and separate into pressure and Bernoulli  */
+/* contributions. The pressure contribution is computed as usual,    */
+/* and the Bernoulli contribution is explicitly computed here, and   */
+/* the gradient is included in the 2D mode.                          */
+/*-------------------------------------------------------------------*/
+void bernoulli_head(geometry_t *window, window_t *windat, win_priv_t *wincon)
+{
+  int ee, e, es, cc, c, cs, c1, c2, zm1;
+  double dzav;
+  double *K = wincon->w1;
+  double *Kz = wincon->w2;
+  double *du = wincon->w2;
+  double *dv = wincon->w5;
+  double *ste1 = wincon->w3;
+  double *ste2 = wincon->w4;
+  double *dd = wincon->d1;
+  double *k = windat->wave_k;
+  double *u1inter = wincon->d3;
+  double d1, d2, w, h, depth;
+
+  if(!(wincon->waves & NEARSHORE)) return;
+
+  /*-----------------------------------------------------------------*/
+  /* Get the high order Bernoulli head, Uchiyama (2010) Eq. 5.       */
+  /* First get the cell centered Stokes velocity at every level.     */
+  if (windat->wave_ste1 && windat->wave_ste2) {
+    for (cc = 1; cc <= window->a2_t; cc++) {
+      c = window->w2_t[cc];
+      cs = window->m2d[c];
+      while (c != window->zm1[c]) {
+	depth = min(0.0, window->cellz[c]);
+	ste1[c] = windat->wave_ste1[cs] * exp(2.0 * k[cs] * depth);
+	ste2[c] = windat->wave_ste2[cs] * exp(2.0 * k[cs] * depth);
+	c = window->zm1[c];
+      }
+    }
+  } else {
+    memset(ste1, 0, window->szc * sizeof(double));
+    memset(ste2, 0, window->szc * sizeof(double));
+  }
+
+  /* Set a no-gradient across the bottom for (u,v)                   */
+  for (cc = 1; cc <= window->a2_t; cc++) {
+    c = window->bot_t[cc];      /* 3D bottom coordinate              */
+    zm1 = window->zm1[c];       /* Sediment coordinate               */
+    windat->u[zm1] = windat->u[c];
+    windat->v[zm1] = windat->v[c];
+  }
+  /* Velocity at cell faces                                          */
+  for (cc = 1; cc <= window->a3_t; cc++) {
+    c = window->w3_t[cc];
+    zm1 = window->zm1[c];
+    dzav = wincon->dz[c] / (wincon->dz[zm1] + wincon->dz[c]);
+    du[zm1] = (dzav * (windat->u[zm1] - windat->u[c]) + windat->u[c]);
+    dv[zm1] = (dzav * (windat->v[zm1] - windat->v[c]) + windat->v[c]);
+  }
+  /* Surface and bottom faces                                        */
+  for (cc = 1; cc <= window->a2_t; cc++) {
+    c = window->w2_t[cc];
+    du[c] = windat->u[c];
+    dv[c] = windat->v[c];
+    c = window->bot_t[cc];
+    du[c] = windat->u[c];
+    dv[c] = windat->v[c];
+  }
+  /* Get cell centered Stokes multiplied by the vertical gradient,   */
+  /* (K, Uchiyama, Eq. 5).                                           */
+  for (cc = 1; cc <= window->a3_t; cc++) {
+    c = window->w3_t[cc];
+    zm1 = window->zm1[c];
+    d1 = (du[c] - du[zm1]) / wincon->dz[c];
+    d2 = (dv[c] - dv[zm1]) / wincon->dz[c];
+    K[c] = ste1[c] * d1 + ste2[c] * d2;
+  }
+  /* Vertically integrate each level                                 */
+  memset(dd, 0, window->szcS * sizeof(double));
+  for (cc = 1; cc <= window->a3_t; cc++) {
+    c = window->w3_t[cc];
+    cs = window->m2d[c];
+    dd[cs] += K[c];
+    Kz[c] = dd[cs];
+  }
+  /* Set a no-gradient over ghost cells                              */
+  for (cc = 1; cc <= window->nbpt; cc++) {
+    c = window->bpt[cc];
+    c1 = window->bin[cc];
+    Kz[c] = Kz[c1];
+  }
+  /* Get the horizontal gradient (Uchiyama, 2010, Eq. 33. Save the   */
+  /* integral for the 2D mode in u1inter).                           */
+  for (ee = 1; ee <= wincon->vc; ee++) {
+    e = wincon->s1[ee];
+    es = window->m2de[e];
+    c1 = window->e2c[e][0];
+    c2 = window->e2c[e][1];
+    d1 = (Kz[c1] - Kz[c2]) * windat->dzu1[e];
+    wincon->tend3d[T_STK][e] += windat->dt * wincon->u1c6[es] * d1;
+    /* Integrate surface and average density for 2D mode             */
+    wincon->u1inter[es] += wincon->u1c6[es] * d1 * windat->dzu1[e];
+  }
+}
+
+/* END bernoulli_head()                                              */
 /*-------------------------------------------------------------------*/
 
 
@@ -4736,6 +5143,79 @@ void turbines(geometry_t *window, window_t *windat, win_priv_t *wincon)
 }
 
 /* END turbines                                                      */
+/*-------------------------------------------------------------------*/
+
+
+
+
+/*-------------------------------------------------------------------*/
+/* Perform filtering on cell centered variables                      */
+/*-------------------------------------------------------------------*/
+void filter_variable(geometry_t *window,
+		     double *in,
+		     double *out,
+		     int nvec,
+		     int *vec,
+		     int type
+		     )
+{
+  int n, c, cm, cc;
+  int dim = (nvec = window->b2_t) ? 0 : 1;
+  int nbpt, nobc, sz;
+
+
+  if (dim) {
+    nbpt = window->nbpt;
+    sz = window->szc;
+  } else {
+    nbpt = window->nbptS;
+    sz = window->szcS;
+  }
+  memcpy(out, in, sz * sizeof(double));
+
+  /* Set the ghost cells                                             */
+  for (cc = 1; cc <= nbpt; cc++) {
+    c = geom->bpt[cc];
+    cm = geom->bin[cc];
+    in[c] = in[cm];
+  }
+
+  /* Set a no-gradient beyond the open boundary                      */
+  if (dim) {
+    for (n = 0; n < window->nobc; n++) {
+      open_bdrys_t *open = window->open[n];
+      OBC_bgz_nogradb(window, window->open[n], in);
+    }
+  }
+
+  /* Smoothing filter                                                */
+  if (type & TRF_SMOO) {
+    smooth_w(window, in, out, vec, nvec, 1, 1e10, 0);
+  }
+
+  /* Shuman filter                                                   */
+  if (master->trfilter & TRF_SHUM) {
+    for (cc = 1; cc <= nvec; cc++) {
+      c = vec[cc];
+      out[c] = shuman(window, in, c);
+    }
+  }
+
+  /* Shapiro filter                                                  */
+  if (master->trfilter & TRF_SHAP) {
+    shapiro(window, in, out, vec, nvec, 0, 1, XDIR);
+  }
+
+  /* Median filter                                                   */
+  if (master->trfilter & TRF_MEDI) {
+    for (cc = 1; cc <= nvec; cc++) {
+      c = vec[cc];
+      out[c] = con_median(window, in, 1e10, c, ST_SQ3);
+    }
+  }
+}
+
+/* END filter_variable()                                             */
 /*-------------------------------------------------------------------*/
 
 

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: cloud.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: cloud.c 7155 2022-07-07 02:31:28Z her127 $
  *
  */
 
@@ -43,6 +43,8 @@ int cloud_init_single(sched_event_t *event)
 
   /* Read parameters */
   prm_set_errfn(hd_silent_warn);
+
+  if (strlen(params->cloud) == 0) return 0;
 
   data = (cloud_data_t *)malloc(sizeof(cloud_data_t));
   schedSetPrivateData(event, data);
@@ -99,9 +101,19 @@ int cloud_init(sched_event_t *event)
 
   data = (cloud_mdata_t *)malloc(sizeof(cloud_mdata_t));
   schedSetPrivateData(event, data);
-  data->tsfiles = frc_read_cell_ts_mult(master, params->cloud, params->cloud_dt,
-					"cloud", "oktas", &data->dt, data->varids, 
-					&data->ntsfiles, &master->cloud, 1);
+  if (strlen(params->cloud_interp))
+    data->tsfiles = frc_read_cell_ts_mult_us(master, params->cloud, 
+					     params->cloud_dt,
+					     params->cloud_interp,
+					     "cloud", "oktas", 
+					     &data->dt, data->varids, 
+					     &data->ntsfiles, &master->cloud, 1);
+  else
+    data->tsfiles = frc_read_cell_ts_mult(master, params->cloud, 
+					  params->cloud_dt,
+					  "cloud", "oktas", 
+					  &data->dt, data->varids, 
+					  &data->ntsfiles, &master->cloud, 1);
 
   if (data->tsfiles == NULL) {
     free(data);

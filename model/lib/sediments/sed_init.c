@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed_init.c 6577 2020-07-08 01:28:07Z mar644 $
+ *  $Id: sed_init.c 7186 2022-08-17 05:48:47Z mar644 $
  *
  */
 
@@ -129,6 +129,9 @@ int sinterface_getshipfile(FILE* prmfd, char *shipfile);
 //2019
 double sinterface_get_css_erosion(void* model, char *name);
 double sinterface_get_css_deposition(void* model, char *name);
+//2021
+double sinterface_get_decay_days(FILE* prmfd, void* model, int tr_number);
+extern int get_rendered_sedparams(char *name, sediment_t *sediment, int mode);
 
 #if defined(HAVE_OMP)
 int sinterface_get_trans_num_omp(void *model);
@@ -425,6 +428,7 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
     sed_tracer_t *tr = &sediment->mstracers[n];
     int nf, col;
     tr->n = n;
+
     /* maps */
     tr->n_hd_wc = si_getmap2hdwctracer(hmodel, n, tr->name);
     if(tr->n_hd_wc<0) {
@@ -451,7 +455,10 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
     }
     if(!tr->dissol && !tr->partic) tr->dissol = 1;
     tr->diffuse =  sinterface_get_diffuse(hmodel, tr->name);
-    tr->decay = sinterface_get_decay(hmodel, tr->name);
+    //tr->decay = sinterface_get_decay(hmodel, tr->name);
+    // 2021
+    tr->decay_days = sinterface_get_decay_days(prmfd, hmodel, n);
+
     tr->psize = sinterface_get_psize(hmodel, tr->name);
     tr->b_dens = sinterface_get_b_dens(hmodel, tr->name);
     tr->i_conc = sinterface_get_i_conc(hmodel, tr->name);
@@ -551,8 +558,8 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
       exit(1);
   }
 
-   // read names and total number of benthic (ie 2d) variables
-   // such as (param->ntrB = ntrB; param->trnameB[n];)
+   // read total number of 2D benthic variables (param->ntrB) and 
+   // their names (param->trnameB[n])
    sed_tracers_benthic_init(prmfd, sediment);
    // material fluxes across water and sediments
    fluxsedimap(sediment);
@@ -565,6 +572,8 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
     np = param->ntr + 30;
     //allocate mem
     param->prmpointS = (double ***)p_alloc_2d(param->ncol,np);
+    fprintf(stderr, "sed_init.c: ncol = %d, np = %d \n", param->ncol, np);
+
     param->prmnameS = (char **)p_alloc_1d(np);
     param->prmindexS = i_alloc_1d(np);
     param->trindexS = i_alloc_1d(np);
@@ -607,11 +616,13 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
     // map spatially varying parameter to the corresponding tracer
     param->nprmS=0;
     for(n=0; n < param->ntrB; n++) {
-      for (k=0;k<np;k++) {
+      //for (k = param->ntr; k < np; k++) {
+       // if (strcmp(param->prmnameS[k], '\0') == 0) continue;
+for (k = param->ntr; k < param->ntr+9; k++) {
 	if (strcmp(param->trnameB[n],param->prmnameS[k]) == 0){
 	  i=param->nprmS;
-	  param->prmindexS[i] = k; // prm index (eg param->prmpointS[k]) 
-	  param->trindexS[i] = n; // tracer index  
+	  param->prmindexS[i] = k; // spatial prm index (eg param->prmpointS[k]) 
+	  param->trindexS[i] = n; // 2d tracer index  
 	  // tracer value at location c is passed to hd2sed.c through 
 	  // sinterface_getvalueofBtracer(void* hmodel, int n, int c)
 	  // and then that value is assigned to  *param->prmpointS[k]
@@ -670,7 +681,7 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
       for (m=0;m<param->nprmS;m++){
 	k=param->prmindexS[m]; 
 	n=param->trindexS[m];
-	//fprintf(stderr,"spatial prm %s; tarcer number %d \n",param->prmnameS[k],n);
+	fprintf(stderr,"sed_init.c: nprmS=%d spatial prm name %s  spatial tarcer name %s \n", m, param->prmnameS[k], param->trnameB[n]);
       }    
  }
 
@@ -698,8 +709,8 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
         n, tr->diagn, tr->inwc, tr->insed );
       fprintf(flog, "n=%d, tr->dissol=%d, tr->partic=%d \n",
         n, tr->dissol, tr->partic);
-      fprintf(flog, "n=%d, tr->diffuse=%d, tr->decay=%f \n",
-        n, tr->diffuse, tr->decay);
+      fprintf(flog, "n=%d, tr->diffuse=%d, tr->decay_days=%f \n",
+        n, tr->diffuse, tr->decay_days);
       fprintf(flog, "n=%d, tr->psize=%f, tr->b_dens=%f,  tr->i_conc=%f \n",
         n, tr->psize , tr->b_dens,  tr->i_conc );
 //2019
@@ -1042,7 +1053,7 @@ static void sed_optimization(sediment_t *sediment)
       param->n_vtransp_adsorb++;      
     }
 
-    if (!tracer->diagn && tracer->decay)
+    if (!tracer->diagn && tracer->decay_days)
     {
       param->vtransp_decay[param->n_vtransp_decay] = n;
       param->n_vtransp_decay++;
@@ -1091,6 +1102,11 @@ FILE *get_sed_params(FILE *fp, sediment_t *sediment)
     } else if (strcmp(fname, "auto") == 0) {
       sed_params_build(sediment);
       sed_params_auto(sediment);
+      return(NULL);
+    } else if (!get_rendered_sedparams(fname, sediment, 0)) {
+      sed_params_build(sediment);
+      sed_params_init(fp, sediment);  /* Read anything in the file */
+      get_rendered_sedparams(fname, sediment, 1); /* Overwrite */
       return(NULL);
     } else {
       for (i = 0; (init == NULL) && param_list[i].name; ++i) {

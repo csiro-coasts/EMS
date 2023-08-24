@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: opendump.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: opendump.c 6960 2021-12-17 03:17:27Z her127 $
  *
  */
 
@@ -109,7 +109,9 @@ int dump_open(parameters_t *params, char *name, int in_model)
   if ((params->nce2 + 1) != (int)jgridsize ||
       (params->nce1 + 1) != (int)igridsize)
     hd_quit
-      ("dump_open: Dimensions not compatible with numbers of cells/faces\n");
+      ("dump_open: Dimensions not compatible with numbers of cells/faces (%d !=%d, %d!=%d)\n");
+
+
   read_grid_atts(params, fid);
 
   if (in_model) {

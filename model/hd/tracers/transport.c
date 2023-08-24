@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 6720 2021-03-29 00:59:30Z her127 $
+ *  $Id: transport.c 6934 2021-10-27 02:36:22Z riz008 $
  *
  */
 
@@ -87,7 +87,6 @@ void calc_means_t(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void recalc_vel(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void flux_to_velocity(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void merge_volflux(geometry_t *window, window_t *windat, win_priv_t *wincon);
-int cg;
 
 /*-------------------------------------------------------------------*/
 /* Transport step                                                    */
@@ -1027,8 +1026,7 @@ void semi_lagrange_c(geometry_t *window,  /* Processing window */
   /*-----------------------------------------------------------------*/
   /* Trace the streamline back to the origin */
   for (cc = 1; cc <= wincon->vc; cc++) {
-    c = cg = cl[cc] = wincon->s1[cc];
-    cg = c;
+    c = cl[cc] = wincon->s1[cc];
     time_left = windat->dttr;
     u = nu[c];
     v = nv[c];
@@ -1889,14 +1887,14 @@ void semi_lagrange(geometry_t *window,  /* Processing window */
     }
   } else {
     for (cc = 1; cc <= wincon->vc; cc++) {
-      c = cg = wincon->s1[cc];
+      c = wincon->s1[cc];
       c2cc[c] = cc;
       ntr[c] = int_valo(window, wincon->wgt[c], wincon->lmap[cl[cc]], 
 			tr, wincon->osl);
     }
     if (wincon->osl > 1) {
       for (cc = 1; cc <= wincon->vc; cc++) {
-	c = cg = wincon->s1[cc];
+	c = wincon->s1[cc];
 	set_monotonic(wincon->osl, c, &ntr[c], tr, wincon->lmap[cl[cc]]);
       }
     }
@@ -2138,6 +2136,13 @@ int get_pos(geometry_t *window, int c, double nu, double nv, double nw,
 
 
 /* Note: diagnostics are written to the logfile */
+
+/* 
+ * FR, OCT 2021: THIS FUNCTION NO LONGER WORKS AS I'VE REMOVED THE GLOBAL int cg 
+ *               Doesn't look like anyone's calling it so if it needs
+ *               to be reinstated, we'll need to make sure there are
+ *               no multiple definitions of cg
+ */
 int get_pos_diag(geometry_t *window, int c, double nu, double nv, double nw,
 		 double *cx, double *cy, double *cz, double dt)
 {
@@ -2148,7 +2153,11 @@ int get_pos_diag(geometry_t *window, int c, double nu, double nv, double nw,
   double d, dd;
   double t = 0.0;
   int cd = 0;
+  int cg = -1;
 
+  /* force it to fail, in case its called. see comments above */
+  hd_quit("get_pos_diag: no longer supported");
+  
   /* Initialise */
   co = c;
   if (nu == SMALL)
@@ -6160,7 +6169,7 @@ void streamline_atc(geometry_t *window,  /* Processing window     */
 
   /*-----------------------------------------------------------------*/
   /* Trace the streamline back to the origin */
-  cg = cl[c] = c;
+  cl[c] = c;
   time_left = windat->dttr;
   u = nu[c];
   v = nv[c];

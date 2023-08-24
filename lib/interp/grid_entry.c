@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: grid_entry.c 6754 2021-04-07 00:56:54Z her127 $
+ *  $Id: grid_entry.c 7148 2022-07-07 00:26:44Z her127 $
  *
  */
 
@@ -109,6 +109,14 @@ static void set_interpolation_function(GRID_SPECS *gs, gridmap *gm, delaunay *di
 	interpolate_point = (void (*)(void*, point *)) nnhpi_interpolate;
 	rebuild = (void (*)(void*, point *)) nnhpi_modify_data;
       }
+    } else if (rule == GRID_NNA_SIBSON || rule == GRID_NNA_NONSIBSONIAN) {
+      interpolator = nnhpi_create(d, d->npoints);
+      if (rule == GRID_NNA_SIBSON)
+	nnhpi_set_rule(interpolator, SIBSON);
+      else
+	nnhpi_set_rule(interpolator, NON_SIBSONIAN);
+      interpolate_point = (void (*)(void*, point *)) nnhpi_interpolate;
+      rebuild = (void (*)(void*, point *)) nnhpi_modify_data;
     } else if (rule == GRID_LINEAR) {
       interpolator = lpi_build(d);
       rebuild = (void (*)(void*, point *)) lpi_rebuild;
@@ -164,6 +172,10 @@ static INTERP_RULE interp_rule_from_char(char *rule)
     return(GRID_NN_SIBSON);
   else if (strcasecmp("nn_non_sibson", rule) == 0)
     return(GRID_NN_NONSIBSONIAN);
+  else if (strcasecmp("nna_sibson", rule) == 0)
+    return(GRID_NNA_SIBSON);
+  else if (strcasecmp("nna_non_sibson", rule) == 0)
+    return(GRID_NNA_NONSIBSONIAN);
   else if (strcasecmp("average", rule) == 0)
     return(GRID_AVERAGE);
   else if (strcasecmp("quadratic", rule) == 0)
@@ -261,6 +273,8 @@ void grid_specs_destroy(GRID_SPECS *gs)
       else
 	nnhpi_destroy(gs->interpolator);
     }
+    else if (rule == GRID_NNA_SIBSON || rule == GRID_NNA_NONSIBSONIAN)
+      nnhpi_destroy(gs->interpolator);
     else if (rule == GRID_LINEAR)
       lpi_destroy(gs->interpolator);
     else if (rule == GRID_LINEAR)
@@ -450,7 +464,8 @@ int grid_interp(GRID_SPECS *gs)
       }
     }
   } else {
-    if (gs->type == GRID_NN_SIBSON || gs->type == GRID_NN_NONSIBSONIAN) {
+    if (gs->type == GRID_NN_SIBSON || gs->type == GRID_NN_NONSIBSONIAN ||
+	gs->type == GRID_NNA_SIBSON || gs->type == GRID_NNA_NONSIBSONIAN) {
       nnpi_interpolate_points(gs->nbathy, gs->pbathy, WMIN_DEF,
 			      gs->npout,  gs->pout);
     } else {

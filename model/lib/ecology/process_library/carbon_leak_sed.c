@@ -28,9 +28,9 @@
 #include "stringtable.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "carbon_leak_sed.h"
 
+int ginterface_getsedtopk(void *model, int b);
 
 typedef struct {
     double KO;
@@ -74,7 +74,7 @@ void carbon_leak_sed_calc(eprocess* p, void* pp)
   double porosity = c->porosity;
   column *col = c->col;
   double ba;
-  int topk_sed = einterface_getsedtopk(e->model, 0);
+  int topk_sed = ginterface_getsedtopk(e->model, 0);
      if (c->k_sed>1)  // if not in the bottom layer  return
 //    if (c->k_sed<topk_sed)  // if not in top layer return
 	   return;

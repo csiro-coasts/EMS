@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6728 2021-03-30 00:35:39Z her127 $
+ *  $Id: hd_params.h 7326 2023-04-11 02:25:42Z her127 $
  *
  */
 
@@ -115,6 +115,8 @@
 #define HST_NOK    32
 #define HST_FST    64
 #define HST_RESET  128
+#define HST_NOTES  256
+#define HST_MASTER 512
 
 /* Grid refinement codes */                                   
 #define NOZOOM    0
@@ -223,6 +225,9 @@
 #define OP_FAS          0x40000
 #define OP_FAT          0x80000
 #define OP_TILED        0x100000
+#define OP_WAVES        0x200000
+#define OP_IWRITE       0x400000
+#define OP_UGRID        0x800000
 
 /* Tidal boundary flags */
 #define TD_ETA          0x0002
@@ -251,6 +256,11 @@
 #define O_UPC  16
 #define O_COR  32
 
+/* OBC filein_dt flags */
+#define FI_ETA  1
+#define FI_VEL  2
+#define FI_TRA  4
+
 /* Stability adjustment method flags                                         */
 #define ORIGINAL         1       /* Original stability adjustment */
 #define SUB_STEP         2       /* Sub-time stepping stability adjustment */
@@ -275,6 +285,9 @@
 #define COMP_HEAT_MOM   0x080
 #define COMP_HEAT_NONE  0x100
 #define GHRSST          0x200
+#define COMP_LWI        0x400
+#define COMP_LWO        0x800
+#define COMP_SW        0x1000
 
 /* Salt flux options                                                         */
 #define BULK            4
@@ -381,6 +394,11 @@
 #define L_LSLIN       0x100
 #define L_NRST        0x200
 
+/* Kinetic energy formulation flags */
+#define K_FDM         0x000800
+#define K_GASS        0x001000
+#define K_YU          0x002000
+
 #define TR_FIRST      0x000001
 #define TR_LIND2      0x000002
 #define TR_LIND3      0x000004
@@ -455,6 +473,7 @@
 #define E1VAR         0x1000
 #define E2VAR         0x2000
 #define CLOSURE       0x4000
+#define OPTICAL       0x8000
 
 /* Velocity faces / centers to use in UPSTRM condition */
 #define CENTER        1
@@ -518,6 +537,7 @@
 #define VOLCONT      0x00000040
 #define CENTI        0x00000080
 #define CELLAREA     0x00000100
+#define SIMPHUNT     0x00000200
 
 /* Wind input */
 #define SPEED         2
@@ -555,11 +575,16 @@
 #define C_LEN          0x1000000 /* Cell area for length scale */
 
 /* Save input forcing flags */
-#define OTEMP          1
-#define OSALT          2
-#define OETA           4
-#define OVELU          128
-#define OVELV          256
+#define OTEMP          0x001
+#define OSALT          0x002
+#define OETA           0x004
+#define OVELU          0x008
+#define OVELV          0x010
+#define FTEMP          0x020
+#define FSALT          0x040
+#define FETA           0x080
+#define FVELU          0x100
+#define FVELV          0x200
 
 /* Eta relaxation flags */
 #define RELAX          1
@@ -624,10 +649,10 @@
 #define GLOBAL            0x0008
 #define MONOTONIC         0x0010
 #define EXACT             0x0020
-#define SUBSET            0x0040
+
 #define INEXACT           0x0080
-#define EQUALZ            0x0100
-#define UNEQUALZ          0x0200
+#define SP_DUMP           0x0100
+#define DO_OBC            0x0200
 #define SP_ORIGIN         0x0400
 #define SET_BDRY          0x0800
 #define SET_BDRY_ETA      0x1000
@@ -637,17 +662,19 @@
 #define SP_CHECK          0x10000
 #define BOTMLEFT          0x100000
 #define TOPRIGHT          0x200000
+#define SP_SIMPLEU        0x100000
+#define SP_SIMPLE         0x200000
 #define DIAGNOSE_BGC      0x400000
-#define LOCAL             0x800000
+#define DO_DZ             0x800000
 #define TR_CHECK          0x1000000
 #define SP_STRUCT         0x2000000
+#define SP_UGRID          0x0040
+#define SP_START1         0x200000
 #define MONGLOB           0x4000000
 #define CLIP              0x8000000
 #define SP_FFSL           0x10000000
 #define SP_U1VM           0x20000000
 #define DO_SWR            0x40000000
-#define DO_OBC            0x80000000
-#define SP_SET            0x100000
 #define U1STRUCT          0x0100
 #define U2STRUCT          0x0200
 #define SP_SET            0x100000
@@ -677,11 +704,18 @@
 #define STOKES_DRIFT      0x0800
 #define STOKES_WIND       0x1000
 #define SPECTRAL          0x2000
+#define W_FILE            0x4000
+#define W_COMP            0x8000
+#define W_SWAN            0x10000
+#define W_SWANW           0x20000
+#define W_SWANM           0x40000
+#define NEARSHORE         0x80000
 
 /* Specific humidity data */
 #define WETBULB           2
 #define DEWPOINT          4
 #define RELHUM            8
+#define SPECHUM           16
 
 /* Water types */
 #define TYPE_I    1
@@ -716,6 +750,7 @@
 #define V4201   0x000100
 #define V5342   0x000200
 #define V6257   0x000400
+#define V6898   0x000800
 
 /* Seasons */
 #define DAILY    -1
@@ -746,6 +781,8 @@
 #define DE_TR2            0x0400
 #define DE_TR3            0x0800
 #define V_HP              0x1000
+#define P_EX              0x2000
+#define P_IN              0x4000
 
 /* Dump tags */
 #define DF_ETA            0x0001
@@ -756,6 +793,7 @@
 #define DF_NOR            0x0020
 #define DF_TAN            0x0040
 #define DF_TILE           0x0080
+#define DF_OBC            0x0100
 
 /* DA flags */
 #define NO_DA             1
@@ -819,6 +857,8 @@
 #define RS_PSSSET  0x0800
 #define RS_ORIG    0x1000
 #define RS_PREV    0x2000
+#define RS_REC     0x4000
+#define RS_OPT     0x8000
 
 /* Process exclusion */
 #define EX_TRAN    0x0001
@@ -837,6 +877,17 @@
 #define WIN_REG    0x0040
 #define WIN_FILE   0x0080
 #define WIN_METIS  0x0100
+#define WIN_CHECK  0x0200
+
+/* Map type */
+#define WIN_READ   0x0001
+#define WIN_DUMP   0x0002
+#define GEOM_READ  0x0008
+#define GEOM_DUMP  0x0010
+#define GEOM_CHECK 0x0020
+
+/* METIS options */
+#define METIS_VOLUME_WEIGHTED 0x0001
 
 /* Point source/sinks */
 # define PSS_AW    0x0001
@@ -898,6 +949,7 @@
 #define TS_PRED    0x0200
 #define TS_GLIDER  0x0400
 #define TS_MINMAX  0x0800
+#define TS_ZINTERP 0x1000
 
 /* Unstructred types */
 #define US_TRI     0x0001
@@ -973,6 +1025,7 @@
 #define L_GHOST        2
 #define L_SED          4
 #define L_OUT          8
+#define L_OBC          16
 
 /* Degree heating diagnostic */
 #define DHW_NOAA   1
@@ -992,6 +1045,47 @@
 #define H_NC       0x040
 #define H_BTY      0x080
 #define H_MSH      0x100
+#define H_GWS      0x200
+#define H_GRAD     0x400
+
+/* GHRSST data types */
+#define G_OSTIA    0x001
+#define G_BOM      0x002
+#define G_HIM      0x004
+
+/* TS input type */
+#define TS_CONST   0x010
+#define TS_X       0x020
+#define TS_Y       0x040
+#define TS_Z       0x080
+
+/* Render flags */
+#define R_HYDRO    0x001
+#define R_SED      0x002
+#define R_ECO      0x004
+#define R_LIST     0x008
+#define R_DUMP     0x010
+
+/* Errorn norm diagnostic */
+#define N_ERRN     0x001
+#define N_TRA2D    0x002
+#define N_TRA3D    0x004
+#define N_SURF     0x008
+
+/* Local mapping flags */
+#define L_RV       0x001
+#define L_PV       0x002
+#define L_KE       0x004
+#define L_KG       0x008
+#define L_VO       0x010
+#define L_BC       0x020
+
+/* Mesh reorder */
+#define MR_READ    0x001
+#define MR_WRITE   0x002
+#define MR_WRITEX  0x004
+
+#define LV_DUP     0x001
 
 /* Misc */
 #define INV_BARO 8

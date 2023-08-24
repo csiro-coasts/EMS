@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 6712 2021-03-29 00:55:24Z her127 $
+ *  $Id: hd_init.c 7060 2022-03-16 01:57:13Z her127 $
  *
  */
 
@@ -136,6 +136,7 @@ hd_data_t *hd_init(FILE * prmfd)
 		     dumpdata->gridx, dumpdata->gridy, NULL, NULL);
 
   }
+
   if (params->runmode & (MANUAL | RE_ROAM | TRANS)) {
     if (dumpf)
       dump_read(geom, params, master, icdfid, timeindex);
@@ -302,7 +303,7 @@ hd_data_t *hd_init(FILE * prmfd)
     dump_write(dumpdata, ocdfid, 0L);
     dump_close(ocdfid);
     if (params->runmode & AUTO)
-      params_write(params, dumpdata);
+      params_write(params, dumpdata, params->oname);
     if (DEBUG("init_m"))
       dlog("init_m", "\nDumpfile %s created OK\n\n", tag);
   }
@@ -348,12 +349,13 @@ hd_data_t *hd_init(FILE * prmfd)
 
   /* Print the runtime diagnostics */
   write_run_setup(hd_data);
+  render_manage(master);
   if (strlen(master->opath)) {
     /* Write also to the output path */
     char buf[MAXSTRLEN];
     sprintf(buf, "%s%s", master->opath, setup_logfile);
     if (params->runno != 0.0)
-      sprintf(buf, "%ssetup%2.1f.txt", master->opath, params->runno);
+      sprintf(buf, "%ssetup%s.txt", master->opath, params->runnoc);
     strcpy(setup_logfile, buf);
     write_run_setup(hd_data);
   }
@@ -566,6 +568,7 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   master->nonlinear = params->nonlinear;
   master->calc_dens = params->calc_dens;
   master->roammode = params->roammode;
+  master->eta_ib = params->eta_ib;
   if (strlen(params->densname)) {
     tn = tracer_find_index(params->densname, master->ntr, master->trinfo_3d);
     if (tn >= 0 && tn < master->ntr)
@@ -708,6 +711,8 @@ void compute_constants(parameters_t *params,  /* Input parameter data
   /* Means */
   master->means = params->means;
   if (strlen(params->means_dt)) {
+    if (!forced_restart && master->meanc)
+      memset(master->meanc, 0, geom->sgsizS * sizeof(double));
     if (tm_scale_to_secs(params->means_dt, &master->means_dt))
       master->means_next = master->t + master->means_dt;
     else if (contains_token(params->means_dt, "YEARLY")) {
@@ -1158,7 +1163,30 @@ void compute_constants(parameters_t *params,  /* Input parameter data
 	hd_warn("Active relaxation ALERT requires mean elevation specified\n");
     }
   }
-
+  /* Render manager */
+  strcpy(master->rendername, params->rendername);
+  strcpy(master->renderpath, params->renderpath);
+  strcpy(master->renderdesc, params->renderdesc);
+  strcpy(master->renderrem, params->renderrem);
+  master->rendertype = (R_HYDRO|R_SED|R_ECO);
+  if (strlen(params->rendertype)) {
+    master->rendertype = 0;
+    if (contains_token(params->rendertype, "HYDRO") != NULL)
+      master->rendertype |= R_HYDRO;
+    if (contains_token(params->rendertype, "SED") != NULL)
+      master->rendertype |= R_SED;
+    if (contains_token(params->rendertype, "ECO") != NULL)
+      master->rendertype |= R_ECO;
+  }
+  master->renderopts = NONE;
+  if (strlen(params->renderopts)) {
+    master->renderopts = 0;
+    if (contains_token(params->renderopts, "LIST") != NULL)
+      master->renderopts |= R_LIST;
+    if (contains_token(params->renderopts, "DUMP") != NULL)
+      master->renderopts |= R_DUMP;
+  }
+  strcpy(master->ecosedconfig, params->ecosedconfig);
 #if defined(HAVE_SEDIMENT_MODULE)
   /* Sediments */
   master->do_sed = params->do_sed;

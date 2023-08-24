@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: zooplankton_large_spectral_grow_wc.c 6704 2021-03-24 01:17:22Z wil00y $
+ *  $Id: zooplankton_large_spectral_grow_wc.c 7198 2022-09-14 06:02:52Z bai155 $
  *
  */
 
@@ -27,8 +27,11 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "zooplankton_large_spectral_grow_wc.h"
+
+int ginterface_getwcbotk(void *model, int b);
+double ginterface_getcellz(void *model, int b, int k);
 
 typedef struct {
   int do_mb;                  /* flag */
@@ -500,15 +503,15 @@ void zooplankton_large_spectral_grow_wc_postcalc(eprocess* p, void* pp)
 
     /* Depths are -ve below mean sea level. */
     
-    wcbotk = einterface_getwcbotk(c->col->model, c->b);
-    z_bot = einterface_getcellz(c->col->model,c->b,wcbotk);
+    wcbotk = ginterface_getwcbotk(c->col->model, c->b);
+    z_bot = ginterface_getcellz(c->col->model,c->b,wcbotk);
     
     if (z_bot > -100.0){
       y[ws->ZooL_sv_i] = 0.0;
       return;
     }
     
-    z_centre = einterface_getcellz(c->col->model,c->b,c->k_wc);
+    z_centre = ginterface_getcellz(c->col->model,c->b,c->k_wc);
     
     y[ws->ZooL_sv_i] = - ws->ZLdvmrate;
     

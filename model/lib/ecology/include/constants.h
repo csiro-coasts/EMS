@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: constants.h 5908 2018-08-29 04:27:09Z bai155 $
+ *  $Id: constants.h 6940 2021-11-11 02:56:29Z bai155 $
  *
  */
 
@@ -98,6 +98,7 @@ extern double mgP2molP;         /* mol(P) mg(P)-1 */
 
 /* KWA #define MASSBALANCE_EPS 1.0e-10 */
 #define MASSBALANCE_EPS 1.0e-9
+#define MASSBALANCE_EPI_EPS 1.0e-6
 #define TRACERVALUE_EPS  1.0e-12
 
 

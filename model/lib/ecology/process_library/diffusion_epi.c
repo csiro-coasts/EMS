@@ -40,7 +40,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: diffusion_epi.c 6551 2020-05-10 23:15:52Z bai155 $
+ *  $Id: diffusion_epi.c 7199 2022-09-14 06:36:12Z bai155 $
  *
  */
 
@@ -56,8 +56,11 @@
 #include "cell.h"
 #include "column.h"
 #include "constants.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "diffusion_epi.h"
+
+int ginterface_gettracerdiagnflag(void* model, char* name);
+int ginterface_gettracerparticflag(void* model, char* name);
 
 #define NINC 5
 
@@ -143,8 +146,8 @@ void diffusion_epi_init(eprocess* p)
     ws->tracer_wc_i = NULL;
     ws->tracer_sed_i = NULL;
     for (i = 0; i < e->ntr; ++i) {
-      if (einterface_gettracerparticflag(e->model, e->tracernames[i]) ==  0 &&
-          einterface_gettracerdiagnflag(e->model, e->tracernames[i]) == 0) {
+      if (ginterface_gettracerparticflag(e->model, e->tracernames[i]) ==  0 &&
+          ginterface_gettracerdiagnflag(e->model, e->tracernames[i]) == 0) {
         if (ws->ntr % NINC == 0) {
           ws->tracer_wc_i = realloc(ws->tracer_wc_i, 
 				              (ws->ntr + NINC) * sizeof(int));

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: light_spectral_epi.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: light_spectral_epi.c 7217 2022-09-18 01:30:05Z bai155 $
  *
  */
 
@@ -26,9 +26,10 @@
 #include "eprocess.h"
 #include "column.h"
 #include "cell.h"
-#include "einterface.h"
 #include "light_spectral_epi.h"
 #include "constants.h"
+
+double ginterface_cellarea(void* hmodel, int b);
 
 typedef struct {
   /*
@@ -439,7 +440,7 @@ void light_spectral_epi_precalc(eprocess* p, void* pp)
 	
 	/* do calculation based on area on present cell dimension */
 	
-	area = einterface_cellarea(c->col->model,c->b); 
+	area = ginterface_cellarea(c->col->model,c->b); 
 	
 	RR = sqrt(area/PI);
 	ws->CHarea = 1.0;

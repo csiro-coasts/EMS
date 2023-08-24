@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 6682 2021-01-27 00:32:13Z riz008 $
+ *  $Id: dumpfile.c 7064 2022-03-16 01:58:29Z her127 $
  *
  */
 
@@ -168,6 +168,7 @@ static struct {
     "parray", df_parray_create, df_parray_write, df_parray_close, df_parray_reset, 0}, {
     "memory", df_memory_create, df_memory_write, df_memory_close, df_null_reset, 0}, {
     "sparse", df_sp_create, df_sp_write, df_sp_close, df_sp_reset, 1}, {
+    "ugrid", df_ugrid_create, df_ugrid_write, df_ugrid_close, df_ugrid_reset, 1}, {
     "mom", df_mom_create, df_mom_write, df_mom_close, df_mom_reset, 1}, {
     "roms", df_roms_create, df_roms_write, df_roms_close, df_roms_reset, 1}, {
     "roms-bdry", df_roms_create_bdry, df_roms_write_bdry, df_roms_close, df_roms_reset_bdry, 1}, {
@@ -1086,6 +1087,7 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
     }
     ++mapIndex;
   }
+  if (strcmp(list->type, "ugrid") == 0) create_ugrid_maps(dumpdata);
 
   if ( (df_func_map[mapIndex].tag == NULL) && !(params->runmode & PRE_MARVL) )
     hd_quit("dumpfile_init: '%s' is unknown output type.\n", buf);
@@ -1174,6 +1176,12 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   list->nz_sed = dumpdata->sednz;
   list->ns2 = dumpdata->ns2;
   list->ns3 = dumpdata->ns3;
+  list->nface2 = dumpdata->nface2;
+  list->nedge2 = dumpdata->nedge2;
+  list->nvertex2 = dumpdata->nvertex2;
+  list->nface3 = dumpdata->nface3;
+  list->nedge3 = dumpdata->nedge3;
+  list->nvertex3 = dumpdata->nvertex3;
 
   if (df_func_map[mapIndex].xyGridOutput) {
     sprintf(key, "file%d.i_range", f);
@@ -1386,7 +1394,10 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
   strcpy(dumpdata->trl, params->trl);
   sprintf(dumpdata->grid_name, "%s", params->grid_name);
   sprintf(dumpdata->grid_desc, "%s", params->grid_desc);
-  if (params->runno > 0) dumpdata->runno = params->runno;
+  if (params->runno > 0) {
+    dumpdata->runno = params->runno;
+    strcpy(dumpdata->runnoc, params->runnoc);
+  }
   if (type == 1) {
     FILE *ip, *op;
     int nf, nn, m, i;
@@ -1450,6 +1461,12 @@ void dumpfile_init(dump_data_t *dumpdata, double t, FILE * fp, int *n,
     list[nfiles].nfe1 = dumpdata->nfe1;
     list[nfiles].nce2 = dumpdata->nce2;
     list[nfiles].nfe2 = dumpdata->nfe2;
+    list[nfiles].nface2 = dumpdata->nface2;
+    list[nfiles].nedge2 = dumpdata->nedge2;
+    list[nfiles].nvertex2 = dumpdata->nvertex2;
+    list[nfiles].nface3 = dumpdata->nface3;
+    list[nfiles].nedge3 = dumpdata->nedge3;
+    list[nfiles].nvertex3 = dumpdata->nvertex3;
     list[nfiles].nz = dumpdata->nz;
     list[nfiles].nz_sed = dumpdata->sednz;
     list[nfiles].da_cycle = (NO_DA|DO_DA|NONE); // write in all cases
@@ -2679,14 +2696,6 @@ static void df_std_get_dimsizes(dump_file_t *df, df_std_var_t var,
 }
 
 
-/* Simple grid centred file format */
-
-#define VM_NONE 0
-#define VM_EAST 1
-#define VM_NORTH 2
-#define VM_MAG 3
-#define VM_DIRN 4
-
 /* Structure to describe each scalar time dep variable */
 typedef struct {
   int ndims;                    /* Number of spatial dimensions */
@@ -2959,7 +2968,8 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
   write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
   if (strlen(dumpdata->runcode))
     write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
@@ -3241,7 +3251,8 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
   write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CF-1.0");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
   if (strlen(dumpdata->runcode))
     write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
@@ -4202,6 +4213,42 @@ void nc_i_writesub_1d(int fid, int varid, size_t * start,
   nc_put_vara_int(fid, varid, nstart, count, &values[start[offset]]);
 }
 
+/* Write out a int 2d subsection.
+ */
+void nc_i_writesub_2d(int fid, int varid, size_t * start,
+                             size_t * count, int **values)
+{
+  /*UR-FIX for icc */
+  int nd = 0;
+  unsigned int offset = 0;      /* Has a record dimension = 1, else 0 */
+  int **nvals = NULL;
+  size_t nstart[4];
+  unsigned int i, j;
+  int status;
+
+  nc_inq_varndims(fid, varid, &nd);
+  offset = (nd > 2);
+  nvals = i_alloc_2d(count[offset + 1], count[offset]);
+  for (j = 0; j < count[offset]; ++j)
+    for (i = 0; i < count[offset + 1]; ++i)
+      nvals[j][i] = values[start[offset] + j][start[offset + 1] + i];
+
+  for (nstart[0] = start[0], i = offset; i < nd; ++i)
+    nstart[i] = 0;
+  /* 
+   * Comment out the following call and uncomment the lines below for
+   * debugging purposes. Presently checking the return status is bogus
+   * as in the case for nan's
+   */
+  nc_put_vara_int(fid, varid, nstart, count, nvals[0]);
+  /*
+    status = nc_put_vara_double(fid, varid, nstart, count, nvals[0]);
+    if (status != NC_NOERR)
+    hd_quit("dumpfile:nc_d_writesub_2d: %s\n", nc_strerror(status));
+  */
+  i_free_2d(nvals);
+}
+
 /* 
  * Write out an integer 3d subsection.
  */
@@ -4829,7 +4876,8 @@ void *df_parray_create(dump_data_t *dumpdata, dump_file_t *df)
   write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries");
   if (dumpdata->runno >= 0)
-    nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);
+    write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
+  /*nc_put_att_double(cdfid, NC_GLOBAL, "Run_ID", NC_DOUBLE, 1, &dumpdata->runno);*/
   if (strlen(dumpdata->runcode))
     write_text_att(cdfid, NC_GLOBAL, "Run_code", dumpdata->runcode);
   if (strlen(dumpdata->rev))
@@ -6531,6 +6579,12 @@ int set_transfiles(int fn, char *key, dump_data_t *dumpdata, dump_file_t *list,
       list[nf].nz_sed = dumpdata->sednz;
       list[nf].ns2 = dumpdata->ns2;
       list[nf].ns3 = dumpdata->ns3;
+      list[nf].nface2 = dumpdata->nface2;
+      list[nf].nedge2 = dumpdata->nedge2;
+      list[nf].nvertex2 = dumpdata->nvertex2;
+      list[nf].nface3 = dumpdata->nface3;
+      list[nf].nedge3 = dumpdata->nedge3;
+      list[nf].nvertex3 = dumpdata->nvertex3;
       list[nf].da_cycle = NONE;
       list[nf].private_data = list[nf].create(dumpdata, &list[nf]);
       list[nf].finished = 0;

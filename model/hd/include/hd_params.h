@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 6605 2020-09-07 03:27:23Z her127 $
+ *  $Id: hd_params.h 7318 2023-04-11 02:07:01Z her127 $
  *
  */
 
@@ -256,6 +256,9 @@
 #define COMP_HEAT_MOM   0x080
 #define COMP_HEAT_NONE  0x100
 #define GHRSST          0x200
+#define COMP_LWI        0x400
+#define COMP_LWO        0x800
+#define COMP_SW        0x1000
 
 /* Salt flux options                                                         */
 #define BULK            4
@@ -311,16 +314,18 @@
 #define PRE_MARVL       256
 
 /* Auto config options */
-#define A_ROAM_CPD1     2
-#define A_ROAM_CPD2     4
-#define A_ROAM_FLA      8
-#define A_ROAM_R1       16
-#define A_ROAM_R2       32
-#define A_RECOM_R1      64
-#define A_RECOM_R2      128
-#define A_ROAM_R3       256
-#define A_ROAM_R4       512
-#define A_ROAM_R5       1024
+#define A_ROAM_CPD1     0x000002
+#define A_ROAM_CPD2     0x000004
+#define A_ROAM_FLA      0x000008
+#define A_ROAM_R1       0x000010
+#define A_ROAM_R2       0x000020
+#define A_RECOM_R1      0x000040
+#define A_RECOM_R2      0x000080
+#define A_ROAM_R3       0x000100
+#define A_ROAM_R4       0x000200
+#define A_ROAM_R5       0x000400
+#define A_ROAM_R6       0x000800
+#define A_ROAM_R7       0x001000
 
 /* Advection scheme flags                                                    */
 #define ORDER1        0x000002
@@ -400,6 +405,7 @@
 #define E1VAR         0x1000
 #define E2VAR         0x2000
 #define CLOSURE       0x4000
+#define OPTICAL       0x8000
 
 /* Velocity faces / centers to use in UPSTRM condition */
 #define CENTER        1
@@ -592,11 +598,17 @@
 #define STOKES_DRIFT      0x0800
 #define STOKES_WIND       0x1000
 #define SPECTRAL          0x2000
+#define W_FILE            0x4000
+#define W_COMP            0x8000
+#define W_SWAN            0x10000
+#define W_SWANW           0x20000
+#define W_SWANM           0x40000
 
 /* Specific humidity data */
 #define WETBULB           2
 #define DEWPOINT          4
 #define RELHUM            8
+#define SPECHUM           16
 
 /* Water types */
 #define TYPE_I    1
@@ -812,6 +824,20 @@
 #define DHW_MEAN   8
 #define DHW_SNAP   16
 #define DHW_SET    32
+
+/* Output grid centred file format */
+#define VM_NONE    0
+#define VM_EAST    1
+#define VM_NORTH   2
+#define VM_MAG     3
+#define VM_DIRN    4
+
+/* Render flags */
+#define R_HYDRO    0x001
+#define R_SED      0x002
+#define R_ECO      0x004
+#define R_LIST     0x008
+#define R_DUMP     0x010
 
 /* Misc */
 #define INV_BARO 8

@@ -30,7 +30,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: phytoplankton_spectral_grow_wc.c 6669 2020-09-14 01:43:01Z bai155 $
+ *  $Id: phytoplankton_spectral_grow_wc.c 7221 2022-09-25 23:06:34Z bai155 $
  *
  */
 
@@ -46,8 +46,10 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+// #include "einterface.h"
 #include "phytoplankton_spectral_grow_wc.h"
+
+double ginterface_get_svel(void* model, char *name);
 
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
@@ -196,9 +198,9 @@ void phytoplankton_spectral_grow_wc_postinit(eprocess* p)
    * Define KI's here
    */
     // Must have the associated light model
-    if (!process_present(e,PT_WC, "light_spectral_wc"))
+    if (!process_present(e,PT_WC, "light_spectral_wc") && !process_present(e,PT_COL, "light_spectral_col"))
       emstag(LPANIC, "eco:phytoplankton_spectral_grow_wc_init",
-	     "Phytoplankton grow is specified to be spectral but light_spectral_wc process not found!");
+	     "Phytoplankton grow is specified to be spectral but light_spectral_wc or light_spectral_col process not found!");
     if (ws->large){
       ws->KI_i = find_index_or_add(e->cv_cell, "KI_l", e);
       ws->yCfac_i = find_index_or_add(e->cv_cell, "yCfac_l", e);
@@ -218,22 +220,22 @@ void phytoplankton_spectral_grow_wc_postinit(eprocess* p)
       
       if (ws->large){
 	
-	v1 = einterface_gettracersvel(e->model,"PhyL_N");
-	v2 = einterface_gettracersvel(e->model,"PhyL_NR");
-	v3 = einterface_gettracersvel(e->model,"PhyL_PR");
-	v4 = einterface_gettracersvel(e->model,"PhyL_Chl");
-	v5 = einterface_gettracersvel(e->model,"PhyL_I");
+	v1 = ginterface_get_svel(e->model,"PhyL_N");
+	v2 = ginterface_get_svel(e->model,"PhyL_NR");
+	v3 = ginterface_get_svel(e->model,"PhyL_PR");
+	v4 = ginterface_get_svel(e->model,"PhyL_Chl");
+	v5 = ginterface_get_svel(e->model,"PhyL_I");
 	
 	if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
 	  e->quitfn("Sinking rates of PhyL :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
 	}
       } else {
 	
-	v1 = einterface_gettracersvel(e->model,"PhyS_N");
-	v2 = einterface_gettracersvel(e->model,"PhyS_NR");
-	v3 = einterface_gettracersvel(e->model,"PhyS_PR");
-	v4 = einterface_gettracersvel(e->model,"PhyS_Chl");
-	v5 = einterface_gettracersvel(e->model,"PhyS_I");
+	v1 = ginterface_get_svel(e->model,"PhyS_N");
+	v2 = ginterface_get_svel(e->model,"PhyS_NR");
+	v3 = ginterface_get_svel(e->model,"PhyS_PR");
+	v4 = ginterface_get_svel(e->model,"PhyS_Chl");
+	v5 = ginterface_get_svel(e->model,"PhyS_I");
 	
 	if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
 	  e->quitfn("Sinking rates of PhyS :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);

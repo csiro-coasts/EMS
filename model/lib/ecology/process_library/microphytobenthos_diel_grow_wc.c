@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: microphytobenthos_diel_grow_wc.c 6695 2021-03-24 01:09:38Z wil00y $
+ *  $Id: microphytobenthos_diel_grow_wc.c 7207 2022-09-16 07:28:14Z bai155 $
  *
  */
 
@@ -27,8 +27,9 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
 #include "microphytobenthos_diel_grow_wc.h"
+
+double ginterface_get_svel(void* model, char *name);
 
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
@@ -174,9 +175,9 @@ void microphytobenthos_diel_grow_wc_postinit(eprocess* p)
    * Not valid during a pre_build (RECOM)
    */
   if (!e->pre_build) {
-    v1 = einterface_gettracersvel(e->model,"MPB_N");
-    v2 = einterface_gettracersvel(e->model,"MPB_NR");
-    v5 = einterface_gettracersvel(e->model,"MPB_I");
+    v1 = ginterface_get_svel(e->model,"MPB_N");
+    v2 = ginterface_get_svel(e->model,"MPB_NR");
+    v5 = ginterface_get_svel(e->model,"MPB_I");
     
     if ((v1!=v2)||(v1!=v5)){
       printf("Mass conservation violation due to microalgae reserves \n");

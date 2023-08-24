@@ -40,7 +40,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bio_opt.c 6680 2021-01-08 00:48:53Z bai155 $
+ *  $Id: bio_opt.c 7194 2022-09-13 10:33:50Z bai155 $
  *
  */
 
@@ -793,6 +793,7 @@ bio_opt_prop *bio_opt_init(ecology* e)
  // b->yC_divinyl_chlb = d_alloc_1d(num_wave);
   b->yC_myxoxanthophyll = d_alloc_1d(num_wave);
   b->yC_alloxanthin = d_alloc_1d(num_wave);
+  b->yC_allophycocyanin = d_alloc_1d(num_wave);
   b->yC_19_BF = d_alloc_1d(num_wave);
   b->yC_19_HF = d_alloc_1d(num_wave);
   b->yC_fucoxanthin = d_alloc_1d(num_wave);
@@ -804,30 +805,33 @@ bio_opt_prop *bio_opt_init(ecology* e)
   b->yC_microplankton = d_alloc_1d(num_wave); 
   b->yC_tricho = d_alloc_1d(num_wave);
   b->yC_rhodomonas_duplex = d_alloc_1d(num_wave);  
+
+  if (num_rsr_waves) {
   
-  b->yC_diadinoxanthin_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_diatoxanthin_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_chlorophylla_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_chlorophyllc2_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_peridinin_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_betacarotene_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_zeaxanthin_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_chlorophyllb_rsr = d_alloc_1d(num_rsr_waves);
-//  b->yC_divinyl_chlb_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_myxoxanthophyll_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_alloxanthin_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_19_BF_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_19_HF_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_fucoxanthin_rsr = d_alloc_1d(num_rsr_waves); 
-  b->yC_echinenone_rsr = d_alloc_1d (num_rsr_waves);
-  b->yC_PE_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_PC_rsr = d_alloc_1d(num_rsr_waves);  
-  b->yC_symbiodinium_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_picoplankton_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_rhodomonas_duplex_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_microplankton_rsr = d_alloc_1d(num_rsr_waves);
-  b->yC_tricho_rsr = d_alloc_1d(num_rsr_waves);
-  
+    b->yC_diadinoxanthin_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_diatoxanthin_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_chlorophylla_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_chlorophyllc2_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_peridinin_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_betacarotene_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_zeaxanthin_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_chlorophyllb_rsr = d_alloc_1d(num_rsr_waves);
+    //  b->yC_divinyl_chlb_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_myxoxanthophyll_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_alloxanthin_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_19_BF_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_19_HF_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_fucoxanthin_rsr = d_alloc_1d(num_rsr_waves); 
+    b->yC_echinenone_rsr = d_alloc_1d (num_rsr_waves);
+    b->yC_PE_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_PC_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_allophycocyanin_rsr = d_alloc_1d(num_rsr_waves); 
+    b->yC_symbiodinium_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_picoplankton_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_rhodomonas_duplex_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_microplankton_rsr = d_alloc_1d(num_rsr_waves);
+    b->yC_tricho_rsr = d_alloc_1d(num_rsr_waves);
+  }
   /* mass-specific (m^2/g) absorption (aC) and scattering (bC) coefficients of sediments from Stramski et al. 2007 
 
   ILL Illite,Source Clay Minerals Repository, University 
@@ -894,55 +898,57 @@ bio_opt_prop *bio_opt_init(ecology* e)
   b->bC_MON1 = d_alloc_1d(num_wave);
   b->bC_MON2 = d_alloc_1d(num_wave);
   b->bC_SAN1 = d_alloc_1d(num_wave);
-  
-  b->aC_AUS1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_AUS2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_ICE1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_ICE2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_ICE3_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_KUW1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_KUW2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_NIG1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_SAH1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_SAH2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_OAH1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_OAH2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_CAL1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_CAL2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_QUA1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_ILL1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_ILL2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_KAO1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_KAO2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_KAO3_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_MON1_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_MON2_rsr = d_alloc_1d(num_rsr_waves);
-  b->aC_SAN1_rsr = d_alloc_1d(num_rsr_waves);
 
-  b->bC_AUS1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_AUS2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_ICE1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_ICE2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_ICE3_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_KUW1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_KUW2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_NIG1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_SAH1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_SAH2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_OAH1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_OAH2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_CAL1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_CAL2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_QUA1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_ILL1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_ILL2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_KAO1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_KAO2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_KAO3_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_MON1_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_MON2_rsr = d_alloc_1d(num_rsr_waves);
-  b->bC_SAN1_rsr = d_alloc_1d(num_rsr_waves);
-
+  if (num_rsr_waves) {
+    
+    b->aC_AUS1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_AUS2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_ICE1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_ICE2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_ICE3_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_KUW1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_KUW2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_NIG1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_SAH1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_SAH2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_OAH1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_OAH2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_CAL1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_CAL2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_QUA1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_ILL1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_ILL2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_KAO1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_KAO2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_KAO3_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_MON1_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_MON2_rsr = d_alloc_1d(num_rsr_waves);
+    b->aC_SAN1_rsr = d_alloc_1d(num_rsr_waves);
+    
+    b->bC_AUS1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_AUS2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_ICE1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_ICE2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_ICE3_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_KUW1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_KUW2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_NIG1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_SAH1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_SAH2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_OAH1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_OAH2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_CAL1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_CAL2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_QUA1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_ILL1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_ILL2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_KAO1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_KAO2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_KAO3_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_MON1_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_MON2_rsr = d_alloc_1d(num_rsr_waves);
+    b->bC_SAN1_rsr = d_alloc_1d(num_rsr_waves);
+  }
   double HPLC_wave[563] = {800.2, 799.3, 798.5, 797.6, 796.7, 795.9, 795.0, 794.2, 793.3, 792.5, 791.6, 790.8, 789.9, 789.1, 788.2, 787.4, 786.5, 785.7, 784.8, 783.9, 783.1, 782.2, 781.4, 780.5, 779.7, 778.8, 778.0, 777.1, 776.3, 775.4, 774.6, 773.7, 772.9, 772.0, 771.1, 770.3, 769.4, 768.6, 767.7, 766.9, 766.0, 765.2, 764.3, 763.5, 762.6, 761.8, 760.9, 760.1, 759.2, 758.3, 757.5, 756.6, 755.8, 754.9, 754.1, 753.2, 752.4, 751.5, 750.7, 749.8, 749.0, 748.1, 747.3, 746.4, 745.5, 744.7, 743.8, 743.0, 742.1, 741.3, 740.4, 739.6, 738.7, 737.9, 737.0, 736.2, 735.3, 734.5, 733.6, 732.7, 731.9, 731.0, 730.2, 729.3, 728.5, 727.6, 726.8, 725.9, 725.1, 724.2, 723.4, 722.5, 721.7, 720.8, 719.9, 719.1, 718.2, 717.4, 716.5, 715.7, 714.8, 714.0, 713.1, 712.3, 711.4, 710.6, 709.7, 708.9, 708.0, 707.1, 706.3, 705.4, 704.6, 703.7, 702.9, 702.0, 701.2, 700.3, 699.5, 698.6, 697.8, 696.9, 696.1, 695.2, 694.3, 693.5, 692.6, 691.8, 690.9, 690.1, 689.2, 688.4, 687.5, 686.7, 685.8, 685.0, 684.1, 683.3, 682.4, 681.5, 680.7, 679.8, 679.0, 678.1, 677.3, 676.4, 675.6, 674.7, 673.9, 673.0, 672.2, 671.3, 670.5, 669.6, 668.7, 667.9, 667.0, 666.2, 665.3, 664.5, 663.6, 662.8, 661.9, 661.1, 660.2, 659.4, 658.5, 657.7, 656.8, 655.9, 655.1, 654.2, 653.4, 652.5, 651.7, 650.8, 650.0, 649.1, 648.3, 647.4, 646.6, 645.7, 644.9, 644.0, 643.1, 642.3, 641.4, 640.6, 639.7, 638.9, 638.0, 637.2, 636.3, 635.5, 634.6, 633.8, 632.9, 632.1, 631.2, 630.3, 629.5, 628.6, 627.8, 626.9, 626.1, 625.2, 624.4, 623.5, 622.7, 621.8, 621.0, 620.1, 619.3, 618.4, 617.5, 616.7, 615.8, 615.0, 614.1, 613.3, 612.4, 611.6, 610.7, 609.9, 609.0, 608.2, 607.3, 606.5, 605.6, 604.7, 603.9, 603.0, 602.2, 601.3, 600.5, 599.6, 598.8, 597.9, 597.1, 596.2, 595.4, 594.5, 593.7, 592.8, 591.9, 591.1, 590.2, 589.4, 588.5, 587.7, 586.8, 586.0, 585.1, 584.3, 583.4, 582.6, 581.7, 580.9, 580.0, 579.1, 578.3, 577.4, 576.6, 575.7, 574.9, 574.0, 573.2, 572.3, 571.5, 570.6, 569.8, 568.9, 568.1, 567.2, 566.3, 565.5, 564.6, 563.8, 562.9, 562.1, 561.2, 560.4, 559.5, 558.7, 557.8, 557.0, 556.1, 555.3, 554.4, 553.5, 552.7, 551.8, 551.0, 550.1, 549.3, 548.4, 547.6, 546.7, 545.9, 545.0, 544.2, 543.3, 542.5, 541.6, 540.7, 539.9, 539.0, 538.2, 537.3, 536.5, 535.6, 534.8, 533.9, 533.1, 532.2, 531.4, 530.5, 529.7, 528.8, 527.9, 527.1, 526.2, 525.4, 524.5, 523.7, 522.8, 522.0, 521.1, 520.3, 519.4, 518.6, 517.7, 516.9, 516.0, 515.1, 514.3, 513.4, 512.6, 511.7, 510.9, 510.0, 509.2, 508.3, 507.5, 506.6, 505.8, 504.9, 504.1, 503.2, 502.3, 501.5, 500.6, 499.8, 498.9, 498.1, 497.2, 496.4, 495.5, 494.7, 493.8, 493.0, 492.1, 491.3, 490.4, 489.5, 488.7, 487.8, 487.0, 486.1, 485.3, 484.4, 483.6, 482.7, 481.9, 481.0, 480.2, 479.3, 478.5, 477.6, 476.7, 475.9, 475.0, 474.2, 473.3, 472.5, 471.6, 470.8, 469.9, 469.1, 468.2, 467.4, 466.5, 465.7, 464.8, 463.9, 463.1, 462.2, 461.4, 460.5, 459.7, 458.8, 458.0, 457.1, 456.3, 455.4, 454.6, 453.7, 452.9, 452.0, 451.1, 450.3, 449.4, 448.6, 447.7, 446.9, 446.0, 445.2, 444.3, 443.5, 442.6, 441.8, 440.9, 440.1, 439.2, 438.3, 437.5, 436.6, 435.8, 434.9, 434.1, 433.2, 432.4, 431.5, 430.7, 429.8, 429.0, 428.1, 427.3, 426.4, 425.5, 424.7, 423.8, 423.0, 422.1, 421.3, 420.4, 419.6, 418.7, 417.9, 417.0, 416.2, 415.3, 414.5, 413.6, 412.7, 411.9, 411.0, 410.2, 409.3, 408.5, 407.6, 406.8, 405.9, 405.1, 404.2, 403.4, 402.5, 401.7, 400.8, 399.9, 399.1, 398.2, 397.4, 396.5, 395.7, 394.8, 394.0, 393.1, 392.3, 391.4, 390.6, 389.7, 388.9, 388.0, 387.1, 386.3, 385.4, 384.6, 383.7, 382.9, 382.0, 381.2, 380.3, 379.5, 378.6, 377.8, 376.9, 376.1, 375.2, 374.3, 373.5, 372.6, 371.8, 370.9, 370.1, 369.2, 368.4, 367.5, 366.7, 365.8, 365.0, 364.1, 363.3, 362.4, 361.5, 360.7, 359.8, 359.0, 358.1, 357.3, 356.4, 355.6, 354.7, 353.9, 353.0, 352.2, 351.3, 350.5, 349.6, 348.7, 347.9, 347.0, 346.2, 345.3, 344.5, 343.6, 342.8, 341.9, 341.1, 340.2, 339.4, 338.5, 337.7, 336.8, 335.9, 335.1, 334.2, 333.4, 332.5, 331.7, 330.8, 330.0, 329.1, 328.3, 327.4, 326.6, 325.7, 324.9, 324.0, 323.1, 322.3, 321.4, 320.6};
 
   double PE_wave[144]={403.4, 406.4, 409.1, 414.4, 417.4, 421.4, 430.1, 437.5, 441.9, 445.6, 450.3, 453.6, 455.0, 459.0, 460.7, 461.7, 466.0, 468.1, 469.7, 472.4, 473.1, 474.1, 477.2, 478.2, 478.9, 480.2, 480.21, 481.6, 483.6, 483.9, 484.3, 486.0, 486.6, 486.7, 488.0, 488.2, 488.3, 490.0, 491.4, 492.1, 493.8, 496.8, 498.1, 498.12, 499.4, 500.1, 500.4, 500.7, 501.4, 502.1, 502.4, 502.7, 504.4, 505.0, 506.0, 512.4, 512.7, 514.8, 516.8, 517.8, 518.1, 518.5, 521.2, 521.8, 522.0, 524.5, 525.9, 526.6, 529.3, 530.6, 532.0, 535.3, 537.0, 539.7, 542.0, 547.7, 551.7, 554.1, 555.8, 558.8, 560.5, 561.2, 563.9, 565.5, 568.9, 569.5, 570.5, 570.51, 571.2, 572.2, 571.5, 571.8, 572.5, 572.6, 572.8, 573.1, 573.12, 573.4, 574.1, 574.2, 574.4, 574.5, 574.6, 574.7, 575.7, 576.3, 576.31, 577.0, 577.3, 577.31, 577.32, 577.6, 577.9, 578.6, 578.61, 578.9, 578.91, 579.2, 580.2, 581.9, 582.2, 582.5, 583.2, 583.5, 585.2, 585.2, 586.5, 588.5, 594.8, 600.2, 604.2, 612.2, 619.9, 626.6, 639.7, 647.4, 661.5, 670.2, 685.9, 691.6, 706.3, 713.7, 727.1, 738.4};
@@ -1174,7 +1180,23 @@ for (ww=0; ww<551; ww++){
   if (num_rsr_waves)
     interp1d(HPLC_wave_acetone, HPLC_divinyl_chlb_tmp, 563, rsr_waves, b->yC_divinyl_chlb_rsr, num_rsr_waves);*/
 
- interp1d(HPLC_wave_acetone, HPLC_myxoxanthophyll_tmp, 563, wave, b->yC_myxoxanthophyll, num_wave);
+  interp1d(HPLC_wave_acetone, HPLC_myxoxanthophyll_tmp, 563, wave, b->yC_myxoxanthophyll, num_wave);
+
+ // Add: allophycocyanin
+
+  double APC_wave[52] = {405.34, 417.36, 435.40, 446.08, 454.10, 471.46, 478.81, 492.17, 502.19, 515.55, 521.56, 532.25, 538.93, 544.27, 547.61, 557.63, 562.97,	
+			 568.98, 575.66, 585.01, 593.70, 598.37, 601.71, 605.05, 609.06, 613.07, 619.08, 624.42, 633.11, 637.78, 641.79, 644.46, 646.46, 648.47,
+			 651.14, 654.48, 657.82, 659.16, 661.16, 661.83, 663.83, 664.50, 667.84, 669.17, 674.52, 679.19, 690.55, 703.24, 723.95, 736.64, 745.32, 
+			 750.00};
+  double APC_allo[52] = {0.000458, 0.000388, 0.000247, 0.000229, 0.000159, 0.000123, 0.000159, 0.000176, 0.000194, 0.000264, 0.000370, 0.000476, 0.000599, 0.000758, 
+			 0.000846, 0.001128, 0.001357, 0.001604, 0.001868, 0.002362, 0.003014, 0.003208, 0.003402, 0.003525, 0.003666, 0.003754, 0.003842, 0.003930, 
+			 0.004018, 0.004018, 0.004142, 0.004441, 0.004759, 0.005023, 0.005129, 0.004952, 0.004406, 0.003701, 0.003155, 0.002644, 0.002432, 0.002009, 
+			 0.001234, 0.000952, 0.000441, 0.000159, 0.000088, 0.000106, 0.000070, 0.000053, 0.000053, 0.000070};
+
+  interp1d(APC_wave, APC_allo, 52, wave, b->yC_allophycocyanin, num_wave);
+
+  if (num_rsr_waves)
+    interp1d(APC_wave, APC_allo, 52, rsr_waves, b->yC_allophycocyanin_rsr, num_rsr_waves);
 
   if (num_rsr_waves)
     interp1d(HPLC_wave_acetone, HPLC_myxoxanthophyll_tmp, 563, rsr_waves, b->yC_myxoxanthophyll_rsr, num_rsr_waves);
@@ -1580,7 +1602,7 @@ double SGHabsorbance[1467] = {0.73083931, 0.719744441, 0.718474962, 0.715785638,
    * Need only do this once
    */
  
- // if (einterface_get_win_num(e->model) == 1) {
+ // if (ginterface_get_win_num(e->model) == 1) {
     eco_write_setup(e,"*********************************************************** \n");    
     eco_write_setup(e,"Spectral grid calculated in bio_opt.c \n \n");
     eco_write_setup(e,"Centre of waveband (edge): \n");
@@ -1798,6 +1820,7 @@ void bio_opt_free(bio_opt_prop *b)
   d_free_1d(b->yC_myxoxanthophyll);  
   d_free_1d(b->yC_PE);
   d_free_1d(b->yC_PC);
+  d_free_1d(b->yC_allophycocyanin);
 
    if (b->yC_diadinoxanthin_rsr) {
      d_free_1d(b->yC_diadinoxanthin_rsr);
@@ -1807,10 +1830,14 @@ void bio_opt_free(bio_opt_prop *b)
      d_free_1d(b->yC_peridinin_rsr);
      d_free_1d(b->yC_betacarotene_rsr);
      d_free_1d(b->yC_echinenone_rsr); 
-     d_free_1d(b->yC_myxoxanthophyll_rsr);   
+     d_free_1d(b->yC_myxoxanthophyll_rsr);
      d_free_1d(b->yC_PE_rsr);
      d_free_1d(b->yC_PC_rsr);
    }
+
+   if (b->yC_allophycocyanin_rsr)
+     d_free_1d(b->yC_allophycocyanin_rsr);
+
    d_free_1d(b->aC_AUS1);
    d_free_1d(b->aC_AUS2);
    d_free_1d(b->aC_ICE1);

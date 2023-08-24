@@ -63,7 +63,9 @@ GSLLIB=@GSLLIB@
 MPI_INC=@MPI_INC@
 MPI_LIB=@MPI_LIB@
 
-LDFLAGS := $(LDFLAGS) -rdynamic
+SWANLIB=@SWANLIB@
+
+LDFLAGS := $(LDFLAGS) -rdynamic @SWANRPATH@
 
 # Generate include/svn_rev.h
 JUNK:=$(shell ../../conf/gen_svn_rev.sh ../..)
@@ -96,6 +98,8 @@ forcings/vel_relax.o forcings/crash.o forcings/regulate.o forcings/dhw.o
 
 GINTEROBJS = ginterface/ginterface.o
 
+RENDEROBJS = render/render_manager.o render/render_globals.o
+
 INOBJS= inputs/sourcesink.o inputs/choosedump.o inputs/opendump.o \
 inputs/readdump.o inputs/readparam.o inputs/readparam_t.o inputs/readparam_r.o
 
@@ -111,7 +115,7 @@ MOMOBJS=momentum/vel2d.o momentum/vel3d.o momentum/mommix.o momentum/mommisc.o m
 
 OUTOBJS=outputs/closedump.o outputs/createdump.o outputs/writedump.o \
 outputs/dumpfile.o outputs/writeatts.o outputs/landfill.o outputs/timeseries.o \
-outputs/dumpdata.o outputs/df_sparse.o outputs/mom_grid.o outputs/df_mom.o outputs/roms_grid.o outputs/df_roms.o
+outputs/dumpdata.o outputs/df_sparse.o outputs/mom_grid.o outputs/df_mom.o outputs/roms_grid.o outputs/df_roms.o outputs/df_ugrid.o
 
 PTOBJS = particles/pt.o
 
@@ -125,7 +129,7 @@ tracers/transport.o tracers/regions.o
 
 
 MODELOBJS=$(BDRYOBJS) $(CTRLOBJS) $(DASSIMOBJ) $(DEBUGOBJS) $(DENOBJS) $(DIAGOBJS) \
-$(ECOOBJS) $(FRCOBJS) $(GINTEROBJS) $(INOBJS) $(MASTOBJS) $(MISCOBJS) $(MIXOBJS) $(MOMOBJS) \
+$(ECOOBJS) $(FRCOBJS) $(GINTEROBJS) $(RENDEROBJS) $(INOBJS) $(MASTOBJS) $(MISCOBJS) $(MIXOBJS) $(MOMOBJS) \
 $(OUTOBJS) $(PTOBJS) $(SEDOBJS) $(SLAVEOBJS) $(TRACEROBJS)
 
 ALLINCS=include/boundary.h include/hd.h \
@@ -194,7 +198,7 @@ installdocs: docs
 	chmod -R o+rX /home/software/WWW/models/meco
 
 shoc:    $(ALLINCS) $(MODELOBJS)
-	$(CXX) $(CFLAGS) -o shoc $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GSLLIB) $(DALIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(MLIB)  
+	$(CXX) $(CFLAGS) -o shoc $(MODELOBJS) $(LDFLAGS) $(SEDLIB) $(ECOLIB) $(TSLIB) $(WAVELIB) $(PROJLIB) $(GSLLIB) $(DALIB) $(EMSLIB) $(NETCDFLIB) $(MPI_LIB) $(SWANLIB) $(MLIB)  
 
 force_test_model:
 	rm -f shoc gendump printdump

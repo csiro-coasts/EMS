@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: rh.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: rh.c 6954 2021-12-17 03:15:09Z her127 $
  *
  */
 
@@ -39,18 +39,31 @@ int rh_init(sched_event_t *event)
 
   data = (rh_data_t *)malloc(sizeof(rh_data_t));
   schedSetPrivateData(event, data);
-  if ((data->ts = frcw_read_cell_ts(master, params->rh, params->rh_dt,
+
+  if (!(master->sh_f & (WETBULB|DEWPOINT))) {
+    if (data->ts = frcw_read_cell_ts(master, params->rh, params->rh_dt,
                               "humidity", "%", &data->dt, &data->id,
-                              &master->rh)) == NULL)
-    data->ts = frc_read_cell_ts(master, params->rh, params->rh_dt,
-				"humidity", "percent", &data->dt, &data->id,
-				&master->rh);
+				     &master->rh))
+      master->sh_f = RELHUM;
+    else if (data->ts = frcw_read_cell_ts(master, params->rh, params->rh_dt,
+					 "humidity", "percent", &data->dt, &data->id,
+					 &master->rh))
+      master->sh_f = RELHUM;
+    else if (data->ts = frcw_read_cell_ts(master, params->rh, params->rh_dt,
+					 "rhumidity", "kgkg-1", &data->dt, &data->id,
+					 &master->rh))
+      master->sh_f = SPECHUM;
+    else if (data->ts = frcw_read_cell_ts(master, params->rh, params->rh_dt,
+					 "rhumidity", "kg/kg", &data->dt, &data->id,
+					 &master->rh))
+      master->sh_f = SPECHUM;
+  }
 
   if (data->ts == NULL) {
     free(data);
     return 0;
   }
-  if (master->sh_f & NONE) master->sh_f = RELHUM;
+
 
   return 1;
 }
@@ -59,10 +72,11 @@ double rh_event(sched_event_t *event, double t)
 {
   master_t *master = (master_t *)schedGetPublicData(event);
   rh_data_t *data = (rh_data_t *)schedGetPrivateData(event);
+  double fact = (master->sh_f & SPECHUM) ? 1.0 : 0.01;
 
   if (t >= (event->next_event - SEPS)) {
-    /* Humidity, convert to fraction (0-1) */
-    frc_ts_eval_grid(master, t, data->ts, data->id, master->rh, 0.01);
+    /* Relative humidity, convert to fraction (0-1) */
+    frc_ts_eval_grid(master, t, data->ts, data->id, master->rh, fact);
     event->next_event += data->dt;
   }
 

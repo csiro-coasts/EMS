@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdrycond.c 6621 2020-09-08 01:32:46Z her127 $
+ *  $Id: bdrycond.c 6878 2021-07-29 00:43:36Z her127 $
  *
  */
 
@@ -416,7 +416,7 @@ void set_OBC(geometry_t *window,   /* Processing window              */
       j = open->ini[ee];
       c = window->e2c[e][j];
       c2 = window->m2d[c];
-      if (window->gridz[c1] > windat->eta[c2]) continue;
+      if (window->gridz[c] > windat->eta[c2]) continue;
       c1 = window->e2c[e][0];
       c2 = window->e2c[e][1];
       sum[e2] += wincon->g * md[e2] * (windat->dens[c1] - windat->dens[c2]) * dz[c];

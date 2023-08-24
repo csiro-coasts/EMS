@@ -9,6 +9,8 @@
  *  Growth of trichodesmium from dissovled nutrients and N fixation.
  *  Variable sinking rate dependent on cell density, a function of carbon reserves.
  *
+ *  Notes: Uses standard Q10 temperature dependence (tfactor) unless both Tricho_topt & Tricho_niche in parameter list.
+ * 
  *  Reference: Robson, B. J., M. E. Baird and K. A. Wild-Allen. (2013). A physiological model for the marine cyanobacteria, 
  *             Trichodesmium. In Piantadosi, J., Anderssen, R.S. and Boland J. (eds) MODSIM2013, 20th International Congress on Modelling 
  *             and Simulation. Modelling and Simulation Society of Australia and New Zealand, December 2013, pp. 1652-1658. ISBN: 978-0-9872143-3-1. 
@@ -34,8 +36,10 @@
 #include "eprocess.h"
 #include "cell.h"
 #include "column.h"
-#include "einterface.h"
+//#include "einterface.h"
 #include "trichodesmium_spectral_grow_wc.h"
+
+double ginterface_get_svel(void* model, char *name);
 
 #define EPS_DIN 1.0e-20
 #define EPS_DIP 1.0e-20
@@ -62,6 +66,8 @@ typedef struct {
 
   double fnitro;
   double fNfix;
+
+  int tricho_temp_function;
 
   /*  tracers   */
 
@@ -97,6 +103,10 @@ typedef struct {
   int Tfactor_i;
   int vis_i;
   int umax_i;
+  
+  int Temp_i;
+  double Tricho_topt;
+  double Tricho_niche;
 
 } workspace;
 
@@ -107,7 +117,7 @@ void trichodesmium_spectral_grow_wc_init(eprocess* p)
   workspace* ws = malloc(sizeof(workspace));
   
   p->workspace = ws;
-  
+ 
   /*  parameters */
   
   ws->p_min = get_parameter_value(e, "p_min");
@@ -159,7 +169,20 @@ void trichodesmium_spectral_grow_wc_init(eprocess* p)
     eco_write_setup(e,"Code default of Tricho_fNfix = %e \n",ws->fNfix);
   }
 
+  ws->Tricho_topt = try_parameter_value(e, "Tricho_topt");
+  ws->Tricho_niche = try_parameter_value(e, "Tricho_niche");
+  
+  if (isnan(ws->Tricho_topt) || isnan(ws->Tricho_niche)){
+    ws->tricho_temp_function = 0;
+    eco_write_setup(e,"Using generic temperature function for Trichodesmium \n");
+  }else{
+    ws->tricho_temp_function = 1;
+    eco_write_setup(e,"Using bespoke temperature function for Trichodesmium \n");
+  }
+  
   /* tracers */
+
+  ws->Temp_i = e->find_index(tracers, "Temp", e);
 
   ws->Tricho_N_i = e->find_index(tracers, "Tricho_N", e);
   ws->Tricho_NR_i = e->find_index(tracers, "Tricho_NR", e);
@@ -216,9 +239,9 @@ void trichodesmium_spectral_grow_wc_postinit(eprocess* p)
    * Define KI's here
    */
  
-    if (!process_present(e,PT_WC, "light_spectral_wc"))
+    if (!process_present(e,PT_WC, "light_spectral_wc") && !process_present(e,PT_COL, "light_spectral_col"))
       emstag(LPANIC, "eco:trichodesmium_spectral_grow_wc_init",
-	  "trichodesmium_spectral_grow_wc requires light_spectral_wc process!");
+	  "trichodesmium_spectral_grow_wc requires light_spectral_wc or light_spectral_col process!");
     ws->KI_Tricho_i = find_index_or_add(e->cv_cell, "KI_Tricho", e);
     ws->yCfac_Tricho_i = find_index_or_add(e->cv_cell, "yCfac_Tricho", e);
 
@@ -228,11 +251,11 @@ void trichodesmium_spectral_grow_wc_postinit(eprocess* p)
   if (!e->pre_build) {
     double v1,v2,v3,v4,v5;
 
-    v1 = einterface_gettracersvel(e->model,"Tricho_N");
-    v2 = einterface_gettracersvel(e->model,"Tricho_NR");
-    v3 = einterface_gettracersvel(e->model,"Tricho_PR");
-    v4 = einterface_gettracersvel(e->model,"Tricho_Chl");
-    v5 = einterface_gettracersvel(e->model,"Tricho_I");
+    v1 = ginterface_get_svel(e->model,"Tricho_N");
+    v2 = ginterface_get_svel(e->model,"Tricho_NR");
+    v3 = ginterface_get_svel(e->model,"Tricho_PR");
+    v4 = ginterface_get_svel(e->model,"Tricho_Chl");
+    v5 = ginterface_get_svel(e->model,"Tricho_I");
     
     if ((v1!=v2)||(v1!=v3)||(v1!=v4)||(v1!=v5)){
       e->quitfn("Sinking rates of Tricho :N %e, NR %e, PR %e, Chl %e, I %e are not equal",v1,v2,v3,v4,v5);
@@ -260,8 +283,12 @@ void trichodesmium_spectral_grow_wc_precalc(eprocess* p, void* pp)
     double Tricho_PR = y[ws->Tricho_PR_i];
     double Tricho_I = y[ws->Tricho_I_i];
 
-    cv[ws->umax_i] = ws->umax_t0 * Tfactor;
-
+    if (ws->tricho_temp_function){
+      cv[ws->umax_i] = max(0.0,(1.0 - pow((y[ws->Temp_i]-ws->Tricho_topt)/(ws->Tricho_niche * 0.5),2.0))*0.059 * exp(0.0633 * y[ws->Temp_i]))/86400.0;
+    }else{
+      cv[ws->umax_i] = ws->umax_t0 * Tfactor;
+    }
+    
     if (ws->do_mb) {
         y[ws->TN_i] += Tricho_N + Tricho_NR;
         y[ws->TP_i] += Tricho_N * red_W_P + Tricho_PR;

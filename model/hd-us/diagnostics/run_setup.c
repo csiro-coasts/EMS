@@ -14,12 +14,13 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 6727 2021-03-30 00:34:28Z her127 $
+ *  $Id: run_setup.c 7369 2023-07-26 04:32:21Z her127 $
  *
  */
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "hd.h"
 #include "eqn_parser.h"
 
@@ -45,6 +46,7 @@ void write_run_setup(hd_data_t *hd_data)
   double maxvel = 1.0;
   double int_wave_speed = 2.0;
   char bname[MAXSTRLEN], buf[MAXSTRLEN];
+  struct timeval tm1;
   FILE *fp;
 
   if (!setup_log)
@@ -100,19 +102,27 @@ void write_run_setup(hd_data_t *hd_data)
   if (strlen(params->rev)) fprintf(fp, "Parameter file revision : %s\n",
 				   params->rev);
   fprintf(fp, "Grid description : %s\n\n", params->grid_desc);
+
+  if (strlen(params->notes))
+    fprintf(fp, "Version notes   :  %s\n", params->notes);
   time(&t);
   fprintf(fp, "Simulation start time :  %s\n", ctime(&t));
 
+  gettimeofday(&tm1, NULL);
+  params->initt = tm1.tv_sec + tm1.tv_usec * 1e-6 - params->initt;
+  fprintf(fp, "Time taken for initialisation = %5.2fs\n\n", params->initt);
 
   /*-----------------------------------------------------------------*/
   /* Transport mode                                                  */
+  if (params->tmode & SP_DUMP) 
+    fprintf(fp, "\nTRANSPORT dump mode: Transport file created for forcing dumps.\n");
   if (params->runmode & TRANS ) {
     if (params->tmode & SP_FFSL) 
-      fprintf(fp, "\nFFSL TRANSPORT: Data input from exact sparse files.\n");
+      fprintf(fp, "\nFFSL TRANSPORT: Data input from exact transport files.\n");
     else if (params->tmode & SP_EXACT)
-      fprintf(fp, "\nTRANSPORT MODE: Data input from exact sparse files.\n");
+      fprintf(fp, "\nTRANSPORT MODE: Data input from exact transport files.\n");
     else if (params->tmode & SP_TINT)
-      fprintf(fp, "\nTRANSPORT MODE: Data input temporally interpolated from sparse files.\n");
+      fprintf(fp, "\nTRANSPORT MODE: Data input temporally interpolated from transport files.\n");
     else if (params->tmode & XYZ_TINT) {
       fprintf(fp, "\nTRANSPORT MODE: Data input interpolated from geographic files.\n");
       fprintf(fp, "                (velocities assumed to be easterly (u) and northerly (v))\n");
@@ -122,16 +132,14 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "\nTRANSPORT MODE: Streamline origin input mode.\n");
     else if (params->tmode & SP_CHECK)
       fprintf(fp, "\nTRANSPORT MODE: Input data checking only performed.\n");
+    if (!(params->tmode & SP_STRUCT) && !(params->tmode & SP_UGRID))
+      fprintf(fp, "  Transport data in UGRID3 format.\n");
+    if (params->tmode & SP_STRUCT)
+      fprintf(fp, "  Transport data in 'sparse' format.\n");
+    if (params->tmode & SP_UGRID)
+      fprintf(fp, "  Transport data in UGRID layered tologogy format.\n");
     if (params->tmode & TR_CHECK)
       fprintf(fp, "  Transport data checking performed.\n");
-    if (params->fillf & LOCAL) {
-      if (params->fillf & MONGLOB)
-	fprintf(fp, "Local filling invoked with monotonic constraint and global filling\n");
-      else if (params->fillf & MONOTONIC)
-	fprintf(fp, "Local filling invoked with monotonic constraint\n");
-      else
-	fprintf(fp, "Local filling invoked\n");
-    }
     if (params->fillf & GLOBAL) 
       fprintf(fp, "Global filling invoked - non monotonic\n");
     if (params->fillf & WEIGHTED)
@@ -154,6 +162,8 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "  No sea level re-initialisation from file every timestep\n");
     if (params->conserve & REINIT)
       fprintf(fp, "  Sea level re-initialised from file each timestep\n");
+    if (master->tmode & DO_DZ)
+      fprintf(fp, "  Cell thicknesses read from transport file.\n");
     if (params->lyear)
       fprintf(fp, "Leap years unaccounted for in input files.\n");
     fprintf(fp, "\n");
@@ -213,10 +223,18 @@ void write_run_setup(hd_data_t *hd_data)
       else
 	fprintf(fp, "  Blocked in the e2 direction\n");
     }
-    if (params->runmode & (DUMP|MANUAL) && strlen(params->wind_file))
-      fprintf(fp, "  Window map dumped to file %s\n", params->wind_file);
-    if (params->runmode & MANUAL && strlen(params->win_file))
-      fprintf(fp, "  Window map read from file %s\n", params->win_file);
+    if (params->runmode & (DUMP|MANUAL)) {
+      if (params->map_type & GEOM_DUMP && strlen(params->geom_file))
+	fprintf(fp, "  Geometry map dumped to file %s\n", params->geom_file);
+      if (params->map_type & WIN_DUMP && strlen(params->wind_file))
+	fprintf(fp, "  Window map dumped to file %s\n", params->wind_file);
+    }
+    if (params->runmode & MANUAL) {
+      if (params->map_type & GEOM_READ && strlen(params->geom_file))
+	fprintf(fp, "  Geometry map read from file %s\n", params->geom_file);
+      if (params->map_type & WIN_READ && strlen(params->win_file))
+	fprintf(fp, "  Window map read from file %s\n", params->win_file);
+    }
     if(params->win_size) {
 	fprintf(fp, "  Window sizes = ");
       for (n = 0; n < params->nwindows; n++)
@@ -271,6 +289,8 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "PRE-V5342 compatibility: Turbulence closure quantities vertically diffused in both closure and vertical diffusion schemes.\n");
   if (params->compatible & V6257)
     fprintf(fp, "PRE-V6257 compatibility: Momentum tendencies added sequentially to velocity.\n");
+  if (params->compatible & V6898)
+    fprintf(fp, "PRE-V6898 compatibility: Set a surface no-gradient in FFSL scheme.\n");
 
   if (params->stab & NONE)
     fprintf(fp, "No stability compensation\n");
@@ -567,6 +587,18 @@ void write_run_setup(hd_data_t *hd_data)
       fprintf(fp, "  Vorticity computed using Linear-Upwind Stabilized Transport (LUST).\n");
     if (params->momsc & PV_CLUST)
       fprintf(fp, "  Vorticity computed using Continuous Linear-Upwind Stabilized Transport (CLUST).\n");
+    if (params->kinetic & K_GASS)
+      fprintf(fp, "  Kinetic energy gradient uses the formulation of Skamarock et al (2012).\n");
+    if (params->kinetic & K_YU)
+      fprintf(fp, "  Kinetic energy gradient uses the formulation of Yu et al (2020) with weighting %5.2f.\n", master->kfact);
+    if (params->kinetic & ORDER1)
+      fprintf(fp, "  Kinetic energy gradient computed using 1st order upwind scheme.\n");
+    if (params->kinetic & ORDER2)
+      fprintf(fp, "  Kinetic energy gradient computed using 2nd order centered scheme.\n");
+    if (params->kinetic & ORDER2_UW)
+      fprintf(fp, "  Kinetic energy gradient computed using 2nd order upwind scheme.\n");
+    if (params->kinetic & ORDER4)
+      fprintf(fp, "  Kinetic energy gradient computed using 4th order centered scheme.\n");
   }
   if (params->momsc & WIMPLICIT)
     fprintf(fp, "  Implicit vertical momentum advection.\n");
@@ -775,7 +807,7 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (full form)\n");
   else if (params->visc_method & SIMPLE)
     fprintf(fp, "Horizontal viscosity using Laplacian scheme (simple form)\n");
-  else if (params->visc_fact)
+  else if (params->visc_fact && params->visc_method & US_BIHARMONIC)
     fprintf(fp, "Horizontal viscosity using unstructured f * Laplacian scheme + (1-f) * biharmonic scheme: f = %f\n",
 	    master->visc_fact);
   else if (params->visc_method & US_LAPLACIAN)
@@ -1046,6 +1078,10 @@ void write_run_setup(hd_data_t *hd_data)
         fprintf(fp, "      Relaxation timescale in the interior = %s\n",
 		otime(open->rele_i, bname));
       }
+      if (strlen(open->i_rule))
+        fprintf(fp, "    OBC data interpolated using %s scheme\n", open->i_rule);
+      if (open->file_dt)
+	fprintf(fp, "    Boundary data read from file every %s\n", otime(open->file_dt, bname));
       if (open->adjust_flux) {
 	if (open->adjust_flux > 0.0)
 	  fprintf(fp, "    Adjusting 2D boundary flux on a timescale of %s\n", otime(open->adjust_flux, bname));
@@ -1329,12 +1365,6 @@ void write_run_setup(hd_data_t *hd_data)
           fprintf(fp, "  Short wave radiation albedo = %4.2f\n", params->albedo);
         if (master->swr_babs)
           fprintf(fp, "  Short wave radiation bottom absorption parameter = %4.2f\n", master->swr_babs[1]);
-	if (strlen(params->swr_regions)) {
-	  fprintf(fp, "  Short wave radiation parameter estimation:\n");
-	  fprintf(fp, "    Regions = %s\n", params->swr_regions);
-	  fprintf(fp, "    Update dt = %5.1f hours\n", params->swr_dt / 3600.0);
-	  fprintf(fp, "    Data = %s\n", params->swr_data);
-	}
       }
       if (params->heatflux & ADVANCED) {
         fprintf(fp, "Heat flux calculated : bulk formulation\n");
@@ -1376,6 +1406,20 @@ void write_run_setup(hd_data_t *hd_data)
         }
         if (master->swr_babs)
           fprintf(fp, "  Short wave radiation bottom absorption parameter = %4.2f\n", master->swr_babs[1]);
+	if (strlen(params->swr_regions)) {
+	  double atn0, atns, atni, trn0, trns, trni;
+	  /* Same algorithm as in swr_params_event()                 */
+	  get_swr_ensemble(params->swr_ens, &atn0, &atns, &atni,
+			   &trn0, &trns, &trni);
+	  fprintf(fp, "  Short wave radiation parameter estimation:\n");
+	  fprintf(fp, "    Regions = %s\n", params->swr_regions);
+	  fprintf(fp, "    Update dt = %5.1f hours\n", params->swreg_dt / 3600.0);
+	  fprintf(fp, "    Data = %s\n", params->swr_data);
+	  fprintf(fp, "    attn ensemble = [%3.2f:%3.2f:%3.2f]\n", 
+		  atn0, atni, atns);
+	  fprintf(fp, "    tran ensemble = [%3.2f:%3.2f:%3.2f]\n", 
+		  trn0, trni, trns);
+	}
       }
       fprintf(fp, "\n");
       if (master->airtemp)
@@ -1480,7 +1524,7 @@ void write_run_setup(hd_data_t *hd_data)
   }
 #if defined(HAVE_WAVE_MODULE)
   /* Write wave library info */
-  if (params->do_wave) {
+  if (!(params->do_wave & NONE)) {
     win_priv_t *wincon = hd_data->wincon[1];
     wave_run_setup(fp, wincon->wave);
   }
@@ -1497,6 +1541,8 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Wave stokes drift velocity invoked\n");
     if (master->tau_w1 && master->tau_diss1 && master->tau_w2 && master->tau_diss2)
       fprintf(fp, "  Wind stress modified by wave to ocean stress and wave supported wind stress.\n");
+    if (params->waves & NEARSHORE)
+      fprintf(fp, "Nearshore (surf zone) wave processes invoked\n");
   }
   if (params->waves & STOKES_MIX && strcmp("harcourt", params->mixsc) == 0)
     fprintf(fp, "Wave enhanced vertical mixing (Langmuir) invoked\n");
@@ -1505,6 +1551,16 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "Tidal body force included.\n");
     fprintf(fp, "  Tidal body force constant constant = %5.2f\n\n", params->eqt_beta);
     fprintf(fp, "  Tidal self-attraction / loading (SAL) constant = %5.2f\n", params->eqt_alpha);
+  }
+
+  if (params->ghrsst_path) {
+    fprintf(fp, "Remote sensing SST import activated.\n");
+    fprintf(fp, " Path for SST: %s\n", params->ghrsst_path);
+    if (strlen(params->ghrsst_opt))
+      fprintf(fp, " SST options = %s\n", params->ghrsst_opt);
+    if (strlen(params->ghrsst_irule))
+      fprintf(fp, " SST interpolation rule = %s\n", params->ghrsst_irule);
+    fprintf(fp, "\n");
   }
 
   /*-----------------------------------------------------------------*/
@@ -1637,7 +1693,7 @@ void write_run_setup(hd_data_t *hd_data)
       /*fprintf(op, "%f %f t%d", params->turbv[0][n], params->turbv[1][n], n);*/
       c = master->turb[n];
       cs = geom->m2d[c];
-      fprintf(op, "%f %f t%d", geom->cellx[cs], geom->celly[cs]);
+      fprintf(op, "%f %f t%d", geom->cellx[cs], geom->celly[cs], n);
     }
     fprintf(fp, "\n");
     fclose(op);
@@ -1656,6 +1712,14 @@ void write_run_setup(hd_data_t *hd_data)
   }
   fprintf(fp,"Percent of cells beneath the sea bed = %d%%\n", 100 * geom->bdry / 
 	  (geom->b2_t * geom->nz));
+  d1 = d2 = 0.0;
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    d1 += geom->cellarea[c];
+    d2 += geom->cellarea[c] * (master->eta[c] - geom->botz[c]);
+  }
+  fprintf(fp,"Domain surface area = %e m^2\n", d1);
+  fprintf(fp,"Domain initial volume = %e m^3\n", d2);
   fprintf(fp,"  (Use -debug init_m on the compas command line to get full stats).\n");
 
   /* 3D Tracer relaxation */
@@ -1670,6 +1734,36 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "   File/Tracer = %s\n", master->trinfo_3d[tr_rlx].relax_file);
     fprintf(fp, "   DT     = %s\n", master->trinfo_3d[tr_rlx].relax_dt);
     fprintf(fp, "   TCONST = %s\n", master->trinfo_3d[tr_rlx].r_rate);
+  }
+  fprintf(fp, "\n");
+
+  /*-----------------------------------------------------------------*/
+  /* Diagnostic files                                                */
+  fprintf(fp, "Model runtime statistics written to file diag.txt\n");
+  sprintf(buf, "%scrash.site", master->opath);
+  fprintf(fp, "File containing location of model instabilities = %s\n", buf);
+  if (crash_restart)
+    fprintf(fp, "CRASH RECOVERY mode invoked: log file = %s\n", params->crashname);
+  if (!(params->dbgf & NONE))
+    fprintf(fp, "Debugging file written to: debug.txt\n");
+  if (!(params->history & NONE))
+    fprintf(fp, "History log file written to: %s\n", params->histname);
+  if (!(params->history & HST_MASTER))
+    fprintf(fp, "Master history log file written to: %s\n", params->histnamem);
+  if (params->history & HST_NOTES) {
+    char pname[MAXSTRLEN];
+    strcpy(buf, params->histname);
+    n = strlen(buf);
+    for (nn = 0; nn < n-4; nn++) pname[nn] = buf[nn];
+    pname[nn] = '\0';
+    strcat(pname, "notes");
+    fprintf(fp, "Historical notes summary written to: %s\n", pname);
+  }
+  if (params->meshinfo) {
+    mesh_ofile_name(params, buf);
+    strcat(buf, "_meshfiles.txt");
+    fprintf(fp, "Mesh information files written when using -g option.\n");
+    fprintf(fp, "    Mesh summary in file: %s\n", buf);
   }
   fprintf(fp, "\n");
 
@@ -2262,21 +2356,38 @@ void trans_write(hd_data_t *hd_data)
 {
   parameters_t *params = hd_data->params;
   dump_data_t *dumpdata = hd_data->dumpdata;
+  master_t *master = hd_data->master;
+  geometry_t *geom = master->geom;
   FILE *op, *fopen();
   int n, tn, i, j;
-  double d1;
+  double d1, dt = HUGE;
   char tag[MAXSTRLEN];
   char key[MAXSTRLEN];
   char bname[MAXSTRLEN];
+  char trdata[MAXSTRLEN];
   char TRANS_DT[MAXSTRLEN];
+  char fvars[MAXSTRLEN];
 
-  if(!strlen(params->trans_data) || params->runmode & TRANS)
-    return;
+  if (params->runmode & TRANS) return;
+  if(!strlen(params->trans_data))
+    if (!(params->tmode & SP_DUMP))
+      return;
+
+  strcpy(trdata, params->trans_data);
 
   if (strlen(params->trans_dt))
     sprintf(TRANS_DT, "%s", params->trans_dt);
   else
     sprintf(TRANS_DT, "1 hour");
+  if (params->tmode & SP_DUMP) {
+    if (params->wind) dt = min(dt, params->wind_dt);
+    if (params->patm) dt = min(dt, params->patm_dt);
+    for (i = 0; i < geom->nobc; i++) {
+      open_bdrys_t *open = geom->open[i];
+      if (open->file_dt) dt = min(dt, open->file_dt);
+    }
+    strcpy(TRANS_DT, otime(dt, key));
+  }
 
   strcpy(tag, params->idumpname);
   stripend(tag);
@@ -2286,7 +2397,11 @@ void trans_write(hd_data_t *hd_data)
     hd_warn("trans_write: Can't open file %s\n", tag);
     return;
   }
-  fprintf(op, "# SHOC transport file\n");
+
+  fprintf(op, "# COMPAS transport file\n");
+  fprintf(op, "# Created from %s\n", params->prmname);
+  fprintf(op, "# Use with INPUT_FILE %s\n", params->idumpname);
+  fprintf(op, "# EMS Version : %s\n", version);
   fprintf(op, "CODEHEADER           %s\n", params->codeheader);
   fprintf(op, "PARAMETERHEADER      %s\n", params->parameterheader);
   fprintf(op, "DESCRIPTION          %s\n", params->grid_desc);
@@ -2294,6 +2409,8 @@ void trans_write(hd_data_t *hd_data)
   fprintf(op, "TIMEUNIT             %s\n", params->timeunit);
   fprintf(op, "OUTPUT_TIMEUNIT      %s\n", params->output_tunit);
   fprintf(op, "LENUNIT              %s\n", params->lenunit);
+  if (strlen(params->projection))
+    fprintf(op, "PROJECTION           %s\n", params->projection);
   fprintf(op, "START_TIME           %s\n", params->start_time);
   fprintf(op, "STOP_TIME            %s\n\n", params->stop_time);
 
@@ -2310,13 +2427,17 @@ void trans_write(hd_data_t *hd_data)
     fprintf(op, "FILL_METHOD NO_FILL\n");
     /* Z to sigma levels scaling factor */
     fprintf(op, "\nROMS_Z2S_FACTOR  %.2f\n", params->roms_z2s);
+  } else if (params->tmode & SP_DUMP) {
+    fprintf(op, "TRANS_MODE           SP_DUMP\n");
   } else {
     if(params->tmode & SP_FFSL)
-      fprintf(op, "TRANS_DATA            %s(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)(u1vm=u1vmean)(u2vm=u2vmean)\n", params->trans_data);
+      fprintf(op, "TRANS_DATA            %s(u1=umean)(w=wmean)(Kz=Kzmean)(u1vm=u1vmean)\n", trdata);
     else
-      fprintf(op, "TRANS_DATA           %s(u1=u1mean)(u2=u2mean)(w=wmean)(Kz=Kzmean)\n", params->trans_data);
+      fprintf(op, "TRANS_DATA           %s(u1=umean)(w=wmean)(Kz=Kzmean)\n", trdata);
+    /*
     if(!(params->tmode & SP_FFSL) && strlen(params->sourcefile))
       fprintf(op, "SOURCE_GRID          %s\n", params->sourcefile);
+    */
     if(strlen(params->trvars))
       fprintf(op, "TRANS_VARS           %s\n", params->trvars);
 
@@ -2356,32 +2477,38 @@ void trans_write(hd_data_t *hd_data)
    }
   */
 
-  if(params->fillf & GLOBAL)
-    fprintf(op, "FILL_METHOD          GLOBAL");
-  else if(params->fillf & MONOTONIC)
-    fprintf(op, "FILL_METHOD          MONOTONIC");
-  else if(params->fillf & LOCAL)
-    fprintf(op, "FILL_METHOD          LOCAL");
-  if(params->fillf & OBC_ADJUST)
-    fprintf(op, " OBC_ADJUST");
-  if(params->fillf & DIAGNOSE)
-    fprintf(op, " DIAGNOSE");
-  if(params->fillf & DIAGNOSE_BGC)
-    fprintf(op, " DIAGNOSE_BGC");
-  fprintf(op, "\n\n");
+  if (!(params->tmode & SP_DUMP)) {
+    if(params->fillf & GLOBAL)
+      fprintf(op, "FILL_METHOD          GLOBAL");
+    else if(params->fillf & MONOTONIC)
+      fprintf(op, "FILL_METHOD          MONOTONIC");
+    if(params->fillf & OBC_ADJUST)
+      fprintf(op, " OBC_ADJUST");
+    if(params->fillf & DIAGNOSE)
+      fprintf(op, " DIAGNOSE");
+    if(params->fillf & DIAGNOSE_BGC)
+      fprintf(op, " DIAGNOSE_BGC");
+    fprintf(op, "\n\n");
+  }
 
   if (params->runmode & PRE_MARVL)
     write_grid_specs(op, params);
 
   fprintf(op, "DT                   %s\n", TRANS_DT);
-  /* Turn on CFL diagnostics for RECOM */
-  if (params->roammode & (A_RECOM_R1|A_RECOM_R2))
-    fprintf(op, "CFL                  PASSIVE\n");
-  fprintf(op, "HMIN                 %-6.4f\n", params->hmin);
-  fprintf(op, "Z0                   %-6.4f\n\n", params->z0);
+  if (!(params->tmode & SP_DUMP)) {
+    /* Turn on CFL diagnostics for RECOM */
+    if (params->roammode & (A_RECOM_R1|A_RECOM_R2))
+      fprintf(op, "CFL                  PASSIVE\n");
+    fprintf(op, "HMIN                 %-6.4f\n", params->hmin);
+    fprintf(op, "Z0                   %-6.4f\n", params->z0);
+    fprintf(op, "NUMBERS              RESOLUTION CELL_INDEX\n");
+  }
+  fprintf(op, "\n");
 
   /* Add wind and pressure for PRE_MARVL and WIND for RECOM */
-  if (params->runmode & PRE_MARVL || params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
+  if (params->runmode & PRE_MARVL || 
+      params->tmode & SP_DUMP ||
+      params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
     if (strlen(params->wind)) {
       fprintf(op, "WIND_TS              %s\n", params->wind);
       if (params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
@@ -2397,35 +2524,92 @@ void trans_write(hd_data_t *hd_data)
 	fprintf(op, "DRAG_LAW_CD1         %-8.5f\n", params->dlc1);
       } else
 	fprintf(op, "WIND_TYPE            STRESS\n");
-      fprintf(op, "\n\n");
+      fprintf(op, "\n");
+      strcat(fvars, " wind1");
     }
 
-    if (params->runmode & PRE_MARVL) {
+    if (params->tmode & SP_DUMP || params->runmode & PRE_MARVL) {
       if (strlen(params->hf)) {
-	fprintf(op, "HEATFLUX %s\n", heatfluxname(params->heatflux));
-	fprintf(op, "HEATFLUX_FILE %s\n", params->hf);
-	fprintf(op, "HEATFLUX_DT   %s\n", otime(params->hf_dt, tag));
+	fprintf(op, "HEATFLUX             %s\n", heatfluxname(params->heatflux));
+	fprintf(op, "HEATFLUX_FILE        %s\n", params->hf);
+	fprintf(op, "HEATFLUX_DT          %s\n", otime(params->hf_dt, tag));
 	fprintf(op, "\n");
       }
       if (strlen(params->precip)) {
-	fprintf(op, "PRECIPITATION %s\n", params->precip);
+	fprintf(op, "PRECIPITATION          %s\n", params->precip);
 	fprintf(op, "PRECIPITATION_INPUT_DT %s\n", otime(params->precip_dt, tag));
 	fprintf(op, "\n");
+      strcat(fvars, " precipitation");
       }
       if (strlen(params->evap)) {
-	fprintf(op, "EVAPORATION %s\n", params->evap);
+	fprintf(op, "EVAPORATION          %s\n", params->evap);
 	fprintf(op, "EVAPORATION_INPUT_DT %s\n", otime(params->evap_dt, tag));
 	fprintf(op, "\n");
       }
       if (strlen(params->patm)) {
-	fprintf(op, "PRESSURE %s\n", params->patm);
-	fprintf(op, "PRESSURE_INPUT_DT %s\n", otime(params->patm_dt, tag));
+	fprintf(op, "PRESSURE             %s\n", params->patm);
+	fprintf(op, "PRESSURE_INPUT_DT    %s\n", otime(params->patm_dt, tag));
 	fprintf(op, "\n");
+	strcat(fvars, " patm");
+      }
+      if (strlen(params->airtemp)) {
+	fprintf(op, "AIRTEMP              %s\n", params->airtemp);
+	fprintf(op, "AIRTEMP_INPUT_DT     %s\n", otime(params->airtemp_dt, tag));
+	fprintf(op, "\n");
+      strcat(fvars, " air_temp");
+      }
+      if (strlen(params->wetb)) {
+	if (master->sh_f & WETBULB) {
+	  fprintf(op, "WET_BULB           %s\n", params->wetb);
+	  fprintf(op, "WET_BULB_INPUT_DT  %s\n", otime(params->wetb_dt, tag));
+	  fprintf(op, "\n");
+	  strcat(fvars, " wet_bulb");
+	}
+	if (master->sh_f & DEWPOINT) {
+	  fprintf(op, "DEW_POINT          %s\n", params->wetb);
+	  fprintf(op, "DEW_POINT_INPUT_DT %s\n", otime(params->wetb_dt, tag));
+	  fprintf(op, "\n");
+	  strcat(fvars, " dew_point");
+	}
+      }
+      if (strlen(params->cloud)) {
+	fprintf(op, "CLOUD                %s\n", params->cloud);
+	fprintf(op, "CLOUD_INPUT_DT       %s\n", otime(params->cloud_dt, tag));
+	fprintf(op, "\n");
+	strcat(fvars, " cloud");
       }
     }
   }
 
-  if(params->ndf && params->runmode & (AUTO|DUMP)) {
+  if (params->tmode & SP_DUMP) {
+    if (strlen(params->opath))
+      fprintf(op,"OutputPath             %s\n", params->opath);
+    n = 0;
+    /* Count the non-river boundaries                                */
+    for (i = 0; i < geom->nobc; i++) {
+      open_bdrys_t *open = geom->open[i];
+      if (strcmp(open->cusname_u1, "u1flowbdry") != 0) n++;
+    }
+    fprintf(op,"OutputFiles          %d\n\n", n + 1);
+    fprintf(op,"file%1.1d.name           force.nc\n",n);
+    fprintf(op,"file%1.1d.filetype       ugrid\n",n);
+    fprintf(op,"file%1.1d.tinc           %s\n",n,otime(params->wind_dt, tag));
+    fprintf(op,"file%1.1d.bytespervalue  4\n",n);
+    fprintf(op,"file%1.1d.vars          %s\n",n++, fvars);
+    fprintf(op,"\n");
+    n = 0;
+    for (i = 0; i < geom->nobc; i++) {
+      open_bdrys_t *open = geom->open[i];
+      if (strcmp(open->cusname_u1, "u1flowbdry") == 0) continue;
+      fprintf(op,"file%1.1d.name           bdry_%s.nc\n",n,open->name);
+      fprintf(op,"file%1.1d.filetype       sparse\n",n);
+      fprintf(op,"file%1.1d.tinc           %s\n",n,TRANS_DT);
+      fprintf(op,"file%1.1d.bytespervalue  4\n",n);
+      fprintf(op,"file%1.1d.vars           eta temp salt u1\n",n);
+      fprintf(op,"file%1.1d.points         %s\n",n++, open->name);
+      fprintf(op,"\n");
+    }
+  } else if(params->ndf && params->runmode & (AUTO|DUMP)) {
     if (strlen(params->opath))
       fprintf(op,"OutputPath             %s\n", params->opath);
     fprintf(op,"# Output files\n");
@@ -2479,9 +2663,9 @@ void trans_write(hd_data_t *hd_data)
     fprintf(op, "# Output files\n");
     fprintf(op, "OutputFiles 1\n\n");
     fprintf(op, "file0.name           tran_out.nc\n");
-    fprintf(op, "file0.filetype       standard\n");
+    fprintf(op, "file0.filetype       ugrid\n");
     fprintf(op, "file0.tstart         %s\n", params->start_time);
-    fprintf(op, "file0.tinc           5 days\n");
+    fprintf(op, "file0.tinc           1 day\n");
     fprintf(op, "file0.tstop          %s\n", params->stop_time);
     fprintf(op, "file0.bytespervalue  4\n");
     fprintf(op, "file0.vars           ALL\n\n");
@@ -2489,35 +2673,53 @@ void trans_write(hd_data_t *hd_data)
 
   tracer_write(params, op);
 
-  fprintf(op, "# Time series\n");
-  prm_set_errfn(hd_silent_warn);
-  if (prm_read_int(params->prmfd, "TSPOINTS", &tn)) {
-    fprintf(op, "TSPOINTS             %d\n\n", tn);
-    for (n = 0; n < tn; n++) {
-      sprintf(key, "TS%1d.name", n);
-      prm_read_char(params->prmfd, key, tag);
-      fprintf(op, "TS%1d.name              %s\n", n, tag);
-      sprintf(key, "TS%1d.location", n);
-      prm_read_char(params->prmfd, key, tag);
-      fprintf(op, "TS%1d.location          %s\n", n, tag);
-      sprintf(key, "TS%1d.dt", n);
-      prm_read_char(params->prmfd, key, tag);
-      fprintf(op, "TS%1d.dt                %s\n", n, tag);
-      sprintf(key, "TS%1d.reference", n);
-      if (prm_read_char(params->prmfd, key, tag))
-        fprintf(op, "TS%1d.reference         %s\n", n, tag);
-      else
-        fprintf(op, "TS%1d.reference         msl\n", n);
-      fprintf(op, "\n");
+  if (params->roammode & (A_ROAM_R4|A_ROAM_R5)) {
+    fprintf(op, "\n# Point source specification for auto tracer 'passive'\n");
+    fprintf(op, "#pss   %-10.4f %-10.4f -1 0\n",
+	    geom->cellx[geom->n2_t / 2], geom->celly[geom->n2_t / 2]);
+
+    fprintf(op, "\n# Particle specification\n");
+    fprintf(op, "#particles   %-10.4f %-10.4f -1 0\n",
+	    geom->cellx[geom->n2_t / 2], geom->celly[geom->n2_t / 2]);
+    fprintf(op, "#PT_InputFile   pt.nc\n\n");
+  }
+
+  if (!(params->tmode & SP_DUMP)) {
+    fprintf(op, "# Time series\n");
+    prm_set_errfn(hd_silent_warn);
+    if (prm_read_int(params->prmfd, "TSPOINTS", &tn)) {
+      fprintf(op, "TSPOINTS             %d\n\n", tn);
+      for (n = 0; n < tn; n++) {
+	sprintf(key, "TS%1d.name", n);
+	prm_read_char(params->prmfd, key, tag);
+	fprintf(op, "TS%1d.name              %s\n", n, tag);
+	sprintf(key, "TS%1d.location", n);
+	prm_read_char(params->prmfd, key, tag);
+	fprintf(op, "TS%1d.location          %s\n", n, tag);
+	sprintf(key, "TS%1d.dt", n);
+	prm_read_char(params->prmfd, key, tag);
+	fprintf(op, "TS%1d.dt                %s\n", n, tag);
+	sprintf(key, "TS%1d.reference", n);
+	if (prm_read_char(params->prmfd, key, tag))
+	  fprintf(op, "TS%1d.reference         %s\n", n, tag);
+	else
+	  fprintf(op, "TS%1d.reference         msl\n", n);
+	fprintf(op, "\n");
+      }
+    } else {
+      fprintf(op, "TSPOINTS             1\n\n");
+      fprintf(op, "TS0.name             loc1.ts\n");
+      if (params->us_type & US_IJ) {
+	fprintf(op, "TS0.location         %-10.4f %-10.4f 0\n",
+		dumpdata->cellx[params->nce2 / 2][params->nce1 / 2],
+		dumpdata->celly[params->nce2 / 2][params->nce1 / 2]);
+      } else {
+	fprintf(op, "TS0.location         %-10.4f %-10.4f 0\n",
+		geom->cellx[geom->n2_t / 2], geom->celly[geom->n2_t / 2]);
+      }
+      fprintf(op, "TS0.dt               1 hour\n");
+      fprintf(op, "TS0.reference        msl\n\n");
     }
-  } else {
-    fprintf(op, "TSPOINTS             1\n\n");
-    fprintf(op, "TS0.name             loc1.ts\n");
-    fprintf(op, "TS0.location         %-10.4f %-10.4f 0\n",
-            dumpdata->cellx[params->nce2 / 2][params->nce1 / 2],
-            dumpdata->celly[params->nce2 / 2][params->nce1 / 2]);
-    fprintf(op, "TS0.dt               1 hour\n");
-    fprintf(op, "TS0.reference        msl\n\n");
   }
 
 
@@ -2569,40 +2771,93 @@ void trans_write(hd_data_t *hd_data)
     open_bdrys_t *open = params->open[n];
     fprintf(op, "BOUNDARY%1.1d.NAME          %s\n", n, open->name);
     fprintf(op, "BOUNDARY%1.1d.TYPE          %s\n", n, btname(open->type));
-    fprintf(op, "BOUNDARY%1.1d.BCOND_ELE     NOTHIN\n", n);
-    fprintf(op, "BOUNDARY%1.1d.BCOND_NOR     NOTHIN\n", n);
-    fprintf(op, "BOUNDARY%1.1d.BCOND_TAN     NOTHIN\n", n);
-    fprintf(op, "BOUNDARY%1.1d.BCOND_TRA_ALL NOGRAD\n", n);
-    for (tn = 0; tn < params->ntr; tn++) {
-      bcname(open->bcond_tra[tn], bname);
-      /* Leave salt/temp out for RECOM */
-      if (params->roammode & (A_RECOM_R1|A_RECOM_R2) )
-	if (strcmp(params->trinfo_3d->name, "salt") == 0 ||
-	    strcmp(params->trinfo_3d->name, "temp") == 0 )
-	  continue;
-      /* Specify using tracer name */
-      if (!(open->bcond_tra[tn] & NOGRAD))
-	fprintf(op, "BOUNDARY%1.1d.BCOND_%s    %s\n", n, 
-		master->trinfo_3d[tn].name, bname);
-      if (open->bcond_tra[tn] & CUSTOM)
-	fprintf(op, "BOUNDARY%1.1d.CUSTOM.%s   %s\n", n, master->trinfo_3d[tn].name, open->cusname_t[tn]);
+    /* Forcing dump transport                                        */
+    if (params->tmode & SP_DUMP) {
+      if (strcmp(open->cusname_u1, "u1flowbdry") != 0) {
+	fprintf(op, "BOUNDARY%1.1d.BCOND_ELE     FILEIN\n", n);
+	if (strlen(open->cusname_u1)) {
+	  fprintf(op, "BOUNDARY%1.1d.BCOND_NOR     CUSTOM\n", n);
+	  fprintf(op, "BOUNDARY%1.1d.CUSTOM.u1     %s\n", n, open->cusname_u1);
+	} else
+	  fprintf(op, "BOUNDARY%1.1d.BCOND_NOR     NOTHIN\n", n);
+	if (strlen(open->cusname_u2)) {
+	  fprintf(op, "BOUNDARY%1.1d.BCOND_TAN     CUSTOM\n", n);
+	  fprintf(op, "BOUNDARY%1.1d.CUSTOM.u2     %s\n", n, open->cusname_u2);
+	} else
+	  fprintf(op, "BOUNDARY%1.1d.BCOND_TAN     NOTHIN\n", n);
+	fprintf(op, "BOUNDARY%1.1d.OPTIONS       OBCWRITE\n", n);
+	/*
+	  if (open->file_dt)
+	  fprintf(op, "BOUNDARY%1.1d.FILEIN_DT     %s\n", n, otime(open->file_dt, bname));
+	*/
+	for (tn = 0; tn < params->ntr; tn++) {
+	  bcname(open->bcond_tra[tn], bname);
+	  /* Specify using tracer name */
+	  if (!(open->bcond_tra[tn] & NOGRAD))
+	    fprintf(op, "BOUNDARY%1.1d.BCOND_%s    %s\n", n, 
+		    master->trinfo_3d[tn].name, bname);
+	  if (open->bcond_tra[tn] & CUSTOM)
+	    fprintf(op, "BOUNDARY%1.1d.CUSTOM.%s   %s\n", n, master->trinfo_3d[tn].name, open->cusname_t[tn]);
+	}
+	if (strlen(open->tsfn))
+	  fprintf(op, "BOUNDARY%1.1d.DATA          %s\n", n, open->tsfn);
+
+      } else {
+	fprintf(op, "BOUNDARY%1.1d.BCOND_ELE     NOTHIN\n", n);
+	fprintf(op, "BOUNDARY%1.1d.BCOND_NOR     NOTHIN\n", n);
+	fprintf(op, "BOUNDARY%1.1d.BCOND_TAN     NOTHIN\n", n);
+	fprintf(op, "BOUNDARY%1.1d.BCOND_TRA_ALL NOGRAD\n", n);
+      }
+    } else {
+      /* Other transport files                                       */
+      fprintf(op, "BOUNDARY%1.1d.BCOND_ELE     NOTHIN\n", n);
+      fprintf(op, "BOUNDARY%1.1d.BCOND_NOR     NOTHIN\n", n);
+      fprintf(op, "BOUNDARY%1.1d.BCOND_TAN     NOTHIN\n", n);
+      fprintf(op, "BOUNDARY%1.1d.BCOND_TRA_ALL NOGRAD\n", n);
+      for (tn = 0; tn < params->ntr; tn++) {
+	bcname(open->bcond_tra[tn], bname);
+	/* Leave salt/temp out for RECOM */
+	if (params->roammode >= A_RECOM_R1|A_RECOM_R2)
+	  if (strcmp(params->trinfo_3d->name, "salt") == 0 ||
+	      strcmp(params->trinfo_3d->name, "temp") == 0 )
+	    continue;
+	/* Specify using tracer name */
+	if (!(open->bcond_tra[tn] & NOGRAD))
+	  fprintf(op, "BOUNDARY%1.1d.BCOND_%s    %s\n", n, 
+		  master->trinfo_3d[tn].name, bname);
+	if (open->bcond_tra[tn] & CUSTOM)
+	  fprintf(op, "BOUNDARY%1.1d.CUSTOM.%s   %s\n", n, master->trinfo_3d[tn].name, open->cusname_t[tn]);
+      }
+      bcname(open->bcond_Vz, bname);
+      fprintf(op, "BOUNDARY%1.1d.BCOND_VZ      %s\n", n, bname);
+      bcname(open->bcond_Kz, bname);
+      fprintf(op, "BOUNDARY%1.1d.BCOND_KZ      %s\n", n, bname);
+      if (params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
+	/* Override RIVER boundary forcing */
+	if (strlen(open->bflow) && strlen(params->rivldir))
+	  fprintf(op, "BOUNDARY%1.1d.DATA          %s/%s.ts\n", n, params->rivldir, open->name);
+	else if (strlen(open->tsfn))
+	  fprintf(op, "BOUNDARY%1.1d.DATA          %s\n", n, open->tsfn);
+      } else
+	if (strlen(open->tsfn))
+	  fprintf(op, "BOUNDARY%1.1d.DATA          %s\n", n, open->tsfn);
     }
-    bcname(open->bcond_Vz, bname);
-    fprintf(op, "BOUNDARY%1.1d.BCOND_VZ      %s\n", n, bname);
-    bcname(open->bcond_Kz, bname);
-    fprintf(op, "BOUNDARY%1.1d.BCOND_KZ      %s\n", n, bname);
-    if (params->roammode & (A_RECOM_R1|A_RECOM_R2)) {
-      /* Override RIVER boundary forcing */
-      if (strlen(open->bflow) && strlen(params->rivldir))
-	fprintf(op, "BOUNDARY%1.1d.DATA          %s/%s.ts\n", n, params->rivldir, open->name);
-      else if (strlen(open->tsfn))
-	fprintf(op, "BOUNDARY%1.1d.DATA          %s\n", n, open->tsfn);
-    } else
-      if (strlen(open->tsfn))
-	fprintf(op, "BOUNDARY%1.1d.DATA          %s\n", n, open->tsfn);
-    fprintf(op, "BOUNDARY%1.1d.POINTS        %d\n", n, open->npts);
-    for (tn = 0; tn < open->npts; tn++)
-      fprintf(op, "%d %d\n", open->iloc[tn], open->jloc[tn]);
+    /* Boundary locations                                            */
+    if (params->us_type & US_IJ) {
+      fprintf(op, "BOUNDARY%1.1d.POINTS        %d\n", n, open->npts);
+      for (tn = 0; tn < open->npts; tn++)
+	fprintf(op, "%d %d\n", open->iloc[tn], open->jloc[tn]);
+    } else {
+      mesh_t *mesh = params->mesh;
+      int npts = mesh->npts[n];
+      if (npts == 2 && mesh->loc[n][1] == mesh->loc[n][2]) npts = 1;
+      fprintf(op, "BOUNDARY%d.UPOINTS     %d\n", n, npts);
+      for (tn = 1; tn <= npts; tn++) {
+	fprintf(op, "%d (%lf,%lf)-(%lf,%lf)\n", mesh->loc[n][tn], 
+		mesh->xloc[mesh->obc[n][tn][0]], mesh->yloc[mesh->obc[n][tn][0]],
+		mesh->xloc[mesh->obc[n][tn][1]], mesh->yloc[mesh->obc[n][tn][1]]);
+      }
+    }
     fprintf(op, "\n");
   }
   fclose(op);
@@ -2619,12 +2874,13 @@ void history_log(master_t *master, int mode)
 {
   parameters_t *params = master->params;
   FILE *dp;
-  char buf[MAXSTRLEN], key[MAXSTRLEN], pname[MAXSTRLEN];
-  int i, j, n;
+  char buf[MAXSTRLEN], buf1[MAXSTRLEN], key[MAXSTRLEN], pname[MAXSTRLEN];
+  int i, j, n, nn;
   long t;
   int maxdiff = 100;
 
   if (params->history & NONE) return;
+  params->hrun = 1;
 
   /* Get the name of the parameter file                              */
   if (endswith(params->prmname, ".tran")) {
@@ -2646,27 +2902,33 @@ void history_log(master_t *master, int mode)
     if (params->history & HST_LOG) {
       sprintf(buf, "%s.hist", pname);
       params->hstfd = NULL;
+      strcpy(params->histname, buf);
 
       if (params->history & HST_RESET) {
 	sprintf(key, "rm %s", buf); 
 	if (params->history & HST_DIF) params->history &= ~HST_DIF;
 	system(key);
       }
-      if ((params->hstfd = fopen(buf, "r")) == NULL) {
-	params->hstfd = fopen(buf, "a");
+      if ((params->hstfd = fopen(params->histname, "r+")) == NULL) {
+	params->hstfd = fopen(params->histname, "a");
 	hd_warn("Creating history log file %s\n", buf);
 	fprintf(params->hstfd, "\nHISTORY LOG for parameter file %s\n", params->prmname);
 	if (j == 4) fprintf(params->hstfd, "Hydrodynamic model\n");
 	if (j == 5) fprintf(params->hstfd, "Transport model\n");
 	params->history |= HST_FST;
       } else {
+	rewind(params->hstfd);
+	sprintf(key, "Run%d:", params->hrun);
+	while (prm_read_char(params->hstfd, key, buf)) {
+	  params->hrun += 1;
+	  sprintf(key, "Run%d:", params->hrun);
+	}
 	fclose(params->hstfd);
-	params->hstfd = fopen(buf, "a");
+	params->hstfd = fopen(params->histname, "a");
       }
-
       fprintf(params->hstfd, "\n---------------------------\n");
       time(&t);
-      fprintf(params->hstfd, "Run:               %s", ctime(&t));
+      fprintf(params->hstfd, "Run%d:              %s", params->hrun, ctime(&t));
       fprintf(params->hstfd, "EMS Version:       %s\n", version);
       fprintf(params->hstfd, "Executable file:   %s\n",executable );
       getcwd(buf, MAXSTRLEN);
@@ -2675,11 +2937,74 @@ void history_log(master_t *master, int mode)
       fprintf(params->hstfd, "Input file:        %s\n", params->idumpname);
       if (strlen(params->opath)) fprintf(params->hstfd, "Output path:       %s\n", params->opath);
       fprintf(params->hstfd, "Parameter header:  %s\n", params->parameterheader);
+      if (strlen(params->notes))
+      fprintf(params->hstfd, "Version notes:     %s\n", params->notes);
       fprintf(params->hstfd, "Start time:        %s\n", params->start_time);
       fprintf(params->hstfd, "Stop time:         %s\n", params->stop_time);
       if (forced_restart) fprintf(params->hstfd, "Restart run.\n");
       if (crash_restart) fprintf(params->hstfd, "Crash recovery run.\n");
       fflush(params->hstfd);
+
+      if (params->history & HST_MASTER) {
+	if ((dp = fopen(params->histnamem, "a+")) != NULL) {
+	  fprintf(dp, "\n---------------------------\n");
+	  time(&t);
+	  if (j == 4) fprintf(dp, "Hydrodynamic model\n");
+	  if (j == 5) fprintf(dp, "Transport model\n");
+	  fprintf(dp, "Run%d:              %s", params->hrun, ctime(&t));
+	  fprintf(dp, "EMS Version:       %s\n", version);
+	  fprintf(dp, "Executable file:   %s\n",executable);
+	  getcwd(buf, MAXSTRLEN);
+	  fprintf(dp, "Working directory: %s\n",buf);
+	  fprintf(dp, "Parameter file:    %s\n", params->prmname);
+	  fprintf(dp, "ID_CODE:           %s\n", params->runcode);
+	  fprintf(dp, "Input file:        %s\n", params->idumpname);
+	  if (strlen(params->opath)) fprintf(dp, "Output path:       %s\n", params->opath);
+	  fprintf(dp, "Parameter header:  %s\n", params->parameterheader);
+	  if (strlen(params->notes))
+	    fprintf(dp, "Version notes:     %s\n", params->notes);
+	  fprintf(dp, "Start time:        %s\n", params->start_time);
+	  fprintf(dp, "Stop time:         %s\n", params->stop_time);
+	  
+	  fclose(dp);
+	}
+      }
+
+      if (params->history & HST_NOTES) {
+	sprintf(buf, "%s.notes", pname);
+	if (params->hrun == 1)
+	  dp = fopen(buf, "w");
+	else
+	  dp = fopen(buf, "a+");
+	if (!(prm_skip_to_end_of_key(dp, "Version notes summary"))) {
+	  fprintf(dp, "\nVERSION NOTES SUMMARY for parameter file %s\n", params->prmname);
+	  if (j == 4) fprintf(dp, "Hydrodynamic model\n");
+	  if (j == 5) fprintf(dp, "Transport model\n");
+	  fprintf(dp, "\n---------------------------\n");
+	  fprintf(dp, "Run %d: ID_CODE: %s\n", params->hrun, params->runcode);
+	  if (strlen(params->notes))
+	    fprintf(dp, "  notes: %s\n", params->notes);
+	  else
+	    fprintf(dp, "  No NOTES specified for this run.\n");
+	} else {
+	  sprintf(key, "Run %d:", params->hrun-1);
+	  prm_read_char(dp, key, buf);
+	  if (prm_read_char(dp, "notes:", buf)) {
+	    if (strlen(params->notes)) {
+	      if (strcmp(buf, params->notes) != 0) {
+		fprintf(dp, "Run %d: ID_CODE: %s\n", params->hrun, params->runcode);
+		fprintf(dp, "  notes: %s\n", params->notes);
+	      }
+	    }
+	  } else if (prm_skip_to_end_of_key(dp, "No notes.")) {
+	    if (strlen(params->notes)) {
+	      fprintf(dp, "Run %d: ID_CODE: %s\n", params->hrun, params->runcode);
+	      fprintf(dp, "  notes: %s\n", params->notes);
+	    }
+	  }
+	}
+	fclose(dp);
+      }
     }
     if (params->history & HST_DIF) {
       sprintf(key, "%s.txt", pname);
@@ -2693,7 +3018,6 @@ void history_log(master_t *master, int mode)
 	  system(buf);
 	}
       }
-
     }
   }
 
@@ -2706,27 +3030,29 @@ void history_log(master_t *master, int mode)
       sprintf(buf, "diff setup.txt %s > setup.diff", key);
       system(buf);
       dp = fopen("setup.diff", "r");
-      prm_read_char(dp, "<", first);
-      fprintf(params->hstfd, "  New:    %s\n", first);
-      prm_read_char(dp, ">", buf);
-      fprintf(params->hstfd, "  Old:    %s\n", buf);
-      strcpy(pdiff, first);
+      if (prm_read_char(dp, "<", first)) {
+	fprintf(params->hstfd, "  New:    %s\n", first);
+	if (prm_read_char(dp, ">", buf))
+	  fprintf(params->hstfd, "  Old:    %s\n", buf);
+	strcpy(pdiff, first);
+      }
       j = 1;
       while(j) {
-	prm_read_char(dp, "<", buf);
-	if (strcmp(buf, pdiff) == 0) {
-	  fprintf(params->hstfd, "  recursive difference error: exiting....\n");
-	  j = 0;
-	  continue;
+	if (prm_read_char(dp, "<", buf)) {
+	  if (strcmp(buf, pdiff) == 0) {
+	    fprintf(params->hstfd, "  recursive difference error: exiting....\n");
+	    j = 0;
+	    continue;
+	  }
+	  if (strcmp(buf, first) != 0) {
+	    strcpy(pdiff, buf);
+	    fprintf(params->hstfd, "  New:    %s\n",buf);
+	    if (prm_read_char(dp, ">", buf))
+	      fprintf(params->hstfd, "  Old:    %s\n",buf);
+	    j++;
+	  } else
+	    j = 0;
 	}
-	if (strcmp(buf, first) != 0) {
-	  strcpy(pdiff, buf);
-	  fprintf(params->hstfd, "  New:    %s\n",buf);
-	  prm_read_char(dp, ">", buf);
-	  fprintf(params->hstfd, "  Old:    %s\n",buf);
-	  j++;
-	} else
-	  j = 0;
 	if (j > maxdiff) {
 	  fprintf(params->hstfd, "  truncating differences....\n");
 	  j = 0;

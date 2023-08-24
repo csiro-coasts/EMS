@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: p_adsorption_wc.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: p_adsorption_wc.c 7208 2022-09-16 07:29:38Z bai155 $
  *
  */
 
@@ -27,7 +27,8 @@
 #include "column.h"
 #include "utils.h"
 #include "p_adsorption_wc.h"
-#include "einterface.h"
+
+double ginterface_get_svel(void* model, char *name);
 
 // #define EFI_EPS 1.0e-4
 
@@ -115,9 +116,9 @@ void p_adsorption_wc_postinit(eprocess* p)
 
     if (!e->pre_build) {
       if (ws->Mud_i > -1){
-	v1 = einterface_gettracersvel(e->model,"PIP");
-	v2 = einterface_gettracersvel(e->model,"Mud");
-	v3 = einterface_gettracersvel(e->model,"FineSed");
+	v1 = ginterface_get_svel(e->model,"PIP");
+	v2 = ginterface_get_svel(e->model,"Mud");
+	v3 = ginterface_get_svel(e->model,"FineSed");
 	
 	if ((v1!=v2)||(v1!=v3)){
 	  e->quitfn("Sinking rates of PIP %e, Mud %e, FineSed %e are not equal. Must be fixed in .prm or .tran file",v1,v2,v3);
