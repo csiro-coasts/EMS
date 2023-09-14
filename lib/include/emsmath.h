@@ -19,6 +19,7 @@
 #define _EMS_MATH_H
 
 #include <limits.h>
+#include <math.h>
 
 /* Useful defines */
 #if !defined(PI)
