@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundary.h 7161 2022-07-07 02:32:47Z her127 $
+ *  $Id: boundary.h 7431 2023-10-25 01:28:38Z her127 $
  *
  */
 
@@ -275,6 +275,7 @@ struct open_bdrys {
   int bcond_tan;                /* Tangential boundary condition */
   int bcond_tan2d;              /* Tangential boundary condition */
   int bcond_ele;                /* Elevation boundary condition */
+  int bcond_wav;                /* Wave variable boundary condition */
   int bcond_w;                  /* Vertical velocity boundary cond */
   int bcond_Vz;                 /* Vertical viscosity boundary cond */
   int bcond_Kz;                 /* Vertical diffusivity boundary cond */

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ptrack.h 5899 2018-08-23 02:10:59Z her127 $
+ *  $Id: ptrack.h 7419 2023-10-05 02:14:39Z her127 $
  */
 
 
@@ -39,10 +39,13 @@ typedef struct {
 #define PT_SIZE   0x008
 #define PT_IN     0x020
 #define PT_OUT    0x040
+#define PT_WIND   0x080
+#define PT_FATT   0x100
 
 int pt_create(char *name, long np, char *t_units, int dumpf);
 void pt_read(char *name, int rec, long *np, particle_t **p, double *t,
              char *t_units, int *ndump);
 void pt_write(int fid, int rec, double t, long np, particle_t *p);
+void pt_write_a(int fid, int rec, double t, long np, particle_t *p);
 
 #endif                          /* _PTRACK_H */

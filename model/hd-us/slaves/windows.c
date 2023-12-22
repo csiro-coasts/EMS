@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 7378 2023-07-26 04:35:55Z her127 $
+ *  $Id: windows.c 7468 2023-12-13 03:54:09Z her127 $
  *
  */
 
@@ -5988,6 +5988,10 @@ window_t **win_data_build(master_t *master,   /* Master data         */
         windat[n]->nprof = windat[n]->tr_wc[tn];
       } else if (strcmp("unit", master->trname[tn]) == 0) {
         windat[n]->unit = windat[n]->tr_wc[tn];
+      } else if (strcmp("VZ0", master->trname[tn]) == 0) {
+        windat[n]->vz0b = windat[n]->tr_wc[tn];
+      } else if (strcmp("KZ0", master->trname[tn]) == 0) {
+        windat[n]->kz0b = windat[n]->tr_wc[tn];
       } else if (strcmp("mono", master->trname[tn]) == 0) {
         windat[n]->mono = windat[n]->tr_wc[tn];
 	windat[n]->monox = d_alloc_1d(window[n]->szm);
@@ -6538,6 +6542,10 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->bep = windat->tr_wcS[m];
       if (strcmp("tide_front", master->trinfo_2d[m].name) == 0)
         windat->tfront = windat->tr_wcS[m];
+      if (strcmp("wind_speed", master->trinfo_2d[m].name) == 0)
+        windat->windcs = windat->tr_wcS[m];
+      if (strcmp("wind_dir", master->trinfo_2d[m].name) == 0)
+        windat->windcd = windat->tr_wcS[m];
       /*if (strcmp("oeta", master->trinfo_2d[m].name) == 0 && windat->eta_rlx)
         windat->eta_rlx->val1 = windat->tr_wcS[m];*/
     }
@@ -8176,6 +8184,7 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
     set_dz(window[n], windat[n], wincon[n]);
     get_depths(window[n], windat[n], wincon[n]);
     density_w(window[n], windat[n], wincon[n]);
+    wincon[n]->flag = 0;
     if (!(master->vinit & NONE)) {
       win_data_fill_3d(master, window[n], windat[n], master->nwindows);
       set_dz_at_u1(window[n], windat[n], wincon[n]);

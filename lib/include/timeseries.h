@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: timeseries.h 6873 2021-07-29 00:39:19Z her127 $
+ *  $Id: timeseries.h 7420 2023-10-05 02:14:58Z her127 $
  */
 
 #ifndef _TIMESERIES_H
@@ -62,6 +62,23 @@ typedef struct {
   datafile_t *df;               /* Pointer to the data file */
 } timeseries_t;
 
+/* MH: depth transformation private data */
+typedef struct {
+  int dep_id;                   /* Bottom depth id */
+  int eta_id;                   /* Sea level id */
+  /* Sigma variables */
+  int hc_id;                    /* Id for critical depth variable */
+  int s_id;                     /* Id for S-coordiante variable */
+  int cs_id;                    /* Id stretching curve variable */
+  df_variable_t *sigv;          /* Sigma variable */
+  df_variable_t *csv;           /* Stretching curve variable */
+  df_variable_t *hcv;           /* Critical depth variable */
+  df_variable_t *etav;          /* Sea level variable */
+  df_variable_t *depv;          /* Depth variable */
+  double (*btrans) (timeseries_t *ts, double t, double x, double y, double z);
+  void (*ftrans) (timeseries_t *ts, double t, double x, double y, double z, double *zgrid);
+} df_vtrans_t;
+
 
 /* Prototypes */
 void ts_read(char *name, timeseries_t *ts);
@@ -100,5 +117,9 @@ const char* ts_get_varname(timeseries_t *ts, int vid);
 int ts_is_modulo(timeseries_t *ts);
 int ts_is_recom(timeseries_t *ts);
 int ts_var_z_is_depth(timeseries_t *ts, int id);
+double z2sigma(timeseries_t *ts, double t, double x, double y, double z);
+void sigma2z(timeseries_t *ts, double t, double x, double y, double z, double *zgrid);
+double z2zstar(timeseries_t *ts, double t, double x, double y, double z);
+void zstar2z(timeseries_t *ts, double t, double x, double y, double z, double *zgrid);
 
 #endif                          /* _TIMESERIES_H */

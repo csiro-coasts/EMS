@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 6964 2021-12-17 03:18:45Z her127 $
+ *  $Id: reset.c 7454 2023-12-13 03:46:19Z her127 $
  *
  */
 
@@ -472,8 +472,9 @@ void trans_reset_init(parameters_t *params, master_t *master)
   memset(reset_trans, 0, sizeof(tr_reset_data_t));
   reset_trans->master = master;
   reset_trans->dt = dt;
-  reset_trans->tnext = schedule->start_time;
+  reset_trans->tnext = schedule->start_time - master->grid_dt;
   open_tr_reset_tsfiles(master, fname, reset_trans);
+  if (params->compatible & V7367) reset_trans->tnext += master->grid_dt;
 
   if (master->tmode & SP_ORIGIN) {
     if (hd_ts_multifile_check(reset_trans->ntsfiles, reset_trans->tsfiles,
@@ -637,7 +638,7 @@ static double trans_reset_event(sched_event_t *event, double t)
   /* (see comments in tr_reset_event). This means that dumps or      */
   /* resets are one time-step out of sync and the (p,q,r) read at    */
   /* next tiume-step should be used for the current hd_step().       */
-  if (master->tmode & SP_ORIGIN) {
+  if (master->tmode & SP_ORIGIN || !(params->compatible & V7367)) {
     tsync = master->dt;
     tsin = reset->tnext + master->grid_dt;
   }

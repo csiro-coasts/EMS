@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 6962 2021-12-17 03:18:05Z her127 $
+ *  $Id: transfers.c 7452 2023-12-13 03:45:26Z her127 $
  *
  */
 
@@ -118,6 +118,8 @@ void win_data_slave_update_fill_3d(master_t *master, geometry_t *window,
     for (tt = 0; tt < master->nres; tt++) {
       tn = master->reset[tt];
       windat->tr_wc[tn][lc] = master->tr_wc[tn][c];
+      if (master->swr_attn == master->tr_wc[tn]) 
+	windat->swr_attn[lc] = master->swr_attn[c];
     }
     if (master->rtemp) windat->rtemp[lc] = master->rtemp[c];
     if (master->rsalt) windat->rsalt[lc] = master->rsalt[c];

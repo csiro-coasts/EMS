@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 7371 2023-07-26 04:33:12Z her127 $
+ *  $Id: sparse.h 7461 2023-12-13 03:51:01Z her127 $
  *
  */
 
@@ -279,6 +279,17 @@ typedef struct {
 #endif
 } swan_data_t;
 
+
+typedef struct {
+  char name[MAXSTRLEN];
+  int type;
+  int *ptype;    /* Plastic type */
+  double diam;   /* Mean diameter (m) */
+  double dens;   /* Density (kg/m) */
+  double srat;   /* Surface ratio above/below water */
+  int *microtr;  /* Micro-plastic tracer number */
+  double *ptr;   /* Plastic type ratio */
+} plastic_t;
 
 typedef struct {
   double *h2au1;
@@ -572,6 +583,7 @@ struct win_priv {
   int normt1;                   /* Error norm tracer #1 */
   int normt2;                   /* Error norm tracer #2 */
   double enorm[9];              /* Error norm work array */
+  int flag;                     /* General purpose flag */
   int ghrsst_type;              /* Type of ghrsst product */
   int attn_tr;
   int tran_tr;
@@ -1559,14 +1571,17 @@ typedef struct {
   char trans_dt[MAXSTRLEN];
 
   /* Mixing scheme */
+  int closf;                    /* Closure scheme flag */
   char mixsc[MAXSTRLEN];        /* Scheme type */
   char s_func[MAXSTRLEN];       /* Stability function */
-  double kz0;                   /* Csanady coefficient */
+  double kz0;                   /* Background diffusion coefficient */
+  char kz0c[MAXSTRLEN];         /* Background diffusion coefficient */
   double kz_alpha;              /* Csanady coefficient */
   double zs;                    /* Mellor-Yamada coefficient */
   double Lmin;                  /* Minimum stratified mixing length */
   double eparam;                /* Tuning parameter for stratification */
-  double vz0;                   /* Csanady coefficient */
+  double vz0;                   /* Background viscosity coefficient */
+  char vz0c[MAXSTRLEN];         /* Background viscosity coefficient */
   double vz_alpha;              /* Csanady coefficient */
   double wave_alpha;            /* Alpha parameter for waves */
   double wave_hf;               /* Scaling factor for significant wave height */
@@ -1809,6 +1824,10 @@ typedef struct {
 
   /* RIVER loads directory for RECOM */
   char rivldir[MAXSTRLEN];
+
+  /* Plastics */
+  char cmacrop[MAXSTRLEN]; /* Macroplastic classes */
+  char cmicrop[MAXSTRLEN]; /* Macroplastic classes */
 
   int ndf;                      /* Number of dump files */
   char **d_name;
@@ -2072,6 +2091,8 @@ struct master {
   double *sep;                  /* Surface Ekman pumping */
   double *bep;                  /* Bottom Ekman pumping */
   double *tfront;               /* Simpson-Hunter tidal front */
+  double *windcs;               /* Cell centered wind speed */
+  double *windcd;               /* Cell centered wind direction */
   double *sigma_t;              /* Sigma_t */
   double *rossby_in;            /* Internal Rossby radius (m) */
   double *rossby_ex;            /* External Rossby radius (m) */
@@ -2271,10 +2292,15 @@ struct master {
   char autotrpath[MAXSTRLEN];   /* Path to write autotracer file */
 
   /* Mixing constants and variables */
+  int closf;                    /* Closure scheme flag */
   double *Kz;                   /* Vertical eddy diffusivity (m2s-1) */
   double *Vz;                   /* Vertical eddy viscosity (m2s-1) */
   double vz0;                   /* Background vertical viscosity (m2s-2) */
   double kz0;                   /* Background vertical diffusivity */
+  char vz0c[MAXSTRLEN];         /* Background diffusion coefficient text */
+  char kz0c[MAXSTRLEN];         /* Background viscosity coefficient text */
+  double *vz0b;                 /* Background vertical viscosity array (m2s-2) */
+  double *kz0b;                 /* Background vertical diffusivity array */
   double min_tke;               /* k-epsilon minimum TKE */
   double min_diss;              /* k-epsilon minimum dissipation */
   double Lmin;                  /* Minimum stratified mixing length */
@@ -2446,6 +2472,7 @@ struct master {
   double ptnext_t;
   double pt_kh;                 /* Horizontal diffusion coefficient */
   double pt_kz_mult;            /* vert diff coeff multiplier */
+  double pt_wsf;                /* Windage surface factor */
   double *ptconc;               /* particle concentrations */
   int pt_stickybdry;            /* Is the boundary sticky ? */
   int pt_dumpf;                 /* Flag of particle attributes to dump */
@@ -2458,6 +2485,7 @@ struct master {
   int shist;                    /* Size of phist */
   double pt_mass;               /* particle mass */
   int pt_nsource;               /* Number of particle sources */
+  int *pt_stype;                /* Type of source */
   double *pt_rate;              /* Rate of release from continous source */
   short *pt_colour;             /* Colour of the particle */
   double *pt_size;              /* Size of the particle */
@@ -2466,6 +2494,7 @@ struct master {
   double *pt_sper;              /* Settling period of the particle */
   double *pt_dens;              /* Density of the particle */
   int *svel_type;               /* Type of particle settling */
+  int *pt_ptype;                /* Plastic type */
   pt_ts_t **wvel_s;             /* Vertical settling for sources */
   pt_ts_t *wvel_i;              /* Vertical settling for initial release */
   pt_ts_t *uvel_i;              /* Horizontal e1 swimming for initial release */
@@ -2484,6 +2513,12 @@ struct master {
   profile_t **u1prof;
   profile_t **u2prof;
   short *ptmsk;                 /* Particle age mask */
+
+  /* Plastics */
+  int nmacrop;             /* Number of macro-plastic classes */
+  plastic_t **macrop;      /* Macro plastic structure */
+  int nmicrop;             /* Number of micro-plastic classes */
+  plastic_t **microp;      /* Micro plastic structure */
 
   /* Sources and sinks */
   pss_t *pss;
@@ -3043,6 +3078,8 @@ struct window {
   double *sep;                  /* Surface Ekman pumping */
   double *bep;                  /* Bottom Ekman pumping */
   double *tfront;               /* Simpson-Hunter tidal front */
+  double *windcs;               /* Cell centered wind speed */
+  double *windcd;               /* Cell centered wind direction */
   double *sigma_t;              /* Sigma_t */
   double *rossby_in;            /* Internal Rossby radius (m) */
   double *rossby_ex;            /* External Rossby radius (m) */
@@ -3094,6 +3131,8 @@ struct window {
   double *centi;                /* Cell centre index */
   double *reefe1;               /* Pointer to e1 reef fraction tracer */
   double *reefe2;               /* Pointer to e2 reef fraction tracer */
+  double *vz0b;                 /* Background vertical viscosity array (m2s-2) */
+  double *kz0b;                 /* Background vertical diffusivity array */
   int *totid;                   /* Tracer numbers for 3D totals */
   int *totidS;                  /* Tracer numbers for 2D totals */
   int *totid_sed;               /* Sediment tracer numbers for totals */

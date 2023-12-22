@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfcoords.c 7358 2023-05-10 02:57:59Z riz008 $
+ *  $Id: dfcoords.c 7422 2023-10-05 02:15:37Z her127 $
  */
 
 #include <stdlib.h>
@@ -26,6 +26,7 @@
 #include "ems.h"
 
 #define DEG2RAD (M_PI/180.0)
+
 
 /* Prototypes for local routines */
 void decode_coords(datafile_t *df, df_variable_t *v, char *coords);
@@ -110,6 +111,7 @@ double interp_linear_bathy(datafile_t *df, df_variable_t *v, int record,
 			   double coords[]);
 double interp_linear_degrees(datafile_t *df, df_variable_t *v, int record,
 			     double coords[]);
+
 
 int df_default_hashtable_size = 0;
 int df_default_geotype = GT_NONE;
@@ -596,6 +598,10 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
      assume a regular grid. */
   if (nc == nd) {
     if (df_is_irule(df)) {
+      if (df_get_num_coords(df, v) == 3 ) {
+	if (df_is_sigma(df)) df_set_sigma(df, v);
+	if (df_is_zstar(df)) df_set_zstar(df, v);
+      }
       if (strcmp(df->i_rule, "nearest_eps") == 0) {
 	/* Nearest neighbour for 'simple' files */
 	if (df_get_num_coords(df, v) == 2 )
@@ -618,7 +624,7 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
 	}
       }
     } else if ((v->lflag && v->lflag != v->add_offset) || 
-	(v->cflag && v->cflag != v->add_offset))
+	       (v->cflag && v->cflag != v->add_offset))
       /* land or cloud flags exist */  
       v->interp = interp_linear_flagged;
     else if (v->type & VT_BATHY)
@@ -631,7 +637,7 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
     else if (v->type & VT_INFERRED && v->fillvalue && v->fillvalue != v->add_offset)
       /*else if (inferred == nc && v->missing && v->missing != v->add_offset)*/
       /* missing_value exists */
-      v->interp = interp_linear_filled;
+    v->interp = interp_linear_filled;
     else if (v->type & VT_COORD && v->fillvalue && v->fillvalue != v->add_offset)
       /* FillValue exists */
       v->interp = interp_linear_flagged;
@@ -639,6 +645,8 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
     else if (v->units && strcmp(v->units, "degrees") == 0)
       v->interp = interp_linear_degrees;
     else {
+      if (df_is_sigma(df)) df_set_sigma(df, v);
+      if (df_is_zstar(df)) df_set_zstar(df, v);
       v->interp = interp_linear;
     }
   }
@@ -675,10 +683,19 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
     }
     else {
       if (nd == 1)
+	if (df_is_sigma(df)) {
+	  df_set_sigma(df, v);
+          v->interp = interp2d_nearest;
+	} else
           v->interp = interp_1d_inv_weight_hashed;
-      else if (nd == 2)
+      else if (nd == 2) {
+	/*if (df_is_zstar(df)) df_set_zstar(df, v);*/
+	if (df_is_sigma(df)) {
+	  df_set_sigma(df, v);
+          v->interp = interp3d_nearest;
+	} else
           v->interp = interp_2d_inv_weight_hashed;
-      else {
+      } else {
           warn("df_infer_coord_system: File %s, variable %s : \n",
 	       df->name, v->name);
           quit("Unable to interpolate data with %d coordinate and %d dimensions.\n",
@@ -693,6 +710,7 @@ int df_infer_coord_system(datafile_t *df, df_variable_t *v)
 
   return 1;
 }
+
 
 /** Set the default geographic data type.
   *
@@ -842,8 +860,9 @@ int df_ctoi(datafile_t *df, df_variable_t *v,
        computed, then populate the depindices array with their values */
     k = 0;
     for (j = 0; (j < v->nd) && (k < cm->ndepd); ++j) {
-      if (v->dimids[j] == cm->depdimids[k])
+      if (v->dimids[j] == cm->depdimids[k]) {
         depindices[k++] = (int)indices[j];
+      }
     }
 
     /* Copy the coordinate system coords into the correct positions in the

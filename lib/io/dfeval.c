@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: dfeval.c 7149 2022-07-07 00:27:30Z her127 $
+ *  $Id: dfeval.c 7423 2023-10-05 02:15:55Z her127 $
  */
 
 #include <stdio.h>
@@ -261,8 +261,69 @@ double df_eval_coords(datafile_t *df, df_variable_t *v, double r,
   return val;
 }
 
+/*-------------------------------------------------------------------*/
+/* PRIVATE and PROTECTED functions                                   */
+/*-------------------------------------------------------------------*/
+/* Interpolation routines assume that the order of variable          */
+/* dimensions is fixed, with the vertical dimension being the        */
+/* slowest varying (i.e. defined first), such that typically:        */
+/* nz = df->dimensions[v->dimids[0]].size;                           */
+/* nj = df->dimensions[v->dimids[1]].size;                           */
+/* ni = df->dimensions[v->dimids[2]].size;                           */
+/* The exception to this is ROMS station data interpolated with      */
+/* interp3d_nearest(), where k varies the fastest. In this instance  */
+/* data is accessed with d[n][k] rather than the ususal d[k][n].     */
+/* Coordinate ids are retrieved using the df_get_coord_ids();        */
+/* note that the order of these coordinate ids is different to that  */
+/* accessed using v->coordids[], so do not use the latter.           */
+/* Generally the coordids are arranged so that:                      */
+/* x = longitude = coordids[0]                                       */
+/* y = latitude = coordids[1]                                        */
+/* z = depth = coordids[2] = coordids[nc-1] for nc = # coordinates   */
+/* Note that this may be input file dependenent, and should be       */
+/* checked if data from a new source is used.                        */
+/*                                                                   */
+/* Interpolation functions supported are:                            */
+/* interp_1d_inv_weight : Inverse weighting for 2D point array data  */
+/* interp_2d_inv_weight : Inverse weighting for 3D point array data  */
+/* interp_1d_inv_weight_hashed : As for interp_1d_inv_weight but     */
+/*     hashed weights.                                               */
+/* interp_2d_inv_weight_hashed : As for interp_2d_inv_weight but     */
+/*     hashed weights.                                               */
+/* interp_us_2d() : Unstructured interpolation for 2D UGRID data     */
+/* interp_us_3d() : Unstructured interpolation for 3D UGRID data     */
+/* interp_us_2d_c() : Unstructured interpolation for 2D gridded      */
+/*     Cartesian data.                                               */
+/* interp_us_3d_c() : Unstructured interpolation for 3D gridded      */
+/*     Cartesian data.                                               */
+/* interp_us_2d_i() : Unstructured interpolation for 2D gridded      */
+/*     Cartesian data of type VT_INFERRED.                           */
+/* interp_us_3d_i() : Unstructured interpolation for 3D gridded      */
+/*     Cartesian data of type VT_INFERRED.                           */
+/* interp_nearest_within_eps() : Nearest neighbour with a tolerance  */
+/*     for 2D point array data.                                      */
+/* interp2d_nearest_within_eps() : Nearest neighbour with tolerance  */
+/*     for 2D gridded data.                                          */
+/* interp3d_nearest_within_eps() : Nearest neighbour with tolerance  */
+/*     for 3D gridded data.                                          */
+/* interp2d_nearest() : Nearest neighbour for 2D point array data.   */
+/* interp3d_nearest() : Nearest neighbour for 3D (ROMS) station data */
+/* interp_linear() : Bi/tri-linear interpolation for 2D/3D gridded   */
+/*     data.                                                         */
+/* interp_linear_degrees() : Same as interp_linear for data within   */
+/*     the range 0-360 (degrees), e.g. tidal phases.                 */
+/* interp_linear_filled() : Same as interp_linear but fills missing  */
+/*     values with the nearest valid value.                          */
+/* interp_linear_flagged() : Same as interp_linear but sets a        */
+/*     no-gradient across land and doesn't interpolate over cloud    */
+/*     values.                                                       */
+/* interp_linear_bathy() : Same as interp_linear for bathymetry,     */
+/*     fills missing or land (99) values with the nearest valid      */
+/* value.                                                            */
+/* See dfcoords.c for the rules as to how these functions are        */
+/* applied.                                                          */
+/*-------------------------------------------------------------------*/
 
-/* PRIVATE and PROTECTED functions */
 /*
 Routine to interpolate 1d spatial data.
 
@@ -640,7 +701,7 @@ double interp_2d_inv_weight_hashed(datafile_t *df, df_variable_t *v, int record,
     ks = (int)kindex;
     kt = min(ks + 1, nk - 1);
     kindex = kindex - ks;
-    
+
     /*
      * Get the distances vector
      */
@@ -699,6 +760,7 @@ double interp_2d_inv_weight_hashed(datafile_t *df, df_variable_t *v, int record,
 
   return val;
 }
+
 
 
 /* Unstructured interpolation using Grid Spec libraries
@@ -788,6 +850,8 @@ double interp_us_2d(datafile_t *df, df_variable_t *v, int record,
 
 /* 2D Cartesian data. Missing values are stripped before */
 /* computing the grid_spec.                              */
+/* Note: this makes assumptions about the order of       */
+/* dimensions and coordinates.                           */
 double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
 		    double coords[])
 {
@@ -807,6 +871,7 @@ double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
   int rid = v->rid;
   GRID_SPECS *gs;
   int hasmis = (v->missing) ? 1 : 0;
+  int hasfil = (v->fillvalue) ? 1 : 0;
   char i_rule[MAXSTRLEN];
   double **gx = VAR_2D(&vars[coordids[0]])[0];
   double **gy = VAR_2D(&vars[coordids[1]])[0];
@@ -831,6 +896,7 @@ double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
     for (i = 0; i < ni; ++i) {
       for (j = 0; j < nj; ++j) {
 	if ((hasmis && vd[j][i] == v->missing)) continue;
+	if ((hasfil && vd[j][i] == v->fillvalue)) continue;
 	if (isnan(vd[j][i])) continue;
 	dsize++;
       }
@@ -840,6 +906,7 @@ double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
     for (i = 0; i < ni; ++i) {
       for (j = 0; j < nj; ++j) {
 	if ((hasmis && vd[j][i] == v->missing)) continue;
+	if ((hasfil && vd[j][i] == v->fillvalue)) continue;
 	if (isnan(vd[j][i])) continue;
 	p[n].x = gx[j][i];
 	p[n++].y = gy[j][i];
@@ -852,6 +919,7 @@ double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
     for (i = 0; i < ni; ++i) {
       for (j = 0; j < nj; ++j) {
 	if ((hasmis && vd[j][i] == v->missing)) continue;
+	if ((hasfil && vd[j][i] == v->fillvalue)) continue;
 	if (isnan(vd[j][i])) continue;
 	d->points[n].v = d_alloc_1d(1);
 	d->points[n].z = d->points[n].v[0] = vd[j][i];
@@ -884,6 +952,7 @@ double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
     for (i = 0; i < ni; ++i) {
       for (j = 0; j < nj; ++j) {
 	if ((hasmis && vd[j][i] == v->missing)) continue;
+	if ((hasfil && vd[j][i] == v->fillvalue)) continue;
 	if (isnan(vd[j][i])) continue;
 	d->points[n++].z = vd[j][i];
       }
@@ -908,6 +977,7 @@ double interp_us_2d_i(datafile_t *df, df_variable_t *v, int record,
   int ni = df->dimensions[v->dimids[1]].size;
   int nc = df_get_num_coords(df, v);
   int *coordids = df_get_coord_ids(df, v);
+  int *coordtype = df_get_coord_types(df, v);
   double **vd = VAR_2D(v)[record - v->start_record];
   df_variable_t *vars = df->variables;
   GRID_SPECS *gs0 = NULL;
@@ -926,11 +996,11 @@ double interp_us_2d_i(datafile_t *df, df_variable_t *v, int record,
 
   /* Find which coordinates are lat, long */
   for (n = 0; n < nc; n++) {
-    if (vars[coordids[n]].type & VT_LONGITUDE) {
+    if (coordtype[n] & VT_LONGITUDE) {
       gx = VAR_1D(&vars[coordids[n]])[0];
       x = coords[n];
     }
-    if (vars[coordids[n]].type & VT_LATITUDE) {
+    if (coordtype[n] & VT_LATITUDE) {
       gy = VAR_1D(&vars[coordids[n]])[0];
       y = coords[n];
     }
@@ -1214,6 +1284,7 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
   int nc = df_get_num_coords(df, v);
   int dsize;
   int *coordids = df_get_coord_ids(df, v);
+  int *coordtype = df_get_coord_types(df, v);
   double ***vd = VAR_3D(v)[record - v->start_record];
   df_variable_t *vars = df->variables;
   GRID_SPECS **gs0 = NULL;
@@ -1222,19 +1293,41 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
   point **p;
   delaunay **d;
   double val;
-  double z = coords[0];
+  double x, y, z = coords[0];
   double kindex   = 0.0;
   double  tdata[2] = {NaN, NaN};
   int ks, kt;
   int rid = v->rid;
   GRID_SPECS **gs;
   int hasmis = (v->missing) ? 1 : 0;
+  int hasfil = (v->fillvalue) ? 1 : 0;
   char i_rule[MAXSTRLEN];
   /*double *zgrid = VAR_1D(&vars[coordids[0]])[0];*/
   double zgrid[nz];
-  double **gx = VAR_2D(&vars[coordids[1]])[0];
-  double **gy = VAR_2D(&vars[coordids[2]])[0];
+  double **gx, **gy;
   int zs, zb;
+  int sigma = 0;
+
+  /* Find which coordinates are lat, long, depth */
+  for (n = 0; n < nc; n++) {
+    if (coordtype[n] & VT_LONGITUDE) {
+      gx = VAR_2D(&vars[coordids[n]])[0];
+      /*if (nc == v->nd) ni = df->dimensions[coordids[n]].size;*/
+      x = coords[n];
+    }
+    if (coordtype[n] & VT_LATITUDE) {
+      gy = VAR_2D(&vars[coordids[n]])[0];
+      /*if (nc == v->nd) nj = df->dimensions[coordids[n]].size;*/
+      y = coords[n];
+    }
+    if (coordtype[n] & VT_Z) {
+      df_variable_t *vc = &vars[coordids[n]];
+      memcpy(zgrid, VAR_1D(&vars[coordids[n]])[0], nz * sizeof(double));
+      /*if (nc == v->nd) nz = df->dimensions[coordids[n]].size;*/
+      if (vc->type & VT_SIGMA) sigma = 1; 
+      z = coords[n];
+    }
+  }
 
   if (strlen(df->i_rule))
     strcpy(i_rule, df->i_rule);
@@ -1242,8 +1335,8 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
     strcpy(i_rule, "linear");
 
   /* Orient the vertical coordinate */
-  memcpy(zgrid, VAR_1D(&vars[coordids[0]])[0], nz * sizeof(double));
-  if (vars[coordids[0]].z_is_depth)
+  /*memcpy(zgrid, VAR_1D(&vars[coordids[0]])[0], nz * sizeof(double));*/
+  if (!sigma && vars[coordids[0]].z_is_depth)
       for (k = 0; k < nz; k++) zgrid[k] *= -1.0;
   zs = 0; zb = nz - 1;
   if (zgrid[0] < zgrid[nz - 1]) {
@@ -1272,10 +1365,12 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
     for (i = 0; i < ni; ++i) {
       for (j = 0; j < nj; ++j) {
 	if ((hasmis && vd[zs][j][i] == v->missing)) continue;
+	if ((hasfil && vd[zs][j][i] == v->fillvalue)) continue;
 	if (isnan(vd[zs][j][i])) continue;
 	dsize++;
       }
     }
+
     v->kmapi = i_alloc_2d(dsize, nz);
     v->kmapj = i_alloc_2d(dsize, nz);
     p = (point **)calloc(nz, sizeof(point *));
@@ -1283,6 +1378,7 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
       for (i = 0; i < ni; ++i) {
 	for (j = 0; j < nj; ++j) {
 	  if ((hasmis && vd[k][j][i] == v->missing)) continue;
+	  if ((hasfil && vd[k][j][i] == v->fillvalue)) continue;
 	  if (isnan(vd[k][j][i])) continue;
 	  if (p[k] == NULL)
 	    p[k] = (point *)alloc_1d(dsize, sizeof(point));
@@ -1363,7 +1459,10 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
     }
   }
   ks = (int)kindex;
-  kt = min(ks + 1, zb);
+  if (zb == 0)
+    kt = min(ks + 1, zs);
+  else
+    kt = min(ks + 1, zb);
 
   /* No-gradient below bottom layer */
   if (!v->kn[ks]) ks = kt;
@@ -1397,7 +1496,7 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
 
   /* Do the horizontal interpolation on layers bracketing the depth */
   for (k = ks; k <= kt; ++k) {
-    tdata[k - ks] = grid_interp_on_point(gs[k], coords[1], coords[2]);
+    tdata[k - ks] = grid_interp_on_point(gs[k], x, y);
   }
 
   /* Do the vertical interpolation */
@@ -1429,6 +1528,7 @@ double interp_us_3d_i(datafile_t *df, df_variable_t *v, int record,
   int nc = df_get_num_coords(df, v);
   int dsize;
   int *coordids = df_get_coord_ids(df, v);
+  int *coordtype = df_get_coord_types(df, v);
   double ***vd = VAR_3D(v)[record - v->start_record];
   df_variable_t *vars = df->variables;
   GRID_SPECS **gs0 = NULL;
@@ -1452,16 +1552,19 @@ double interp_us_3d_i(datafile_t *df, df_variable_t *v, int record,
 
   /* Find which coordinates are lat, long, depth */
   for (n = 0; n < nc; n++) {
-    if (vars[coordids[n]].type & VT_LONGITUDE) {
+    if (coordtype[n] & VT_LONGITUDE) {
       gx = VAR_1D(&vars[coordids[n]])[0];
+      /*if (nc == v->nd) ni = df->dimensions[coordids[n]].size;*/
       x = coords[n];
     }
-    if (vars[coordids[n]].type & VT_LATITUDE) {
+    if (coordtype[n] & VT_LATITUDE) {
       gy = VAR_1D(&vars[coordids[n]])[0];
+      /*if (nc == v->nd) nj = df->dimensions[coordids[n]].size;*/
       y = coords[n];
     }
-    if (vars[coordids[n]].type & VT_Z) {
-      zgrid = VAR_1D(&vars[coordids[n]])[0];
+    if (coordtype[n] & VT_Z) {
+      memcpy(zgrid, VAR_1D(&vars[coordids[n]])[0], nz * sizeof(double));
+      /*if (nc == v->nd) nz = df->dimensions[coordids[n]].size;*/
       z = coords[n];
     }
   }
@@ -1595,7 +1698,10 @@ double interp_us_3d_i(datafile_t *df, df_variable_t *v, int record,
     }
   }
   ks = (int)kindex;
-  kt = min(ks + 1, zb);
+  if (zb == 0)
+    kt = min(ks + 1, zs);
+  else
+    kt = min(ks + 1, zb);
 
   /* No-gradient below bottom layer */
   if (!v->kn[ks]) ks = kt;
@@ -1744,8 +1850,8 @@ double interp3d_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
   double dx, dy, z = coords[nc - 1];
   int i, j, k, n;
   double d_eps = 0.00001;
-  double **gx = VAR_2D(&vars[coordids[1]])[0];
-  double **gy = VAR_2D(&vars[coordids[2]])[0];
+  double **gx = VAR_2D(&vars[coordids[0]])[0];
+  double **gy = VAR_2D(&vars[coordids[1]])[0];
 
   /*
    * Loop through all points and latch on to the the first one that
@@ -1783,6 +1889,105 @@ double interp3d_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
   /* Nothing found - missing value?? */
   /*return(NaN);*/
   return(0.0);
+}
+
+/* Nearest neighbour for 2D point array files */
+double interp2d_nearest(datafile_t *df, df_variable_t *v, int record,
+			    double coords[])
+{
+  int ni = df->dimensions[v->dimids[0]].size;
+  int nc = df_get_num_coords(df, v);
+  int *coordids = df_get_coord_ids(df, v);
+  df_variable_t *vars = df->variables;
+  double *d = VAR_1D(v)[record - v->start_record];
+  double dx, dy;
+  int i, mi, n;
+  double dmin = HUGE;
+  double *gx = VAR_1D(&vars[coordids[0]])[0];
+  double *gy = VAR_1D(&vars[coordids[1]])[0];
+
+  /*
+   * Loop through all points and latch on to the the first one that
+   * falls within the limit
+   */
+
+  for (i = 0; i < ni; ++i) {
+    double dist = 0.0;
+    double x = gx[i];
+    double y = gy[i];
+    if (isnan(x) || isnan(y)) continue;
+
+    dx = x - coords[0];
+    dy = y - coords[1];
+    dist = sqrt(dx * dx + dy * dy);
+    if (dist <= dmin) {
+      dmin = dist;
+      mi = i;
+    }
+  }
+  return(d[mi]);
+}
+
+
+/* Nearest neighbour for 3D point array files */
+/* Formulated for ROMS station data: note data d[ni][nz] */
+/* rather than the usual d[nz][ni]. */
+double interp3d_nearest(datafile_t *df, df_variable_t *v, int record,
+			  double coords[])
+{
+  int ni = df->dimensions[v->dimids[0]].size;
+  int nc = df_get_num_coords(df, v);
+  int nz = df->dimensions[v->dimids[nc-1]].size;
+  int *coordids = df_get_coord_ids(df, v);
+  df_variable_t *vars = df->variables;
+  double **d = VAR_2D(v)[record - v->start_record];
+  double *zgrid = VAR_1D(&vars[coordids[nc - 1]])[0];
+  double val, dx, dy, z = coords[nc - 1];
+  int i, mi, k, ks, kt, n;
+  double kindex, dmin = HUGE;
+  double x = coords[0];
+  double y = coords[1];
+  double *gx = VAR_1D(&vars[coordids[0]])[0];
+  double *gy = VAR_1D(&vars[coordids[1]])[0];
+
+  /*
+   * Loop through all points and latch on to the the first one that
+   * falls within the limit
+   */
+  /*
+  /* Locate the k layer */
+  if (z < zgrid[0]) {
+    kindex = 0.0;
+  } else if (z >= zgrid[nz - 1]) {
+    kindex = nz - 1;
+  } else {
+    for (k = 0; k < nz - 1; ++k) {
+      if ((z >= zgrid[k]) && (z < zgrid[k + 1])) {
+        kindex = k + (z - zgrid[k]) / (zgrid[k + 1] - zgrid[k]);
+        break;
+      }
+    }
+  }
+  ks = (int)kindex;
+  kt = min(ks + 1, nz - 1);
+  kindex = kindex - ks;
+
+  for (i = 0; i < ni; ++i) {
+    double dist = 0.0;
+    dx = gx[i];
+    dy = gy[i];
+    if (isnan(x) || isnan(y)) continue;
+
+    dx -= x;
+    dy -= y;
+    dist = sqrt(dx * dx + dy * dy);
+    if (dist <= dmin) {
+      dmin = dist;
+      mi = i;
+    }
+  }
+  val = (1 - kindex) * d[mi][ks] + (kindex) * d[mi][kt];
+  return(val);
 }
   
 /*
@@ -1868,7 +2073,6 @@ double interp_linear(datafile_t *df, df_variable_t *v, int record,
         val += term * df_get_data_value(df, v, record, corner);
     }
   }
-
   return (val);
 }
 
@@ -2179,11 +2383,11 @@ double interp_linear_filled(datafile_t *df, df_variable_t *v, int record,
           term[j] *= (1 - findices[i]);
       }
       dval[j] = df_get_data_value(df, v, record, corner);
-      if (dval[j] == v->missing) {
+      if (v->type & VT_MV && dval[j] == (double)v->missing) {
 	mask[j] |= MV;
 	dval[j] = find_close(df, v, record, corner);
       }
-      if (dval[j] == v->fillvalue) {
+      if (v->type & VT_FV && dval[j] == (double)v->fillvalue) {
 	mask[j] |= FV;
 	dval[j] = find_close(df, v, record, corner);
       }

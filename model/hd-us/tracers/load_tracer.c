@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 7380 2023-07-26 04:36:43Z her127 $
+ *  $Id: load_tracer.c 7470 2023-12-13 04:02:25Z her127 $
  *
  */
 
@@ -656,7 +656,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
   master->wave_wfdx = master->wave_wfdy = master->wave_wovsx = master->wave_wovsy = NULL;
   master->wave_frolx = master->wave_froly = NULL;
   master->tau_w1 = master->tau_w2 = master->tau_diss1 = master->tau_diss2 = NULL;
-  master->sep = master->bep = master->tfront = NULL;
+  master->sep = master->bep = master->tfront = master->windcs = master->windcd = NULL;
 
   /* SWR                                                             */
   master->swr_attn1 = master->swr_tran = NULL;
@@ -797,6 +797,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
   master->temp_tc = master->salt_tc = master->unit = master->mono = NULL;
   master->wave_stke1 = master->wave_stke2 = NULL;
   master->fsalt = master->ftemp = master->fvelu = master->fvelv = NULL;
+  master->vz0b = master->kz0b = NULL;
   if (params->swr_type & SWR_3D) master->swr_attn = NULL;
   master->glider = master->nprof = master->u1vhc = NULL;
   master->volcont = master->centi = NULL;
@@ -1083,6 +1084,10 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
       master->centi = master->tr_wc[tn];
     else if (strcmp("nprof", name) == 0)
       master->nprof = master->tr_wc[tn];
+    else if (strcmp("VZ0", name) == 0)
+      master->vz0b = master->tr_wc[tn];
+    else if (strcmp("KZ0", name) == 0)
+      master->kz0b = master->tr_wc[tn];
     else if (strcmp("mono", name) == 0) {
       master->mono = master->tr_wc[tn];
       sprintf(master->trinfo_3d[tn].long_name, "Monotinicity of %s", 
@@ -1636,6 +1641,12 @@ int set_tracer_3d(parameters_t *params,
   if (strlen(params->nprof)) {
     copy_autotracer_by_name("nprof", trinfo, ntr, &tn, tr, &master->nprof);
   }
+  if (params->closf & VZ_R) {
+    copy_autotracer_by_name("VZ0", trinfo, ntr, &tn, tr, &master->vz0b);
+  }
+  if (params->closf & KZ_R) {
+    copy_autotracer_by_name("KZ0", trinfo, ntr, &tn, tr, &master->kz0b);
+  }
   if (strlen(params->monotr)) {
     n = tn;
     copy_autotracer_by_name("mono", trinfo, ntr, &tn, tr, &master->mono);
@@ -1922,6 +1933,9 @@ int set_tracer_2d(parameters_t *params,
     master->wave_Fx = tr[n++];
     master->wave_Fy = tr[n++];
   }
+  if (params->waves & (NEARSHORE|STOKES|SPECTRAL)) {
+    set_autotracer_by_name("wave_k", trinfo, ntr, &tn, tr, &master->wave_k, buf);
+  }
   if (params->waves & (STOKES|SPECTRAL)) {
     n = set_autotracer_by_groupkey("wave_stokes", trinfo, ntr, &tn, buf);
     master->wave_ste1 = tr[n++];
@@ -1937,7 +1951,7 @@ int set_tracer_2d(parameters_t *params,
   if (params->waves & NEARSHORE) {
     n = set_autotracer_by_groupkey("wave_nearshore", trinfo, ntr, &tn, buf);
     master->wave_Kb = tr[n++];
-    master->wave_k = tr[n++];
+    /*master->wave_k = tr[n++];*/
     master->wave_P = tr[n++];
     master->wave_fwcapx = tr[n++];
     master->wave_fbrex = tr[n++];
@@ -2013,6 +2027,11 @@ int set_tracer_2d(parameters_t *params,
   }
   if (params->numbers & TIDEFR)
     set_autotracer_by_name("SH_tide_front", trinfo, ntr, &tn, tr, &master->tfront, buf);
+  if (params->numbers1 & WINDSPDI) {
+    n = set_autotracer_by_groupkey("wind", trinfo, ntr, &tn, buf);
+    master->windcs = tr[n++];
+    master->windcd = tr[n++];
+  }
   if (params->numbers & WET_CELLS)
     set_autotracer_by_name("wet_cells", trinfo, ntr, &tn, tr, &master->wetcell, buf);
   if (params->numbers & SURF_LAYER)
@@ -3150,20 +3169,46 @@ int value_init_regions(master_t *master, char *dname, double *tr, int mode)
 {
   geometry_t *geom = master->sgrid;
   char *files[MAXSTRLEN * MAXNUMARGS];
-  int n, nf, nr, rgn, cc, c;
-  double *regionid, rgv;
+  int n, m, nf, nr, rgn, cc, c;
+  double *regionid, rgv, td, bd;
+  int newcode = 1;
+
   nf = parseline(dname, files, MAXNUMARGS);
   if(strcmp(files[0], "region") == 0) {
     regionid = d_alloc_1d(geom->sgsiz);
     nr = read_regioni(master, files[1], regionid);
     if (nr) {
+      char *tok;
       for (n = 2; n < nf; n++) {
-	sscanf(files[n], "%d:%lf", &rgn, &rgv);
+	if (newcode) {
+	  tok = strtok(files[n], ":");
+	  rgn = atoi(tok);
+	  m = 1;
+	  td = HUGE;
+	  bd = -HUGE;
+	  tok = strtok(NULL, ":");
+	  while( tok != NULL ) {
+	    if (m == 1) rgv = atof(tok);
+	    if (m == 2) td = atof(tok);
+	    if (m == 3) bd = atof(tok);
+	    m++;
+	    tok = strtok(NULL, ":");
+	  }
+	} else
+	  sscanf(files[n], "%d:%lf", &rgn, &rgv);
 	if (mode == 3) {
-	  for (cc = 1; cc <= geom->b3_t; cc++) {
-	    c = geom->w3_t[cc];
-	    if (rgn == (int)regionid[c])
-	      tr[c] = rgv;
+	  if (newcode) {
+	    for (cc = 1; cc <= geom->b3_t; cc++) {
+	      c = geom->w3_t[cc];
+	      if (rgn == (int)regionid[c] && geom->cellz[c] < td && geom->cellz[c] > bd)
+		tr[c] = rgv;
+	    }
+	  } else {
+	    for (cc = 1; cc <= geom->b3_t; cc++) {
+	      c = geom->w3_t[cc];
+	      if (rgn == (int)regionid[c])
+		tr[c] = rgv;
+	    }
 	  }
 	}
 	if (mode == 2) {
@@ -3171,7 +3216,7 @@ int value_init_regions(master_t *master, char *dname, double *tr, int mode)
 	    c = geom->w2_t[cc];
 	    if (rgn == (int)regionid[c])
 	      tr[c] = rgv;
-	  }     
+	  }
 	}
       }
       d_free_1d(regionid);
@@ -3664,8 +3709,9 @@ int set_variable(master_t *master, char *tag, double *ret, double *tin)
 		  value_init_sparse2d(master, tr, buf1, iname, i_rule, t, mask, NULL);
 		if (mode == 3)
 		  value_init_sparse3d(master, tr, buf1, iname, i_rule, t, mask, NULL);
-	      } else
+	      } else {
 		interp_data_s(master, buf1, iname, tr, mode, mask, t);
+	      }
 	      continue;
 	    }
 	  }
@@ -3745,7 +3791,8 @@ void interp_data_s(master_t *master,  /* Master data                 */
   memset(ts, 0, sizeof(timeseries_t));
     
   /* Read the time series                                            */
-  ts_read(fname, ts);
+  /*ts_read(fname, ts);*/
+  ts = hd_ts_read(master, fname, 0);
   if ((idb = ts_get_index(ts, fv_get_varname(fname, vname, buf))) == -1)
     hd_quit("interp_data_s: Can't find variable %s in file %s\n", vname, fname);
 
@@ -3771,8 +3818,11 @@ void interp_data_s(master_t *master,  /* Master data                 */
     if (mode == 3)
       ret[c] = ts_eval_xyz(ts, idb, tin, geom->cellx[cs], geom->celly[cs], geom->cellz[c]);
   }
+  /*
   ts_free((timeseries_t*)ts);
   free(ts);
+  */
+  if (ts != NULL) hd_ts_free(master, ts);
   poly_destroy(pl);
 }
 
@@ -5850,6 +5900,7 @@ void copy_autotracer_by_name(char *name,
 			     double **trp)
 {
   int tn;
+
   if ((tn = tracer_find_index(name, ntr, tr)) < 0) {
     int i;
     for (i = 0; i < NAUTOTR; i++)
@@ -6226,7 +6277,7 @@ void write_autotracer(master_t *master)
   fprintf(fp," *  reserved. See the license file for disclaimer and full\n");
   fprintf(fp," *  use/redistribution conditions.\n");
   fprintf(fp," *  \n");
-  fprintf(fp," *  $Id: load_tracer.c 7380 2023-07-26 04:36:43Z her127 $\n", version, ctime(&t));
+  fprintf(fp," *  $Id: load_tracer.c 7470 2023-12-13 04:02:25Z her127 $\n", version, ctime(&t));
   fprintf(fp," *\n");
   fprintf(fp," */\n\n");
 

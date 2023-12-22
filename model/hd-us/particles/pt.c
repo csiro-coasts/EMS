@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 7241 2022-10-25 00:26:55Z her127 $
+ *  $Id: pt.c 7409 2023-10-05 02:08:32Z her127 $
  *
  */
 
@@ -29,9 +29,6 @@
 
 #define MAX_COL    127
 #define HIST_SCALE 5
-#define CONSTANT 2 /*settling velocity tpes*/
-#define PSTOKES  4
-#define DIURNAL  8
 
 #define DEG2RAD(d) ((d)*M_PI/180.0)
 #define RAD2DEG(r) ((r)*180.0/M_PI)
@@ -43,7 +40,7 @@ void ptgrid_ijtoxy(master_t *master, long np, particle_t *p);
 void pt_fit_to_grid(master_t *master, long np, particle_t *p);
 void pt_write_at_t(master_t *master, double t);
 void pt_move(master_t *master, dump_data_t *dumpdata, particle_t *p,
-             double dt, double maxdh);
+             double dt, double maxdh, int sm, int *c2cc);
 void pt_set_age(master_t *master, particle_t *p, double dt);
 void pt_set_size(master_t *master, particle_t *p, double dt, int n);
 void pt_set_svel(master_t *master, particle_t *p, double dt, int n);
@@ -52,6 +49,8 @@ int hd_pt_create(master_t *master, char *name);
 int get_pos_m(master_t *master, particle_t *p, int c, int ci, double u, double v, double w,
 	      double *cx, double *cy, double *cz, double dt);
 void pt_auto_init(master_t *master);
+void pt_pl_ma2mi(master_t *master, particle_t *p, double rate, double dt, int n);
+
 
 /*-------------------------------------------------------------------*/
 /* Event called by the time scheduler. This routine writes out the   */
@@ -187,6 +186,7 @@ void pt_params_init(master_t *master, FILE * fp)
   master->shist = 0;
   master->phist = NULL;
   master->pt_svel = NULL;
+  master->pt_ptype = NULL;
 
   /* Read particle tracking file parameters                          */
   prm_set_errfn(hd_silent_warn);
@@ -194,16 +194,22 @@ void pt_params_init(master_t *master, FILE * fp)
     /* No particle tracking input file - so nothing further to do    */
     return;
   }
-  if (master->do_pt == 2) {
+  if (master->do_pt == PT_AUTO) {
     pt_auto_init(master);
     return;
   }
+  if (master->nwindows != 1) hd_quit("Particle tracking currently only operates with 1 window.\n");
 
   prm_set_errfn(hd_quit);
   prm_read_int(fp, "PT_InputRecord", &master->ptinrec);
   if (prm_read_char(fp, "PT_Restart", buf))
     restart = is_true(buf);
   prm_read_char(fp, "PT_OutputFile", master->ptoutname);
+  if (strlen(master->opath)) {
+    sprintf(buf, "%s%s", master->opath, master->ptoutname);
+    strcpy(master->ptoutname, buf);
+  }
+
   prm_get_time_in_secs(fp, "PT_StartTime", &master->ptstart);
   prm_get_time_in_secs(fp, "PT_StopTime", &master->ptend);
   prm_get_time_in_secs(fp, "PT_OutputStep", &master->ptoutinc);
@@ -222,6 +228,9 @@ void pt_params_init(master_t *master, FILE * fp)
   /* Read mass of each new particle in kg                            */
   prm_read_double(fp, "PT_Mass", &master->pt_mass);
 
+  /* Read windage surface factor                                     */
+  prm_read_double(fp, "PT_Windage", &master->pt_wsf);
+
   /* Read flag which determines behaviour on reaching an open        */
   /* boundary.  */
   prm_read_char(fp, "PT_StickyBoundary", buf);
@@ -231,14 +240,32 @@ void pt_params_init(master_t *master, FILE * fp)
 
   master->pt_dumpf = 0;
   /* Read the age colour stretch                                     */
-  if (prm_get_time_in_secs(fp, "PT_AgeLimit", &master->pt_agelim)) {
-    master->pt_dumpf |= PT_AGE;
-    master->shist = HIST_SCALE * master->pt_agelim / 86400;
+  if (master->compatible & V7367) {
+    if (prm_get_time_in_secs(fp, "PT_AgeLimit", &master->pt_agelim)) {
+      master->pt_dumpf |= PT_AGE;
+      master->shist = HIST_SCALE * master->pt_agelim / 86400;
+    }
+  } else {
+    master->pt_agelim = 0.0;
+    prm_read_char(fp, "PT_Age", buf);
+    if (is_true(buf)) {
+      master->pt_agelim = 1.0;
+      master->pt_dumpf |= (PT_AGE|PT_FATT);
+    }
   }
 
   /* Read the size colour stretch                                    */
-  if (prm_read_double(fp, "PT_SizeLimit", &master->pt_sizelim)) {
-    master->pt_dumpf |= PT_SIZE;
+  if (master->compatible & V7367) {
+    if (prm_read_double(fp, "PT_SizeLimit", &master->pt_sizelim)) {
+      master->pt_dumpf |= PT_SIZE;
+    } else {
+      master->pt_sizelim = 0.0;
+      prm_read_char(fp, "PT_Size", buf);
+      if (is_true(buf)) {
+	master->pt_sizelim = 1.0;
+	master->pt_dumpf |= (PT_SIZE|PT_FATT);
+      }
+    }
   }
 
   /* Set up a histogram array                                        */
@@ -388,6 +415,7 @@ void pt_params_init(master_t *master, FILE * fp)
   prm_set_errfn(hd_quit);
 
   if (master->pt_nsource > 0) {
+    master->pt_stype = i_alloc_1d(master->pt_nsource);
     master->pt_rate = d_alloc_1d(master->pt_nsource);
     master->pt_colour =
       (short *)malloc(sizeof(short) * master->pt_nsource);
@@ -408,6 +436,8 @@ void pt_params_init(master_t *master, FILE * fp)
 
     for (i = 0; i < master->pt_nsource; ++i) {
       int colourBit = 0;
+      master->pt_stype[i] = 0;
+      master->pt_stype[i] |= PT_STANDARD;
       master->pt_accum[i] = master->pt_size[i] = 0.0;
 
       /* Read rate                                                   */
@@ -440,7 +470,8 @@ void pt_params_init(master_t *master, FILE * fp)
       master->svel_type[i] = NONE;
       /* Goes through the options                                    */
       sprintf(key, "PT_Source%d.Stype",i);
-      prm_read_char(fp, key, buf);
+      if (prm_read_char(fp, key, buf))
+	master->pt_stype[i] |= PT_SVEL;
       if (strcmp(buf, "CONSTANT") == 0) {
 	sprintf(key, "PT_Source%d.Svel", i);        
 	if (prm_read_double(fp, key, &master->pt_svel[i])) {
@@ -502,6 +533,9 @@ void pt_params_init(master_t *master, FILE * fp)
         hd_quit("pt_params_init: Can't read EndLocation values\n");
 
     }
+
+    /* Macro-plastics                                        */
+    set_macrop_class(master);
 
   } else {                      /* Default to old behaviour */
 
@@ -639,10 +673,11 @@ void pt_auto_init(master_t *master)
   master->ptreset = master->ptend - master->ptstart;
   master->pt_kh = 1.0;
   master->pt_kz_mult = 1.0;
+  master->pt_wsf = 0.0;
   master->pt_mass = 1.0;
   master->pt_stickybdry = 0;
   master->pt_agelim = master->ptend - master->ptstart;
-  master->pt_dumpf |= PT_AGE;
+  master->pt_dumpf |= (PT_AGE|PT_FATT);
   master->shist = HIST_SCALE * master->pt_agelim / 86400;
   master->pt_sizelim = 0;
   master->wvel_i = NULL;
@@ -708,7 +743,7 @@ void pt_auto_init(master_t *master)
   particles_to_conc(master, master->ptn, master->ptp);
 
   /* Allocate array for max vert diffusion values */
-  master->maxdiffw = f_alloc_1d(geom->sgsizS);
+  master->maxdiffw = f_alloc_1d(geom->szcS);
 
   /* Register an interest with the tscheduler for dumping the output */
   /* output particle file.  */
@@ -853,9 +888,12 @@ void pt_new(master_t *master, long np, particle_t *p)
 	/* the size of the output file.                              */
 	p[n].age = 0.0;
 	p[n].out_age = 0;
-	if (master->pt_agelim)
-	  p[n].dumpf |= PT_AGE;
-
+	if (master->pt_agelim) {
+	  if (master->compatible & V7367)
+	    p[n].dumpf |= PT_AGE;
+	  else
+	    p[n].dumpf |= (PT_AGE|PT_FATT);
+	}
 	/* Set the size equal to the initial size. Size is scaled as */
 	/* per age to sizelim.                                       */
 	p[n].size = master->pt_size[i];
@@ -863,9 +901,12 @@ void pt_new(master_t *master, long np, particle_t *p)
 	  p[n].out_size = MAX_COL;
 	else
 	  p[n].out_size = 0;
-	if (master->pt_sizelim)
-	  p[n].dumpf |= PT_SIZE;
-
+	if (master->pt_sizelim) {
+	  if (master->compatible & V7367)
+	    p[n].dumpf |= PT_SIZE;
+	  else
+	    p[n].dumpf |= (PT_SIZE|PT_FATT);
+	}
 	/* Initialise the settling velocity */
 	p[n].svel = 0.0;
 
@@ -874,6 +915,9 @@ void pt_new(master_t *master, long np, particle_t *p)
 
 	if (master->ptmsk) p[n].flag |= PT_IN;
 
+	/* Macro-plastics account for windage */
+	if ((master->pt_stype[i] & PT_PLASTIC) && master->swind1 && master->swind2)
+	  p[n].flag |= PT_WIND;
         count++;
       }
       n++;
@@ -929,16 +973,22 @@ void pt_split(master_t *master, long np, particle_t *p,
       /* the size of the output file.                              */
       p[n].age = 0.0;
       p[n].out_age = 0;
-      if (master->pt_agelim)
-	p[n].dumpf |= PT_AGE;
-
+      if (master->pt_agelim) {
+	if (master->compatible & V7367)
+	  p[n].dumpf |= PT_AGE;
+	else
+	  p[n].dumpf |= (PT_AGE|PT_FATT);
+      }
       /* Set the size equal to the initial size. Size is scaled as */
       /* per age to sizelim.                                       */
       p[n].size = 1e-5;;
       p[n].out_size = 0;
-      if (master->pt_sizelim)
-	p[n].dumpf |= PT_SIZE;
-
+      if (master->pt_sizelim) {
+	if (master->compatible & V7367)
+	  p[n].dumpf |= PT_SIZE;
+	else
+	  p[n].dumpf |= (PT_SIZE|PT_FATT);
+      }
       /* Initialise the settling velocity */
       p[n].svel = 0.0;
 
@@ -1012,9 +1062,12 @@ void pt_fit_to_grid(master_t *master, long np, particle_t *p)
     /* the size of the output file.                                  */
     p[n].age = 0.0;
     p[n].out_age = 0;
-    if (master->pt_agelim)
-      p[n].dumpf |= PT_AGE;
-
+    if (master->pt_agelim) {
+      if (master->compatible & V7367)
+	p[n].dumpf |= PT_AGE;
+      else
+	p[n].dumpf |= (PT_AGE|PT_FATT);
+    }
     /* Set the flag whether a particle is within the age region      */
     if (master->ptmsk) {
       if(master->ptmsk[c]) 
@@ -1022,6 +1075,9 @@ void pt_fit_to_grid(master_t *master, long np, particle_t *p)
       else
 	p[n].flag |= PT_OUT;
     }
+    /* Set the windage flag if required                              */
+    if (master->pt_wsf && master->swind1 && master->swind2)
+	p[n].flag |= PT_WIND;
   }
 }
 
@@ -1083,7 +1139,8 @@ void pt_update(master_t *master,
     pt_ts_t *v_i = master->vvel_i;
     pt_ts_t *w_i = master->wvel_i;
     pt_ts_t *m_i = master->mort_i;
-
+    int *c2cc;
+  
     if (DEBUG("particles"))
       dlog("particles", "Moving particles, t=%.0f\n", master->t);
 
@@ -1174,12 +1231,19 @@ void pt_update(master_t *master,
 
     /*---------------------------------------------------------------*/
     /* Loop to move each particle                                    */
+    c2cc = i_alloc_1d(geom->szcS);
+    for (c2 = 1; c2 <= geom->n2_t; c2++) {
+      c = geom->w2_t[c2];
+      c2cc[c] = c2;
+    }
     for (n = 0; n < master->ptn; n++) {
       if (((master->ptp[n].flag) & PT_ACTIVE) &&
 	  !((master->ptp[n].flag) & PT_LOST)) {
-        pt_move(master, dumpdata, &master->ptp[n], master->ptstep, maxdh);
+        pt_move(master, dumpdata, &master->ptp[n], master->ptstep, 
+		maxdh, master->pt_sm[n], c2cc);
       }
     }
+    i_free_1d(c2cc);
 
     /*---------------------------------------------------------------*/
     /* Set the age of each particle if required                      */
@@ -1263,7 +1327,11 @@ void pt_set_size(master_t *master, /* Master data                    */
     /* lost.                                                         */
     rate = master->pt_decay[master->pt_sm[n]];
     if(p->size < tol) {
+      p->size = tol;
       p->flag |= PT_LOST;
+    } else if (master->do_pt & PT_PLASTIC) {
+      /* Degrades macro-plasics to the micro-plastic class           */
+      pt_pl_ma2mi(master, p, rate, dt, n);
     } else {
       /* Increase / decrease the size                                */
       p->size += p->size * dt / rate;
@@ -1286,7 +1354,7 @@ void pt_set_size(master_t *master, /* Master data                    */
 
 
 /*-------------------------------------------------------------------*/
-/*This routine sets the settling velocity of all particles           */
+/* This routine sets the settling velocity of all particles          */
 /*-------------------------------------------------------------------*/
 void pt_set_svel(master_t *master, /* Master data                    */
                  particle_t *p,    /* Pointer to particle            */
@@ -1301,6 +1369,12 @@ void pt_set_svel(master_t *master, /* Master data                    */
   double per = master->pt_sper[sm];  /* Fixed settling period        */
   double dens = master->pt_dens[sm]; /* Water density in cell        */
   double mu = 1.4e-3; /* Molecular viscocity of water at 20C (kg/m/s)*/
+  double kmu = 1.0035e-6; /* Kinematic viscosity at 20C (m2s-1)      */
+
+  if (!(master->pt_stype[sm] & PT_SVEL)) {
+    p->svel = 0.0;
+    return;
+  }
 
   /* Set the settling type velocity                                  */
   if ((p->flag & PT_ACTIVE) && !(p->flag & PT_LOST)) {
@@ -1312,9 +1386,26 @@ void pt_set_svel(master_t *master, /* Master data                    */
       p->svel = vel;
     } else if (stype == PSTOKES) {
       /* Stokes settling                                             */
-      int c = ztoc_m(master, floor(p->e1), p->e3);
+      int c = p->c;
       p->svel = -master->g * (dens - master->dens[c]) *
 	p->size * p->size / (18.0 * mu);
+    } else if (stype == PLSTOKES) {
+      /* Settling of plastics from Elliot (1986) :                   */
+      /* doi: 10.1007/BF02408134                                     */
+      int c = p->c;
+      double ot = 1.0 / 3.0;
+      double c1 = 8.0 / 3.0;
+      double d1 = 1.0 - dens / master->dens[c];
+      int class = master->pt_ptype[sm];
+      double d = master->macrop[class]->diam;
+      double dcrit = 9.52 * pow(kmu, 2.0/3.0) / (pow(master->g, ot) * pow(d1,ot));
+      if (d < dcrit)
+	p->svel = master->g * d1 * p->size * p->size / (18.0 * kmu);
+      else {
+	double sgn = (d1 > 0.0) ? 1.0 : -1.0;
+	p->svel = c1 * master->g * p->size * sgn * sqrt(fabs(d1));
+      }
+      /*p->svel = 0.0;*/
     } else if (stype == DIURNAL) {
       /* Diurnal settling                                            */
       double frac = (master->t/(per))-(floor(master->t/(per)));
@@ -1327,6 +1418,41 @@ void pt_set_svel(master_t *master, /* Master data                    */
 }
 
 /* END pt_set_vel()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Degrades macro-plastics to micro-plastics                         */
+/*-------------------------------------------------------------------*/
+void pt_pl_ma2mi(master_t *master, /* Master data                    */
+                 particle_t *p,    /* Pointer to particle            */
+		 double rate,      /* Loss rate                      */
+                 double dt,        /* Time interval for moving)      */
+                 int n             /* Particle number                */
+)
+{
+  geometry_t *geom = master->geom;
+  int sm = master->pt_sm[n];       /* Particle source map            */
+  int class = master->pt_ptype[sm];
+  int tn, i = 0;
+  double loss = p->size * dt / rate;
+
+  while ((tn = master->macrop[class]->microtr[i]) >= 0) {
+    p->size = max(p->size + loss, 0.0);
+    p->out_size = max((short)(MAX_COL * p->size / master->pt_sizelim), 0);
+    if (tn >= 0) {
+      double r = master->macrop[class]->ptr[i];
+      double loss = r * p->size * dt / rate;
+      int c = p->c;
+      int cs = geom->m2d[c];
+      double vol = geom->cellarea[cs] * master->dz[c];
+      master->tr_wc[tn][c] = (master->tr_wc[tn][c] * vol - loss) / vol; 
+    }
+    i++;
+  }
+}
+
+/* END pt_pl_ma2mi()                                                 */
 /*-------------------------------------------------------------------*/
 
 
@@ -1354,7 +1480,9 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
              dump_data_t *dumpdata, /* Dump data structure           */
              particle_t *p, /* Pointer to the particle to be moved   */
              double dt,     /* The amount of time for which to move  */
-             double maxdh   /* Maximum possible horizontal diffusion */
+             double maxdh,  /* Maximum possible horizontal diffusion */
+	     int sm,        /* Source map                            */
+	     int *c2cc      /* Index to counter map                  */
   )
 {
   geometry_t *geom = master->geom;
@@ -1372,12 +1500,6 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
   pt_ts_t *u_i = master->uvel_i;
   pt_ts_t *v_i = master->vvel_i;
   pt_ts_t *w_i = master->wvel_i;
-  int *c2cc = i_alloc_1d(geom->szcS);
-
-  for (c2 = 1; c2 <= geom->n2_t; c2++) {
-    c = geom->w2_t[c2];
-    c2cc[c] = c2;
-  }
 
   /*-----------------------------------------------------------------*/
   /* Find the horizontal (i,j) indices for the model cell that the   */
@@ -1434,6 +1556,37 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
   }
   wpt = (w_i) ? w_i->val[c] : 0.0;
 
+  /* Particle settling velocity */
+  wpt += p->svel;
+
+  /* Stokes drift velocity                                           */
+  if (master->do_wave & W_SWAN && master->waves & STOKES_DRIFT) {
+    double k = master->wave_k[c2];
+    double depth = p->e3;
+    upt += master->wave_ste1[c2] * exp(2.0 * k * depth);
+    vpt += master->wave_ste2[c2] * exp(2.0 * k * depth);
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Windage                                                         */
+  if (p->flag & PT_WIND) {
+    double wx, wy, sr = 0.0;
+    double kw = 0.03;
+    if (sm >= 0 && master->pt_stype[sm] & PT_PLASTIC) {
+      int class = master->pt_ptype[sm];
+      sr = master->macrop[class]->srat;
+    }
+    if (master->pt_wsf > 0.0) {
+      sr = master->pt_wsf;
+    }
+    if (sr >= 0.0) {
+      wx = master->swind1[c2];
+      wy = master->swind2[c2];
+      upt += kw * sqrt(sr) * wx;
+      vpt += kw * sqrt(sr) * wy;
+    }
+  }
+
   /*-----------------------------------------------------------------*/
   /* Loop to move particle through grid. Each pass through this loop */
   /* (usually) moves the particle across one model cell.             */
@@ -1464,7 +1617,7 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
     ua = sqrt(u * u + v * v);
     r = (w < 0.0) ? wincon[wn]->dzz[c] : wincon[wn]->dzz[window[wn]->zm1[c]];
     tmin = SCALE * fabs(q / ua);
-    tmin = (r) ? min(tmin, SCALE * fabs(r / w)) : tmin;
+    /*tmin = (r) ? min(tmin, SCALE * fabs(r / w)) : tmin;*/
     tmin = min(tmin, tleft);
 
     /*---------------------------------------------------------------*/
@@ -1544,12 +1697,9 @@ void pt_move(master_t *master,    /* Pointer to model grid structure */
 	p->age = 0;
       }
     }
-
     /* Decrease time left for this step                              */
     tleft -= tmin;
-  
   }
-  i_free_1d(c2cc);
 }
 
 /* END pt_move()                                                     */
@@ -1696,12 +1846,13 @@ int get_pos_m(master_t *master,   /* Window geometry                 */
   if (isghost && !found) p->flag |= PT_LOST;
   *cx = slon;
   *cy = slat;
-  *cz -= w * dt;
+  *cz += w * dt;
 
   /* Find the vertical position in the mesh                          */
   cn = cns;
+
   /* First get the layer of the free surface                         */
-  while (master->eta[cns] < geom->gridz[cn] && c != geom->zm1[cn]) {
+  while (master->eta[cns] < geom->gridz[cn] && cn != geom->zm1[cn]) {
     cn = geom->zm1[cn];
   }
   /* Get the first cellz layer less than z                           */
@@ -1791,21 +1942,38 @@ int hd_pt_create(master_t *master,
 
   if (dumpf & PT_AGE) {
     strcpy(key, "age");
-    nc_def_var(ncid, key, NC_BYTE, 2, dims, &age_id);
-    vid = ncw_var_id(ncid, key);
-    write_text_att(ncid, vid, "long_name", "Age of particle since release");
-    write_text_att(ncid, vid, "units", "scaled byte");
-    sprintf(buf, "%d seconds", age);
-    write_text_att(ncid, vid, "Agelimit", buf);
+    if (dumpf & PT_FATT) {
+      nc_def_var(ncid, key, NC_FLOAT, 2, dims, &age_id);
+      vid = ncw_var_id(ncid, key);
+      write_text_att(ncid, vid, "long_name", "Age of particle since release");
+      write_text_att(ncid, vid, "units", "days");
+    } else {
+      nc_def_var(ncid, key, NC_BYTE, 2, dims, &age_id);
+      vid = ncw_var_id(ncid, key);
+      write_text_att(ncid, vid, "long_name", "Age of particle since release");
+      write_text_att(ncid, vid, "units", "scaled byte");
+      sprintf(buf, "%d seconds", age);
+      write_text_att(ncid, vid, "Agelimit", buf);
+    }
   }
   if (dumpf & PT_SIZE) {
     strcpy(key, "size");
-    nc_def_var(ncid, key, NC_BYTE, 2, dims, &size_id);
-    vid = ncw_var_id(ncid, key);
-    write_text_att(ncid, vid, "long_name", "Size of particle");
-    write_text_att(ncid, vid, "units", "scaled byte");
-    sprintf(buf, "%d m", size);
-    write_text_att(ncid, vid, "Sizelimit", buf);
+    if (dumpf & PT_FATT) {
+      nc_def_var(ncid, key, NC_FLOAT, 2, dims, &size_id);
+      vid = ncw_var_id(ncid, key);
+      write_text_att(ncid, vid, "long_name", "Size of particle");
+      if (master->do_pt & PT_PLASTIC)
+	write_text_att(ncid, vid, "units", "kg");
+      else
+	write_text_att(ncid, vid, "units", "m");
+    } else {
+      nc_def_var(ncid, key, NC_BYTE, 2, dims, &size_id);
+      vid = ncw_var_id(ncid, key);
+      write_text_att(ncid, vid, "long_name", "Size of particle");
+      write_text_att(ncid, vid, "units", "scaled byte");
+      sprintf(buf, "%d m", size);
+      write_text_att(ncid, vid, "Sizelimit", buf);
+    }
   }
   /* Time variable units attribute */
   nc_put_att_text(ncid, t_id, "units", strlen(t_units), t_units);
@@ -1944,6 +2112,7 @@ int hd_pt_create(master_t *master,
 		     cbit);
     d_free_2d(xloc);
     d_free_2d(yloc);
+    d_free_2d(zloc);
     i_free_1d(cbit);
   }
   return (ncid);

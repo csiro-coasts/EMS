@@ -49,7 +49,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: timeseries.c 7149 2022-07-07 00:27:30Z her127 $
+ *  $Id: timeseries.c 7425 2023-10-05 02:16:32Z her127 $
  */
 
 #include <stdio.h>
@@ -382,7 +382,7 @@ double ts_eval_xy(timeseries_t *ts, int id, double t, double x, double y)
 
         else
           quit
-            ("ts_eval_xy: Unable to locate any appropriate coordinate variables for variable '%s'.\n",
+            ("ts_eval_xy 1: Unable to locate any appropriate coordinate variables for variable '%s'.\n",
              v->name);
 
 
@@ -397,11 +397,11 @@ double ts_eval_xy(timeseries_t *ts, int id, double t, double x, double y)
         map.coordtypes[1] = VT_Y;
         if (df_set_coord_system(df, v, 1, &map) == 0)
           quit
-            ("ts_eval_xy: Unable to locate any appropriate coordinate variables for variable '%s'.\n",
+            ("ts_eval_xy 2: Unable to locate any appropriate coordinate variables for variable '%s'.\n",
              v->name);
       } else
         quit
-          ("ts_eval_xy: Unable to locate any appropriate coordinate variables for variable '%s'.\n",
+          ("ts_eval_xy 3: Unable to locate any appropriate coordinate variables for variable '%s'.\n",
            v->name);
     }
   }
@@ -465,7 +465,8 @@ double ts_eval_xyz(timeseries_t *ts, int id, double t, double x, double y,
 
     /* Guess by looking at the attributes */
     if (!df_infer_coord_system(df, v))
-      quit("ts_eval_xyz: Unable to infer the coordinate system.");
+      quit("ts_eval_xyz: Unable to infer the coordinate system: variable %s in %s.", 
+	   v->name, df->name);
   }
 
   nc = df_get_num_coords(df, v);
@@ -481,9 +482,13 @@ double ts_eval_xyz(timeseries_t *ts, int id, double t, double x, double y,
       coords[i] = x;
     else if (coordtypes[i] & (VT_Y | VT_LATITUDE))
       coords[i] = y;
-    else if (coordtypes[i] & (VT_Z))
+    else if (coordtypes[i] & (VT_Z)) {
+      df_vtrans_t *vt = df->vtrans;
       coords[i] = z;
-    else
+      if (vt != NULL) {
+	coords[i] = vt->btrans(ts, t, x, y, z);
+      }
+    } else
       quit
         ("ts_eval_xyz: The coordinate maps do not contain XYZ coordinate types.\n");
   }
@@ -1034,5 +1039,138 @@ static void check_modulus(timeseries_t *ts, int chk)
         break;
       }
     }
+  }
+}
+
+
+/*------------------------------------------------------------------*/
+/* Routine to transform a given z value to its sigma value.         */
+/*------------------------------------------------------------------*/
+double z2sigma(timeseries_t *ts, double t, double x, double y, double z)
+{
+  datafile_t *df = ts->df;
+  df_vtrans_t *vt = df->vtrans;
+  int ks, kt, k, nk = df->dimensions[vt->sigv->dimids[0]].size;
+  double *sgrid = VAR_1D(vt->sigv)[0];
+  double *cs_r = VAR_1D(vt->csv)[0];
+  double *hc = VAR_0D(vt->hcv);
+  double s, eval, dval, kindex, cs;
+  double zgrid[nk];
+
+  /* Interpolate sea level and depth                                */
+  eval = ts_eval_xy(ts, vt->eta_id, t, x, y);
+  dval = ts_eval_xy(ts, vt->dep_id, 0, x, y);
+  /*
+    for (k = 0; k < nk - 1; ++k) {
+      if ((z >= zgrid[k]) && (z < zgrid[k + 1])) {
+        kindex = k + (z - zgrid[k]) / (zgrid[k + 1] - zgrid[k]);
+        break;
+      }
+    }
+  }
+
+  ks = (int)kindex;
+  kt = min(ks + 1, nk - 1);
+  kindex = kindex - ks;
+  */
+
+  /* Transform the sigma surfaces to depth. Only need to do this to */
+  /* the level of z. Note sgrid[0] ~ -1 (the deepest layer).        */
+  for (kt = 0; kt < nk; ++kt) {
+    double z0 = (*hc * sgrid[kt] + dval * cs_r[kt]) / (*hc + dval);
+    zgrid[kt] =   z0 * (dval + eval) + eval;
+    if (z < zgrid[kt]) break;
+
+  }
+  ks = max(kt - 1, 0);
+
+  /* Find the layer and fractional layer of z                       */
+  if (z < zgrid[0]) {
+    kindex = 0.0;
+  } else if (z >= zgrid[nk - 1]) {
+    kindex = nk - 1;
+  } else {
+    kindex = (z - zgrid[ks]) / (zgrid[kt] - zgrid[ks]);
+  }
+  /*printf("z2sig %d %d z=%f kindex=%f : %f %f\n",ks,kt,z,kindex,zgrid[ks],zgrid[kt]);*/
+  /* Interpolate the stretching curve                               */
+  cs = (1 - kindex) * cs_r[ks] + (kindex) * cs_r[kt];
+
+  /* Transform the depth value                                      */
+  /* JA's transformation formula:
+    z0 = (hc*s_rho + botz(j,i)*cs_r)/(hc+botz(j,i)) ;
+    sdepths =  z0*(botz(j,i)+eta(j,i)) + eta(j,i) ;
+  */
+  s = ((z - eval) * (*hc + dval) / (dval + eval) - dval * cs) / *hc;
+  s = max(min(s, sgrid[nk-1]),sgrid[0]);
+  return(s);
+}
+
+/*------------------------------------------------------------------*/
+/* Routine to transform a sigma distribution to depths.             */
+/*------------------------------------------------------------------*/
+void sigma2z(timeseries_t *ts, double t, double x, double y, double z, double *zgrid)
+{
+  datafile_t *df = ts->df;
+  df_vtrans_t *vt = df->vtrans;
+  int ks, kt, k, nk = df->dimensions[vt->sigv->dimids[0]].size;
+  double *sgrid = VAR_1D(vt->sigv)[0];
+  double *cs_r = VAR_1D(vt->csv)[0];
+  double *hc = VAR_0D(vt->hcv);
+  double s, eval, dval, kindex, cs;
+
+  /* Interpolate sea level and depth                                */
+  eval = ts_eval_xy(ts, vt->eta_id, t, x, y);
+  dval = ts_eval_xy(ts, vt->dep_id, 0, x, y);
+
+  /* Transform the sigma surfaces to depth.                         */
+  /* JA's transformation formula:
+    z0 = (hc*s_rho + botz(j,i)*cs_r)/(hc+botz(j,i)) ;
+    sdepths =  z0*(botz(j,i)+eta(j,i)) + eta(j,i) ;
+  */
+  for (k = 0; k < nk; ++k) {
+    double z0 = (*hc * sgrid[k] + dval * cs_r[k]) / (*hc + dval);
+    zgrid[k] = z0 * (dval + eval) + eval;
+  }
+}
+
+
+/*------------------------------------------------------------------*/
+/* Routine to transform a given z value to its zstar value.         */
+/*------------------------------------------------------------------*/
+double z2zstar(timeseries_t *ts, double t, double x, double y, double z)
+{
+  datafile_t *df = ts->df;
+  df_vtrans_t *vt = df->vtrans;
+  double s, eval, dval;
+
+  /* Interpolate sea level and depth                                */
+  eval = ts_eval_xy(ts, vt->eta_id, t, x, y);
+  dval = -fabs(ts_eval_xy(ts, vt->dep_id, 0, x, y));
+
+  /* Transform the depth value                                      */
+  /* see https://www.nemo-ocean.eu/doc/node9.html eq. 2.25          */
+  /* -H <= zstar <=0                                                */
+  s = dval * (z - eval) / (dval + eval);
+  return(s);
+}
+
+/*------------------------------------------------------------------*/
+/* Routine to transform a zstar distribution to depths.             */
+/*------------------------------------------------------------------*/
+void zstar2z(timeseries_t *ts, double t, double x, double y, double z, double *zgrid)
+{
+  datafile_t *df = ts->df;
+  df_vtrans_t *vt = df->vtrans;
+  double *zstar = VAR_1D(vt->sigv)[0];
+  double eval, dval;
+  int k, nk = df->dimensions[vt->sigv->dimids[0]].size;
+
+  /* Interpolate sea level and depth                                */
+  eval = ts_eval_xy(ts, vt->eta_id, t, x, y);
+  dval = -fabs(ts_eval_xy(ts, vt->dep_id, 0, x, y));
+
+  for (k = 0; k < nk; ++k) {
+    zgrid[k] = zstar[k] * (dval + eval) / dval + eval;
   }
 }

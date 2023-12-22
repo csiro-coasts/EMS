@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 7316 2023-04-11 02:05:02Z her127 $
+ *  $Id: run_setup.c 7446 2023-12-13 03:42:25Z her127 $
  *
  */
 
@@ -294,6 +294,8 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "PRE-V5342 compatibility: Turbulence closure quantities vertically diffused in both closure and vertical diffusion schemes.\n");
   if (params->compatible & V5895)
     fprintf(fp, "PRE-V5895 compatibility: Using original output timezone based solar angle calculation.\n");
+  if (params->compatible & V7367)
+    fprintf(fp, "PRE-V7367 compatibility: Using original transport scheduling.\n");
 
   if (params->stab & NONE)
     fprintf(fp, "No stability compensation\n");

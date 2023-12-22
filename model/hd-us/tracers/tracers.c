@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 7381 2023-07-26 04:37:03Z her127 $
+ *  $Id: tracers.c 7472 2023-12-13 04:03:07Z her127 $
  *
  */
 
@@ -278,6 +278,7 @@ void tracer_step_3d(geometry_t *window, /* Window geometry           */
   /*-----------------------------------------------------------------*/
   /* Do the advection and horizontal diffusion                       */
   TIMING_SET;
+
   get_bdry_cellno(window, windat, wincon);
   if (wincon->trsplit) {
     if ((windat->cc2 = advect_diffuse_split(window, windat, wincon))) return;
@@ -286,6 +287,7 @@ void tracer_step_3d(geometry_t *window, /* Window geometry           */
   } else {
     if ((windat->cc2 = advect_diffuse(window, windat, wincon))) return;
   }
+
   TIMING_DUMP_WIN(2, "  advect_diffuse", window->wn);
   debug_c(window, D_TS, D_ADVECT);
   if (wincon->trtend >= 0)
@@ -950,7 +952,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	  /*---------------------------------------------------------*/
 	  /* Save the region fluxes                                  */
 	  region_flux_coup(window, windat, wincon, Fx, Fz, dtu, n);
-    
+
 	  /*---------------------------------------------------------*/
 	  /* Get the horizontal diffusive fluxes                     */
 	  if (wincon->diffuse[n])
@@ -999,6 +1001,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	    c = wincon->s1[cc];   /* Wet cell to process             */
 	    c2 = window->m2d[c];  /* 2D cell corresponding to 3D cell*/
 	    zp1 = window->zp1[c]; /* Cell above cell c               */
+
 	    wincon->tr_rk[tc][c] = tr[c];
 	    /* SIGMA : Adjust tracer values for the depth            */
 	    if (slf)
@@ -5671,7 +5674,6 @@ void vert_diffuse_3d(geometry_t *window, /* Window geometry          */
       c = zm1;
       zm1 = window->zm1[c];
     }
-
     cb = c = window->zp1[c]; /* Set cb to the bottom cell coordinate */
     zp1 = window->zp1[c];    /* Layer above the bottom               */
     cbt[cc] = cb;
@@ -7390,7 +7392,6 @@ void set_dz(geometry_t *window,     /* Window geometry               */
       c = c3 = window->sur_t[cc];
       c2 = window->m2d[c3];
       cbot = window->bot_t[cc];
-
       top = wincon->oldeta[c2];
       while (c3 < cbot) {
         bot = window->gridz[c3];
@@ -9558,4 +9559,37 @@ void ghrsst_lag(geometry_t *window,
 }
 
 /* END ghrsst_lag()                                                  */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Finds a tracer given a tracer array                               */
+/*-------------------------------------------------------------------*/
+int find_tracer(geometry_t *window,  /* Processing window      */
+		window_t *windat,    /* Window data structure  */
+		win_priv_t *wincon,  /* Window constants       */
+		double *tr,
+		char *buf
+		)
+{
+  int n;
+
+  /* 3D tracers                                                      */
+  for (n = 0; n < windat->ntr; n++) {
+    if (tr == windat->tr_wc[n]) {
+      strcpy(buf, wincon->trinfo_3d[n].name);
+      return(n);
+    }
+  }
+  /* 2D tracers                                                      */
+  for (n = 0; n < windat->ntrS; n++) {
+    if (tr == windat->tr_wcS[n]) {
+      strcpy(buf, wincon->trinfo_2d[n].name);
+      return(n);
+    }
+  }
+}
+
+
+/* END find_tracer()                                                 */
 /*-------------------------------------------------------------------*/

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 7174 2022-07-07 02:37:47Z her127 $
+ *  $Id: writeatts.c 7465 2023-12-13 03:52:41Z her127 $
  *
  */
 
@@ -679,8 +679,8 @@ void read_grid_atts(parameters_t *params, int fid)
 {
   char buf[MAXSTRLEN];
 
-  nc_get_att_text(fid, NC_GLOBAL, "gridtype", buf);
-  strcpy(params->gridtype, buf);
+  if (nc_get_att_text(fid, NC_GLOBAL, "gridtype", buf) >= 0)
+    strcpy(params->gridtype, buf);
 
   /* Read info for rectangular grid */
   if (strcasecmp(params->gridtype, "rectangular") == 0) {

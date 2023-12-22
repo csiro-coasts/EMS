@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 7369 2023-07-26 04:32:21Z her127 $
+ *  $Id: run_setup.c 7458 2023-12-13 03:50:02Z her127 $
  *
  */
 
@@ -110,7 +110,10 @@ void write_run_setup(hd_data_t *hd_data)
 
   gettimeofday(&tm1, NULL);
   params->initt = tm1.tv_sec + tm1.tv_usec * 1e-6 - params->initt;
-  fprintf(fp, "Time taken for initialisation = %5.2fs\n\n", params->initt);
+  if (params->initt < 3600.0)
+    fprintf(fp, "Time taken for initialisation = %5.2f sec\n\n", params->initt);
+  else
+    fprintf(fp, "Time taken for initialisation = %5.2f hr\n\n", params->initt / 3600.0);
 
   /*-----------------------------------------------------------------*/
   /* Transport mode                                                  */
@@ -291,6 +294,8 @@ void write_run_setup(hd_data_t *hd_data)
     fprintf(fp, "PRE-V6257 compatibility: Momentum tendencies added sequentially to velocity.\n");
   if (params->compatible & V6898)
     fprintf(fp, "PRE-V6898 compatibility: Set a surface no-gradient in FFSL scheme.\n");
+  if (params->compatible & V7367)
+    fprintf(fp, "PRE-V7367 compatibility: Using original transport scheduling.\n");
 
   if (params->stab & NONE)
     fprintf(fp, "No stability compensation\n");
@@ -1037,6 +1042,11 @@ void write_run_setup(hd_data_t *hd_data)
           wbdrycustom(fp, params, n, &open->bdata_t[nn]);
 	if (strlen(scale->name))
 	  fprintf(fp, "    Scaling: %s\n", scale->name);
+      }
+
+      if (params->do_wave & (W_SWAN|W_SWANM)) {
+	bcname(open->bcond_wav, bname);
+	fprintf(fp, "  Wave variables = %s\n", bname);
       }
 
       if (open->relax_time) {

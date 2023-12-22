@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ptrack.c 5833 2018-06-27 00:21:35Z riz008 $
+ *  $Id: ptrack.c 7424 2023-10-05 02:16:13Z her127 $
  */
 
 
@@ -212,11 +212,18 @@ int pt_create(char *name, long int np, char *t_units, int dumpf)
   nc_def_var(ncid, "y", NC_DOUBLE, 2, dims, &y_id);
   nc_def_var(ncid, "z", NC_DOUBLE, 2, dims, &z_id);
   nc_def_var(ncid, "flag", NC_SHORT, 2, dims, &flag_id);
-  if (dumpf & PT_AGE)
-    nc_def_var(ncid, "age", NC_BYTE, 2, dims, &age_id);
-  if (dumpf & PT_SIZE)
-    nc_def_var(ncid, "size", NC_BYTE, 2, dims, &size_id);
-
+  if (dumpf & PT_AGE) {
+    if (dumpf & PT_FATT)
+      nc_def_var(ncid, "age", NC_FLOAT, 2, dims, &age_id);
+    else
+      nc_def_var(ncid, "age", NC_BYTE, 2, dims, &age_id);
+  }
+  if (dumpf & PT_SIZE) {
+    if (dumpf & PT_FATT)
+      nc_def_var(ncid, "size", NC_FLOAT, 2, dims, &size_id);
+    else
+      nc_def_var(ncid, "size", NC_BYTE, 2, dims, &size_id);
+  }
   /* Time variable units attribute */
   nc_put_att_text(ncid, t_id, "units", strlen(t_units), t_units);
 
@@ -240,10 +247,13 @@ void pt_write(int fid, int rec, double t, long int np, particle_t *p)
 {
   double *b;
   short *f;
+  float *d;
+  double s2d = 1.0 / 86400.0;
   unsigned char *c;
   size_t start[2];
   size_t count[2];
   long n;
+  int pf = 0;
 
   /* Write time value */
   start[0] = rec;
@@ -255,6 +265,7 @@ void pt_write(int fid, int rec, double t, long int np, particle_t *p)
 
   /* Allocate buffers */
   b = d_alloc_1d(np);
+  d = f_alloc_1d(np);
   f = s_alloc_1d(np);
   c = uc_alloc_1d(np);
 
@@ -275,17 +286,37 @@ void pt_write(int fid, int rec, double t, long int np, particle_t *p)
     f[n] = p[n].flag;
   nc_put_vara_short(fid, ncw_var_id(fid, "flag"), start, count, f);
 
-  for (n = 0; n < np; n++)
-    if (p[n].dumpf & PT_AGE)
-      c[n] = p[n].out_age;
-  nc_put_vara_uchar(fid, ncw_var_id(fid, "age"), start, count, c);
+  for (n = 0; n < np; n++) {
+    if (p[n].dumpf & PT_AGE) {
+      if (p[n].dumpf & PT_FATT) {
+	d[n] = (float)p[n].age * s2d;
+	pf = 1;
+      } else
+	c[n] = p[n].out_age;
+    }
+  }
+  if (pf)
+    nc_put_vara_float(fid, ncw_var_id(fid, "age"), start, count, d);
+  else
+    nc_put_vara_uchar(fid, ncw_var_id(fid, "age"), start, count, c);
 
-  for (n = 0; n < np; n++)
-    if (p[n].dumpf & PT_SIZE)
-      c[n] = p[n].out_size;
-  nc_put_vara_uchar(fid, ncw_var_id(fid, "size"), start, count, c);
+  pf = 0;
+  for (n = 0; n < np; n++) {
+    if (p[n].dumpf & PT_SIZE) {
+      if (p[n].dumpf & PT_FATT) {
+	d[n] = (float)p[n].size;
+	pf = 1;
+      } else
+	c[n] = p[n].out_size;
+    }
+  }
+  if (pf)
+    nc_put_vara_float(fid, ncw_var_id(fid, "size"), start, count, d);
+  else
+    nc_put_vara_uchar(fid, ncw_var_id(fid, "size"), start, count, c);
 
   d_free_1d(b);
+  f_free_1d(d);
   s_free_1d(f);
   free_1d(c);
 

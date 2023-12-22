@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 7326 2023-04-11 02:25:42Z her127 $
+ *  $Id: hd_params.h 7459 2023-12-13 03:50:20Z her127 $
  *
  */
 
@@ -202,6 +202,9 @@
 #define NEST_FLA        0x1000
 #define NEST_BARO       0x2000
 #define NEST_CPD        0x4000
+
+/* Rendered OBCs */
+#define REN_OBC         0x0400
 
 /* Optional boundary flags */
 #define OP_UPSTRM       0x0001
@@ -538,6 +541,7 @@
 #define CENTI        0x00000080
 #define CELLAREA     0x00000100
 #define SIMPHUNT     0x00000200
+#define WINDSPDI     0x00000400
 
 /* Wind input */
 #define SPEED         2
@@ -573,6 +577,12 @@
 #define H_LEN          0x400000  /* Edge length for length scale */
 #define E_LEN          0x800000  /* Edge area for length scale */
 #define C_LEN          0x1000000 /* Cell area for length scale */
+
+/* Vertical mixing flags */
+#define VZ_C          0x000001  /* Constant VZ0 */
+#define KZ_C          0x000002  /* Constant KZ0 */
+#define VZ_R          0x000004  /* Regionalised VZ0 */
+#define KZ_R          0x000008  /* Regionalised KZ0 */
 
 /* Save input forcing flags */
 #define OTEMP          0x001
@@ -751,6 +761,7 @@
 #define V5342   0x000200
 #define V6257   0x000400
 #define V6898   0x000800
+#define V7367   0x001000
 
 /* Seasons */
 #define DAILY    -1
@@ -1084,6 +1095,33 @@
 #define MR_READ    0x001
 #define MR_WRITE   0x002
 #define MR_WRITEX  0x004
+
+/* Particles */
+#define PT_DO        0x01
+#define PT_AUTO      0x02
+#define PT_STANDARD  0x04
+#define PT_PLASTIC   0x08
+#define PT_SVEL      0x10
+
+#define CONSTANT     0x02 /*settling velocity tpes*/
+#define PSTOKES      0x04
+#define DIURNAL      0x08
+#define PLSTOKES     0x10
+
+/* Plastics */
+#define P_SMALL     0x001
+#define P_LARGE     0x002
+#define P_BOT       0x004
+#define P_BAG       0x008
+#define P_FOAM      0x010
+#define P_PE        0x020
+#define P_PP        0x040
+#define P_PET       0x080
+#define P_PVC       0x100
+#define P_PS        0x200
+
+/* General purpose flags */
+#define F_FFSL      0x100  /* FFSL init */
 
 #define LV_DUP     0x001
 

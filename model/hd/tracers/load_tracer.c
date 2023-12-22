@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 7067 2022-03-16 01:59:27Z her127 $
+ *  $Id: load_tracer.c 7453 2023-12-13 03:45:53Z her127 $
  *
  */
 
@@ -2165,6 +2165,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
     master->trinfo_3d[tn].m = tn;
     tn++;
   }
+
   /* 3D mean velocity */
   if (params->means & VEL3D) {
     if (tracer_find_index("u1mean", master->ntr, master->trinfo_3d) == -1) {
@@ -3975,6 +3976,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
     } else {
       int tm = tracer_find_index("swr_attenuation", master->ntr, master->trinfo_3d);
       trn_dataset(params->swr_attn, master->trinfo_3d, tm, master->ntr, master->atr, master->tr_wc, 0.073);
+      master->swr_attn = master->tr_wc[tm];
     }
   }
   if (params->runmode & TRANS && params->trasc & LAGRANGE) {

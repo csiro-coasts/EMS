@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 7317 2023-04-11 02:06:11Z her127 $
+ *  $Id: ginterface.c 7475 2023-12-16 11:17:08Z bai155 $
  *
  */
 
@@ -3353,7 +3353,7 @@ void ginterface_moonvars(void *hmodel, int b,
   jd = date_to_jul(mon, nday, yr);
 
   /* Julian date starts at midday - adjust half a day                */
-  jt = (double)jd - 0.5;
+  jt = (double)jd - 0.5 ;
 
   /* Get the day of the year                                         */
   if (window->is_geog) {
@@ -3366,13 +3366,17 @@ void ginterface_moonvars(void *hmodel, int b,
   /* Get the Greenwhich mean sidereal time in hours                  */
   /* see https://aa.usno.navy.mil/faq/docs/GAST.php                  */
   jt += windat->days - floor(windat->days);
+
+  // appliedOrbitalHW5.m has 18.697374458 !
+
+  jt -= tm_tz_offset(ginterface_gettimeunits(hmodel)) / 86400.0;  // moonvars is expecting UTC.
+  
   gmst = fmod(18.697374558 + 24.06570982441908 * (jt - 2451545.0), 24.0) * PI / 12.0;
   
   /* Call EMS library function */
 
-  // printf("Passing jt = %e to moonvars \n",jt);
+  moonvars(jt, &Al, &dec, &mlon[0], &mlat[0], &radius[0]);
 
-  moonvars(jt, &Al, &dec, mlon, mlat, &radius[0]);
   radius[0] *= 1e3;   /* Convert to metres */
 
   /* Get the lunar hour angle (Pugh Eq. 3.20a)                       */
@@ -3385,17 +3389,7 @@ void ginterface_moonvars(void *hmodel, int b,
   radius[1] = d2r * day * 360.0 / 365.25;
   radius[1] = as * (1.0 - es * es) / (1.0 + es *cos(radius[1]));
 
-  /* Calculate Moon Phase - New Moon in Hobart 4.13 am, 7 Jan 2000 */
-  /* Need to make this work for any time */
-
-  int newmoonday = date_to_jul(1, 7, 2000);
-  double newmoon_jt = (double)newmoonday + 4./24.+ 13./(60.*24.) + 0.5;
-  double partday = (windat->days+12./24. - floor(windat->days+12./24.));
-  double moonphase = fmod((double)jd + partday - newmoon_jt,29.530588853)/29.530588853;
-
-  /* calculate lunar declination using earth's declination (off by a maximum of 5 degrees) */
-
-  // dec = 0.409230*sin(2.0*M_PI*(284.0+day)/365.0);
+  double moonphase = 0.0; // calculated elsewhere.
 
   /*
    * Assign outputs

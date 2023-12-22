@@ -1167,7 +1167,7 @@ void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t)
 
       /* Initialize land cells */
       for (k = dumpdata->nz-1; k >= 0; k--)
-	for (cc = 0; cc < count[2]; cc++)
+	for (cc = 0; cc <= dumpdata->nface2; cc++)
 	  w1[k][cc] = NaN;
 
       if (!vn.sediment) {

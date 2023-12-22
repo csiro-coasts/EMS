@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tsfiles.c 7278 2022-12-14 05:40:30Z her127 $
+ *  $Id: tsfiles.c 7435 2023-10-25 01:30:31Z her127 $
  *
  */
 
@@ -822,7 +822,7 @@ void hd_trans_multifile_eval(master_t *master,
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
   int oset = (dumpdata->start_index) ? 0 : 1;
-  int cc;
+  int n, cc;
 
   if(master->lyear)
     t -= count_leap(master->timeunit, t) * 86400;
@@ -842,11 +842,22 @@ void hd_trans_multifile_eval(master_t *master,
     if (mode & (U1STRUCT|U2STRUCT)) {
       unpack_sparse3(vec, nvec, master->d3, dumpdata->w1, oset);
       for (cc = 1; cc < geom->b3_t; cc++) {
-	int c = geom->w3_t[cc];
+	int c1, c = geom->w3_t[cc];
 	int e;
 	if (mode & U1STRUCT) e = geom->c2e[1][c];
 	if (mode & U2STRUCT) e = geom->c2e[4][c];
 	v[e] = dumpdata->w1[c];
+      }
+      /* Normal open boundary cells */
+      for (n = 0; n < geom->nobc; n++) {
+	open_bdrys_t *open = geom->open[n];
+	for (cc = 1; cc <= open->no3_e1; cc++) {
+	  int c = open->ogc_t[cc];
+	  int e;
+	  if (mode & U1STRUCT) e = geom->c2e[1][c];
+	  if (mode & U2STRUCT) e = geom->c2e[4][c];
+	  v[e] = dumpdata->w1[c];
+	}
       }
     } else
       unpack_sparse3(vec, nvec, master->d3, v, oset);
@@ -909,7 +920,6 @@ void hd_trans_multifile_eval(master_t *master,
     }
   }
 }
-
 
 /** Evaluate in the first appropriate file the specified variable
   * at the given time for the whole sparse array. The time is
@@ -1900,7 +1910,11 @@ int check_sparse_dumpfile(geometry_t *geom, int ntsfiles,
 	      for (j = 0; j < nfiles; ++j) {
 		sprintf(buf, "file%d.filename", j);
 		prm_read_char(fp, buf, fname);
-		if (read_sparse_dims(fname, szcS, szc, szeS, sze, nz)) {
+		if (master->tmode & SP_STRUCT)
+		  n = read_sparse_dims_struct(fname, szcS, szc, geom->nce1, geom->nce2, nz);
+		else
+		  n = read_sparse_dims(fname, szcS, szc, szeS, sze, nz);
+		if (n) {
 		  fclose(fp);
 		  return(1);
 		}
@@ -1976,7 +1990,7 @@ int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, in
   size_t mce1 = -1, mce2 = -1, mz = -1;
   int mc1, mc2;
   int ncid; 
-  int cc, c, i, j, k, n;
+  int cc, c, cs, i, j, k, n;
   size_t start[4];
   size_t count[4];
   int *s2i, *s2j, *s2k, i1f, i2f, i3f;
@@ -2006,6 +2020,7 @@ int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, in
     s2k = i_alloc_1d(ms3+1);
     x = d_alloc_2d(mce1, mce2);
     y = d_alloc_2d(mce1, mce2);
+
     if ((i1f = ncw_var_id(ncid, "s2i")) >= 0) {
       nc_get_vara_int(ncid, ncw_var_id(ncid, "s2i"), start, count, s2i);  
     }
@@ -2027,6 +2042,7 @@ int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, in
     }
     count[0] = mce2;
     count[1] = mce1;
+
     nc_get_vara_double(ncid, ncw_var_id(ncid, "x_centre"), start, count, x[0]);
     nc_get_vara_double(ncid, ncw_var_id(ncid, "y_centre"), start, count, y[0]);  
     /*
@@ -2038,6 +2054,7 @@ int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, in
       hd_warn("Different dimensions in %s to the input file\n", name);
       return(2);
     }
+
     /* Get the mapping via s2i and s2j arrays                        */
     geom->s2c = i_alloc_1d(ms3 + 1);
     geom->ns2 = ms2;
@@ -2048,6 +2065,20 @@ int read_sparse_dims_struct(char *name, int ns2, int ns3, int nce1, int nce2, in
 	if (geom->s2i[c] == s2i[n] && geom->s2j[c] == s2j[n] && geom->s2k[c] == s2k[n]) {
 	  geom->s2c[n+1] = c;
 	  break;
+	}
+      }
+    }
+    /* Normal open boundary cells */
+    for (i = 0; i < geom->nobc; i++) {
+      open_bdrys_t *open = geom->open[i];
+      for (cc = 1; cc <= open->no3_e1; cc++) {
+	c = open->ogc_t[cc];
+	cs = geom->m2d[c];
+	for (n = 0; n < ms3; n++) {
+	  if (geom->s2i[cs] == s2i[n] && geom->s2j[cs] == s2j[n] && geom->s2k[c] == s2k[n]) {
+	    geom->s2c[n+1] = c;
+	    break;
+	  }
 	}
       }
     }

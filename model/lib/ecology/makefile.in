@@ -105,6 +105,7 @@ process_library/remineralization.o \
 process_library/seagrass_grow_epi.o \
 process_library/seagrass_mortality_epi.o \
 process_library/tfactor.o \
+process_library/tfactor_clim.o \
 process_library/trichodesmium_grow_wc.o \
 process_library/trichodesmium_spectral_grow_wc.o \
 process_library/trichodesmium_mortality_sed.o \

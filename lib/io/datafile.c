@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.c 7292 2023-02-20 03:47:10Z riz008 $
+ *  $Id: datafile.c 7421 2023-10-05 02:15:18Z her127 $
  */
 
 #include <stdio.h>
@@ -61,6 +61,25 @@ static char *sst_names[5] = {
   NULL
 };
 
+/* Critical depth names for sigma */
+static char *hc_names[2] = {
+  "hc",
+  NULL
+};
+
+/* S-coordinate names for sigma */
+static char *s_names[2] = {
+  "s_rho",
+  NULL
+};
+
+/* S-coordinate stretching curve names for sigma */
+static char *cs_names[2] = {
+  "Cs_r",
+  NULL
+};
+
+
 /* Prototypes for local routines */
 void netcdf_read(int fid, datafile_t *df, int type);
 void netcdf_read_records(datafile_t *df, int varid);
@@ -100,6 +119,8 @@ int df_reset_record(datafile_t *df);
 
 extern int df_default_geotype;
 extern char *df_default_projection;
+extern double interp_linear;
+extern double interp_1d_inv_weight_hashed;
 
 /* MH mempack */
 void mempack_read(char *name, datafile_t *df, int type);
@@ -1062,6 +1083,40 @@ int df_is_ugrid3(datafile_t *df)
   return(0);  
 }
 
+/** See if this is a Sigma file
+ *
+ */
+int df_is_sigma(datafile_t *df)
+{
+  df_attribute_t *at = df_get_global_attribute(df, "Conventions");
+  if (at != NULL) {
+    char *fields[MAXSTRLEN * 60];
+    int n = parseline(strdup(ATT_TEXT(at)), fields, 256), m;
+    for (m = 0; m < n; m++) {
+      if (strcmp(fields[m], "SGRID-0.3") == 0) return(1);
+    }
+    return(0);  
+  }
+  return(0);  
+}
+
+/** See if this is a zstar file
+ *
+ */
+int df_is_zstar(datafile_t *df)
+{
+  df_attribute_t *at = df_get_global_attribute(df, "Conventions");
+  if (at != NULL) {
+    char *fields[MAXSTRLEN * 60];
+    int n = parseline(strdup(ATT_TEXT(at)), fields, 256), m;
+    for (m = 0; m < n; m++) {
+      if (strcmp(fields[m], "ZSTAR") == 0) return(1);
+    }
+    return(0);  
+  }
+  return(0);  
+}
+
 int df_is_irule(datafile_t *df)
 {
   if (strlen(df->i_rule))
@@ -1137,8 +1192,8 @@ void df_check_records(datafile_t *df)
 
   for (i = 1; i < df->nrecords; i++) {
     if (df->records[i] <= df->records[i - 1])
-      quit("tsCheckRecords: Records out of order, %s, record=%g\n",
-	   df->name, df->records[i]);
+      quit("tsCheckRecords: Records %d out of order, %s, record=%f\n",
+	   i, df->name, df->records[i]);
   }
 }
 
@@ -1542,7 +1597,6 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	      v->cflag = ATT_DOUBLE(a, 0);
 	  }
         }
-
         v->missing = v->missing * v->scale_factor + v->add_offset;
         v->fillvalue = v->fillvalue * v->scale_factor + v->add_offset;
         v->lflag = v->lflag * v->scale_factor + v->add_offset;
@@ -1554,11 +1608,16 @@ void netcdf_read(int fid, datafile_t *df, int type)
       /* VT_DATA, reset to the appropriate coordinate.            */ 
       if (v->type & VT_DATA) {
 	for (j = 0; j < df->nd; ++j) {
+	  if (v->units == NULL) continue;
 	  if (strcmp(v->name, df->dimensions[j].name) == 0) {
-	    if (has_name(v->units, lon_names)) v->type = VT_LONGITUDE;
-	    if (has_name(v->units, lat_names)) v->type = VT_LATITUDE;
-	    if (has_name(v->units, v_names)) v->type = VT_Z;
-	    inferred = 1;
+	    if (has_name(v->name, s_names)) {
+	      v->type = (VT_Z|VT_SIGMA);
+	    } else {
+	      if (has_name(v->units, lon_names)) v->type = VT_LONGITUDE;
+	      if (has_name(v->units, lat_names)) v->type = VT_LATITUDE;
+	      if (has_name(v->units, v_names)) v->type = VT_Z;
+	      inferred = 1;
+	    }
 	  }
 	}
       }
@@ -1578,7 +1637,6 @@ void netcdf_read(int fid, datafile_t *df, int type)
        dimension name. This will become the coordinate dimension. */
     for (i = 0; i < df->nv; ++i) {
       df_variable_t *v = &df->variables[i];
-
       if ((v->nd == 1) && (v->dimids[0] == unlimited)) {
         if (strcasecmp(v->name, df->dimensions[v->dimids[0]].name) == 0) {
           df_set_record(df, i);
@@ -1611,7 +1669,13 @@ void netcdf_read(int fid, datafile_t *df, int type)
           text = ATT_TEXT(a);
         }
       }
-
+      /*
+      if (v->type & VT_COORD) {
+	char buf[512];
+	strcpy(buf,"time lon lat");
+	decode_coords(df, v, buf);
+      } else
+      */
       decode_coords(df, v, text);
 
       /* MH : set the coordinate types (for GHRSST data) if not already set     */
@@ -1682,10 +1746,15 @@ void netcdf_read(int fid, datafile_t *df, int type)
 	} else {
 	  for (j = 0; j < v->nc; ++j) {
 	    df_variable_t *cv = &df->variables[v->coordids[j]];
+	    if (cv->units == NULL) continue;
 	    if (cv->type & VT_DATA) {
-	      if (has_name(cv->units, lon_names)) cv->type = VT_LONGITUDE;
-	      if (has_name(cv->units, lat_names)) cv->type = VT_LATITUDE;
-	      if (has_name(cv->units, v_names)) cv->type = VT_Z;
+	      if (has_name(cv->name, s_names)) {
+		cv->type = (VT_Z|VT_SIGMA);
+	      } else {
+		if (has_name(cv->units, lon_names)) cv->type = VT_LONGITUDE;
+		if (has_name(cv->units, lat_names)) cv->type = VT_LATITUDE;
+		if (has_name(cv->units, v_names)) cv->type = VT_Z;
+	      }
 	    }
 	    warn("netcdf_read: Coordinates for %s not found; using coord%d = %s\n",
 		 v->name, j, cv->name);
@@ -1696,6 +1765,13 @@ void netcdf_read(int fid, datafile_t *df, int type)
 
       /* Set the coordinate types for ghrsst netCDF. */
       if (v->type & VT_COORD) {
+
+	if (v->nc != v->nd) {
+	  v->nc = 0;
+	  free(v->coordids);
+	  v->coordids = NULL;
+	}
+
 	if (v->type & VT_DATA && v->nc == 0 && v->nd >= 1) {
 	  int n;
 	  v->coordids = (int *)malloc(v->nd * sizeof(int));
@@ -3173,6 +3249,226 @@ static int has_name(char *name, char *array[])
     j++;
   }
   return(0);
+}
+
+void df_set_sigma(datafile_t *df, df_variable_t *v)
+{
+  int i, ii, j, jj;
+  df_vtrans_t *vt;
+
+  /* Set the coordinates if the coordinate attribute is missing */
+
+  if (v->type & VT_DATA && v->nc == 0 && v->nd > 1) {
+    int n;
+    v->coordids = (int *)malloc(v->nd * sizeof(int));
+    memset(v->coordids, 0, sizeof(v->nd * sizeof(int)));
+    for (j = 0; j < v->nd; ++j) {
+      for (n = 0; n < df->nv; ++n) {
+	df_variable_t *nv = &df->variables[n];
+	if(strcmp(df->dimensions[v->dimids[j]].name, nv->name) == 0) {
+	  v->coordids[v->nd-(j+1)] = n;
+	  v->nc++;
+	}
+      }
+    }
+    if (v->nc == 0) {
+      free(v->coordids);
+      v->coordids = NULL;
+    } else {
+      for (j = 0; j < v->nc; ++j) {
+	df_variable_t *cv = &df->variables[v->coordids[j]];
+	if (cv->type & VT_DATA) {
+	  if (has_name(cv->units, lon_names)) cv->type = VT_LONGITUDE;
+	  if (has_name(cv->units, lat_names)) cv->type = VT_LATITUDE;
+	  if (has_name(cv->units, v_names)) cv->type = VT_Z;
+	}
+	warn("netcdf_read: Coordinates for %s not found; using coord%d = %s\n",
+	     v->name, j, cv->name);
+      }
+    }
+  }
+
+  /* Set the vertical coordinate type to VT_SIGMA */
+  for (j = 0; j < v->nc; ++j) {
+    df_variable_t *cv = &df->variables[v->coordids[j]];
+    if (cv->type & VT_Z) cv->type |= VT_SIGMA;
+  }
+
+  if (df->vtrans) return;
+
+  /* Allocate */
+  vt = (df_vtrans_t *)malloc(sizeof(df_vtrans_t));
+  memset(vt, 0, sizeof(df_vtrans_t));
+  df->vtrans = vt;
+  vt->btrans = z2sigma;
+  vt->ftrans = sigma2z;
+  vt->cs_id = vt->hc_id = vt->s_id = -1;
+
+  /* Get the sigma transformation variables */
+  for (i = 0; i < df->nv; ++i) {
+    df_variable_t *v = &df->variables[i];
+    /*  For use with explicit prescription of critical depth name
+    j = 0;
+    while (hc_names[j] != NULL) {
+      if (strcmp(v->name, hc_names[j]) == 0) {
+	vt->hc_id = i;
+	vt->hcv = &df->variables[vt->hc_id];
+	vt->hcv->scale_factor = 1.0;
+	vt->hcv->add_offset = 0.0;
+	break;
+      }
+      j++;
+    }
+    */
+    j = 0;
+    while (s_names[j] != NULL) {
+      if (strcmp(v->name, s_names[j]) == 0) {
+	df_variable_t *v = &df->variables[i];
+	df_attribute_t *a = df_get_attribute(df, v, "formula_terms");
+	char *fields[MAXSTRLEN * 60];
+	int n = parseline(strdup(ATT_TEXT(a)), fields, 256);
+	int found = 0;
+	/* Get the sea level variable */
+	for (jj = 0; jj < n; jj++) {
+	  if (strcmp(fields[jj], "eta:") == 0) {
+	    for (ii = 0; ii < df->nv; ++ii) {
+	      df_variable_t *vf = &df->variables[ii];
+	      if (strcmp(vf->name, fields[jj+1]) == 0) {
+		vt->eta_id = ii;
+		vt->etav = &df->variables[vt->eta_id];
+		found = 1;
+		break;
+	      }
+	    }
+	    if (found) break;
+	  }
+	}
+	/* Get the depth variable */
+	found = 0;
+	for (jj = 0; jj < n; jj++) {
+	  if (strcmp(fields[jj], "depth:") == 0) {
+	    for (ii = 0; ii < df->nv; ++ii) {
+	      df_variable_t *vf = &df->variables[ii];
+	      if (strcmp(vf->name, fields[jj+1]) == 0) {
+		vt->dep_id = ii;
+		vt->depv = &df->variables[vt->dep_id];
+		found = 1;
+		break;
+	      }
+	    }
+	    if (found) break;
+	  }
+	}
+	/* Get the stretching curve variable */
+	found = 0;
+	for (jj = 0; jj < n; jj++) {
+	  if (strcmp(fields[jj], "C:") == 0) {
+	    for (ii = 0; ii < df->nv; ++ii) {
+	      df_variable_t *vf = &df->variables[ii];
+	      if (strcmp(vf->name, fields[jj+1]) == 0) {
+		vt->cs_id = ii;
+		vt->csv = &df->variables[vt->cs_id];
+		found = 1;
+		break;
+	      }
+	    }
+	    if (found) break;
+	  }
+	}
+
+	/* Get the critical depth variable */
+	found = 0;
+	for (jj = 0; jj < n; jj++) {
+	  if (strcmp(fields[jj], "depth_c:") == 0) {
+	    for (ii = 0; ii < df->nv; ++ii) {
+	      df_variable_t *vf = &df->variables[ii];
+	      if (strcmp(vf->name, fields[jj+1]) == 0) {
+		vt->hc_id = ii;
+		vt->hcv = &df->variables[vt->hc_id];
+		vt->hcv->scale_factor = 1.0;
+		vt->hcv->add_offset = 0.0;
+		found = 1;
+		break;
+	      }
+	    }
+	    if (found) break;
+	  }
+	}
+
+	vt->s_id = i;
+	vt->sigv = &df->variables[vt->s_id];
+	break;
+      }
+      j++;
+    }
+    /* For use with explicit prescription of stretching curve name
+    j = 0;
+    while (cs_names[j] != NULL) {
+      if (strcmp(v->name, cs_names[j]) == 0) {
+	vt->cs_id = i;
+	vt->csv = &df->variables[vt->cs_id];
+	break;
+      }
+      j++;
+    }
+    */
+  }
+  if (vt->cs_id == -1) 
+    quit("set_sigma: Can't find stretching curve variable in 'formula_terms' attribute for %s.", 
+	 vt->sigv->name);
+  if (vt->hc_id == -1) 
+    quit("set_sigma: Can't find critical depth variable in 'formula_terms' attribute for %s.", 
+	 vt->sigv->name);
+  if (vt->s_id == -1) 
+    quit("set_sigma: Can't find sigma coordinate variable."); 
+
+  /* Read the stretching function and critical depth into data. */
+  /* eta and depth use ts_eval_xy(), so will also be read into data. */
+  df_read_records(df, vt->sigv, 0, 1);
+  df_read_records(df, vt->csv, 0, 1);
+  df_read_records(df, vt->hcv, 0, 1);
+}
+
+
+void df_set_zstar(datafile_t *df, df_variable_t *v)
+{
+  int i, ii, j, jj;
+  df_vtrans_t *vt;
+
+
+  /* Set the vertical coordinate type to VT_SIGMA */
+  for (j = 0; j < v->nc; ++j) {
+    df_variable_t *cv = &df->variables[v->coordids[j]];
+    if (cv->type & VT_Z) cv->type |= VT_ZSTAR;
+  }
+
+  if (df->vtrans) return;
+
+  /* Allocate */
+  vt = (df_vtrans_t *)malloc(sizeof(df_vtrans_t));
+  memset(vt, 0, sizeof(df_vtrans_t));
+  df->vtrans = vt;
+  vt->btrans = z2zstar;
+  vt->ftrans = zstar2z;
+  vt->s_id = -1;
+
+  /* Get the zstar transformation variables */
+  for (i = 0; i < df->nv; ++i) {
+    df_variable_t *v = &df->variables[i];
+    j = 0;
+    while (s_names[j] != NULL) {
+      if (strcmp(v->name, s_names[j]) == 0) {
+	df_variable_t *v = &df->variables[i];
+	vt->s_id = i;
+	vt->sigv = &df->variables[vt->s_id];
+	break;
+      }
+      j++;
+    }
+  }
+  if (vt->s_id == -1) 
+    quit("set_zstar: Can't find zstar coordinate variable."); 
+  df_read_records(df, vt->sigv, 0, 1);
 }
 
 // EOF

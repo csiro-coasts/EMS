@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: cstmesh.c 7184 2022-08-08 23:46:07Z her127 $
+ *  $Id: cstmesh.c 7416 2023-10-05 02:13:00Z her127 $
  */
 
 #include <stdio.h>
@@ -52,6 +52,9 @@ int pnpoly(int nvert, double *vertx, double *verty, double xin, double yin);
 void auto_link(coamsh_t *cm, int ns, int *nsl, int msl, int *nso,
 	       double *nlat, double *nlon, double **lat, double **lon,
 	       int cutoff, int *mask);
+int make_ellipse(double as, double bs, double **xr, double **yr,
+		  double xc, double yc, double x0, double y0,
+		  double rot);
 
 // xxx What about jig_free?
 
@@ -2192,6 +2195,240 @@ void auto_link(coamsh_t *cm,    /* Coastmesh structure                 */
 }
 
 /* END auto_link()                                                     */
+/*---------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Creates an inner ellipse around a rectangle, and an outer ellipse */
+/* for a transition to lower resolution.                             */
+/*-------------------------------------------------------------------*/
+int ellipse_mesh(int nce1,         /* Number cells in e1 direction   */
+		 int nce2,         /* Number cells in e2 direction   */
+		 double x00,       /* x origin offset                */
+		 double y00,       /* y origin offset                */
+		 double flon,      /* False longitude                */
+		 double flat,      /* False latitude                 */
+		 double xinc,      /* x resolution                   */
+		 double yinc,      /* y resolution                   */
+		 double elf,       /* Stretch; large=circular        */   
+		 double ores,      /* Outser resolution              */
+		 double *mnlon,    /* Bounding minimum longitude     */
+		 double *mxlon,    /* Bounding maximum longitude     */
+		 double *mnlat,    /* Bounding minimum latitude      */
+		 double *mxlat,    /* Bounding maximum latitude      */
+		 double **xi,      /* Inner ellipse x points         */
+		 double **yi,      /* Inner of ellipse y points      */
+		 double **xo,      /* Outer of ellipse x points      */
+		 double **yo,      /* Outer of ellipse y points      */
+		 int *npi,         /* Number of inner points         */
+		 int *npo          /* Number of outer points         */
+		 )
+{
+
+  double *xot, *yot;     /* Outer ellipse coordinates                */
+  double *xit, *yit;     /* Inner ellipse coordinates                */
+  double xc;             /* x dimension of rectangle                 */
+  double yc;             /* y dimension of rectangle                 */
+  double x1, y1, x2, y2; /* Non-rotated corner points of rectangle   */
+  double xval, yval;     /* Rotated corner points on plane           */
+  double xp, yp;         /* Rotated corner points on sphere          */
+  double fx00, fy00;     /* Auxialliary origin                       */
+  double rot, dist, ires;
+  double rflon = DEG2RAD(flon);
+  double rflat = DEG2RAD(flat);
+  double rxinc = DEG2RAD(xinc);
+  double ryinc = DEG2RAD(yinc);
+  double rx0 = DEG2RAD(x00);
+  double ry0 = DEG2RAD(y00);
+  double as, bs, as2, bs2;
+  double deg2m = 60.0 * 1852.0;
+  long j;
+  int verbose = 0;
+  int iof = 1;           /* Outside/inside rectangle flag            */
+  double sv1 = 3000.0;   /* Resolution difference #1 (m)             */
+  double sv2 = 0.0;      /* Resolution difference #2                 */
+  double sm1 = 5.0;      /* Scaling when res diff = sv1              */
+  double sm2 = 1.0;      /* Scaling when res diff = sv2              */
+
+  /* Get the auxiliary origin location                               */
+  geod_fwd_spherical_rot(DEG2RAD(x00), DEG2RAD(y00), rflon, rflat, &fx00,
+                         &fy00);
+
+  /* Get the auxiliary x axis limit and the rotation                 */
+  yval = 0.0;
+  xval = (double)nce1 * rxinc;
+  geod_inv_spherical_rot(fx00 + xval, fy00 + yval, rflon, rflat, &xp, &yp);
+  geod_inv_sodanos_angles(rx0, ry0, xp, yp, RADIUS, ECC, &rot);
+  dist = geod_inv_geod_fwd_sodanos(rx0, ry0, xp, yp, RADIUS, ECC);
+  geod_fwd_sodanos(rx0, ry0, PI/2.0, dist, RADIUS, ECC, &x1, &y1);
+
+  if (verbose) {
+    printf("%f %f p0\n",x00, y00);
+    printf("%f %f p1\n",RAD2DEG(xp), RAD2DEG(yp));
+    printf("%f %f x1\n",RAD2DEG(x1),RAD2DEG(y1));
+  }
+
+  /* Get the auxiliary y axis limit                                  */
+  yval = (double)nce2 * ryinc;
+  xval = 0.0;
+  geod_inv_spherical_rot(fx00 + xval, fy00 + yval, rflon, rflat, &xp, &yp);
+  geod_inv_sodanos_angles(rx0, ry0, xp, yp, RADIUS, ECC, &rot);
+  dist = geod_inv_geod_fwd_sodanos(rx0, ry0, xp, yp, RADIUS, ECC);
+  geod_fwd_sodanos(rx0, ry0, 0.0, dist, RADIUS, ECC, &x2, &y2);
+
+  if (verbose) {
+    printf("%f %f p2\n",RAD2DEG(xp), RAD2DEG(yp));
+    printf("%f %f x2\n",RAD2DEG(x2),RAD2DEG(y2));
+    printf("rot = %f %f\n", RAD2DEG(rot), rot);
+  }
+
+  /* Get the bounding ellipse semi-major and minor lengths           */
+  xc = 0.5 * fabs((x1 - rx0));
+  yc = 0.5 * fabs((y2 - ry0));
+  if (iof == 1) {
+    as = xc * xc + pow(xc,(2.0/elf)) * pow(yc,(2.0-2.0/elf));
+    bs = yc * yc + pow(yc,(2.0/elf)) * pow(xc,(2.0-2.0/elf));
+  } else {
+    as = xc * xc;
+    bs = yc * yc;
+  }
+  rot *= -1.0;
+
+  if (verbose)
+    printf("xc=%f yc=%f as=%f bs=%f rot=%f %f\n",RAD2DEG(xc),RAD2DEG(yc),as,bs,RAD2DEG(rot),rot);
+
+  /* Ellipse for weighting                                           */
+  *npi = make_ellipse(as, bs, &xit, &yit, xc, yc, rx0, ry0, rot);
+
+  /* Get the scaling factor for the outer ellipse                    */
+  ires = 0.5 * (xinc + yinc);
+  x1 = max(0.0, (ores - ires) * deg2m);
+  xp = (sm2 - sm1) / (sv2 - sv1);
+  yp = max(1.0, xp * (x1 - sv1) + sm1);
+  as2 = as * yp;
+  bs2 = bs * yp;
+  if (verbose) {
+    printf("scaling=%f %f\n",yp, x1);
+    printf("semimajor %f %f\n", as, as2);
+  }
+
+  /* Bounding ellipse                                                */
+  *npo = make_ellipse(as2, bs2, &xot, &yot, xc, yc, rx0, ry0, rot);
+  *mnlon = HUGE;
+  *mxlon = -HUGE;
+  *mnlat = HUGE;
+  *mxlat = -HUGE;
+  for (j = 0; j < *npo; j++) {
+    *mnlon = min(*mnlon, xot[j]);
+    *mxlon = max(*mxlon, xot[j]);
+    *mnlat = min(*mnlat, yot[j]);
+    *mxlat = max(*mxlat, yot[j]);
+  }
+  if (verbose) printf("minmax %f %f %f %f\n",*mnlon,*mxlon,*mnlat,*mxlat);
+
+  if (xi != NULL)
+    *xi = xit;
+  else
+    d_free_1d(xit);
+  if (yi != NULL)
+    *yi = yit;
+  else
+    d_free_1d(yit);
+  if (xo != NULL)
+    *xo = xot;
+  else
+    d_free_1d(xot);
+  if (yo != NULL)
+    *yo = yot;
+  else
+    d_free_1d(yot);
+
+}
+
+/* END ellipse_mesh()                                                  */
+/*---------------------------------------------------------------------*/
+
+
+/*---------------------------------------------------------------------*/
+/* Makes an ellipse given rectangle corner points, rotation and offset */
+/*---------------------------------------------------------------------*/
+int make_ellipse(double as,   /* Semi-major axis                       */
+		 double bs,   /* Semi-minor axis                       */
+		 double **xr, /* Array of ellipse x points             */
+		 double **yr, /* Array of ellipse y points             */
+		 double xc,   /* x dimension of rectangle              */
+		 double yc,   /* y dimension of rectangle              */
+		 double x0,   /* x offset                              */
+		 double y0,   /* y offset                              */
+		 double rot   /* Rotation                              */
+		 )
+{
+  int n, npts;
+  double x, y, inc;
+  double x1, y1, x2, y2;
+  double *xe, *ye;
+ 
+  n = 0;
+  inc = sqrt(as) / 100.0;
+
+  /* Count the ellipse points */
+  x = -sqrt(as);
+  while (x < sqrt(as)) {
+    n++;
+    x += inc;
+  }
+  while (x > -sqrt(as)) {
+    n++;
+    x -= inc;
+  }
+  n++;
+
+  xe = d_alloc_1d(n);
+  ye = d_alloc_1d(n);
+
+  /* Store the ellipse points */
+  /* Top half */
+  n = 0;
+  x = -sqrt(as);
+  while (x < sqrt(as)) {
+    y = sqrt(bs * (1.0 - pow(x,2.0) / as));
+    /* Translate by the bounding rectangle */
+    x2 = x + xc;
+    y2 = y + yc;
+    /* Rotate */
+    x1 = x2 * cos(rot) - y2 * sin(rot);
+    y1 = x2 * sin(rot) + y2 * cos(rot);
+    /* Translate by offset and save */
+    if(!isnan(x1)&&!isnan(y1)) {
+      xe[n] = RAD2DEG(x1 + x0);
+      ye[n++] = RAD2DEG(y1 + y0);
+    }
+    x += inc;
+  }
+  /* Bottom half */
+  while (x > -sqrt(as)) {
+    y = sqrt(bs * (1.0 - (x * x) / as));
+    x2 = x + xc;
+    y2 = -y + yc;
+    x1 = x2 * cos(rot) - y2 * sin(rot);
+    y1 = x2 * sin(rot) + y2 * cos(rot);
+    if(!isnan(x1)&&!isnan(y1)) {
+      xe[n] = RAD2DEG(x1+x0);
+      ye[n++] = RAD2DEG(y1+y0);
+    }
+    x -= inc;
+  }
+  xe[n] = xe[0];
+  ye[n++] = ye[0];
+  npts = n;
+
+ *xr = xe;
+ *yr = ye;
+ return(npts);
+}
+
+/* END make_ellipse()                                                  */
 /*---------------------------------------------------------------------*/
 
 

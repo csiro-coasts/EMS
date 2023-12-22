@@ -28,6 +28,8 @@ static int swan_init(sched_event_t *event);
 double swan_event(sched_event_t *event, double t);
 static void swan_cleanup(sched_event_t *event, double t);
 void write_swan_params(master_t *master, char *fname, char *mname);
+void bdry_wave(master_t *master, geometry_t *geom, swan_data_t *data);
+
 
 /* Functions for reading the schedule the swan forcings. */
 void swan_couple_init(master_t *master)
@@ -79,16 +81,61 @@ void swan_couple_init(master_t *master)
     data->swan_frolx = d_alloc_1d(geom->szcS);
     data->swan_froly = d_alloc_1d(geom->szcS);
   */
-  /* Set the default wavenumber (must be non-zero) */
+
+  /* Set the default wavenumber (must be non-zero).                  */
+  /* The centres updated with wave data are vertices in SWAN, and    */
+  /* these must map to three centres. This means land boundary cells */
+  /* are excluded, and will be assigned zero wavenumber, which leads */
+  /* to errors in wave_av_sbc(). To avoid this we set the wavenumber */
+  /* here to the same default used in SWAN.                          */
   if (master->wave_k) {
     if ((n = tracer_find_index("wave_k", master->ntrS, master->trinfo_2d)) >= 0) {
+      double per, kmin;
+      /* Using wave period fill value                                */
+      if ((nb = tracer_find_index("wave_period", master->ntrS, 
+				  master->trinfo_2d)) >= 0) {
+	per = master->trinfo_2d[nb].fill_value_wc;
+	kmin = 4.0 * PI/ (master->g * per * per);
+      }
+      /* Using wavenumber fill value                                 */
       for (cc = 1; cc <= geom->b2_t; cc++) {
 	c = geom->w2_t[cc];
 	master->wave_k[c] = master->trinfo_2d[n].fill_value_wc;
+	master->wave_k[c] = kmin;	
       }
     }
   }
-
+  /* Set initial wave conditions. These are only used if OBCs are    */
+  /* passive.                                                        */
+  if ((n = tracer_find_index("wave_amp", master->ntrS, master->trinfo_2d)) >= 0) {
+    tracer_re_read(&master->trinfo_2d[n], params->prmfd, INTER);
+    for (cc = 1; cc <= geom->nw2c; cc++) {
+      c = geom->w2c[cc];
+      data->swan_amp[cc] = master->trinfo_2d[n].fill_value_wc;
+    }
+  }
+  if ((n = tracer_find_index("wave_period", master->ntrS, master->trinfo_2d)) >= 0) {
+    tracer_re_read(&master->trinfo_2d[n], params->prmfd, INTER);
+    for (cc = 1; cc <= geom->nw2c; cc++) {
+      c = geom->w2c[cc];
+      data->swan_per[cc] = master->trinfo_2d[n].fill_value_wc;
+    }
+  }
+  if ((n = tracer_find_index("wave_dir", master->ntrS, master->trinfo_2d)) >= 0) {
+    tracer_re_read(&master->trinfo_2d[n], params->prmfd, INTER);
+    for (cc = 1; cc <= geom->nw2c; cc++) {
+      c = geom->w2c[cc];
+      data->swan_dir[cc] = master->trinfo_2d[n].fill_value_wc * PI / 180.0;
+    }
+  }
+  /*
+  for (cc = 1; cc <= geom->nw2c; cc++) {
+    c = geom->w2c[cc];
+    data->swan_amp[cc] = 0.02;
+    data->swan_per[cc] = 2.0;
+    data->swan_dir[cc] = 270.0 * PI / 180.0;
+  }
+  */
   /* Get the open boundaries                                         */
   data->no2_t = 0;
   for (n = 0; n < geom->nobc; n++) {
@@ -124,7 +171,7 @@ void swan_couple_init(master_t *master)
   /* Check the open boundaries for wave data                         */
   for (n = 0; n < geom->nobc; ++n) {
     open_bdrys_t *open = geom->open[n];
-    if (open->options & OP_WAVES) {
+    if (open->bcond_wav & FILEIN) {
       hd_ts_multifile_check(open->ntsfiles, open->tsfiles, open->filenames, 
 			    "wave_amp", schedule->start_time, schedule->stop_time);
       hd_ts_multifile_check(open->ntsfiles, open->tsfiles, open->filenames, 
@@ -147,7 +194,7 @@ double swan_event(sched_event_t *event, double t)
   swan_data_t *data = (swan_data_t *)schedGetPublicData(event);
   master_t *master = data->master;
   geometry_t *geom = master->geom;
-  int cc, c, cw, n;
+  int cc, c, c1, cw, n;
 
   /* Don't call the swan routine if this event is called from the    */
   /* scheduler setup.                                                */
@@ -175,40 +222,7 @@ double swan_event(sched_event_t *event, double t)
     data->swan_hs = master->swan_hs;
 
     /* Update the open bounries if required                          */
-    for (n = 0; n < geom->nobc; n++) {
-      open_bdrys_t *open = geom->open[n];
-      double x, y, z;
-      if (open->options & OP_WAVES) {
-	for (cc = 1; cc <= open->no2_t; cc++) {
-	  c = open->obc_t[cc];
-	  cw = geom->c2w[c];
-	  x = geom->cellx[c];
-	  y = geom->celly[c];
-	  z = geom->cellz[c] * master->Ds[c];
-	  data->swan_amp[cw] = 
-	    hd_ts_multifile_eval_xyz_by_name(open->ntsfiles, 
-					     open->tsfiles,
-					     open->filenames, 
-					     "wave_amp",
-					     master->t3d,
-					     x, y, z);
-          data->swan_per[cw] = 
-	    hd_ts_multifile_eval_xyz_by_name(open->ntsfiles, 
-					     open->tsfiles,
-					     open->filenames, 
-					     "wave_period",
-					     master->t3d,
-					     x, y, z);
-          data->swan_dir[cw] = 
-	    hd_ts_multifile_eval_xyz_by_name(open->ntsfiles, 
-					     open->tsfiles,
-					     open->filenames, 
-					     "wave_dir",
-					     master->t3d,
-					     x, y, z);
-	}
-      }
-    }
+    bdry_wave(master, geom, data);
 
     /* Invoke the SWAN wave coupling                                 */
     swan_step(data->wave);
@@ -279,7 +293,6 @@ double swan_event(sched_event_t *event, double t)
   }
 
 #endif
-
   return event->next_event;
 }
 
@@ -409,6 +422,7 @@ void write_swan_mesh(master_t *master,
   nc = 1;
   for (cc = 1; cc <= geom->v2_t; cc++) {
     c = geom->w2_t[cc];
+
     if (mask[c]) {
       mk = 0;
       for (n = 1; n <= geom->npe[c]; n++) {
@@ -426,6 +440,7 @@ void write_swan_mesh(master_t *master,
       geom->c2w[c] = nc++;
     }
   }
+
   /* Print the triangulation of boundary cells                       */
   for (n = 0; n < geom->nobc; n++) {
     open_bdrys_t *open = geom->open[n];
@@ -737,4 +752,117 @@ void write_swan_params(master_t *master, char *fname, char *mname)
 }
 
 /* END write_swan_params()                                           */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Routine to set wave variables on all open boundaries.             */
+/*-------------------------------------------------------------------*/
+void bdry_wave(master_t *master, /* Master data                      */
+	       geometry_t *geom, /* Master geometry                  */
+	       swan_data_t *data
+	       )
+{
+  int n, cc, c, cw;              /* Counters */
+  double x, y, z;
+
+  for (n = 0; n < geom->nobc; n++) {
+    open_bdrys_t *open = geom->open[n];
+    double x, y, z;
+
+    if (open->bcond_wav & NOTHIN) continue;
+
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = open->obc_t[cc];
+      cw = geom->c2w[c];
+      
+      if (open->bcond_wav & FILEIN) {
+	x = geom->cellx[c];
+	y = geom->celly[c];
+	z = geom->cellz[c] * master->Ds[c];
+	data->swan_amp[cw] = 
+	  hd_ts_multifile_eval_xyz_by_name(open->ntsfiles, 
+					   open->tsfiles,
+					   open->filenames, 
+					   "wave_amp",
+					   master->t3d,
+					   x, y, z);
+	data->swan_per[cw] = 
+	  hd_ts_multifile_eval_xyz_by_name(open->ntsfiles, 
+					   open->tsfiles,
+					   open->filenames, 
+					   "wave_period",
+					   master->t3d,
+					   x, y, z);
+	/*if(master->t3d==0.0)data->swan_per[cw] = 2.0;*/
+	data->swan_dir[cw] = 
+	  hd_ts_multifile_eval_xyz_by_name(open->ntsfiles, 
+					   open->tsfiles,
+					   open->filenames, 
+					   "wave_dir",
+					   master->t3d,
+					   x, y, z);
+      }
+      if (open->bcond_wav & CLAMPD) {
+	data->swan_amp[cw] = 0.0;
+	data->swan_per[cw] = 0.0;
+	data->swan_dir[cw] = 0.0;
+      }
+      if (open->bcond_wav & NOGRAD) {
+	int c1 = geom->c2w[open->oi1_t[cc]];
+	data->swan_amp[cw] = data->swan_amp[c1];
+	data->swan_per[cw] = data->swan_per[c1];
+	data->swan_dir[cw] = data->swan_dir[c1];
+      }
+      if (open->bcond_wav & (CYCLIC|CYCLED)) {
+	int c1 = geom->c2w[open->cyc_t[cc]];
+	data->swan_amp[cw] = data->swan_amp[c1];
+	data->swan_per[cw] = data->swan_per[c1];
+	data->swan_dir[cw] = data->swan_dir[c1];
+      }
+      if (open->bcond_wav & LINEXT) {
+	int *imap = open->nmap;
+	int c1 = open->oi1_t[cc];
+	int c2 = open->oi2_t[cc];
+	int c3 = imap[c2];
+	int c4 = imap[c3];
+	data->swan_amp[cw] = bc_leastsq(data->swan_amp[c4], 
+				       data->swan_amp[c3], 
+				       data->swan_amp[c2], 
+				       data->swan_amp[c1]);
+	data->swan_per[cw] = bc_leastsq(data->swan_per[c4],
+				       data->swan_per[c3],
+				       data->swan_per[c2],
+				       data->swan_per[c1]);
+	data->swan_dir[cw] = bc_leastsq(data->swan_dir[c4], 
+				       data->swan_dir[c3], 
+				       data->swan_dir[c2], 
+				       data->swan_dir[c1]);
+      }
+      if (open->bcond_wav & POLEXT) {
+	int *imap = open->nmap;
+	int c1 = open->oi1_t[cc];
+	int c2 = open->oi2_t[cc];
+	int c3 = imap[c2];
+	data->swan_amp[cw] = bc_polint(data->swan_amp[c3], 
+				      data->swan_amp[c2], 
+				      data->swan_amp[c1]);
+	data->swan_per[cw] = bc_polint(data->swan_per[c3],
+				      data->swan_per[c2],
+				      data->swan_per[c1]);
+	data->swan_dir[cw] = bc_polint(data->swan_dir[c3], 
+				      data->swan_dir[c2], 
+				      data->swan_dir[c1]);
+      }
+      /* Wave direction is input to SWAN as degrees but saved        */
+      /* internally in radians.                                      */
+      if (!(open->bcond_wav & FILEIN))
+	data->swan_dir[cw] *= 180.0 / PI;
+
+    }
+  }
+}
+
+/* END bdry_wave()                                                   */
 /*-------------------------------------------------------------------*/

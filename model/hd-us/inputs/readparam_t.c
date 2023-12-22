@@ -14,13 +14,14 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 7276 2022-12-14 05:39:52Z her127 $
+ *  $Id: readparam_t.c 7405 2023-10-05 02:07:11Z her127 $
  *
  */
 
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 #include "hd.h"
 
 void check_wave_vars(parameters_t *params);
@@ -38,9 +39,12 @@ FILE *fp;
   char keyword[MAXSTRLEN];
   int m, n;
   int cc;
+  struct timeval tm1;
 
   /* Allocate memory for the parameter data structure                */
   params = params_alloc();
+  gettimeofday(&tm1, NULL);
+  params->initt = tm1.tv_sec + tm1.tv_usec * 1e-6;
 
   /* Set defaults                                                    */
   params->runmode = TRANS;
@@ -494,13 +498,19 @@ FILE *fp;
   } else 
     sprintf(params->trperc, "NONE");
 
+  /* Plastics */
+  sprintf(keyword, "MACRO_PLASTIC");
+  prm_read_char(fp, keyword, params->cmacrop);
+  sprintf(keyword, "MICRO_PLASTIC");
+  prm_read_char(fp, keyword, params->cmicrop);
+
   /* Particle tracking */
   if(prm_read_char(fp, "PT_InputFile", params->ptinname)) {
-    params->do_pt = 1;
+    params->do_pt = PT_DO;
     params->ntr++;
     /* Auto particle source                                          */
     if (prm_read_char(fp, "particles", params->particles))
-      params->do_pt = 2;
+      params->do_pt = PT_AUTO;
     params->do_lag = params->do_pt;
   }
 
@@ -1127,6 +1137,9 @@ void read_tmode_params(FILE *fp, parameters_t *params)
       if (params->runmode & TRANS) params->tmode |= SP_U1VM;
       params->ntrS += 1;
     }
+    if (contains_token(buf, "SP_FFSLS|SP_CHECK") != NULL) {
+      params->tmode = (SP_CHECK|SP_EXACT|SP_STRUCT);
+    }
   }
 
   if (params->runmode & TRANS)
@@ -1205,7 +1218,8 @@ void read_tmode_params(FILE *fp, parameters_t *params)
 #ifdef HAVE_OMP
   sprintf(keyword, "TRANS_OMP_NUM_THREADS");
   params->trans_num_omp = 1; /* default to 1 */
-  prm_read_int(fp, keyword, &params->trans_num_omp);
+  if (prm_read_int(fp, keyword, &params->trans_num_omp))
+    hd_warn("CAUTION: TRANS_OMP_NUM_THREADS > 1 may cause Runge-Kutta segmentation fault.\n");
 #endif
 
 }

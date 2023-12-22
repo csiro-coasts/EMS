@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 7355 2023-05-08 05:36:40Z riz008 $
+ *  $Id: proto.h 7477 2023-12-22 01:31:36Z riz008 $
  *
  */
 
@@ -26,7 +26,7 @@
 /*------------------------------------------------------------------*/
 #define SHOC_MAJOR_VERSION 1
 #define SHOC_MINOR_VERSION 3
-#define SHOC_PATCH_VERSION 0
+#define SHOC_PATCH_VERSION 1
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -39,6 +39,7 @@ void auto_params_roam_pre1(FILE * fp, parameters_t *params);
 void auto_params_roam_pre2(FILE * fp, parameters_t *params);
 void auto_params_roam_pre3(FILE * fp, parameters_t *params);
 void auto_params_roam_pre4(FILE * fp, parameters_t *params);
+void auto_params_roam_pre5(FILE * fp, parameters_t *params);
 void auto_params_recom_pre1(FILE * fp, parameters_t *params);
 void auto_params_recom_pre2(FILE * fp, parameters_t *params);
 void auto_params_roam_post1(FILE * fp, parameters_t *params);
@@ -48,6 +49,7 @@ void auto_params_roam_post4(FILE * fp, parameters_t *params);
 void auto_params_roam_post5(FILE * fp, parameters_t *params);
 void auto_params_roam_post6(FILE * fp, parameters_t *params);
 void auto_params_roam_post7(FILE * fp, parameters_t *params);
+void auto_params_roam_post8(FILE * fp, parameters_t *params);
 void auto_params_recom_post1(FILE * fp, parameters_t *params);
 void auto_params_recom_post2(FILE * fp, parameters_t *params);
 double get_restart_time(char *filename, char *iunits);
@@ -95,6 +97,7 @@ void value_init_sed(master_t *master, double **ret, FILE *fp, char *fname, char 
 int value_init_regions(master_t *master, char *dname, double *tr, int mode);
 int set_variable(master_t *master, char *tag, double *ret, double *tin);
 int is_set_variable(char *fnames);
+poly_t *nc2poly(int fid, int nce1, int nce2, char *xname, char *yname, char *bname, timeseries_t *ts);
 void trans_write(hd_data_t *hd_data);
 char *trtypename(int m, char *buf);
 void bathy_compare(master_t *master);
