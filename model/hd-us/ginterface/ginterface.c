@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 7385 2023-08-22 09:05:38Z bai155 $
+ *  $Id: ginterface.c 7430 2023-10-25 01:28:17Z her127 $
  *
  */
 
@@ -3024,8 +3024,15 @@ int i_check_wave_period(void *hmodel)
   window_t *windat = window->windat;
   if (wincon->waves & NONE || windat->wave_period == NULL)
     return(0);
-  else
-    return(1);
+  else {
+    int n, ret;
+    if ((n = tracer_find_index("wave_period", wincon->ntrS, 
+			       wincon->trinfo_2d)) >= 0) {
+      ret = (int)ceil(wincon->trinfo_2d[n].fill_value_wc);
+      return(ret);
+    } else
+      return(1);
+  }
 }
 int i_check_wave_period_m(void *hmodel) 
 {
@@ -3033,8 +3040,15 @@ int i_check_wave_period_m(void *hmodel)
   master_t* master = data->master;
   if (master->waves & NONE || master->wave_period == NULL)
     return(0);
-  else
-    return(1);
+  else {
+    int n, ret;
+    if ((n = tracer_find_index("wave_period", master->ntrS, 
+			       master->trinfo_2d)) >= 0) {
+      ret = (int)ceil(master->trinfo_2d[n].fill_value_wc);
+      return(ret);
+    } else
+      return(1);
+  }
 }
 
 /* Returns the wave period at coordinate c                           */

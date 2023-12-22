@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 7332 2023-04-11 02:33:14Z her127 $
+ *  $Id: pp_us.c 7434 2023-10-25 01:29:54Z her127 $
  *
  */
 
@@ -113,7 +113,7 @@ int is_obce(int cc, int j, mesh_t *m);
 int is_obceo(int npe, int cc, int j, double **x, double **y, double ***posx, double ***posy,
              int nobc, int *npts);
 void reorder_edges(geometry_t *sgrid);
-int cyc_m2(geometry_t *sgrid, int *nmap, int *omap, int c);
+int cyc_m2(geometry_t *sgrid, int *nmap, int *omap, int c, int npts);
 int oedge(int npe, int n);
 void swap_edge(geometry_t *sgrid, int e);
 int check_vert2d(geometry_t *sgrid, int e, int e1, int i1, int i2,
@@ -3281,14 +3281,13 @@ void build_sparse_grid_us(parameters_t *params,
   /* Get the cyclic boundary locations.                              */
   for (n = 0; n < sgrid->nobc; n++) {
     /* Tracers                                                       */
-
     for (cc = 1; cc <= sgrid->open[n]->no3_t; cc++) {
       c = sgrid->open[n]->obc_t[cc];
       cs = sgrid->m2d[c];
       if (sgrid->open[n]->bcond_ele & CYCLIC || 
+	  sgrid->open[n]->bcond_wav & CYCLIC || 
 	  ANY0(CYCLIC, sgrid->open[n]->bcond_tra, sgrid->open[n]->ntr)) {
-	sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
-
+	sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c, sgrid->open[n]->ncyc);
 	/* Move outwards an extra cell                               */
 	if (params->us_type & US_HEX) 
 	  sgrid->open[n]->cyc_t[cc] = sgrid->c2c[omapc[cs]][sgrid->open[n]->cyc_t[cc]];
@@ -3303,7 +3302,8 @@ void build_sparse_grid_us(parameters_t *params,
       cs = sgrid->m2d[c];
       j = (sgrid->open[n]->ceni[ee]) ? sgrid->e2e[e][1] : sgrid->e2e[e][0];
       if (sgrid->open[n]->bcond_nor & CYCLIC) {
-	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c,
+		    sgrid->open[n]->ncyc);
 	if (params->us_type & US_HEX)
 	  c1 = sgrid->c2c[omapc[cs]][c1];
 	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
@@ -3319,7 +3319,8 @@ void build_sparse_grid_us(parameters_t *params,
       cs = sgrid->m2d[c];
       j = sgrid->e2e[e][0];
       if (sgrid->open[n]->bcond_tan & CYCLIC) {
-	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c,
+		    sgrid->open[n]->ncyc);
 	if (params->us_type & US_HEX)
 	  c1 = sgrid->c2c[omapc[cs]][c1];
 	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
@@ -4672,8 +4673,9 @@ void make_geom_obc(parameters_t *params, geometry_t *sgrid, int laus, int *maske
       c = sgrid->open[n]->obc_t[cc];
       cs = sgrid->m2d[c];
       if (sgrid->open[n]->bcond_ele & CYCLIC || 
+	  sgrid->open[n]->bcond_wav & CYCLIC ||
 	  ANY0(CYCLIC, sgrid->open[n]->bcond_tra, sgrid->open[n]->ntr)) {
-	sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	sgrid->open[n]->cyc_t[cc] = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c, sgrid->open[n]->ncyc);
 
 	/* Move outwards an extra cell                               */
 	if (params->us_type & US_HEX) 
@@ -4689,7 +4691,8 @@ void make_geom_obc(parameters_t *params, geometry_t *sgrid, int laus, int *maske
       cs = sgrid->m2d[c];
       j = (sgrid->open[n]->ceni[ee]) ? sgrid->e2e[e][1] : sgrid->e2e[e][0];
       if (sgrid->open[n]->bcond_nor & CYCLIC) {
-	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c,
+		    sgrid->open[n]->ncyc);
 	if (params->us_type & US_HEX)
 	  c1 = sgrid->c2c[omapc[cs]][c1];
 	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
@@ -4705,7 +4708,8 @@ void make_geom_obc(parameters_t *params, geometry_t *sgrid, int laus, int *maske
       cs = sgrid->m2d[c];
       j = sgrid->e2e[e][0];
       if (sgrid->open[n]->bcond_tan & CYCLIC) {
-	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c);
+	c1 = cyc_m2(sgrid, sgrid->c2c[imapc[cs]], sgrid->c2c[omapc[cs]], c,
+		    sgrid->open[n]->ncyc);
 	if (params->us_type & US_HEX)
 	  c1 = sgrid->c2c[omapc[cs]][c1];
 	if (maske[sgrid->c2e[j][c1]] >= 0) c1 = sgrid->c2c[omapc[cs]][c1];
@@ -5551,14 +5555,19 @@ void write_us_map(geometry_t *sgrid,    /* Mapping data              */
 int cyc_m2(geometry_t *sgrid, /* Window geometry                   */
 	   int *nmap,         /* Map in direction normal to boundary */
 	   int *omap,         /* Map in direction normal to boundary */
-	   int c             /* Self mapping sparse location */
+	   int c,             /* Self mapping sparse location */
+	   int npts
   )
 {
   int cyc;                      /* Cyclic sparse coordinate */
   cyc = c;
+  int n = 0;
 
   while (c != nmap[nmap[c]]) {
     c = nmap[c];
+    if (npts && n >= npts) break;
+    n++;
+
   }
   cyc = omap[omap[c]];
   return (cyc);

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 7382 2023-08-07 02:04:56Z mar644 $
+ *  $Id: sediments.c 7410 2023-10-05 02:09:13Z her127 $
  *
  */
 
@@ -43,7 +43,12 @@ char *SEDCLASS[] = {
   "Sand-mineral",
   "Sand-carbonate",
   "Gravel-mineral",
-  "Gravel-carbonate" 
+  "Gravel-carbonate",
+  "PE",
+  "PP",
+  "PET",
+  "PVC",
+  "PS"
 };
 #define NUM_SED_VARS (int)(sizeof(SEDCLASS)/sizeof(char *))
 

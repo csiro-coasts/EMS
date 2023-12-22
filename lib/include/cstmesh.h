@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: cstmesh.h 7185 2022-08-08 23:46:25Z her127 $
+ *  $Id: cstmesh.h 7417 2023-10-05 02:13:28Z her127 $
  */
 
 #ifndef _CSTMESH_H
@@ -132,5 +132,10 @@ void cm_free(coamsh_t *cm);
 int coastmesh(coamsh_t *cm, int mode);
 void cm_read(coamsh_t *cm, FILE *ip);
 void write_jigsaw(jig_t *jig);
+int ellipse_mesh(int nce1, int nce2, double x00, double y00,
+		 double flon, double flat, double xinc, double yinc,
+		 double elf, double ores, double *mnlon, double *mxlon,
+		 double *mnlat, double *mxlat, double **xi, double **yi,
+		 double **xo, double **yo, int *npi, int *npo);
 
 #endif

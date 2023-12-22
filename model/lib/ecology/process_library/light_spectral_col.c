@@ -66,10 +66,16 @@
  *         66. Should fulldisk be PAR-integrated?
  *         67. values_common_epi is still hardwired with some plant types.
  *         69. Time ranges and frequency for column output file.
- *         70. Code speed up: diffaa should do all wavelengths at one.
+ *         70. Code speed up: a. diffaa should do all wavelengths at one.
+ *                            b. X x Omega(X) can be outside the wave loop.
+ *                            c. m * red * MW_Nitr * 1000 could be done at initialisation.
+ *                            d. 3D sensor - demon outside layer loop.
+ *                            e. Secchi pathlength outside layer loop.
+ *                            f. moon-phase once for all columns.
  *         71. Generalise fine sensor grid so it doesn't have to be 1 nm bandwidth.
  *         72. We don't have a simulated satellite products for Secchi.
- *         73. Doesn't work for KEYWORD specification of tracers.
+ *         73. Light_spectral_col doesn't work for KEYWORD specification of tracers.
+ *         74. Likely to be problems with using col->b to identify output columns in fully-coupled version.
  */
 
 #include <stdlib.h>
@@ -209,8 +215,6 @@ typedef struct {
 
   int MPB_N_sed_i;
   int MPB_Chl_sed_i;
-
-  // int CarbSand_sed_i; // possibly obsolete.
   
   /* Microalgae parameters */
 
@@ -242,6 +246,13 @@ typedef struct {
 
   double bbcell1;
   double bbcell2;
+
+  double bbfact_l;
+  double bbfact_s;
+  double bbfact_MPB;
+  double bbfact_Tricho;
+  double bbfact_PhyD;
+  double bbfact_CS;
 
   /* Benthic plant parameters */
   
@@ -314,6 +325,8 @@ typedef struct {
   int Lunar_phase_i;
   int Moon_fulldisk_i;
 
+  int Solar_zenith_i;
+  
   /* Special wavelengths */
   
   int wPAR_top;
@@ -486,7 +499,7 @@ typedef struct {
 
 /* Functions listed at bottom of this file */
 
-void moonlight(workspace *ws, column* col, double* Ak, double *sun_angle, double *moon_phase, double *lunar_dec, double *lunar_angle, double *lunar_zenith, double *lunar_azimuth);
+void moonlight(workspace *ws, column* col, double time_in_days, double* Ak, double *sun_angle, double *moon_phase, double *lunar_dec, double *lunar_angle, double *lunar_zenith, double *lunar_azimuth);
 void optdatascalarread(ecology *e, workspace *ws, char *source_file, int ncid, const char *varname, double *out);
 void optdataspectralread(ecology *e, workspace *ws, char *source_file, int ncid, const char *varname, const char *wavename, const char *codename, double* out);
 void optdataspectralread_fine(ecology *e, workspace *ws, char *source_file, int ncid, const char *varname, const char *wavename, const char *codename, double* out);
@@ -1038,12 +1051,16 @@ void light_spectral_col_init(eprocess* p)
   ws->Lunar_phase_i = -1;
   ws->Moon_fulldisk_i = -1;
 
+  ws->Solar_zenith_i = -1;
+
   ws->Moonlight_i = e->try_index(epis, "Moonlight", e);
   ws->Lunar_zenith_i = e->try_index(epis, "Lunar_zenith", e);
   ws->Lunar_azimuth_i = e->try_index(epis, "Lunar_azimuth", e);
   ws->Lunar_phase_i = e->try_index(epis, "Lunar_phase", e);
   ws->Moon_fulldisk_i = e->try_index(epis, "Moon_fulldisk", e);
 
+  ws->Solar_zenith_i = e->try_index(epis, "Solar_zenith", e);
+  
   ws->SWR_bot_abs_i = -1;
   ws->SWR_bot_abs_i = e->try_index(epis, "SWR_bot_abs", e);
   
@@ -1100,34 +1117,50 @@ void light_spectral_col_init(eprocess* p)
   
   /* Microalgae parameters */
 
+  ws->bbcell1 = try_parameter_value(e, "bbcell1");
+  if (isnan(ws->bbcell1)){
+    ws->bbcell1 = 4.26e-14;   // Whitmore 2012
+    eco_write_setup(e,"Code default of phyto. cell backscatter parameter 1, bbcell1 = %e \n",ws->bbcell1);
+  }
+  ws->bbcell2 = try_parameter_value(e, "bbcell2");
+  if (isnan(ws->bbcell2)){
+    ws->bbcell2 = 2.028;   // Whitmore 2012
+    eco_write_setup(e,"Code default of phyto. cell backscatter parameter 2, bbcell2 = %e \n",ws->bbcell2);
+  }
+  
   if (ws->PhyL_N_i > -1){
     ws->m_l = PhyCellMass(try_parameter_value(e, "PLrad"));
     ws->rad_l = get_parameter_value(e, "PLrad");
     ws->vol_l = 4.0 / 3.0 * M_PI * ws->rad_l * ws->rad_l * ws->rad_l;
+    ws->bbfact_l = ws->bbcell1 * pow(ws->rad_l*2e6, ws->bbcell2);
   }
   
   if (ws->PhyS_N_i > -1){
     ws->m_s = PhyCellMass(try_parameter_value(e, "PSrad"));
     ws->rad_s = get_parameter_value(e, "PSrad");
     ws->vol_s = 4.0 / 3.0 * M_PI * ws->rad_s * ws->rad_s * ws->rad_s;
+    ws->bbfact_s = ws->bbcell1 * pow(ws->rad_s*2e6, ws->bbcell2);
   }
 
   if (ws->MPB_N_i > -1){
     ws->m_MPB = PhyCellMass(try_parameter_value(e, "MBrad"));
     ws->rad_MPB = get_parameter_value(e, "MBrad");
     ws->vol_MPB = 4.0 / 3.0 * M_PI * ws->rad_MPB * ws->rad_MPB * ws->rad_MPB;
+    ws->bbfact_MPB = ws->bbcell1 * pow(ws->rad_MPB*2e6, ws->bbcell2);
   }
 
   if (ws->Tricho_N_i > -1){
     ws->m_Tricho = PhyCellMass(try_parameter_value(e, "Tricho_rad"));
     ws->rad_Tricho = get_parameter_value(e, "Tricho_rad");
     ws->vol_Tricho = 4.0 / 3.0 * M_PI * ws->rad_Tricho * ws->rad_Tricho * ws->rad_Tricho;
+    ws->bbfact_Tricho = ws->bbcell1 * pow(ws->rad_Tricho*2e6, ws->bbcell2);
   }
 
   if (ws->PhyD_N_i > -1){
     ws->m_PhyD = PhyCellMass(try_parameter_value(e, "DFrad"));
     ws->rad_PhyD = get_parameter_value(e, "DFrad");
     ws->vol_PhyD = 4.0 / 3.0 * M_PI * ws->rad_PhyD * ws->rad_PhyD * ws->rad_PhyD;
+    ws->bbfact_PhyD = ws->bbcell1 * pow(ws->rad_PhyD*2e6, ws->bbcell2);
   }
 
   if (ws->CS_N_i > -1){
@@ -1142,6 +1175,7 @@ void light_spectral_col_init(eprocess* p)
     ws->rad_CS = get_parameter_value(e, "CSrad");
     ws->m_CS = PhyCellMass(ws->rad_CS);
     ws->vol_CS = 4.0 / 3.0 * M_PI * ws->rad_CS * ws->rad_CS * ws->rad_CS;
+    ws->bbfact_CS = ws->bbcell1 * pow(ws->rad_CS*2e6, ws->bbcell2);
     
   }
 
@@ -1151,17 +1185,6 @@ void light_spectral_col_init(eprocess* p)
     
     ws->MAleafden = get_parameter_value(e, "MAleafden_wc");
     
-  }
-  
-  ws->bbcell1 = try_parameter_value(e, "bbcell1");
-  if (isnan(ws->bbcell1)){
-    ws->bbcell1 = 4.26e-14;   // Whitmore 2012
-    eco_write_setup(e,"Code default of phyto. cell backscatter parameter 1, bbcell1 = %e \n",ws->bbcell1);
-  }
-  ws->bbcell2 = try_parameter_value(e, "bbcell2");
-  if (isnan(ws->bbcell2)){
-    ws->bbcell2 = 2.028;   // Whitmore 2012
-    eco_write_setup(e,"Code default of phyto. cell backscatter parameter 2, bbcell2 = %e \n",ws->bbcell2);
   }
 
   // Initialise parameter values and kI index for tracer-list specifed benthis plants.
@@ -1438,6 +1461,15 @@ void light_spectral_col_init(eprocess* p)
     nc_put_att_text(ncid1, varid1, "symbol", 16,"\\Delta \\lambda");
     nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
 
+    int waveedgeid;
+    ncw_def_dim("optical_setup.nc",ncid1,"wave_edge",ws->num_wave+1, &waveedgeid);
+    dims[0] = waveedgeid;
+    nc_def_var(ncid1,"wave_edge",NC_DOUBLE,1,dims,&varid1);
+    nc_put_att_text(ncid1, varid1, "description", 17,"Edges of waveband");
+    nc_put_att_text(ncid1, varid1, "units", 2,"nm");
+    nc_put_att_text(ncid1, varid1, "symbol", 8,"\\lambda");
+    nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
+    
     int wavesensorid;
     int dims22[2];
     
@@ -1469,45 +1501,72 @@ void light_spectral_col_init(eprocess* p)
     nc_put_att_text(ncid1, varid1, "description", 18,"Width of PAR range");
     nc_put_att_text(ncid1, varid1, "units", 2,"nm");
 
+    nc_def_var(ncid1,"bbcell1",NC_DOUBLE,0,dim_dummy,&varid1);
+    nc_put_att_text(ncid1, varid1, "description", 23,"Cell backscatter coef 1");
+    nc_put_att_text(ncid1, varid1, "units", 2,"??");
+    
+    nc_def_var(ncid1,"bbcell2",NC_DOUBLE,0,dim_dummy,&varid1);
+    nc_put_att_text(ncid1, varid1, "description", 26,"Cell backscatter exponent");
+    nc_put_att_text(ncid1, varid1, "units", 1,"-");
+
+    nc_def_var(ncid1,"bphy",NC_DOUBLE,0,dim_dummy,&varid1);
+    nc_put_att_text(ncid1, varid1, "description", 45,"Chl-specific scattering coef. for microalgae");
+    nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl a m-3)-1");
+
+    nc_def_var(ncid1,"NtoCHL",NC_DOUBLE,0,dim_dummy,&varid1);
+    nc_put_att_text(ncid1, varid1, "description", 39,"N to Chl ratio for backscattering calc.");
+    nc_put_att_text(ncid1, varid1, "units", 5,"g g-1");
+    
+
     if (ws->PhyS_N_i > -1){
       nc_def_var(ncid1,"yC_s",NC_DOUBLE,1,dims,&varid1);
       nc_put_att_text(ncid1, varid1, "description", 50,"Small phytoplankton Chl-a mass specific absorbance");
       nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl-a m-3)-1");
+      nc_def_var(ncid1,"PhyS_rad",NC_DOUBLE,0,dim_dummy,&varid1);
+      nc_put_att_text(ncid1, varid1, "description", 26,"Small phytoplankton radius");
+      nc_put_att_text(ncid1, varid1, "units", 1,"m");
     }
     if (ws->PhyL_N_i > -1){
       nc_def_var(ncid1,"yC_l",NC_DOUBLE,1,dims,&varid1);
       nc_put_att_text(ncid1, varid1, "description", 50,"Large phytoplankton Chl-a mass specific absorbance");
       nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl-a m-3)-1");
+      nc_def_var(ncid1,"PhyL_rad",NC_DOUBLE,0,dim_dummy,&varid1);
+      nc_put_att_text(ncid1, varid1, "description", 26,"Large phytoplankton radius");
+      nc_put_att_text(ncid1, varid1, "units", 1,"m");
     }
     if (ws->Tricho_N_i > -1){
       nc_def_var(ncid1,"yC_Tricho",NC_DOUBLE,1,dims,&varid1);
       nc_put_att_text(ncid1, varid1, "description", 44,"Trichodesmium Chl-a mass specific absorbance");
       nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl-a m-3)-1");
+      nc_def_var(ncid1,"Tricho_rad",NC_DOUBLE,0,dim_dummy,&varid1);
+      nc_put_att_text(ncid1, varid1, "description", 20,"Trichodesmium radius");
+      nc_put_att_text(ncid1, varid1, "units", 1,"m");
     }
     if (ws->PhyD_N_i > -1){
       nc_def_var(ncid1,"yC_D",NC_DOUBLE,1,dims,&varid1);
       nc_put_att_text(ncid1, varid1, "description", 45,"Dinoflagellate Chl-a mass specific absorbance");
       nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl-a m-3)-1");
+      nc_def_var(ncid1,"PhyD_rad",NC_DOUBLE,0,dim_dummy,&varid1);
+      nc_put_att_text(ncid1, varid1, "description", 21,"Dinoflagellate radius");
+      nc_put_att_text(ncid1, varid1, "units", 1,"m");
     }
     if (ws->MPB_N_i > -1){
       nc_def_var(ncid1,"yC_MPB",NC_DOUBLE,1,dims,&varid1);
       nc_put_att_text(ncid1, varid1, "description", 48,"Microphytobenthos Chl-a mass specific absorbance");
       nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl-a m-3)-1");
+      nc_def_var(ncid1,"MPB_rad",NC_DOUBLE,0,dim_dummy,&varid1);
+      nc_put_att_text(ncid1, varid1, "description", 25,"Microphytobenthos radius");
+      nc_put_att_text(ncid1, varid1, "units", 1,"m");
     }
     if (ws->CS_N_i > -1){
       nc_def_var(ncid1,"yC_Symbiodinium",NC_DOUBLE,1,dims,&varid1);
       nc_put_att_text(ncid1, varid1, "description", 43,"Symbiodinium Chl-a mass specific absorbance");
       nc_put_att_text(ncid1, varid1, "units", 20,"m-1 (mg Chl-a m-3)-1");
+      nc_def_var(ncid1,"CS_rad",NC_DOUBLE,0,dim_dummy,&varid1);
+      nc_put_att_text(ncid1, varid1, "description", 19,"Symbiodinium radius");
+      nc_put_att_text(ncid1, varid1, "units", 1,"m");
     }
-
-    ncw_def_dim("optical_setup.nc",ncid1,"wave_edge",ws->num_wave+1, &waveid);
-    dims[0] = waveid;
-    nc_def_var(ncid1,"wave_edge",NC_DOUBLE,1,dims,&varid1);
-    nc_put_att_text(ncid1, varid1, "description", 18,"Edges of waveband");
-    nc_put_att_text(ncid1, varid1, "units", 2,"nm");
-    nc_put_att_text(ncid1, varid1, "symbol", 8,"\\lambda");
-    nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
-
+    
     nc_close(ncid1);
 
      /* initialise moonlighting spectral reflectance parameters */
@@ -1683,6 +1742,34 @@ void light_spectral_col_init(eprocess* p)
 	  optdataspectralread(e,ws,fname1,ncid9,trnmiss_name," ",setup_trnmiss_name,ws->T_star[aa]);
 
 	  colour_of_bottom_type(e,ws,epiname);
+
+	  // Now add nitrogen-specific leaf area of seagrass.
+	  
+	  int varid22;int varid23;
+	  int ncid99; int dim_dummy22[2];
+	  char leafden_name[MAXSTRLEN];
+	  char orient_name[MAXSTRLEN];
+
+	  ncw_open("optical_setup.nc",NC_WRITE, &ncid99);
+	  ncredef(ncid99);
+
+	  sprintf(leafden_name, "%sleafden",tempstr1);
+	  sprintf(orient_name, "%sorient",tempstr1);
+	  
+	  nc_def_var(ncid99,leafden_name,NC_DOUBLE,0,dim_dummy22,&varid22);
+	  nc_put_att_text(ncid99, varid22, "description", 27,"Nitrogen-specific leaf area");
+	  nc_put_att_text(ncid99, varid22, "units", 6,"g-1 m2");
+	  
+	  nc_def_var(ncid99,orient_name,NC_DOUBLE,0,dim_dummy22,&varid23);
+	  nc_put_att_text(ncid99, varid23, "description", 16,"Leaf orientation");
+	  nc_put_att_text(ncid99, varid23, "units", 1,"-");
+
+	  ncw_enddef("optical_setup.nc", ncid99);
+
+	  ncw_put_var_double("optical_setup.nc",ncid99,varid22,&ws->XXXleafden[aa]);
+	  ncw_put_var_double("optical_setup.nc",ncid99,varid23,&ws->XXXorient[aa]);
+
+	  nc_close(ncid99);
 	  
 	  ncw_close(fname1,ncid9);
 
@@ -1711,7 +1798,29 @@ void light_spectral_col_init(eprocess* p)
 	}
       }
       eco_write_setup(e,"This is also the order in the canopy, ordered top to bottom. \n");
-    } 
+    }
+
+      /* Add coral skeleton parameters to optical_setup.nc */
+
+      int ncid88; int varid88, varid89; int dim_dummy88[2];
+      
+      ncw_open("optical_setup.nc",NC_WRITE, &ncid88);
+      ncredef(ncid88);
+
+      nc_def_var(ncid88,"CHpolypden",NC_DOUBLE,0,dim_dummy88,&varid88);
+      nc_put_att_text(ncid88, varid88, "description", 29,"Nitrogen-specific polyp area");
+      nc_put_att_text(ncid88, varid88, "units", 6,"g-1 m2");
+
+      nc_def_var(ncid88,"CHarea",NC_DOUBLE,0,dim_dummy88,&varid89);
+      nc_put_att_text(ncid88, varid89, "description", 6,"CHarea");
+      nc_put_att_text(ncid88, varid89, "units", 1,"-");
+      
+      ncw_enddef("optical_setup.nc", ncid88);
+      
+      ncw_put_var_double("optical_setup.nc",ncid88,varid88,&ws->CHpolypden);
+      ncw_put_var_double("optical_setup.nc",ncid88,varid89,&ws->CHarea);
+
+      nc_close(ncid88);
 
     /* End of tracer-list specified optically-active tracers. 
    /***********************************************************************************************/
@@ -1813,10 +1922,10 @@ void light_spectral_col_init(eprocess* p)
     optdatascalarread(e,ws,source_file,ncid,"g0",&ws->g0);
     optdatascalarread(e,ws,source_file,ncid,"g1",&ws->g1);
 
-    /* Spectrally-independent variables */
+    /* Spectrally-independent variables - Kirk (1991) LO 36: 455*/ 
 
-    ws->gi = 0.402;
-    ws->gii = 0.180;
+    optdatascalarread(e,ws,source_file,ncid,"gi",&ws->gi);
+    optdatascalarread(e,ws,source_file,ncid,"gii",&ws->gii);
 
     /* Spectrally-dependent variables */
     
@@ -1971,6 +2080,22 @@ void light_spectral_col_init(eprocess* p)
 
     double temp_var;
 
+    temp_var = ws->bphy;
+    varid = ncw_var_id(ncid,"bphy");
+    ncw_put_var_double("optical_setup.nc",ncid,varid,&temp_var);
+
+    temp_var = ws->NtoCHL;
+    varid = ncw_var_id(ncid,"NtoCHL");
+    ncw_put_var_double("optical_setup.nc",ncid,varid,&temp_var);
+
+    temp_var = ws->bbcell1;
+    varid = ncw_var_id(ncid,"bbcell1");
+    ncw_put_var_double("optical_setup.nc",ncid,varid,&temp_var);
+
+    temp_var = ws->bbcell2;
+    varid = ncw_var_id(ncid,"bbcell2");
+    ncw_put_var_double("optical_setup.nc",ncid,varid,&temp_var);
+    
     temp_var = ws->bandedge[ws->wPAR_bot];
     varid = ncw_var_id(ncid,"PARbot");
     ncw_put_var_double("optical_setup.nc",ncid,varid,&temp_var);
@@ -1991,33 +2116,45 @@ void light_spectral_col_init(eprocess* p)
 
     varid = ncw_var_id(ncid,"wave_edge");
     ncw_put_var_double("optical_setup.nc",ncid,varid,ws->bandedge);
-    varid = ncw_var_id(ncid,"wave_centre");
-    ncw_put_var_double("optical_setup.nc",ncid,varid,ws->wave);
+    
     varid = ncw_var_id(ncid,"bandwidth");
     ncw_put_var_double("optical_setup.nc",ncid,varid,ws->bandwidth);
+    
     if (ws->PhyS_N_i > -1){
       varid = ncw_var_id(ncid,"yC_s");
       ncw_put_var_double("optical_setup.nc",ncid,varid,ws->yC_s);
+      varid = ncw_var_id(ncid,"PhyS_rad");
+      ncw_put_var_double("optical_setup.nc",ncid,varid,&ws->rad_s);
     }
     if (ws->PhyL_N_i > -1){
       varid = ncw_var_id(ncid,"yC_l");
       ncw_put_var_double("optical_setup.nc",ncid,varid,ws->yC_l);
+      varid = ncw_var_id(ncid,"PhyL_rad");
+      ncw_put_var_double("optical_setup.nc",ncid,varid,&ws->rad_l);
     }
     if (ws->PhyD_N_i > -1){
       varid = ncw_var_id(ncid,"yC_D");
       ncw_put_var_double("optical_setup.nc",ncid,varid,ws->yC_D);
+      varid = ncw_var_id(ncid,"PhyD_rad");
+      ncw_put_var_double("optical_setup.nc",ncid,varid,&ws->rad_PhyD);
     }
     if (ws->MPB_N_i > -1){
       varid = ncw_var_id(ncid,"yC_MPB");
       ncw_put_var_double("optical_setup.nc",ncid,varid,ws->yC_MPB);
+      varid = ncw_var_id(ncid,"MPB_rad");
+      ncw_put_var_double("optical_setup.nc",ncid,varid,&ws->rad_MPB);
     }
     if (ws->Tricho_N_i > -1){
       varid = ncw_var_id(ncid,"yC_Tricho");
       ncw_put_var_double("optical_setup.nc",ncid,varid,ws->yC_Tricho);
+      varid = ncw_var_id(ncid,"Tricho_rad");
+      ncw_put_var_double("optical_setup.nc",ncid,varid,&ws->rad_Tricho);
     }
     if (ws->CS_N_i > -1){
       varid = ncw_var_id(ncid,"yC_Symbiodinium");
       ncw_put_var_double("optical_setup.nc",ncid,varid,ws->yC_Symbiodinium);
+      varid = ncw_var_id(ncid,"CS_rad");
+      ncw_put_var_double("optical_setup.nc",ncid,varid,&ws->rad_CS);
     }
     if (ws->CS_Xp_i > -1){    // this is probably uneccessary - already done by optspectralread 
       varid = ncw_var_id(ncid,"yC_diatoxanthin");
@@ -2184,6 +2321,9 @@ void light_spectral_col_init(eprocess* p)
 	nc_def_var(ncid,"ems_lunar_airtrans",NC_DOUBLE,1,dims3,&varid);
 	nc_put_att_text(ncid, varid, "description", 41,"EMS lunar atmospheric transmission loss");
 	nc_put_att_text(ncid, varid, "units", 1,"-");
+	nc_def_var(ncid,"moonlight",NC_DOUBLE,1,dims3,&varid);
+	nc_put_att_text(ncid, varid, "description", 25,"Moonlight at sea surface");
+	nc_put_att_text(ncid, varid, "units", 5,"W m-2");
       }
       
       ncw_def_dim(ws->column_out_name,ncid,"k_centre",ws->num_wc_layers, &depthcentreid);
@@ -2241,7 +2381,7 @@ void light_spectral_col_init(eprocess* p)
 
       if (ws->Moonlight_i > -1){
 	nc_def_var(ncid,"Moonlight_SR",NC_DOUBLE,2,dims19,&varid);
-	nc_put_att_text(ncid, varid, "description", 51,"Downwelling moonlight spectrum just below sea surface");
+	nc_put_att_text(ncid, varid, "description", 53,"Downwelling moonlight spectrum with no atmosphere");
 	nc_put_att_text(ncid, varid, "units", 10,"W m-2 nm-1");
       }
 
@@ -2578,6 +2718,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
   double** blt = d_alloc_2d(col->n_wc,ws->num_wave);  // spectrally-resolved luminescence per waveband
   double** flt = d_alloc_2d(col->n_wc,ws->num_wave);  // total fluorescence
 
+  // Clear sea-water
+
   for (n = 0; n<col->n_wc; n++) { // 0 is top
     for (w = 0; w<ws->num_wave; w++) {
       at[w][n] = ws->aw[w];
@@ -2632,10 +2774,11 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
     }
   }
   if (ws->cdom_gbr_i > -1){
+    double a443,S_cdom;
     for (n = 0; n<col->n_wc; n++) { // Variable S_cdom for GBR and includes ocean component.
+      a443 = (1.2336 + (-0.0332 * (1.0-y[ws->cdom_gbr_i][n])*36.855)); // matching Schroeder salinity relationship.
+      S_cdom = 0.0061 * pow(a443,-0.309); // Blondeau-Patissier 2009 JGR: 114: C05003.
       for (w = 0; w<ws->num_wave; w++) {
-	double a443 = (1.2336 + (-0.0332 * (1.0-y[ws->cdom_gbr_i][n])*36.855)); // matching Schroeder salinity relationship.
-	double S_cdom = 0.0061 * pow(a443,-0.309); // Blondeau-Patissier 2009 JGR: 114: C05003.
 	at[w][n] += a443 * exp(-S_cdom * (ws->wave[w]-443.0));
       }
     }
@@ -2695,7 +2838,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 	aA_s_l[w][n] = aAtemp[w];
 	at[w][n] += aA_s_l[w][n] * cellnum;
 	bt[w][n] += ws->bphy * Phy_N[n] / ws->NtoCHL;
-	bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	//bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	bb[w][n] += ws->nbt_p_555[w] * ws->bbfact_l * cellnum;
 	blt[w][n] += biolum[w] * cellnum;
 	flt[w][n] += fluor[w] * cellnum;
       }
@@ -2725,7 +2869,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 	aA_s_s[w][n] = aAtemp[w];
 	at[w][n] += aA_s_s[w][n] * cellnum;
 	bt[w][n] += ws->bphy * Phy_N[n] / ws->NtoCHL;
-	bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	// bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	bb[w][n] += ws->nbt_p_555[w] * ws->bbfact_s * cellnum;
       }
     }
   }
@@ -2754,7 +2899,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 	aA_s_Tricho[w][n] = aAtemp[w];
 	at[w][n] += aA_s_Tricho[w][n] * cellnum;
 	bt[w][n] += ws->bphy * Phy_N[n] / ws->NtoCHL;
-	bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	// bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	bb[w][n] += ws->nbt_p_555[w] * ws->bbfact_Tricho * cellnum;
       }
     }
   }
@@ -2783,7 +2929,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 	aA_s_MPB[w][n] = aAtemp[w];
 	at[w][n] += aA_s_MPB[w][n] * cellnum;
 	bt[w][n] += ws->bphy * Phy_N[n] / ws->NtoCHL;
-	bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	// bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	bb[w][n] += ws->nbt_p_555[w] * ws->bbfact_MPB * cellnum;
       }
     }
   }
@@ -2811,7 +2958,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 	aA_s_PhyD[w][n] = aAtemp[w];
 	at[w][n] += aA_s_PhyD[w][n] * cellnum;
 	bt[w][n] += ws->bphy * Phy_N[n] / ws->NtoCHL;
-	bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	// bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	bb[w][n] += ws->nbt_p_555[w] * ws->bbfact_PhyD * cellnum;
       }
     }
   }
@@ -2843,7 +2991,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 	  aA_s_CS_free[w][n] = aAtemp[w];
 	  at[w][n] += aA_s_CS_free[w][n] * cellnum;
 	  bt[w][n] += ws->bphy * Phy_N[n] / ws->NtoCHL;
-	  bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	  // bb[w][n] += ws->nbt_p_555[w] * ws->bbcell1 * pow(rad*2e6, ws->bbcell2)*cellnum;
+	  bb[w][n] += ws->nbt_p_555[w] * ws->bbfact_CS * cellnum;
 	}
       }
     }
@@ -3033,7 +3182,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
   frac = 1.0 - f_BP - f_polyp - f_mpb - f_zoo_free;
 
   /* 
-   * Sediment particulates : we seemed to add up only the non-Gravel components 
+   * Sediment particulates : we seemed to add up only the non-Gravel components
+   * also, this looks like it will add detritus: need benthic reflectance with mg m-2 units.
    */
 
   all_sed = 0.0;
@@ -3072,13 +3222,14 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 
   double lunar_airtransmission = 0.0;
   double lunar_albedo = 1.0;
+  double time_in_days = (e->t + e->dt)/86400.0;
   
   if (ws->Moonlight_i > -1){
 
     // function needs to return spectrally-resolved moonlight, fulldisk moonlight, lunar zenith and lunar phase.
     
-    moonlight(ws,col,Ak,&sun_angle,&moon_phase,&lunar_dec,&lunar_angle,&lunar_zenith,&lunar_azimuth);
-
+    moonlight(ws,col,time_in_days,Ak,&sun_angle,&moon_phase,&lunar_dec,&lunar_angle,&lunar_zenith,&lunar_azimuth);
+    
     // Calculate attenuation through the atmosphere and reflection at the air-water interface.
     
     if (lunar_zenith < (M_PI/2.0 - 1.0e-15)){
@@ -3159,7 +3310,7 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 // ****************** this should be a function ************************************************************ //
   
   // zenith, azimuth determine by sun, lunar then starlight.
-
+  
   double zenith = ems_solar_zenith;
   double azimuth = solar_azimuth;
 
@@ -3172,6 +3323,9 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
       azimuth = 0.0; 
     }
   }
+
+  if (ws->Solar_zenith_i > -1)
+      y_epi[ws->Solar_zenith_i] = ems_solar_zenith;
 
   if (ws->Zenith_i > -1)
     y_epi[ws->Zenith_i] = zenith;
@@ -4367,6 +4521,9 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 
       varid = ncw_var_id(ncid,"ems_lunar_airtrans");
       nc_put_var1_double(ncid,varid,&reclen,&lunar_airtransmission);
+
+      varid = ncw_var_id(ncid,"moonlight");
+      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Moonlight_i]);
       
     }
 
@@ -4379,8 +4536,8 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
       nc_put_var1_double(ncid,varid,&reclen,&hyd_azimuth);
     }
 #endif
-
-    double etaa = ginterface_get_eta(col->model,col->b);
+  
+    double etaa = ginterface_get_eta(col->model,col->b); // why is this one time step old ???
     varid = ncw_var_id(ncid,"eta");
     nc_put_var1_double(ncid,varid,&reclen,&etaa);
     
@@ -4409,7 +4566,7 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
     double* varr = d_alloc_1d(ws->num_wc_layers+1);
 
     int out_top = ws->num_wc_layers - col->topk_wc;
-    int out_bot = ws->num_wc_layers - col->botk_wc - 1;
+    int out_bot = ws->num_wc_layers - col->botk_wc + 1;
 
     for (n = 0; n < out_top; n++) {
       varr[n] = 1.0e35;
@@ -4482,7 +4639,7 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
     // now on wave_centre.
 
     out_top = ws->num_wc_layers - col->topk_wc-1;
-    out_bot = ws->num_wc_layers - col->botk_wc-2;
+    out_bot = ws->num_wc_layers - col->botk_wc;
 
     // Now need to turn 2d array into 1 d array.
 
@@ -4601,7 +4758,7 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
     // revert back to on the interfaces.
 
     out_top = ws->num_wc_layers - col->topk_wc;
-    out_bot = ws->num_wc_layers - col->botk_wc-1;
+    out_bot = ws->num_wc_layers - col->botk_wc+1; // change from -1, but not checked.
     
     countt = 0;
     for (w = 0; w<ws->num_wave; w++) {
@@ -5016,14 +5173,20 @@ void usgs_moon_reflectance(ecology *e,workspace *ws)
 
 }
 
-void moonlight(workspace *ws, column* col, double* Ak, double *sun_angle1, double *moon_phase1, double *lunar_dec1, double *lunar_angle1, double *lunar_zenith1, double *lunar_azimuth1)
+void moonlight(workspace *ws, column* col, double time_in_days, double* Ak, double *sun_angle1, double *moon_phase1, double *lunar_dec1, double *lunar_angle1, double *lunar_zenith1, double *lunar_azimuth1)
+
+// Need ws for num_wave, landa and moon.
+// Need col for to pass column number and link to model column mapping.
 {
   int w;
 
   // parameters calculated in moonvars
+
+  // Is this the problem should moonlat and moon lon really be zero?
   
   double moonlat_obs = 0.0;
   double moonlon_obs = 0.0;
+
   double earth_sun_dist; 
   double moon_earth_dist;
 
@@ -5035,21 +5198,23 @@ void moonlight(workspace *ws, column* col, double* Ak, double *sun_angle1, doubl
   double lunar_dec;
   double lunar_zenith;
   double lunar_azimuth;
-  
+
   ginterface_moonvars(col->model,col->b, &moonlon_obs, &moonlat_obs, &earth_sun_dist, &moon_earth_dist, &lunar_angle, &sun_angle, &moon_phase, &lunar_dec);
       
   // Could have an if statement for moon below horizon
-      
+
+  // Calculate moon phase
+
+  moon_phase = fmod(time_in_days - 3658.18,29.530588853)/29.530588853*M_PI;
+
   // Mark to add extra code:
   
-  double gmo = fabs(moon_phase-M_PI/2.0);
+  double gmo = fabs(moon_phase-M_PI/2.0); // in radians
   
   // Still not given a good number. 
   
   double moonlon_sun = 7.0/2.0/M_PI; // pi - (solar hour angle - monlon_obs) excluding librations.
   // need to be careful with going past pi.
-  
-  // gmo = gmo * 180.0/M_PI;
 
   double moonlon_obs_deg = moonlon_obs*180.0/M_PI;
   double moonlat_obs_deg = moonlat_obs*180.0/M_PI;
@@ -5059,7 +5224,7 @@ void moonlight(workspace *ws, column* col, double* Ak, double *sun_angle1, doubl
   double c2 = -0.0013425;
   double c3 = 0.00095906;
   double c4 = 0.00066229;
-  double p1 = 4.06054*M_PI/180.0;
+  double p1 = 4.06054*M_PI/180.0; // in radians
   double p2 = 12.8802*M_PI/180.0;
   double p3 = -30.5858*M_PI/180.0;
   double p4 = 16.7498*M_PI/180.0;

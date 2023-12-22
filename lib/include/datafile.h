@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: datafile.h 7146 2022-07-07 00:25:36Z her127 $
+ *  $Id: datafile.h 7418 2023-10-05 02:14:21Z her127 $
  */
 
 #ifndef _DATAFILE_H
@@ -44,6 +44,8 @@ typedef enum { AT_TEXT, AT_BYTE, AT_FLOAT, AT_DOUBLE, AT_SHORT, AT_INT }
 #define VT_COORD         0x00000400 /* Data var. with inferred coordinates */
 #define VT_MV            0x00000800 /* Missing value is present */
 #define VT_FV            0x00001000 /* Fill value is present */
+#define VT_SIGMA         0x00002000 /* Sigma coordinate flag */
+#define VT_ZSTAR         0x00004000 /* zstar coordinate flag */
 typedef int VariableType;
 
 /* Define the geographic types understood by datafile */
@@ -425,6 +427,7 @@ struct datafile {
   int runcode;                  /* Runcode */
   char i_rule[MAXSTRLEN];       /* Interpolation rule */
   void *private_data;           /* Private data for the reader */
+  void *vtrans;                 /* Vertical coordinate transform */
   /*
    *  These hashtables facilitate the inverse weighting interpolation
    *  routines for performance
@@ -487,6 +490,8 @@ int df_itoc(datafile_t *df, df_variable_t *v,
 int df_is_recom(datafile_t *df);
 int df_is_ugrid(datafile_t *df);
 int df_is_ugrid3(datafile_t *df);
+int df_is_sigma(datafile_t *df);
+int df_is_zstar(datafile_t *df);
 int df_is_irule(datafile_t *df);
 double interp_1d_inv_weight(datafile_t *df, df_variable_t *v, int record,
                             double coords[]);
@@ -498,6 +503,10 @@ double interp2d_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
 				   double coords[]);
 double interp3d_nearest_within_eps(datafile_t *df, df_variable_t *v, int record,
 				   double coords[]);
+double interp2d_nearest(datafile_t *df, df_variable_t *v, int record,
+			double coords[]);
+double interp3d_nearest(datafile_t *df, df_variable_t *v, int record,
+			double coords[]);
 double interp_us_2d(datafile_t *df, df_variable_t *v, int record,
 		    double coords[]);
 double interp_us_2d_c(datafile_t *df, df_variable_t *v, int record,
@@ -510,6 +519,8 @@ double interp_us_3d_c(datafile_t *df, df_variable_t *v, int record,
 		      double coords[]);
 double interp_us_3d_i(datafile_t *df, df_variable_t *v, int record,
 		      double coords[]);
+void df_set_sigma(datafile_t *df, df_variable_t *v);
+void df_set_zstar(datafile_t *df, df_variable_t *v);
 
 /* Special threaded & buffered functions */
 #ifdef __cplusplus

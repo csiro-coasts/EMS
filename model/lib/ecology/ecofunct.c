@@ -18,7 +18,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecofunct.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: ecofunct.c 7439 2023-10-27 03:06:27Z bai155 $
  *
  */
 
@@ -465,19 +465,22 @@ double aa(double rad, double absorb)
 }
 
 void aawave(double rad, double *absorb, double *aA, int num_wave, double *wave)
+
+/* replaced 0.0 with analytical approx. for < temp on 27th Oct 2023 */ 
+  
 {
   int w;
+  double temp;
   for (w=0; w<num_wave; w++){
-    double temp = 2.0 * absorb[w] * rad;
-    aA[w] = 0.0;
-    // if (wave[w] <= 800.0){
-      /* kirk's equation behaves badly for temp < 3e-4 */ 
-      if (temp > 3e-4){
-	aA[w] =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp) * exp(-temp)) / (temp * temp));
-    //  }
+    temp = 2.0 * absorb[w] * rad;
+    aA[w] = M_PI * rad * rad * 2.0 / 3.0 * temp; // approx for < 0.001
+      /* Duysens (1956) equation behaves badly for temp < 3e-4 */ 
+    if (temp > 0.001){
+      aA[w] =  M_PI * rad * rad * (1.0 - 2.0 * (1.0 - (1.0 + temp) * exp(-temp)) / (temp * temp));
     }
   }
 }
+
 /** Calculates the absorption cross-section [m-2] of a sphere with a specified
  *   radius [m] and Chlorophyll concentration 
  *

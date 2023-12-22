@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 7331 2023-04-11 02:32:53Z her127 $
+ *  $Id: hd_init.c 7464 2023-12-13 03:52:01Z her127 $
  *
  */
 
@@ -347,6 +347,9 @@ hd_data_t *hd_init(FILE * prmfd)
 
   custom_init(hd_data);
 
+  if (!(params->compatible & V7367) && params->runmode & TRANS)
+    trans_reset_init(params, master);     
+
   /* Register an interest with the scheduler for dumping the */
   /* output to file.  */
   if (!(params->runmode & DUMP)) {
@@ -391,7 +394,8 @@ hd_data_t *hd_init(FILE * prmfd)
   /* Register an interest with the scheduler for resetting   */
   /* the transport variables. This should always occur before */
   /* output dumps occur (hence register an interest after dumps). */
-  if (params->runmode & TRANS) trans_reset_init(params, master);     
+  if (params->compatible & V7367 && params->runmode & TRANS)
+    trans_reset_init(params, master);
 
   geom_free_us(master, geom, UNUSED);
   if (DEBUG("init_m"))
@@ -976,8 +980,11 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
 
   /* Mixing constants and variables                                  */
+  master->closf = params->closf;
   master->vz0 = params->vz0;
   master->kz0 = params->kz0;
+  strcpy(master->vz0c, params->vz0c);
+  strcpy(master->kz0c, params->kz0c);
   master->zs = params->zs;
   master->min_tke = params->min_tke;
   master->min_diss = params->min_diss;
@@ -1343,6 +1350,40 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   }
   master->edmean = dh / (double)geom->b2_e1;
 
+  /*-------------------------------------------------------------------*/
+  /* Background mixing coefficents                                     */
+  if (master->closf & VZ_R) {
+    /* Regionalised                                                    */
+    value_init_regions(master, master->vz0c, master->vz0b, 3);
+    /* Set ghosts                                                      */
+    for (cc = 1; cc <= geom->nbpt; cc++) {
+      c = geom->bpt[cc];
+      c2 = geom->bin[cc];
+      master->vz0b[c] = master->vz0b[c2];
+    }
+    /* Set VZ0 to the mean                                             */
+    d1 = 0.0;
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      d1 += master->vz0b[c];
+    }
+    master->vz0 = d1 / (double)geom->b3_t;
+  }
+  if (master->closf & KZ_R) {
+    value_init_regions(master, master->kz0c, master->kz0b, 3);
+    for (cc = 1; cc <= geom->nbpt; cc++) {
+      c = geom->bpt[cc];
+      c2 = geom->bin[cc];
+      master->kz0b[c] = master->kz0b[c2];
+    }
+    d1 = 0.0;
+    for (cc = 1; cc <= geom->b3_t; cc++) {
+      c = geom->w3_t[cc];
+      d1 += master->kz0b[c];
+    }
+    master->kz0 = d1 / (double)geom->b3_t;
+  }
+  
   /*-----------------------------------------------------------------*/
   /* Scale horizontal mixing coefficients by cell size.              */ 
   /* Cell centered horizontal diffusivity.                           */
@@ -1991,6 +2032,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
     rotating_cylinder_init(master);
   }
   /*rotating_cylinder_init(master);*/
+
 }
 
 /* END compute_constants()                                           */
@@ -2222,7 +2264,7 @@ master_t *master_build(parameters_t *params, geometry_t *geom)
   if (params->wind_dt && (params->storm_dt)) {
     master->swind1 = d_alloc_1d(geom->szeS);
   }
-  if (params->wind_dt && params->do_wave & W_SWAN) {
+  if (params->wind_dt && (params->do_pt || params->do_wave & W_SWAN)) {
     master->swind1 = d_alloc_1d(geom->szcS);
     master->swind2 = d_alloc_1d(geom->szcS);
   }

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transfers.c 7377 2023-07-26 04:35:37Z her127 $
+ *  $Id: transfers.c 7467 2023-12-13 03:53:50Z her127 $
  *
  */
 
@@ -1834,6 +1834,7 @@ void s2m_2d(master_t *master,   /* Master data                       */
       if (master->do_wave & W_SWAN && master->trinfo_2d[tn].type & WAVE) continue;
       master->tr_wcS[tn][c] = windat->tr_wcS[tn][lc];
     }
+    if (master->wave_P) master->wave_P[c] = windat->wave_P[lc];
     for (tn = 0; tn < windat->nsed; tn++) {
       for (k = 0; k < window->sednz; k++)
         master->tr_sed[tn][k][c] = windat->tr_sed[tn][k][lc];

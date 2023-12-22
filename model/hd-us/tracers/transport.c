@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 7182 2022-07-07 02:40:36Z her127 $
+ *  $Id: transport.c 7473 2023-12-13 04:03:27Z her127 $
  *
  */
 
@@ -107,7 +107,6 @@ void ffsl_van_leer(double *F, double *tr, double *vel, double *crf, int *cl,
 void ffsl_quickest(geometry_t *window, double *F, double *tr, double *vel,
 		   double *crf, int *cl, int c, int *fmap, int *bmap,
 		   double *sminz, double *smaxz);
-int cdest;
 
 /*-------------------------------------------------------------------*/
 /* Transport step                                                    */
@@ -289,7 +288,7 @@ void transport_step(master_t *master, geometry_t **window,
     /* not change on the first time step. The flux divergence        */
     /* therefore also needs to be zero for the first time step only, */
     /* which is achieved by setting u1, u2, w and volume fluxes = 0. */
-    if ((wincon[n]->trasc == FFSL) && (windat[n]->nstep == 0)) {
+    if (wincon[n]->compatible & V7367 && (wincon[n]->trasc == FFSL) && (windat[n]->nstep == 0)) {
       hd_warn("Setting initial velocity and volume fluxes to zero for FFSL advection scheme (t = %f)\n", windat[n]->t / 86400);
       memset(windat[n]->u1, 0, window[n]->sze * sizeof(double));
       memset(windat[n]->w, 0, window[n]->szc * sizeof(double));
@@ -994,7 +993,6 @@ void semi_lagrange_c(geometry_t *window,  /* Window geometry         */
 
       /* Get the velocties at the origin                             */
       if (!onestep && first) {
-	cdest = c;
 	u = hd_trans_interp(window, windat->gsx, cx[c], cy[c], cz[c], cl[cc],c,0);
 	v = hd_trans_interp(window, windat->gsy, cx[c], cy[c], cz[c], cl[cc],c,1);
 	w = hd_trans_interp(window, windat->gsz, cx[c], cy[c], cz[c], cl[cc],c,2);
@@ -2868,7 +2866,10 @@ void ffsl_donc(geometry_t *window,         /* Window geometry        */
       /* Get the number of sub-timesteps used                        */
       n++;
       if(n > 100) {
-	printf("stuck in loop e=%d [%f %f]\n",e,window->u1x[window->m2de[e]],window->u1y[window->m2de[e]]);
+	char name[MAXSTRLEN];
+	int tn = find_tracer(window, windat, wincon, tr, name);
+	printf("Tracer %d (%s) stuck in loop e=%d [%f %f]\n",tn, name, e,
+	       window->u1x[window->m2de[e]], window->u1y[window->m2de[e]]);
 	exit(0);
       }
       /* Get the contributions to the horizontal transverse terms    */
@@ -3071,6 +3072,13 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
   int n, j, zm1;
   int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
 
+  /* Only call init function once per timestep. Both tracer          */
+  /* advection and particles use this function.                      */
+  if (wincon->flag & F_FFSL) {
+    wincon->flag &= ~F_FFSL;
+    return;
+  }
+
   /*-----------------------------------------------------------------*/
   /* Set the vertical cell spacing                                   */
   set_dzz(window, dzz);
@@ -3162,6 +3170,8 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
   /* Make a contiguous mapping of cell locations                     */
   if (wincon->ultimate)
     mesh_expand_3d(window, u1);
+
+    wincon->flag |= F_FFSL;
 }
 
 /* END ffsl_init()                                                   */
@@ -5293,11 +5303,10 @@ double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, 
 
   if(isnan(v2)){
     v2 = gs[k2]->d->points[window->c2p[k2][cs]].v[vid];
-    hd_quit("hd_tran_interp: NaN c=%d(k%d) cl=%d(k%d) k=%d %d %f %f %f %d\n",co,window->s2k[co],zp1,window->s2k[zp1],k2, vid,x,y,v2,window->wgst[c]);
     /*
+    hd_quit("hd_tran_interp: v2 NaN c=%d(k%d) cl=%d(k%d) k=%d %d %f %f %f %d\n",co,window->s2k[co],zp1,window->s2k[zp1],k2, vid,x,y,v2,window->wgst[c]);    
     print_tri_k(gs[k2]->d, k2);
     */
-
   }
 
   /* Evaluate in the layer with a cellz level less than cz. If this  */
@@ -5327,12 +5336,24 @@ double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, 
     }
     /*if(isnan(v1)) v1 = gs[k1]->d->points[window->c2p[k1][cs]].v[vid];*/
   }
+  if(isnan(v1)){
+    v1 = gs[k1]->d->points[window->c2p[k1][cs]].v[vid];
+    /*
+    hd_quit("hd_tran_interp: v1 NaN c=%d(k%d) cl=%d(k%d) k=%d %d %f %f %f %d\n",co,window->s2k[co],zp1,window->s2k[zp1],k1, vid,x,y,v1,window->wgst[c]);
+    print_tri_k(gs[k1]->d, k1);
+    */
+  }
+
 
   /* Interpolate vertically                                          */
   /* Linear scheme */
 
   d = z - cellz[c];
   v = d * (v2 - v1) / dzz + v1;
+
+  if(isnan(v)){
+    hd_quit("hd_tran_interp: v NaN c=%d(k%d) cl=%d(k%d) v1=%f v2=%f d=%f dzz=%f\n",co,window->s2k[co],zp1,window->s2k[zp1],v1,v2,d,dzz);
+  }
 
   /* Upwind scheme */
   /*
@@ -6206,6 +6227,7 @@ void set_dzz(geometry_t *window, double *dzz)
   int c, cc, c2, cb, zm1, nn;
   double *cellz = wincon->cellz;
   double *eta = wincon->oldeta;
+  int check = 0;
 
   /* Initialize in case a streamline lands in a dry cell, a valid    */
   /* (i.e. non inf) increment is computed.                           */
@@ -6222,7 +6244,9 @@ void set_dzz(geometry_t *window, double *dzz)
   /* Set the surface layer                                           */
   for (cc = 1; cc <= wincon->vcs; cc++) {
     c = c2 = wincon->s1[cc];
-    dzz[c] = 0.5 * wincon->dz[c];
+    zm1 = window->zm1[c];
+    /*dzz[c] = 0.5 * wincon->dz[c];*/
+    dzz[c] = wincon->dz[c] + 0.5 * wincon->dz[zm1];
     cellz[c] = 0.5 * (eta[c2] + window->gridz[c]);
     /* Set the surface and bottom boundary conditions                */
     while (c2 != window->zp1[c2]) {
@@ -6234,6 +6258,33 @@ void set_dzz(geometry_t *window, double *dzz)
     dzz[window->zm1[cb]] = 0.5 * wincon->dz[cb];
     dzz[window->zm1[cb]] = wincon->dz[cb];
     cellz[window->zm1[cb]] = window->botz[c2];
+  }
+  /* Open boundary cells */
+  for (nn = 0; nn < window->nobc; nn++) {
+    open_bdrys_t *open = window->open[nn];
+    for (cc = 1; cc <= open->no3_t; cc++) {
+      c = open->obc_t[cc];
+      c2 = window->m2d[c];
+      zm1 = window->zm1[c];
+      dzz[zm1] = 0.5 * (wincon->dz[c] + wincon->dz[zm1]);
+      cellz[zm1] = 0.5 * (window->gridz[c] + max(window->botz[c2], window->gridz[zm1]));
+    }
+    for (cc = 1; cc <= open->no2_t; cc++) {
+      c = c2 = open->obc_t[cc];
+      zm1 = window->zm1[c];
+      /*dzz[c] = 0.5 * wincon->dz[c];*/
+      dzz[c] = wincon->dz[c] + 0.5 * wincon->dz[zm1];
+      cellz[c] = 0.5 * (eta[c2] + window->gridz[c]);
+      /* Set the surface and bottom boundary conditions              */
+      while (c2 != window->zp1[c2]) {
+	c2 = window->zp1[c2];
+	dzz[c2] = dzz[c];
+	cellz[c2] = cellz[c];
+      }
+      cb = window->bot_t[cc];
+      dzz[window->zm1[cb]] = 0.5 * wincon->dz[cb];
+      cellz[window->zm1[cb]] = window->botz[c2];
+    }
   }
   /* Surface and bottom conditions over dry cells */
   for (cc = 1; cc <= wincon->ncdry_e1; cc++) {
@@ -6255,6 +6306,18 @@ void set_dzz(geometry_t *window, double *dzz)
   for (nn = 0; nn < window->nobc; nn++) {
     open_bdrys_t *open = window->open[nn];
     OBC_bgz_nogradb(window, open, dzz);
+  }
+
+  /* Check                                                           */
+  if (check) {
+    for (cc = 1; cc <= window->n3_t; cc++) {
+      c = window->w3_t[cc];
+      c2 = window->m2d[c];
+      zm1 = window->zm1[c];
+      if (dzz[c] == 0.0) 
+	hd_quit("set_dzz: dzz = 0 @ %d, k=%d eta=%f dz=%f %f (%f %f)\n",c,
+		window->s2k[c],windat->eta[c2],wincon->dz[c],wincon->dz[zm1],window->cellx[c2], window->celly[c2]);
+    }
   }
 }
 
@@ -7602,7 +7665,7 @@ void check_tracer_eta(geometry_t *window, /* Window geometry         */
     es = window->m2de[e];
     f1[es] += windat->u1flux3d[e] * windat->dttr;
   }
-
+  
   /* Calculate the new elevation                                     */
   set_map_eta(window);
   for (cc = 1; cc <= window->b2_t; cc++) {
@@ -7627,6 +7690,8 @@ void check_tracer_eta(geometry_t *window, /* Window geometry         */
     /* Calculate new etat value                                      */
     eta = max(wincon->oldeta[c] - colflux / window->cellarea[c],
 			    window->botz[c]);
+
+    /*if (!(window->cask[c] & W_NOBC))*/
     windat->eta[c] = eta;
 
     if (fabs(eta-windat->eta[c]) > eps) {
@@ -7775,43 +7840,36 @@ void check_transport(geometry_t *window, window_t *windat, win_priv_t *wincon)
 /*-------------------------------------------------------------------*/
 void trans_data_nan(geometry_t *window, window_t *windat, win_priv_t *wincon)
 {
-  geometry_t *tpg;
-  window_t *tpd;
-  win_priv_t *tpc;
   int cc, c, ee, e;
 
-  tpg = window->trans->tpg;
-  tpd = window->trans->tpd;
-  tpc = window->trans->tpc;
-
   if (wincon->trasc == FFSL) {
-    for (cc = 1; cc <= tpg->n2_t; cc++) {
-      c = tpg->w2_t[cc];
-      if (isnan(tpd->eta[c])) tpd->eta[c] = 0.0;
+    for (cc = 1; cc <= window->n2_t; cc++) {
+      c = window->w2_t[cc];
+      if (isnan(windat->eta[c])) windat->eta[c] = 0.0;
     }
-    for (cc = 1; cc <= tpg->n3_t; cc++) {
-      c = tpg->w3_t[cc];
-      if (isnan(tpd->w[c])) tpd->w[c] = 0.0;
+    for (cc = 1; cc <= window->n3_t; cc++) {
+      c = window->w3_t[cc];
+      if (isnan(windat->w[c])) windat->w[c] = 0.0;
     }
-    for (ee = 1; ee <= tpg->n3_e1; ee++) {
-      e = tpg->w3_e1[ee];
-      if (isnan(tpd->u1[e])) tpd->u1[e] = 0.0;
+    for (ee = 1; ee <= window->n3_e1; ee++) {
+      e = window->w3_e1[ee];
+      if (isnan(windat->u1[e])) windat->u1[e] = 0.0;
     }
   } else {
-    for (cc = 1; cc <= tpg->n2_t; cc++) {
-      c = tpg->w2_t[cc];
-      if (isnan(tpd->eta[c]) || fabs(tpd->eta[c]) > tpc->etamax)
-	tpd->eta[c] = 0.0;
+    for (cc = 1; cc <= window->n2_t; cc++) {
+      c = window->w2_t[cc];
+      if (isnan(windat->eta[c]) || fabs(windat->eta[c]) > wincon->etamax)
+	windat->eta[c] = 0.0;
     }
-    for (cc = 1; cc <= tpg->n3_t; cc++) {
-      c = tpg->w3_t[cc];
-      if (isnan(tpd->w[c]) || fabs(tpd->w[c]) > tpc->velmax)
-	tpd->w[c] = 0.0;
+    for (cc = 1; cc <= window->n3_t; cc++) {
+      c = window->w3_t[cc];
+      if (isnan(windat->w[c]) || fabs(windat->w[c]) > wincon->velmax)
+	windat->w[c] = 0.0;
     }
-    for (ee = 1; ee <= tpg->n3_e1; ee++) {
-      c = tpg->w3_e1[ee];
-      if (isnan(tpd->u1[e]) || fabs(tpd->u1[e]) > tpc->velmax)
-	tpd->u1[e] = 0.0;
+    for (ee = 1; ee <= window->n3_e1; ee++) {
+      c = window->w3_e1[ee];
+      if (isnan(windat->u1[e]) || fabs(windat->u1[e]) > wincon->velmax)
+	windat->u1[e] = 0.0;
     }
   }
 }
@@ -7822,32 +7880,26 @@ void trans_data_check(master_t *master, geometry_t **window,
 {
   geometry_t *geom = master->geom;
   int nwindows = master->nwindows;
-  geometry_t *tpg;
-  window_t *tpd;
-  win_priv_t *tpc;
   int nn, n;
   int cc, c, cp, ee, e;
 
   for (nn = 1; nn <= nwindows; nn++) {
     n = wincon[1]->twin[nn];
-    tpg = window[n]->trans->tpg;
-    tpd = window[n]->trans->tpd;
-    tpc = window[n]->trans->tpc;
-
-    for (cc = 1; cc <= tpg->n2_t; cc++) {
-      c = tpg->w2_t[cc];
-      if (isnan(tpd->eta[c]) || fabs(tpd->eta[c]) > tpc->etamax)
-	check_warn(tpg, "sea level", tpd->eta[c], master->days, c, 2);
+    printf("check %f %d\n",master->days,n);
+    for (cc = 1; cc <= window[n]->n2_t; cc++) {
+      c = window[n]->w2_t[cc];
+      if (isnan(windat[n]->eta[c]) || fabs(windat[n]->eta[c]) > wincon[n]->etamax)
+	check_warn(window[n], "sea level", windat[n]->eta[c], master->days, c, 2);
     }
-    for (ee = 1; ee <= tpg->n3_e1; ee++) {
-      c = tpg->w3_e1[ee];
-      if (isnan(tpd->u1[e]) || fabs(tpd->u1[e]) > tpc->velmax)
-	check_warn(tpg, "u1 velocity", tpd->u1[e], master->days, e, 3);
+    for (ee = 1; ee <= window[n]->n3_e1; ee++) {
+      c = window[n]->w3_e1[ee];
+      if (isnan(windat[n]->u1[e]) || fabs(windat[n]->u1[e]) > wincon[n]->velmax)
+	check_warn(window[n], "u1 velocity", windat[n]->u1[e], master->days, e, 3);
     }
-    for (cc = 1; cc <= tpg->n3_t; cc++) {
-      c = tpg->w3_t[cc];
-      if (isnan(tpd->Kz[c]) || tpd->Kz[c] < 0.0)
-	check_warn(tpg, "Kz", tpd->Kz[c], master->days, c, 3);
+    for (cc = 1; cc <= window[n]->n3_t; cc++) {
+      c = window[n]->w3_t[cc];
+      if (isnan(windat[n]->Kz[c]) || windat[n]->Kz[c] < 0.0)
+	check_warn(window[n], "Kz", windat[n]->Kz[c], master->days, c, 3);
     }
   }
 }

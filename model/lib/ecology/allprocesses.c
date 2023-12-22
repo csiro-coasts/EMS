@@ -13,15 +13,14 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: allprocesses.c 7344 2023-04-11 23:01:31Z bai155 $
+ *  $Id: allprocesses.c 7441 2023-10-30 07:44:04Z bai155 $
  *
  */
 
 #include "stringtable.h"
 #include "eprocess.h"
 
-/* All process header files.
- */
+/* All process header files. */
 #include "process_library/diffusion_epi.h"
 #include "process_library/diffusion_heat_epi.h"
 #include "process_library/dinoflagellate_grow_wc.h"
@@ -60,6 +59,7 @@
 #include "process_library/seagrass_grow_epi.h"
 #include "process_library/seagrass_mortality_epi.h"
 #include "process_library/tfactor.h"
+#include "process_library/tfactor_clim.h"
 #include "process_library/values_common.h"
 #include "process_library/values_common_epi.h"
 #include "process_library/viscosity.h"
@@ -195,7 +195,9 @@ eprocess_entry eprocesslist[] = {
     {"seagrass_grow_epi", PT_EPI, 0, 0, seagrass_grow_epi_init, seagrass_grow_epi_postinit, seagrass_grow_epi_destroy, seagrass_grow_epi_precalc, seagrass_grow_epi_calc, seagrass_grow_epi_postcalc},
     {"seagrass_mortality_epi", PT_EPI, 0, 0, seagrass_mortality_epi_init, NULL, seagrass_mortality_epi_destroy, seagrass_mortality_epi_precalc, seagrass_mortality_epi_calc, seagrass_mortality_epi_postcalc},
     {"tfactor", PT_GEN, 0, 0, tfactor_init, NULL, tfactor_destroy, tfactor_precalc, NULL, NULL},
+    {"tfactor_clim", PT_GEN, 0, 0, tfactor_clim_init, NULL, tfactor_clim_destroy, tfactor_clim_precalc, NULL, NULL},
     {"tfactor_epi", PT_EPI, 0, 0, tfactor_init, NULL, tfactor_destroy, tfactor_precalc, NULL, NULL},
+    {"tfactor_clim_epi", PT_EPI, 0, 0, tfactor_clim_init, NULL, tfactor_clim_destroy, tfactor_clim_precalc, NULL, NULL},
     {"recom_extras", PT_GEN, 0, 0, recom_extras_init, recom_extras_postinit, recom_extras_destroy, NULL, NULL, recom_extras_postcalc},
     {"carbon_leak_sed", PT_SED, 0, 0, carbon_leak_sed_init, NULL, carbon_leak_sed_destroy, NULL, carbon_leak_sed_calc, carbon_leak_sed_postcalc},
     {"values_common", PT_GEN, 0, 0, values_common_init, values_common_postinit, values_common_destroy, values_common_precalc, NULL, values_common_postcalc},
@@ -471,7 +473,10 @@ diagnflag_entry diagnflags[] = {
     {"FF_N",0},
     {"FF_N_pr",1},
     {"FF_N_rm",1},
-    {"nFF",2},    
+    {"nFF",2},
+    {"MODIS_B3",2},
+    {"MODIS_B6",2},
+    {"MODIS_B9",2},
  
     /*  ADD new tracer entries here above this line */
     {"Mud", 0},

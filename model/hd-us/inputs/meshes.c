@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 7372 2023-07-26 04:33:55Z her127 $
+ *  $Id: meshes.c 7462 2023-12-13 03:51:20Z her127 $
  *
  */
 
@@ -120,6 +120,9 @@ int in_tri(double *po, double *p0, double *p1, double *p2);
 void add_quad_grido(parameters_t *params, char *iname);
 void add_quad_grid(parameters_t *params, char *iname, int mode);
 void reorder_mesh(parameters_t *params, mesh_t *mesh, double *bathy);
+int make_ellipsen(double as, double bs, double *xe, double *ye,
+		 double xc, double yc, double x0, double y0,
+		 double rot, int mode);
 void create_bounded_mesh(int npts,     /* Number of perimeter points */
 			 double *x,    /* Perimeter x coordinates    */
 			 double *y,    /* Perimeter y coordinates    */
@@ -2593,7 +2596,8 @@ void meshstruct_us(parameters_t *params)
   free_mesh(params->mesh);
   params->mesh = mesh_init(params, params->ns2, 0);
   m = params->mesh;
-  strcpy(params->gridtype, "UNSTRUCTURED");
+  if (!(params->us_type & US_IJ))
+    strcpy(params->gridtype, "UNSTRUCTURED");
 
   if (DEBUG("init_m"))
     dlog("init_m", "\nMesh structure allocated OK\n");
@@ -4146,6 +4150,336 @@ void create_hex_radius(double crad,   /* Radius in metres     */
 /* END create_hex_radius()                                           */
 /*-------------------------------------------------------------------*/
 
+
+/*-------------------------------------------------------------------*/
+/* Creates elliptic mesh with an inner ellipse having a constant     */
+/* high reolution, and transitioning to lower resolution on an outer */
+/* ellipse.                                                          */
+/*-------------------------------------------------------------------*/
+void create_ellipse(parameters_t *params,
+		    long int nce1, /* Number cells in e1 direction   */
+		    long int nce2, /* Number cells in e2 direction   */
+		    double x00,    /* x origin offset                */
+		    double y00,    /* y origin offset                */
+		    double flon,   /* False longitude                */
+		    double flat,   /* False latitude                 */
+		    double xinc,   /* x resolution                   */
+		    double yinc,   /* y resolution                   */
+		    double elf,    /* Stretch; large=circular        */   
+		    double ores,   /* Outser resolution              */
+		    jigsaw_msh_t *J_mesh,  /* JIGSAW mesh            */
+		    jigsaw_msh_t *J_hfun   /* JIGSAW weighting       */
+		    )
+{
+  char polyname[MAXSTRLEN], obcname[MAXSTRLEN];
+  char buf[MAXSTRLEN];
+  long i, j, m;
+  double fx00, fy00, xval, yval;
+  double rflon = DEG2RAD(flon);
+  double rflat = DEG2RAD(flat);
+  double x0, y0, xp, yp, dx, dy, rot, x1, y1, x2, y2, dist, xc, yc;
+  double as, bs, as2, bs2, inc, d1, d2;
+  double *xw, *yw, *xb, *yb;
+  double mnlon;
+  double mxlon;
+  double mnlat;
+  double mxlat;
+  double xmid = 0.0, ymid = 0.0;
+  FILE *fp, *op, *hf;
+  int npw, npo;
+  double hmin, hmax, bmin, bmax, res, s, *b;
+  int mce1, mce2, mhfun, *pmask;
+  double deg2m = 60.0 * 1852.0;
+  int jret;
+  int filef = 0;         /* Print to ellipses file                   */
+  int powf = 1;          /* Power mesh flag                          */
+  int stproj = 1;        /* Stereographic projection flag            */
+  int expf = 0;          /* Resolution stretching flag               */
+  int verbose = 0;       /* Verbosity                                */
+
+  /* Jigsaw variables                                                */
+  jigsaw_jig_t J_jig;
+  jigsaw_msh_t J_geom;
+  jigsaw_msh_t J_hfun_new;
+
+  /* Convenient pointers                                             */
+  jigsaw_VERT2_array_t *jpoints = &J_geom._vert2;
+  jigsaw_EDGE2_array_t *jedges  = &J_geom._edge2;
+
+  jigsaw_REALS_array_t *hfx    = &J_hfun->_xgrid;
+  jigsaw_REALS_array_t *hfy    = &J_hfun->_ygrid;
+  jigsaw_REALS_array_t *hfvals = &J_hfun->_value;
+  poly_t **pl;
+  double *polyres;
+
+  /* Set defaults                                                   */
+  strcpy(polyname, "poly.xy");
+  strcpy(obcname, "obc.xy");
+
+  /* Make the ellipses                                              */
+  ellipse_mesh(nce1, nce2, x00, y00, flon, flat, xinc, yinc, elf, ores,
+	       &mnlon, &mxlon, &mnlat, &mxlat,
+	       &xw, &yw, &xb, &yb, &npw, &npo);
+
+  /* Print the inner                                                */
+  fp = fopen(polyname, "w");
+  d1 = 0.0;
+  for (j = 0; j < npw; j++) {
+    fprintf(fp, "%f %f\n", xw[j], yw[j]);
+    x1 = xw[j] - x00;
+    y1 = yw[j] - y00;
+    d1 += sqrt(x1 * x1 + y1 * y1);
+  }
+  d1 /= (double)npw;
+  fclose(fp);
+
+  /* Save to poly                                                   */
+  pl = (poly_t **)malloc(npw * sizeof(poly_t));
+  polyres = d_alloc_1d(1);
+  polyres[0] = 0.5 * (xinc + yinc);
+  pl[0] = poly_create();
+  for (j = 0; j < npw; j++) {
+    poly_add_point(pl[0], xw[j], yw[j]);
+  }
+
+  /* Print the bounding ellipse                                     */
+  fp = fopen(obcname, "w");
+  d2 = 0.0;
+  for (j = 0; j < npo; j++) {
+    fprintf(fp, "%f %f\n", xb[j], yb[j]);
+    x2 = xb[j] - x00;
+    y2 = yb[j] - y00;
+    d2 += sqrt(x2 * x2 + y2 * y2);
+  }
+  d2 /= (double)npo;
+  dist = d2 - d1;
+  fclose(fp);
+  if (verbose) {
+    printf("dist %f %f %f\n",d1*deg2m,d2*deg2m,dist*deg2m);
+  }
+
+  /* Weighting: hmin is resolution, bmin is distance                */
+  hmin = polyres[0];
+  hmax = ores;
+  bmin = 200.0 / deg2m;
+  bmax = dist;
+  if (verbose) printf("ores %f %f\n",ores,ores*deg2m);
+
+  /* Jigsaw initialisation routines                                 */
+  jigsaw_init_jig_t (&J_jig);
+  jigsaw_init_msh_t (&J_geom);
+
+  init_J_jig(&J_jig);
+
+  J_jig._optm_dual = 1;
+
+  /* Flag input mesh type                                           */
+  J_geom._flags = JIGSAW_EUCLIDEAN_MESH;
+
+  /* Allocate JIGSAW geom (input mesh) arrays                       */
+  jigsaw_alloc_vert2(jpoints, npo);
+  jigsaw_alloc_edge2(jedges,  npo);
+  /* Iterate using polar coordinates                                */
+  for (i=0; i < npo; i++) {
+    /* Points                                                       */
+    jpoints->_data[i]._ppos[0] = xb[i];
+    jpoints->_data[i]._ppos[1] = yb[i];
+    jpoints->_data[i]._itag = 0;
+    /* Connecting edges                                             */
+    jedges->_data[i]._itag = 0;
+    jedges->_data[i]._node[0] = i;
+    if (i<npo-1)
+      jedges->_data[i]._node[1] = i+1;
+    else
+      jedges->_data[i]._node[1] = 0; // close polygon
+  }
+
+  /* Weighting grid                                                */
+  res = 0.25 * (hmin + hmax);
+  res = 2.0 * hmax;
+  if (verbose) {
+    printf("b %f %f\n",bmin*deg2m,bmax*deg2m);
+    printf("h %f %f\n",hmin*deg2m,hmax*deg2m);
+  }
+  mce1 = (int)(fabs(mxlon - mnlon) / res);
+  mce2 = (int)(fabs(mxlat - mnlat) / res);
+  mce1 = mce2 = 100;
+  mhfun = mce1 * mce2;
+  if (verbose) printf("%d %d %d\n",mce1,mce2,mhfun);
+  jigsaw_alloc_reals(hfx, mce1);
+  jigsaw_alloc_reals(hfy, mce2);
+
+  /* Fill in the x & y grids                                       */
+  s = (mxlon - mnlon) / (double)(mce1 - 1);
+  for (i = 0; i < mce1; i++)
+    hfx->_data[i] = s * (double)i + mnlon;
+  s = (mxlat - mnlat) / (double)(mce2 - 1);
+  for (j = 0; j < mce2; j++)
+    hfy->_data[j] = s * (double)j + mnlat;
+
+  /* Make a gridded distance to poly array                         */
+  jigsaw_alloc_reals(hfvals, mhfun);
+  b = d_alloc_1d(mhfun);
+  pmask = i_alloc_1d(mhfun);
+  m = 0;
+  for (i = 0; i < mce1; i++) {
+    double xloc = hfx->_data[i];
+    for (j = 0; j < mce2; j++) {
+      double yloc = hfy->_data[j];
+      b[m] = HUGE;
+      b[m] = min(b[m], poly_dist(1, pl, bmin, xloc, yloc, &pmask[m]));
+      m++;
+    }
+  }
+
+  /* Get the minimum and maximum distances                         */
+  /*
+  bmin = HUGE;
+  bmax = 0.0;
+  for (m = 0; m < mhfun; m++) {
+    bmin = min(bmin, b[m]);
+    bmax = max(bmax, b[m]);
+  }
+  */
+
+  /* Convert to the hfun function                                  */
+  s = (bmin == bmax) ? 0.0 : (hmin - hmax) / (bmin - bmax);
+  for (m = 0; m < mhfun; m++) {
+    b[m] = max(min(bmax, b[m]), bmin);
+
+    hfvals->_data[m] = bathyset(b[m], bmin, bmax, hmin, hmax, expf);
+  }
+
+  /* Set the perimeter to maximum resolution                       */
+  for (m = 0; m < J_hfun->_edge2._size; m++) {
+    i = J_hfun->_edge2._data[m]._node[0];
+    hfvals->_data[i] = hmin;
+    i = J_hfun->_edge2._data[m]._node[1];
+    hfvals->_data[i] = hmin;
+  }
+
+  /* Set resolution inside polygons if required                    */
+  for (i = 0; i < mhfun; i++) {
+    if ((m = pmask[i]) >= 0) {
+      hfvals->_data[i] = polyres[m];
+    }
+  }
+
+  /* Set up some flags/parameters                                  */
+  J_hfun->_flags = JIGSAW_EUCLIDEAN_GRID;
+  J_jig._hfun_scal = JIGSAW_HFUN_ABSOLUTE ;
+  if (stproj) {
+    /* Leave in metres                                             */
+    J_jig._hfun_hmin = hmin * deg2m;
+    J_jig._hfun_hmax = hmax * deg2m;
+  } else {
+    J_jig._hfun_hmin = hmin;
+    J_jig._hfun_hmax = hmax;
+  }
+
+
+  /* Call Jigsaw                                                   */
+  J_jig._verbosity = 1;
+
+  /* Stereographic projection                                      */
+  if (stproj) {
+    
+    /* Calculate mid-points                                        */
+    for (m = 0; m < npo; m++) {
+      /* Figure out the centroid */
+      xmid += jpoints->_data[m]._ppos[0];
+      ymid += jpoints->_data[m]._ppos[1];
+    }
+    xmid /= npo; xmid = DEG2RAD(xmid);
+    ymid /= npo; ymid = DEG2RAD(ymid);
+
+    /* Perform forward stereographic projection of input data      */
+    st_transform(&J_geom, ST3PROJ_FWD, xmid, ymid);
+
+    /* Convert hfun grid to mesh, if needed                        */
+    if (J_hfun->_flags == JIGSAW_EUCLIDEAN_GRID) {
+      jigsaw_msh_t J_hfun_new;
+      jigsaw_init_msh_t (&J_hfun_new);
+      convert_jigsaw_grid_to_mesh(J_hfun, &J_hfun_new);
+      /* Swap out                                                  */
+      J_hfun = &J_hfun_new;
+    }
+    /* Projection of hfun                                          */
+    st_transform(J_hfun, ST3PROJ_FWD, xmid, ymid);
+  }
+
+  jret = jigsaw_make_mesh(&J_jig, &J_geom, NULL, J_hfun, J_mesh);
+  if (jret) hd_quit("Error calling JIGSAW\n");
+
+  /* Perform inverse stereographic projection of output data       */
+  if (stproj) st_transform(J_mesh, ST3PROJ_INV, xmid, ymid);
+
+  /* Write to file                                                 */
+  if (filef) {
+    char key[MAXSTRLEN];
+    FILE *ef, *hf;
+    int n;
+    mesh_ofile_name(params, key);
+    sprintf(buf,"%s_h.txt", key);
+    if ((ef = fopen(buf, "w")) != NULL) {
+      /*
+      fprintf(ef, "# Minimum distance to coast = %f m\n", bmin * deg2m);
+      fprintf(ef, "# Maximum distance to coast = %f m\n", bmax * deg2m);
+      */
+      n = 0;
+      for (i = 0; i < mce1; i++) {
+	for (j = 0; j < mce2; j++) {
+	  fprintf(ef, "%f %f %f %f\n",hfx->_data[i], hfy->_data[j],
+		  hfvals->_data[n], b[n]);
+	  n++;
+	}
+      }
+      fclose(ef);
+    }
+    sprintf(buf,"%s_hfun.msh", key);
+    if ((hf = fopen(buf, "w")) != NULL) {
+      fprintf(hf, "# .msh geometry file\n");
+      fprintf(hf, "MSHID=2;EUCLIDEAN-GRID\n");
+      fprintf(hf, "NDIMS=2\n");
+      fprintf(hf, "coord=1;%d\n",mce1);
+      for (i = 0; i < mce1; i++)
+	fprintf(hf, "%f\n",hfx->_data[i]);
+      fprintf(hf, "coord=2;%d\n",mce2);
+      for (j = 0; j < nce2; j++)
+	fprintf(hf, "%f\n",hfy->_data[j]);
+      
+      fprintf(hf, "value=%d;1\n",mce1*mce2);
+      n = 0;
+      for (i = 0; i < mce1; i++)
+	for (j = 0; j < mce2; j++) {
+	  fprintf(hf, "%f\n",hfvals->_data[n++]);
+	}
+      fclose(hf);
+    }
+  }
+
+  /* Interior coordinate                                             */
+  params->mlon = x00;
+  params->mlat = y00;
+
+  /* Cleanup                                                         */
+  jigsaw_free_msh_t(&J_geom);
+
+  d_free_1d(xw);
+  d_free_1d(yw);
+  d_free_1d(xb);
+  d_free_1d(yb);
+  d_free_1d(b); 
+  d_free_1d(polyres);
+  i_free_1d(pmask);
+  poly_destroy(pl[0]);
+  free((poly_t **)pl);
+}
+
+/* END create_ellipse()                                              */
+/*-------------------------------------------------------------------*/
+
+
 #define I_NC    1
 #define I_BTY   2
 #define I_USR   4
@@ -4192,6 +4526,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   int perimf = 1; /* Set hfun perimeter to maximum resolution        */
   int npass = 0;
   double *hmx, *hmn, *bmx, *bmn, *exf;
+  double gws = 9.81;
   int nord;
 
   filef = (params->meshinfo) ? 1 : 0;
@@ -4613,7 +4948,7 @@ void hfun_from_bathy(parameters_t *params, char *fname, coamsh_t *cm, jigsaw_msh
   /* Gravity wave speed conversion if required.                      */
   if (mode & H_GWS && imeth & (I_NC|I_BTY)) {
     for (n = 0; n < nhfun; n++) {
-      b[n] = sqrt(g * fabs(b[n]));
+      b[n] = sqrt(gws * fabs(b[n]));
     }
   }
 

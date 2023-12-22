@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 7117 2022-05-25 02:06:01Z her127 $
+ *  $Id: monitor.c 7427 2023-10-25 01:26:35Z her127 $
  *
  */
 
@@ -2780,6 +2780,29 @@ void diag_numbers(geometry_t *window,       /* Window geometry       */
     }
   }
 
+  /* Get the cell centered wind speed and direction                    */
+  if (windat->windcs && windat->windcd) {
+    double *wu = wincon->d1;
+    double *wv = wincon->d2;
+    double windx, windy;
+
+    vel_cen(window, windat, wincon, windat->wind1, NULL, wu, wv, NULL, NULL, 1);
+    for (cc = 1; cc <= window->b2_t; ++cc) {
+      c = window->w2_t[cc];
+      windx = wu[c];
+      windy = wv[c];
+      stresswind(&windx, &windy, 10.0, 26.0, 0.00114, 0.00218);
+      windat->windcs[c] = sqrt(windx * windx + windy * windy);
+      windat->windcd[c] = 0.0;
+      if (windat->windcs[c] > 0.0) {
+	windat->windcd[c] = acos(windy / windat->windcs[c]);
+	if (windx < 0)
+	    windat->windcd[c] *= -1.0;
+	windat->windcd[c] *= 180.0/M_PI;
+      }
+    }
+  }
+
   /* Get the pressure (Bar) for sound calculations */
   if (windat->sound) {
     double cf = 1e-5;
@@ -4646,6 +4669,7 @@ void calc_perc(FILE *fp)
   master->tsfile_caching = 0;
   master->lyear = 0;
   */
+  master->means = params->means;
   start_time = time(NULL);
   time(&t);
 

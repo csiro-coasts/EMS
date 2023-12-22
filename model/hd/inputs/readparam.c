@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 7319 2023-04-11 02:07:26Z her127 $
+ *  $Id: readparam.c 7449 2023-12-13 03:44:20Z her127 $
  *
  */
 
@@ -46,6 +46,17 @@
 int nce1;
 int nce2;
 
+/*-------------------------------------------------------------------*/
+/* Valid bathymetry netCDF dimension names                           */
+static char *bathy_dims[6][6] = {
+  {"botz", "i_centre", "j_centre", "x_centre", "y_centre", "standard"},
+  {"height", "lon", "lat", "lon", "lat", "nc_bathy"},
+  {"height", "longitude", "latitude", "longitude", "latitude", "nc_bathy"},
+  {"height", "nlon", "nlat", "lon", "lat", "nc_bathy"},
+  {"elevation", "lon", "lat", "lon", "lat", "nc_bathy"},
+  {NULL, NULL, NULL, NULL, NULL, NULL}
+};
+
 void geog_false_pole_coord(double **x, double **y, double **h1,
                            double **h2, double **a1, double **a2,
                            long int nce1, long int nce2, double x00,
@@ -59,6 +70,11 @@ void f_pole(double ilat, double ilon, double ang, double *olat,
             double *olon);
 static int read_bathy_from_file(FILE *fp, parameters_t *params);
 static double *read_bathy_from_db(FILE *fp, parameters_t *params);
+static void read_bathy_from_sparse_nc(parameters_t *params, char *fname);
+static void read_bathy_from_sparse_bty(parameters_t *params, char *fname);
+void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode);
+void bathy_interp_s(parameters_t *params, char *fname, int mode);
+point *convex_hull(point *v,  int *count);
 static void mask_bathy_with_coast(const char *cfname, parameters_t *params);
 void reset_bathy(parameters_t *params, int io, int jo, double val);
 int is_wet(parameters_t *params, double bathy);
@@ -1743,6 +1759,7 @@ parameters_t *params_read(FILE *fp)
 	       strcmp(tracer->name, "salt") == 0 || strcmp(tracer->name, "temp") == 0 ) {
 	    params->tdif_v[m] = n;
             m++;
+	    printf("tracer %s %x\n",tracer->name,tracer->type);
 	  }
         } else {
 	  if(!(tracer->type & CLOSURE)) {
@@ -2921,7 +2938,7 @@ parameters_t *auto_params(FILE * fp, int autof)
        hd_quit("auto_params: incorrect BATHY data : %d\n", params->nvals);
   }
   */
-
+  /*
   if(!read_bathy_from_file(fp, params)) {
     if (params->roms_grid_opts & ROMS_GRID_BATHY) {
       params->bathy = read_bathy_from_roms(params->roms_grid, nce1, nce2, NULL);
@@ -2932,6 +2949,30 @@ parameters_t *auto_params(FILE * fp, int autof)
 	hd_quit("auto_params: bathymetry data could not be read!");
       else
       	params->nvals = nce1 * nce2;
+    } else if (prm_read_char(fp, "MOM_GRID", buf)) {
+      params->bathy = read_bathy_from_mom(buf, nce1, nce2);
+      params->nvals = nce1 * nce2;
+    } else
+      hd_quit("auto_params: No bathymetry data was supplied.");
+  }
+  */
+
+  if(!read_bathy_from_file(fp, params)) {
+    if (params->roms_grid_opts & ROMS_GRID_BATHY) {
+      params->bathy = read_bathy_from_roms(params->roms_grid, nce1, nce2, NULL);
+      params->nvals = nce1 * nce2;
+    } else if (prm_read_char(fp, "BATHYFILE", buf)) {
+      if (endswith(buf, ".nc") || endswith(buf, ".mnc"))
+	read_bathy_from_sparse_nc(params, buf);
+      else if (endswith(buf, ".bty"))
+	read_bathy_from_sparse_bty(params, buf);
+      else {
+	  params->bathy = read_bathy_from_db(fp, params);
+	  if (params->bathy == NULL)
+	    hd_quit("auto_params: bathymetry data could not be read!");
+	  else
+	    params->nvals = nce1 * nce2;
+      }
     } else if (prm_read_char(fp, "MOM_GRID", buf)) {
       params->bathy = read_bathy_from_mom(buf, nce1, nce2);
       params->nvals = nce1 * nce2;
@@ -2991,10 +3032,12 @@ parameters_t *auto_params(FILE * fp, int autof)
         params->bathy[c] = params->bmax;
     }
   }
+
   /*
     for (c = 0; c < params->nvals; c++)
       printf("%d %f\n",c,params->bathy[c]);
   */
+  printf("a %f\n",params->bathy[1]);
   if (!prm_read_double(fp, "BATHYMIN", &params->bmin)) {
     params->bmin = 1e10;
     for (c = 0; c < params->nvals; c++) {
@@ -4300,7 +4343,6 @@ static double *read_bathy_from_db(FILE *fp, parameters_t *params) {
     double **y = d_alloc_2d(nce1+1, nce2+1);
 
     /* Reduce double grid to single grid corners */
-
     if (is_geog) {
       for (j=js; j<je+1; j++) {
         for (i=is; i<ie+1; i++) {
@@ -4406,7 +4448,7 @@ static int read_bathy_from_file(FILE *fp, parameters_t *params) {
   prm_read_double(fb, "BATHYMIN", &params->bmin);
   params->bmax = 0;
   prm_read_double(fb, "BATHYMAX", &params->bmax);
-	
+
   if(fb != fp)
     fclose(fb);
 
@@ -4418,18 +4460,757 @@ static int read_bathy_from_file(FILE *fp, parameters_t *params) {
 	
 
 /*-------------------------------------------------------------------*/
+/* Reads structured bathymetry from a netCDF file, packs into a      */
+/* vector and interpolates onto an unstructured mesh.                */
+/*-------------------------------------------------------------------*/
+void read_bathy_from_sparse_nc(parameters_t *params, char *fname)
+{
+  char buf[MAXSTRLEN], fnamei[MAXSTRLEN];
+  char i_rule[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  char *rules[MAXSTRLEN * MAXNUMARGS];
+  GRID_SPECS *gs = NULL;
+  int nbath;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
+  double bmean;
+  int fid;
+  int ncerr;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  int n, m, i, j, cc, c;
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  int bverbose = 0;
+  int intype = -1;
+  int dof = 0;
+  int spf = 0;           /* Sparse data interpolation                */
+  int nf = 0;            /* Number of bathymetry files               */
+  int nr = 0;            /* Number of i_rules                        */
+  int idb;
+  poly_t *pl;
+
+  sprintf(i_rule, "%c", '\0');
+  if (prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)) {
+    spf = 1;
+    nr = parseline(i_rule, rules, MAXNUMARGS);
+  }
+  if (endswith(fname, ".mnc")) {
+    FILE *fp;
+    char key[MAXSTRLEN];
+    double vers;
+    if ((fp = fopen(fname, "r")) == NULL)
+      hd_quit("Can't find bathy file %s\n", fname);
+    sprintf(fnamei, "%c", '\0');
+    sprintf(i_rule, "%c", '\0');
+    prm_read_double(fp, "multi-netcdf-version", &vers);
+    prm_read_int(fp, "nfiles", &n);
+    for (i = 0; i < n; i++) {
+      sprintf(key, "file%d.filename", i);
+      prm_read_char(fp, key, buf);
+      m = parseline(buf, fields, MAXNUMARGS);
+      sprintf(fnamei, "%s %s", fnamei, fields[0]);
+      if (m == 2) sprintf(i_rule, "%s %s", i_rule, fields[1]);
+    }
+    spf = 1;
+    nr = parseline(i_rule, rules, MAXNUMARGS);
+    fclose(fp);
+  } else
+    strcpy(fnamei, fname);
+  nf = parseline(fnamei, fields, MAXNUMARGS);
+
+  if (nr > 1 && nr != nf)
+    hd_quit("read_bathy_from_sparse_nc: Number of INTERP_RULE must equal 1 or number of BATHYFILES.\n");
+  m = 0;
+
+  /*-----------------------------------------------------------------*/
+  /* Initialise                                                      */
+  params->bathy = d_alloc_1d(params->nce1 * params->nce2);
+  cc = 0;
+  for (j = 0; j < params->nce2; j++)
+    for (i = 0; i < params->nce1; i++)
+      params->bathy[cc++] = NaN;
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolate the bathymetry                                      */
+  /*-----------------------------------------------------------------*/
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolation of the first nf-1 files.                          */
+  /* If nf = 1 and no i_rule is supplied then use structured         */
+  /* interpolation.                                                  */
+  /* If nf > 1 and one i_rule is set then use structured             */
+  /* interpolation.                                                  */
+  /* If nf > 1 and  multiple i_rules are supplied then use the       */
+  /* corresponding rule. If i_rule is 'none' then also use           */
+  /* structured interpolation.                                       */
+  /* i_rule options:                                                 */
+  /* linear, cubic, nn_sibson, nn_non_sibson, average                */
+  if (nf > 1 || !spf) {
+
+    if (DEBUG("init_m"))
+      dlog("init_m", "\nStructured bathymetry reading from file\n");
+
+    /* If nf > 1 and i_rule is set, then interpolate file 0:nf-2     */
+    /* with ts_read() and file nf-1 using i_rule.                    */
+    n = (nf > 1 && spf) ? nf - 1 : nf;
+
+    for (m = 0; m < n; m++) {
+      if (spf && nr > 1 && strcmp(rules[m], "none") != 0)
+	bathy_interp_us(params, fields[m], rules[m], 1);
+      else
+	bathy_interp_s(params, fields[m], nf);
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Interpolate the last file with unstructured methods if an       */
+  /* i_rule is supplied.                                             */
+  if (spf) {
+    bathy_interp_us(params, fields[m], rules[m], 0);
+  }
+
+  /* Set any unfilled NaNs to land                                   */
+  for (n = 0; n < params->nvals; n++) {
+    if (isnan(params->bathy[n])) {
+      params->bathy[n] = -LANDCELL;
+    }
+  }
+
+  /* Print to file if required                                       */
+  if (prm_read_char(params->prmfd, "BATHY_PRINT", buf)) {
+    FILE *fp1, *fp2;
+    sprintf(fnamei, "%s.bath", buf);
+    fp1 = fopen(fnamei, "w");
+    sprintf(fnamei, "%s.bty", buf);
+    fp2 = fopen(fnamei, "w");
+    fprintf(fp1, "BATHY %d\n", params->nvals);
+    c = 0;
+    for (j = 0; j < params->nce2; j++) {
+      for (i = 0; i < params->nce1; i++) {
+	fprintf(fp1, "%f\n", params->bathy[c]);
+	if (params->bathy[c] != -LANDCELL && !isnan(params->x[2*j][2*i]) && !isnan(params->y[2*j][2*i]))
+	  fprintf(fp2, "%f %f %f\n", params->x[2*j][2*i], params->y[2*j][2*i], params->bathy[c]);
+	c++;
+      }
+    }
+    fclose(fp1);
+    fclose(fp2);
+  }
+
+  if (DEBUG("init_m"))
+    dlog("init_m", "\nBathymetry read from file OK\n");
+}
+
+/* END read_bathy_from_sparse_nc()                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Reads structured bathymetry from a netCDF file, packs into a      */
+/* vector and interpolates onto an unstructured mesh.                */
+/*-------------------------------------------------------------------*/
+void read_bathy_from_sparse_bty(parameters_t *params, char *fname)
+{
+  FILE *bf;
+  char buf[MAXSTRLEN];
+  char i_rule[MAXSTRLEN];
+  GRID_SPECS *gs = NULL;
+  int nbath;
+  double *x, *y, *b;
+  double bmean;
+  int n, i, j, cc, c;
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  int bverbose = 0;
+
+  /* Read the bathymetry values                                    */
+  if ((bf = fopen(fname, "r")) == NULL)
+    hd_quit("read_bathy_from_sparse_bty: Can't open bathymetry file %s.\n", fname);
+  nbath = 0;
+  while (fgets(buf, MAXSTRLEN, bf) != NULL) {
+    nbath++;
+  }
+  rewind(bf);
+  x = d_alloc_1d(nbath);
+  y = d_alloc_1d(nbath);
+  b = d_alloc_1d(nbath);
+  n = 0;
+  bmean = 0.0;
+  while (fgets(buf, MAXSTRLEN, bf) != NULL) {
+    char *fields[MAXSTRLEN * MAXNUMARGS];
+    i = parseline(buf, fields, MAXNUMARGS);
+    x[n] = atof(fields[0]);
+    y[n] = atof(fields[1]);
+    b[n] = atof(fields[2]);
+    bmean += b[n];
+    if (b[n] > 0) b[n] *= -1.0;
+    if (bverbose) printf("%d %f %f : %f\n",n, x[n], y[n], b[n]);
+    n++;
+  }
+  bmean /= (double)n;
+  fclose(bf);
+
+  /* Interpolation method. Options:                                  */
+  /* linear, cubic, nn_sibson, nn_non_sibson, average                */
+  sprintf(i_rule, "%c", '\0');
+  if (!(prm_read_char(params->prmfd, "BATHY_INTERP_RULE", i_rule)))
+    strcpy(i_rule, "linear");
+
+  /* Interpolate from a triangulation                                */
+  gs = grid_interp_init(x, y, b, nbath, i_rule);
+  params->bathy = d_alloc_1d(params->nce1 * params->nce2);
+  c = 0;
+  for (j = 0; j < params->nce2; j++) {
+    for (i = 0; i < params->nce1; i++) {
+      if(isnan(params->bathy[c])) {
+	if (isnan(params->x[2*j][2*i]) || isnan(params->y[2*j][2*i])) {
+	  params->bathy[c] = -NOTVALID;
+	} else {
+	  params->bathy[c] = -grid_interp_on_point(gs, params->x[2*j][2*i], params->y[2*j][2*i]);
+	  if (limf) {
+	    if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
+	      params->bathy[c] = -params->bmax;
+	    if (params->bmin && fabs(params->bathy[c]) < params->bmin) 
+	      params->bathy[c] = -params->bmin;
+	    if (params->bmin && params->bathy[c] > params->bmin)
+	      params->bathy[c] = -LANDCELL;
+	  }
+	  if (isnan(params->bathy[c])) params->bathy[c] = bmean;
+	  if (bverbose) printf("%d %f : %f %f\n",c, params->bathy[c], params->x[c][0], params->y[c][0]);
+	}
+      }
+    }
+  }
+  grid_specs_destroy(gs);
+  params->nvals = params->ns2-1;
+
+  if (DEBUG("init_m"))
+    dlog("init_m", "\nBathymetry read  from file OK\n");
+}
+
+/* END read_bathy_from_sparse_bty()                                   */
+/*-------------------------------------------------------------------*/
+
+#define TF_USE  0x001
+#define TF_TEST 0x002
+
+/*-------------------------------------------------------------------*/
+/* Interpolates bathymetry using unstructured method i_rule from the */
+/* GRID_SPEC libraries.                                              */
+/* Large input files may exhaust memory during the triangulation     */
+/* process. This function sub-sections a file if its size id greater */
+/* than ms points, and triangulates the sub-sections. If tf = 1 the  */
+/* points triangulated are reduced further by only using those that  */
+/* are coincident with the convex hull of the mesh. Sub-sections are */
+/* overlapped ol points, and the convex hull is expanded by fact to  */
+/* ensure that sufficient points encompass the mesh cells for        */
+/* accurate interpolation.                                           */
+/*-------------------------------------------------------------------*/
+void bathy_interp_us(parameters_t *params, char *fname, char *i_rule, int mode)
+{
+  char buf[MAXSTRLEN];
+  int n, m, i, j, cc, c;
+  int is, ie, ni, ns;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  int nbath;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely, *bz;
+  double latx, latn, lonx, lonn;
+  int ftype = 0;    /* 0 for netCDF, 1 for .bty                      */
+  int intype = -1;  /* Bathymetry attributes type                    */
+  double bmean;     /* Mean bathymetry                               */
+  double sgn = 1.0; /* Sign multiplier for bathymetry                */
+  int ms = 60e6;    /* Filesize limit for sub-sectioning (points)    */
+  int bf = 1;       /* Omit bathy above msl (> 0)                    */
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  int dm = 1;       /* Input decimation (not used)                   */
+  int tf = 0;       /* Bounding box for input mesh                   */
+  int bs = 1;       /* Sub-sectioning of bathymetry file             */
+  int bverbose = 0; /* Print bathymetry output for debugging         */
+  int sverbose = 0; /* Print control flow for debugging              */
+  int ol = 5;       /* Overlap (points) for file sub-sections        */  
+  double fact = 1.15; /* Expansion factor for mesh convex hull       */
+  poly_t *pl;       /* Polygon of bathymetry convex hull             */
+  poly_t *plb;      /* Polygon of mesh domain convex hull            */
+  GRID_SPECS *gs = NULL;
+
+  if (prm_read_char(params->prmfd, "BATHY_REPORT", buf))
+    if (is_true(buf)) sverbose = 1;
+  if (DEBUG("init_m"))
+    dlog("init_m", "\nUnstructured bathymetry reading from file\n");
+  hd_warn("Unstructured interpolation of bathy file %s using rule %s\n", fname, i_rule);
+  if (sverbose) printf("\nUnstructured interpolation of bathy file %s using rule %s\n", fname, i_rule);
+
+  /*-----------------------------------------------------------------*/
+  /* Open the file and get dimensions                              */
+  if (endswith(fname, ".nc")) {
+    if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+      printf("Can't find input bathymetry file %s\n", fname);
+      hd_quit((char *)nc_strerror(ncerr));
+    }
+
+    /* Get dimensions                                                  */
+    i = 0;
+    while (bathy_dims[i][0] != NULL) {
+      if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
+	  nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0 &&
+	  ncw_var_id(fid, bathy_dims[i][0]) >= 0) {
+	intype = i;
+	break;
+      }
+      i++;
+    }
+    if (intype < 0)      
+      hd_quit("bathy_interp_us: Can't find bathymetry attributes in file %s.\n", fname);
+    
+    varid = ncw_var_id(fid, bathy_dims[intype][3]);
+    nc_inq_varndims(fid, varid, &lond);
+    varid = ncw_var_id(fid, bathy_dims[intype][4]);
+    nc_inq_varndims(fid, varid, &latd);
+    if (sverbose) printf("Found attribues of %s, type = %d\n", fname, intype);
+
+    /*-----------------------------------------------------------------*/
+    /* Interpolation from unstructured input using a triangulation.    */
+    /* The input bathymetry is structured, but is triangulated then    */
+    /* interpolated using i_rule.                                      */
+    /* Allocate and read.                                              */
+    if (lond == 1)
+      celx = d_alloc_1d(nce1);
+    else if (lond == 2)
+      cellx = d_alloc_2d(nce1, nce2);
+    if (latd == 1)
+      cely = d_alloc_1d(nce2);
+    else if (latd == 2)
+      celly = d_alloc_2d(nce1, nce2);
+    botz = d_alloc_2d(nce1, nce2);
+    start[0] = 0L;
+    start[1] = 0L;
+    start[2] = 0L;
+    start[3] = 0L;
+    count[0] = nce2;
+    count[1] = nce1;
+    count[2] = 0;
+    count[3] = 0;
+    if (lond == 1) {
+      count[0] = nce1;
+      count[1] = 0;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, celx);
+    } else if (lond == 2) {
+      count[0] = nce2;
+      count[1] = nce1;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][3]), start, count, cellx[0]);
+    }
+    if (sverbose) printf("Read longitude, dimension = %d\n", lond);
+    if (latd == 1) {
+      count[0] = nce2;
+      count[1] = 0;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, cely);
+    } else if (latd == 2) {
+      count[0] = nce2;
+      count[1] = nce1;
+      nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][4]), start, count, celly[0]);
+    }
+    if (sverbose) printf("Read latitude, dimension = %d\n", lond);
+    count[0] = nce2;
+    count[1] = nce1;
+    nc_get_vara_double(fid, ncw_var_id(fid, bathy_dims[intype][0]), start, count, botz[0]);
+    nc_close(fid);
+
+    /*-----------------------------------------------------------------*/
+    /* Set the wet bathymetry vector (to interpolate from)             */
+    nbath = n = 0;
+    for (j = 0; j < nce2; j++) {
+      for (i = 0; i < nce1; i++) {
+	if (isnan(botz[j][i])) continue;
+	if (lond == 1 && isnan(celx[i])) continue;
+	if (lond == 2 && isnan(cellx[j][i])) continue;
+	if (latd == 1 && isnan(cely[j])) continue;
+	if (latd == 2 && isnan(celly[j][i])) continue;
+	if (botz[j][i] != LANDCELL && fabs(botz[j][i]) != fabs(NOTVALID)) nbath++;
+      }
+    }
+    if (sverbose) printf("Read bathy, %d points\n", nbath);
+  }
+
+  if (endswith(fname, ".bty") || endswith(fname, ".xyz")) {
+    FILE *bf;
+    char buf[MAXSTRLEN];
+    int nn = 0, np = 0;
+    ftype = 1;
+    lond = latd = 2;
+    nbath = n = 0;
+    latn = lonn = HUGE;
+    latx = lonx = -HUGE;
+    if ((bf = fopen(fname, "r")) == NULL)
+      hd_quit("bathy_interp_us: Can't open bathymetry file %s.\n", fname);
+    while (fgets(buf, MAXSTRLEN, bf) != NULL) {
+      nbath++;
+    }
+    rewind(bf);
+    cellx = d_alloc_2d(nbath, 1);
+    celly = d_alloc_2d(nbath, 1);
+    botz = d_alloc_2d(nbath, 1);
+    n = 0;
+    while (fgets(buf, MAXSTRLEN, bf) != NULL) {
+      char *fields[MAXSTRLEN * MAXNUMARGS];
+      i = parseline(buf, fields, MAXNUMARGS);
+      cellx[0][n] = atof(fields[0]);
+      celly[0][n] = atof(fields[1]);
+      botz[0][n] = atof(fields[2]);
+      if (botz[0][n] >= 0.0) np++;
+      if (botz[0][n] < 0.0) nn++;
+      latx = max(celly[0][n], latx);
+      lonx = max(cellx[0][n], lonx);
+      latn = min(celly[0][n], latn);
+      lonn = min(cellx[0][n], lonn);
+      n++;
+    }
+    fclose(bf);
+    nce1 = nbath;
+    nce2 = 1;
+    n = 0;
+    /* Bathy should be negative. If there are more positive bathys     */
+    /* than negative, then assume the positive values are to be used.  */
+    sgn = (np > nn) ? -1.0 : 1.0;
+  }
+
+  /*-------------------------------------------------------------------*/
+  /* Check if the input file is large and needs subsectioning          */
+  i = nce1 * nce2;
+  if (i > ms) {
+    bs = i /ms;
+    hd_warn("Large bathy filesize: subdividing into %d subsections\n", bs);
+    if (sverbose) printf("Large bathy filesize: subdividing into %d subsections\n", bs);
+    /* Only interpolate within the bounds of the subsection (mode=1)   */
+    /* within the bounds of the mesh (tf != 0).                        */
+    mode = 1;
+    tf |= TF_TEST;
+  }
+  /* Explicitly set the number of sections if required                 */
+  if (prm_read_int(params->prmfd, "BATHY_SECTION", &bs)) {
+    hd_warn("Large bathy filesize: subdividing into %d subsections\n", bs);
+    if (sverbose) printf("Large bathy filesize: subdividing into %d subsections\n", bs);
+    /* Only interpolate within the bounds of the subsection (mode=1)   */
+    /* within the bounds of the mesh (tf != 0).                        */
+    mode = 1;
+    tf |= TF_TEST;
+  }
+
+  /*-------------------------------------------------------------------*/
+  /* Get a convex hull of the model domain. Only use bathy data in     */
+  /* this hull so as to reduce the size of the triangulation of bathy  */
+  /* data.                                                             */
+  if (prm_read_char(params->prmfd, "BATHY_TRUNCATE", buf))
+    if (is_true(buf)) tf |= (TF_USE|TF_TEST);
+  if (tf) {
+    point *pin;
+    point *pout;
+    double xc = 0.0; 
+    double yc = 0.0;
+
+    /* Make a polygon of the convex hull of the input domain           */
+
+    /* Input grid is a structured grid                             */
+    pin = malloc(params->nce1 * params->nce2 * sizeof(point));
+    cc = 0;
+    for (j = 0; j < params->nce2; j++)
+      for (i = 0; i < params->nce1; i++) {
+	if (!isnan(params->x[2*j][2*i]) && !isnan(params->y[2*j][2*i])) {
+	  pin[cc].x = params->x[2*j][2*i];
+	  pin[cc].y = params->y[2*j][2*i];
+	  cc++;
+	}
+      }
+    n = cc;
+
+    pout = convex_hull(pin, &n);
+    /* Get the centre of mass                                      */
+    for (cc = 0; cc < n; cc++) {
+      xc += pout[cc].x;
+      yc += pout[cc].y;
+    }
+    xc /= (double)n;
+    yc /= (double)n;
+    /* Expand the convex hull by fact so as to encompas the        */
+    /* perimeter cells (without this there may be issues on the    */
+    /* boundaries with some interpolation schemes).                */
+    plb = poly_create();
+    for (cc = 0; cc < n; cc++) {
+      double x = pout[cc].x - xc;
+      double y = pout[cc].y - yc;
+      double dist = fact * sqrt(x * x + y * y);
+      double dir =  atan2(y, x);
+      double sinth = sin(dir);
+      double costh = cos(dir);
+      x = xc + dist * costh;
+      y = yc + dist * sinth;
+      poly_add_point(plb, x, y);
+    }
+    poly_add_point(plb, pout[0].x, pout[0].y);
+    free((point *)pout);
+    if (sverbose) printf("Generated domain convex hull, %d points\n", plb->n);
+  }
+
+  /* Decimation - not used
+  if (prm_read_int(params->prmfd, "BATHY_DECIMATE", &dm))
+    hd_warn("Bathy file %s decimated by %d\n", fname, dm);
+  */
+
+  /*---------------------------------------------------------------*/
+  /* Extract the bathymetry points used in the triangulation       */
+  x = d_alloc_1d(nbath);
+  y = d_alloc_1d(nbath);
+  b = d_alloc_1d(nbath);
+  is = ie = 0;
+  ni = ceil(nce1 / bs);
+  /* Loop over sections                                            */
+  for (ns = 1; ns <= bs; ns++) {
+    int fillf = 0;
+    is = ie;
+    ie = min(ns * ni, nce1);
+    if (sverbose) {
+      printf("--------------------------------------------\n");
+      printf("Pass %d (i = %d to %d) of %d (interval = %d)\n", ns, is, ie, (int)nce1, ni);
+    }
+    n = 0;
+    bmean = 0.0;
+    /* Loop over points in this section                            */
+    for (j = 0; j < nce2; j++) {
+      int iss = max(is-ol, 0);
+      int iee = min(ie+ol, nce1);
+      for (i = iss; i < iee; i++) {
+	double xin = (lond == 1) ? celx[i] : cellx[j][i];
+	double yin = (latd == 1) ? cely[j] : celly[j][i];
+	if (isnan(botz[j][i])) continue;
+	if (lond == 1 && isnan(celx[i])) continue;
+	if (lond == 2 && isnan(cellx[j][i])) continue;
+	if (latd == 1 && isnan(cely[j])) continue;
+	if (latd == 2 && isnan(celly[j][i])) continue;
+	if (tf) {
+	  m = poly_contains_point(plb, xin, yin);
+	  if (tf & TF_TEST && m) fillf = 1;
+	  if (tf & TF_USE && !m) continue;
+	} else
+	  fillf = 1;
+	/*if (dm > 1 && (j * nce1 + i)%dm != 0) continue;*/
+	if (bf && sgn * botz[j][i] > 0.0) continue;
+	if (botz[j][i] != LANDCELL && fabs(botz[j][i]) != fabs(NOTVALID)) {
+	  if (lond == 1)
+	    x[n] = celx[i];
+	  else if (lond == 2)
+	    x[n] = cellx[j][i];
+	  if (latd == 1)
+	    y[n] = cely[j]; 
+	  else if (latd == 2)
+	    y[n] = celly[j][i]; 
+	  b[n] = sgn * botz[j][i];
+	  bmean += b[n];
+	  n++;
+	}
+      }
+    }
+    if (!n || !fillf) {
+      if (sverbose) printf("No bathy points found in mesh domain for this pass\n");
+      continue;
+    } else
+      if (sverbose) printf("Converted bathy to 1D vector, %d points\n", n);
+
+    if (n) bmean /= (double)n;
+    if (bs == 1 || (bs > 1 && ns == bs)) {
+      if (lond == 1)
+	d_free_1d(celx);
+      else if (lond == 2)
+	d_free_2d(cellx);
+      if (latd == 1)
+	d_free_1d(cely);
+      else if (latd == 2)
+	d_free_2d(celly);
+      d_free_2d(botz);
+    }
+    nbath = n;
+
+    /*---------------------------------------------------------------*/
+    /* Interpolate from a triangulation                              */
+    gs = grid_interp_init(x, y, b, nbath, i_rule);
+    if (sverbose) printf("Created GRID_SPEC using %s\n", i_rule);
+
+    /*---------------------------------------------------------------*/
+    /* If mode = 1 only interpolate within the bound of the supplied */
+    /* file. Get a polygon of the perimeter of the bathy file.       */
+    if (mode) {
+      /* Get the bounding convex hull of the bathy points            */
+      point *pin= malloc(nbath * sizeof(point));
+      point *pout;
+      for (n = 0; n < nbath; n++) {
+	pin[n].x = x[n];
+	pin[n].y = y[n];
+      }
+      n = nbath;
+      pout = convex_hull(pin, &n);
+      /* Make a polygon of the convex hull                           */
+      pl = poly_create();
+      for (i = 0; i < n; i++) {
+	poly_add_point(pl, pout[i].x, pout[i].y);
+      }
+      poly_add_point(pl, pout[0].x, pout[0].y);
+      free((point *)pin);
+      free((point *)pout);
+      if (sverbose) printf("Created convex hull of bathy file, %d points\n", pl->n);
+    }
+
+    /*---------------------------------------------------------------*/
+    /* Do the interpolation                                          */
+    n = 0;
+    c = 0;
+    for (j = 0; j < params->nce2; j++) {
+      for (i = 0; i < params->nce1; i++) {
+	if(isnan(params->bathy[c])) {
+	  if (isnan(params->x[2*j][2*i]) || isnan(params->y[2*j][2*i])) {
+	    params->bathy[c] = -NOTVALID;
+	  } else {
+	    if (mode && !poly_contains_point(pl, params->x[2*j][2*i], params->y[2*j][2*i])) {
+	      c++;
+	      continue;
+	    }
+	    params->bathy[c] = -grid_interp_on_point(gs, params->x[2*j][2*i], params->y[2*j][2*i]);
+	    if (limf) {
+	      if (params->bmax && fabs(params->bathy[c]) > params->bmax) 
+		params->bathy[c] = params->bmax;
+	      if (params->bmin && fabs(params->bathy[c]) < params->bmin) 
+		params->bathy[c] = params->bmin;
+	      /*
+		if (params->bmin && params->bathy[c] > params->bmin)
+		params->bathy[c] = LANDCELL;
+	      */
+	    }
+	    n++;
+	    if (isnan(params->bathy[c])) params->bathy[c] = -bmean;
+	    if (bverbose) printf("%d %f : %f %f\n",c, params->bathy[c], params->x[2*j][2*i], params->y[2*j][2*i]);
+	  }
+	}
+	c++;
+      }
+    }
+    params->nvals = params->nce1 * params->nce2;
+    if (sverbose) printf("Interpolted %d bathy points onto mesh\n", n);
+    grid_specs_destroy(gs);
+    if (mode) poly_destroy(pl);
+  }
+
+  d_free_1d(x);
+  d_free_1d(y);
+  d_free_1d(b);
+  if (tf) poly_destroy(plb);
+}
+
+/* END bathy_interp_us()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Interpolates bathymetry using bilinear methods via timeseries     */
+/* libraries.                                                        */
+/*-------------------------------------------------------------------*/
+void bathy_interp_s(parameters_t *params, char *fname, int mode)
+{
+  char buf[MAXSTRLEN];
+  int n, m, i, j, cc, c;
+  int intype = -1;
+  int fid;
+  int ncerr;
+  int lond, latd;
+  int varid;
+  int nbath;
+  int idb;
+  size_t start[4];
+  size_t count[4];
+  size_t nce1;
+  size_t nce2;
+  double *x, *y, *b, **botz, **cellx, **celly, *celx, *cely;
+  double bmean;
+  int limf = 1;     /* Limit bathymetry to bmin and bmax             */
+  timeseries_t *ts = NULL;
+  poly_t *pl;
+  int bverbose = 0;
+
+  hd_warn("Structured interpolation of bathy file %s\n", fname);
+
+  /* Open the file and get dimensions                                */
+  if ((ncerr = nc_open(fname, NC_NOWRITE, &fid)) != NC_NOERR) {
+    printf("Can't find input bathymetry file %s\n", fname);
+    hd_quit((char *)nc_strerror(ncerr));
+  }
+  i = 0;
+  while (bathy_dims[i][0] != NULL) {
+    if (nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][2]), &nce2) == 0 &&
+	nc_inq_dimlen(fid, ncw_dim_id(fid, bathy_dims[i][1]), &nce1) == 0) {
+      intype = i;
+      break;
+    }
+    i++;
+  }
+  if (intype < 0)      
+    hd_quit("read_bathy_from_sparse_nc: Can't find bathymetry attributes in file %s.\n", fname);
+
+  /* Initialize the timeseries file                                  */
+  ts = (timeseries_t *)malloc(sizeof(timeseries_t));
+  if (ts == NULL)
+    hd_quit("read_bathy_from_sparse_nc: No memory available.\n");
+  memset(ts, 0, sizeof(timeseries_t));
+    
+  /* Read the time series                                            */
+  ts_read(fname, ts);
+  if ((idb = ts_get_index(ts, fv_get_varname(fname, bathy_dims[intype][0], buf))) == -1)
+    hd_quit("read_bathy_from_sparse_nc: Can't find variable %s in file %s\n", 
+	    bathy_dims[intype][0], fname);
+
+  /* Get a polgon of the perimeter of the bathy file                 */
+  pl = nc2poly(fid, nce1, nce2, bathy_dims[intype][3], bathy_dims[intype][4], fname, ts);
+
+  /* Read the values                                                 */
+  /* Structured                                                    */
+  cc = 0;
+  for (j = 0; j < params->nce2; j++)
+    for (i = 0; i < params->nce1; i++) {
+      if (!isnan(params->x[2*j][2*i]) && !isnan(params->y[2*j][2*i])) {
+	if (!poly_contains_point(pl, params->x[2*j][2*i], params->y[2*j][2*i])) continue;
+	params->bathy[cc] = -ts_eval_xy(ts, idb, 0.0, params->x[2*j][2*i], params->y[2*j][2*i]);
+      } else
+	params->bathy[cc] = NOTVALID;
+      cc++;
+    }
+  params->nvals = params->nce1 * params->nce2;
+
+  ts_free((timeseries_t*)ts);
+  free(ts);
+  poly_destroy(pl);
+  nc_close(fid);
+}
+
+/* END bathy_interp_s()                                              */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to extract bathymetry from the database bathy file        */
 /*-------------------------------------------------------------------*/
 static void mask_bathy_with_coast(const char *cfname, parameters_t *params) {
 
   coast_file_t* cf = coast_open(cfname);
+
   if (cf != NULL) {
     double minlon = 360, maxlon = -360;
     double minlat = 90, maxlat = -90;
     double **x, **y;
     int has_proj = (strlen(params->projection) > 0);
     int is_geog = has_proj && (strcasecmp(params->projection, GEOGRAPHIC_TAG) == 0);
-    int i, j, n;
+    int i, j, n, m;
     int is, js, ie, je, jm, im;
     int nce1 = params->nce1;
     int nce2 = params->nce2;
@@ -4491,9 +5272,9 @@ static void mask_bathy_with_coast(const char *cfname, parameters_t *params) {
     /* Load a tile at a time, and compare the lat/lons */
     ti = coast_get_tile_iterator(cf, minlon, maxlon, minlat, maxlat);
     while((tile = ti->next_tile(ti)) != NULL) {
-      for (i=0; i<tile->npolys; ++i) {
-        poly_t *p = tile->polys[i];
-        if (tile->level[i] != 1) continue;
+      for (m=0; m<tile->npolys; ++m) {
+        poly_t *p = tile->polys[m];
+        if (tile->level[m] != 1) continue;
         n = 0;
         for (j=0; j<nce2; j++) {
           for (i=0; i<nce1; i++, ++n) {
@@ -4518,7 +5299,6 @@ static void mask_bathy_with_coast(const char *cfname, parameters_t *params) {
                    ++land;
               }
             }
-
             if (land > 4)
                params->bathy[n] = -LANDCELL;
           }
@@ -6949,6 +7729,8 @@ void read_compatible(parameters_t *params, FILE *fp)
       params->compatible |= V5342;
     if (contains_token(buf, "V5895") != NULL)
       params->compatible |= V5895;
+    if (contains_token(buf, "V7367") != NULL)
+      params->compatible |= V7367;
   }
 }
 
@@ -8410,6 +9192,127 @@ void read_blocks(FILE *fp, char *key, int *nb, int **listi, int **listj)
 /* END read_blocks()                                                 */
 /*-------------------------------------------------------------------*/
 
+
+point p0;
+/*-------------------------------------------------------------------*/  
+/* A utility function to swap two points                             */
+/*-------------------------------------------------------------------*/  
+void swap(point *p1, point *p2)
+{
+  point temp = *p1;
+  *p1 = *p2;
+  *p2 = temp;
+}
+
+/*-------------------------------------------------------------------*/  
+/* A utility function to return square of distance between p1 and p2 */
+/*-------------------------------------------------------------------*/  
+double distSq(point p1, point p2)
+{
+  return((p1.x - p2.x)*(p1.x - p2.x) + (p1.y - p2.y)*(p1.y - p2.y));
+}
+
+/*-------------------------------------------------------------------*/  
+/* To find orientation of ordered triplet (p, q, r).                 */
+/* The function returns following values:                            */
+/* 0 --> p, q and r are colinear                                     */
+/* 1 --> Clockwise                                                   */
+/* 2 --> Counterclockwise                                            */
+/*-------------------------------------------------------------------*/  
+int orientation(point p, point q, point r)
+{
+  double val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+  if (val == 0) return 0;
+  return (val > 0) ? 1 : 2;
+}
+
+/*-------------------------------------------------------------------*/
+/* A function used by library function qsort() to sort an array of   */
+/* points with respect to the first point.                           */
+/*-------------------------------------------------------------------*/
+int compare(const void *vp1, const void *vp2) 
+{
+  point *p1 = (point *)vp1;
+  point *p2 = (point *)vp2;
+
+  int o = orientation(p0, *p1, *p2);
+  if (o == 0)
+    return (distSq(p0, *p2) >= distSq(p0, *p1))? -1 : 1;
+
+  return (o == 2) ? -1: 1;
+}
+
+/*-------------------------------------------------------------------*/
+/* Finds convex hull of a set of n points using Graham Scan          */
+/* algorithm.                                                        */
+/* Adapted from:                                                     */
+/* https://www.geeksforgeeks.org/convex-hull-set-2-graham-scan/      */
+/* https://stackoverflow.com/questions/37635258/convex-hull-in-c     */
+/*-------------------------------------------------------------------*/
+point *convex_hull(point *v,  int *count)
+{
+  int n = *count;
+  double ymin = v[0].y;
+  int min = 0;
+  int i, m;
+  point *stack;
+
+  /* Pick the bottom-most or chose the left most point in case of a  */
+  /* tie.                                                            */
+  for(i = 1; i < n; i++) {
+    if((v[i].y < ymin) || ((v[i].y == ymin) && (v[i].x < v[min].x))) {
+      ymin = v[i].y;
+      min = i;
+    }
+  }
+
+  /* Place the bottom-most point at first position                   */
+  swap(&v[0], &v[min]);
+
+  /* Sort n-1 points with respect to the first point. A point p1     */
+  /* comes before p2 in sorted output if p2 has larger polar angle   */
+  /* (in counterclockwise direction) than p1.                        */
+  p0 = v[0];
+  if(n > 1)
+    qsort(&v[1], n - 1, sizeof(point), compare);
+
+  /* If two or more points make same angle with p0, remove all but   */
+  /* the one that is farthest from p0. Remember that, in above       */
+  /* sorting, our criteria was to keep the farthest point at the end */
+  /* when more than one points have same angle.                      */
+  m = 1; /* Initialize size of modified array.                       */
+  for(i = 1; i < n; i++) {
+    while((i < n - 1) && orientation(v[0], v[i], v[i + 1]) == 0)
+      i++;
+    v[m++] = v[i];
+  }
+  *count = n = m;
+
+  /* If modified array of points has less than 3 points, convex hull */
+  /* is not possible.                                                */
+  if(n < 3) return v;
+
+  /* Allocate the hull points and push first three points to it.     */
+  stack = (point *)malloc(n * sizeof(point));
+  stack[0] = v[0];
+  stack[1] = v[1];
+  stack[2] = v[2];
+
+  /* Process remaining n-3 points                                    */
+  m = 2;
+  for(i = 3; i < n; i++) {
+    /* Keep removing top while the angle formed by points next-to-   */
+    /* top, top, and points[i] makes a non-left turn.                */
+    while(orientation(stack[m-1], stack[m], v[i]) != 2) {
+      m--;
+    }
+    stack[++m] = v[i];
+  }
+
+  *count = n = ++m;
+
+  return stack;
+}
 
 void f_pole(double ilat, double ilon, double ang, double *olat,
             double *olon)

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 6934 2021-10-27 02:36:22Z riz008 $
+ *  $Id: transport.c 7455 2023-12-13 03:46:38Z her127 $
  *
  */
 
@@ -364,7 +364,7 @@ void transport_step(master_t *master, geometry_t **window,
     /* not change on the first time step. The flux divergence        */
     /* therefore also needs to be zero for the first time step only, */
     /* which is achieved by setting u1, u2, w and volume fluxes = 0. */
-    if ((wincon[n]->trasc == FFSL) && (windat[n]->nstep == 0)) {
+    if (wincon[n]->compatible & V7367 && (wincon[n]->trasc == FFSL) && (windat[n]->nstep == 0)) {
       hd_warn("Setting initial velocity and volume fluxes to zero for FFSL advection scheme (t = %f)\n", windat[n]->t / 86400);
       memset(windat[n]->u1, 0, window[n]->sgsiz * sizeof(double));
       memset(windat[n]->u2, 0, window[n]->sgsiz * sizeof(double));

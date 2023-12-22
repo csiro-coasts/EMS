@@ -12,13 +12,16 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: emsmath.h 5834 2018-06-27 00:55:37Z riz008 $
+ *  $Id: emsmath.h 7445 2023-12-12 05:06:07Z riz008 $
  */
 
 #ifndef	_EMS_MATH_H
 #define _EMS_MATH_H
 
 #include <limits.h>
+#ifdef __cplusplus
+#include <math.h>
+#endif
 
 /* Useful defines */
 #if !defined(PI)

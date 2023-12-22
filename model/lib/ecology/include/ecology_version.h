@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_version.h 7386 2023-08-24 05:30:49Z cem-worker $
+ *  $Id: ecology_version.h 7477 2023-12-22 01:31:36Z riz008 $
  *
  */
 
@@ -22,7 +22,7 @@
 /* Release verions and getters */
 #define ECOLOGY_MAJOR_VERSION 1
 #define ECOLOGY_MINOR_VERSION 3
-#define ECOLOGY_PATCH_VERSION 0
+#define ECOLOGY_PATCH_VERSION 1
 
 int get_ecology_major_vers(void);
 int get_ecology_minor_vers(void);

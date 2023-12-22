@@ -1,7 +1,7 @@
 #
 # makefile.in - Input makefile for the configure script.
 #
-# $Id: makefile.in 7267 2022-12-05 05:29:53Z riz008 $
+# $Id: makefile.in 7392 2023-10-05 01:17:09Z her127 $
 #
 
 SHELL=/bin/sh
@@ -129,7 +129,7 @@ outputs/dumpfile.o outputs/writeatts.o outputs/landfill.o outputs/timeseries.o \
 outputs/dumpdata.o outputs/df_sparse.o outputs/mom_grid.o outputs/df_mom.o outputs/roms_grid.o \
 outputs/df_roms.o outputs/df_ugrid.o
 
-PTOBJS = particles/pt.o
+PTOBJS = particles/pt.o particles/pl.o
 
 SEDOBJS=sediments/sediments.o
 

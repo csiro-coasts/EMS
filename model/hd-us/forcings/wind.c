@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: wind.c 7362 2023-06-09 03:23:05Z riz008 $
+ *  $Id: wind.c 7398 2023-10-05 01:19:10Z her127 $
  *
  */
 
@@ -348,6 +348,14 @@ double wind_event(sched_event_t *event, double t)
     }
 
     /* Get the cell centered components of the wind                  */
+    if (master->do_pt) {
+      wind_center(master, master->swind1, master->swind2);
+      for (cc = 1; cc <= geom->b2_t; cc++) {
+	c = geom->w2_t[cc];
+	stresswind(&master->swind1[c], &master->swind2[c], 
+		   data->dlv0, data->dlv1, data->dlc0, data->dlc1);
+      }
+    }
 #if defined(HAVE_WAVE_MODULE)
     if (master->do_wave & W_SWAN) {
       wind_center(master, master->swind1, master->swind2);

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: MY2-0.c 5873 2018-07-06 07:23:48Z riz008 $
+ *  $Id: MY2-0.c 7457 2023-12-13 03:49:40Z her127 $
  *
  */
 
@@ -32,6 +32,7 @@ double get_Lscale(geometry_t *window, window_t *windat, win_priv_t *wincon,
                   double Ri, double N2, double Lo, double q, double z,
                   double sl, double bl, double top, double bot, int kts,
                   int ktb, double z0);
+double Ri2Rf(double Ri);
 int cg;
 
 /* Constants */
@@ -67,6 +68,8 @@ void closure_MY2_init(geometry_t *geom, /* Sparse global geometry
     master->q[c] = EPS;
     master->Vz[c] = master->vz0;
     master->Kz[c] = master->kz0;
+    master->Vz[c] = (master->vz0b) ? master->vz0b[c] : master->vz0;
+    master->Kz[c] = (master->kz0b) ? master->kz0b[c] : master->kz0;
   }
 }
 
@@ -155,7 +158,7 @@ void closure_MY2(geometry_t *window,  /* Processing window */
     zm1 = window->zm1[c];
 
     while (c < cb) {
-
+      
       /* SIGMA : Multiply by depth */
       dz = (window->cellz[c] - window->cellz[zm1]) * wincon->Ds[cs];
       l1 =
@@ -181,8 +184,8 @@ void closure_MY2(geometry_t *window,  /* Processing window */
       du2dz = du2 / dz;
       drhodz = (drho / dz) / rho0;
 
-      GH = -wincon->g * drhodz;
-      GM = du1dz * du1dz + du2dz * du2dz;
+      GH = -wincon->g * drhodz;            /* GH = N2                */
+      GM = du1dz * du1dz + du2dz * du2dz;  /* GM = M2                */
 
       /* Shear production                                            */
       if (windat->s_prod)
@@ -191,12 +194,44 @@ void closure_MY2(geometry_t *window,  /* Processing window */
       /* Buoyancy production                                         */
       if (windat->b_prod) windat->b_prod[c] = -windat->Kz[c] * GH;
 
-      if (GM > 1.e-10) {
+      if (wincon->s_func != s_null) {
+	double q2, SM, SH, LQ;
+	double l2 = lscale * lscale;
+	if (GM > 1.e-10 && windat->Vz[c] * GM > windat->Kz[c] * GH) {
+	  q3 = B1 * lscale * (windat->Vz[c] * GM - windat->Kz[c] * GH);
+	  if (q3 > 0) {
+	    wincon->q[c] = pow(q3, 1.0 / 3.0);
+	    q2 = wincon->q[c] * wincon->q[c];
+	    LQ = lscale * wincon->q[c];
+	  } else {
+	    hd_quit
+	      ("Vz: q3 must be greater than zero at w%d c=%d (%d %d %d) : %e %e %e %e %e\n",
+	       window->wn, c, window->s2i[c], window->s2j[c], window->s2k[c], windat->Vz[c],
+	       windat->Kz[c], lscale, drhodz, GM);
+	  }
+	  GH *=  (l2 / q2);
+	  GM *= (l2 / q2);
+	  wincon->s_func(-2.0 * GH, 2.0 * GM, &SM, &SH);
+	  SM /= sqrt(2.0);
+	  SH /= sqrt(2.0);
+	  windat->Vz[c] = max((LQ * SM + windat->Vz[c]) * 0.5, wincon->vz0);
+	  windat->Kz[c] = max((LQ * SH + windat->Kz[c]) * 0.5, wincon->kz0);
+	} else {
+          windat->Vz[c] = wincon->vz0;
+          windat->Kz[c] = wincon->kz0;
+	}
+      } else {
+	if (GM > 1.e-10) {
+	/* Gradient Richardson no.; Mellor & Yamada (1982) Eq. 40b   */
         Rgrad = GH / GM;
+	/* Inherited from original MECO : source not known           */
         Rflux =
           0.725 * (Rgrad + 0.186 -
                    sqrt(Rgrad * Rgrad - 0.316 * Rgrad + 0.0346));
+	/*Rflux = Ri2Rf(Rgrad);*/
         if (Rflux < Rcrit) {
+	  /* Stability functions: Mellor & Yamada (1982) Eq. 41a     */
+	  /* and 41b.                                                */
           SH = 3 * A2 * (G1 - (G1 + G2) * Rflux) / (1 - Rflux);
           SM = SH * A1 * (BGC1 - (BGC1 + (6 * A1 + 3 * A2)) * Rflux) /
             (A2 * (B1 * G1 - (B1 * (G1 + G2) - 3 * A1) * Rflux));
@@ -208,8 +243,8 @@ void closure_MY2(geometry_t *window,  /* Processing window */
             wincon->q[c] = pow(q3, 1.0 / 3.0);
           else {
             hd_quit
-              ("Vz: q3 must be greater than zero at %d (%d %d %d) : %f %f %f %f %f\n",
-               c, window->s2i[c], window->s2j[c], window->s2k[c], windat->Vz[c],
+              ("Vz: q3 must be greater than zero at w%d %d (%d) %f %f : %e %e %f %f %f\n",
+               window->wn, c, window->s2k[c], window->cellx[cs], window->celly[cs], windat->Vz[c],
                windat->Kz[c], lscale, drhodz, GM);
           }
           windat->Vz[c] = lscale * wincon->q[c] * SM;
@@ -217,10 +252,17 @@ void closure_MY2(geometry_t *window,  /* Processing window */
         } else {
           windat->Vz[c] = wincon->vz0;
           windat->Kz[c] = wincon->kz0;
+          windat->Vz[c] = (windat->vz0b) ? windat->vz0b[c] : wincon->vz0;
+	  windat->Kz[c] = (windat->kz0b) ? windat->kz0b[c] : wincon->kz0;
+	  
         }
       } else {
         windat->Vz[c] = wincon->vz0;
         windat->Kz[c] = wincon->kz0;
+ 	windat->Vz[c] = (windat->vz0b) ? windat->vz0b[c] : wincon->vz0;
+	windat->Kz[c] = (windat->kz0b) ? windat->kz0b[c] : wincon->kz0;
+
+	}
       }
       c = zm1;
       zm1 = window->zm1[c];
@@ -336,7 +378,6 @@ void closure_MY2_est(geometry_t *window,  /* Processing window */
       drhodz = (drho / dz) / rho0;
       GH = -wincon->g * drhodz;
       GM = du1dz * du1dz + du2dz * du2dz;
-
       if (GM > 1.e-10) {
         Rgrad = GH / GM;
         Rflux =
@@ -350,7 +391,6 @@ void closure_MY2_est(geometry_t *window,  /* Processing window */
                      wincon->z0[cs]);
         if (windat->L)
           windat->L[c] = lscale;
-
         if (Rflux < Rcrit) {
           SH = 3 * A2 * (G1 - (G1 + G2) * Rflux) / (1 - Rflux);
           SM = SH * A1 * (BGC1 - (BGC1 + (6 * A1 + 3 * A2)) * Rflux) /
@@ -688,4 +728,39 @@ void mld(geometry_t *window,    /* Processing window */
 }
 
 /* END mld()                                                         */
+/*-------------------------------------------------------------------*/
+
+#define CO1 A1*B1*(G1-C1)
+#define CO2 (A1*(B1*(G1-C1)+6*(A1+3*A2)))
+#define CO3 A2*B1*G1
+#define CO4 -(A2*(B1*(G1+G2)-3*A1))
+
+/*-------------------------------------------------------------------*/
+/* Converts gradient Richardson number to flux Richardson number.    */
+/* Using Mellor and Yamada (1982), Eq. 40b Ri=(SH/SM)Rf              */
+/* Wq. 41b supplies SM as a function of SH, hence SM/SH. Using the   */
+/* above, a quadratic equation for Rf can be found, from which we    */
+/* take the root closest to zero.                                    */
+/*-------------------------------------------------------------------*/
+double Ri2Rf(double Ri)
+{
+  double a = CO2;
+  double b = CO1-CO4*Ri;
+  double c = -CO3*Ri;
+  double r1 = (-b+sqrt(b*b-4*a*c))/(2*a);
+  double r2 = (-b-sqrt(b*b-4*a*c))/(2*a);
+  double val, v1, v2;
+
+  val = (fabs(r1) < fabs(r2)) ? r1 : r2;
+  /* Check: the value of the roots should be zero                    */
+  /*v1 = a*val*val + b*val + c;*/
+  /* Check: recompute the input value                                */
+  /*
+  v2 = val * (CO1 + CO2 * val) / (CO3 + CO4 * val);
+  printf("Ri2Rf Ri=%f : Rf=%f (%f %f) zero=%e Ri=%f\n",Ri,val,r1,r2,v1,v2);
+  */
+  return(val);
+}
+
+/* END Ri2Rf()                                                       */
 /*-------------------------------------------------------------------*/

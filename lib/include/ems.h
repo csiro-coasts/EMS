@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: ems.h 7355 2023-05-08 05:36:40Z riz008 $
+ *  $Id: ems.h 7477 2023-12-22 01:31:36Z riz008 $
  */
 
 #ifndef	_EMS_H
@@ -99,7 +99,7 @@ int strncasecmp(const char *s1, const char *s2, int n);
 /* Release verions and getters */
 #define EMSLIB_MAJOR_VERSION 1
 #define EMSLIB_MINOR_VERSION 3 
-#define EMSLIB_PATCH_VERSION 0
+#define EMSLIB_PATCH_VERSION 1
 
 int get_emslib_major_vers(void);
 int get_emslib_minor_vers(void);

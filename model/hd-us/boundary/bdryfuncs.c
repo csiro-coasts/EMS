@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: bdryfuncs.c 7151 2022-07-07 02:30:05Z her127 $
+ *  $Id: bdryfuncs.c 7393 2023-10-05 01:17:30Z her127 $
  *
  */
 
@@ -1726,5 +1726,122 @@ double Linf_norm(geometry_t *window, double *mod, double *ref)
 
 /* END build_gauss_ref()                                             */
 /*-------------------------------------------------------------------*/
+
+
+/*------------------------------------------------------------------*/
+/*------------------------------------------------------------------*/
+/* Convert Stokes drift components of velocity into a U1            */
+/*------------------------------------------------------------------*/
+void bf_stk_to_u1_init_m(master_t *master, open_bdrys_t *open,
+                        bdry_details_t *data)
+{
+
+  if (master->wave_ste1 == NULL && master->wave_ste2 == NULL)
+    hd_quit("Require Stokes Drift for Stokes boundary forcing.\n");
+}
+
+/* Convert a HD standard dump file velocity vector into U1 */
+void bf_stk_to_u1_init_w(geometry_t *window, open_bdrys_t *open,
+                        bdry_details_t *data, bdry_details_t *data_in)
+{
+}
+
+void bf_stk_to_u1_m(geometry_t *geom, master_t *master,
+                   open_bdrys_t *open, bdry_details_t *data)
+{
+}
+
+
+double bf_stk_to_u1_w(geometry_t *window, window_t *windat,
+                     win_priv_t *wincon, open_bdrys_t *open, double t,
+                     int c, int cc, bdry_details_t *data)
+{
+  return (wincon->us[c]);
+}
+
+void bf_stk_to_u1_t(master_t *master, open_bdrys_t *open_w,
+                   bdry_details_t *data, geometry_t *window,
+                   window_t *windat)
+{
+  geometry_t *geom = master->geom;  /* Master geometry structure */
+  open_bdrys_t *open_m = geom->open[open_w->mwn]; /* Global OBC */
+  int c, cc;                    /* Sparse location / counter */
+  int sb = 1; 
+  int eb = open_w->no3_e1;
+
+  /* Master and slave transfer vectors point to each other for 1 win */
+  if (master->nwindows == 1)
+    return;
+
+  /* Transfer data read from file from the master to the slave */
+  /*
+  if(data->type & TAN) {
+    sb = open_w->no3_e1 + 1;
+    eb = open_w->to3_e1;
+  }
+
+  for (cc = sb; cc <= eb; cc++) {
+    c = open_w->tmap_u1[cc];
+    open_w->transfer_u1[cc] = open_m->transfer_u1[c];
+  }
+  */
+}
+
+
+void bf_stk_to_u2_init_m(master_t *master, open_bdrys_t *open,
+                        bdry_details_t *data)
+{
+
+  if (master->wave_ste1 == NULL && master->wave_ste2 == NULL)
+    hd_quit("Require Stokes Drift for Stokes boundary forcing.\n");
+}
+
+/* Convert a HD standard dump file velocity vector into U1 */
+void bf_stk_to_u2_init_w(geometry_t *window, open_bdrys_t *open,
+                        bdry_details_t *data, bdry_details_t *data_in)
+{
+}
+
+void bf_stk_to_u2_m(geometry_t *geom, master_t *master,
+                   open_bdrys_t *open, bdry_details_t *data)
+{
+}
+
+
+double bf_stk_to_u2_w(geometry_t *window, window_t *windat,
+                     win_priv_t *wincon, open_bdrys_t *open, double t,
+                     int c, int cc, bdry_details_t *data)
+{
+  return (wincon->us[c]);
+}
+
+void bf_stk_to_u2_t(master_t *master, open_bdrys_t *open_w,
+                   bdry_details_t *data, geometry_t *window,
+                   window_t *windat)
+{
+  geometry_t *geom = master->geom;  /* Master geometry structure */
+  open_bdrys_t *open_m = geom->open[open_w->mwn]; /* Global OBC */
+  int c, cc;                    /* Sparse location / counter */
+  int sb = 1;
+  int eb = open_w->no3_e1;
+
+  /* Master and slave transfer vectors point to each other for 1 win */
+  if (master->nwindows == 1)
+    return;
+
+  /* Transfer data read from file from the master to the slave */
+  /*
+  if(data->type & TAN) {
+    sb = open_w->no3_e1 + 1;
+    eb = open_w->to3_e1;
+  }
+
+  for (cc = sb; cc <= eb; cc++) {
+    c = open_w->tmap_u2[cc];
+    open_w->transfer_u2[cc] = open_m->transfer_u2[c];
+  }
+  */
+}
+
 
 /* EOF */

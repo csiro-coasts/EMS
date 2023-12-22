@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 7370 2023-07-26 04:32:50Z her127 $
+ *  $Id: proto.h 7477 2023-12-22 01:31:36Z riz008 $
  *
  */
 
@@ -26,7 +26,7 @@
 /*------------------------------------------------------------------*/
 #define COMPAS_MAJOR_VERSION 1
 #define COMPAS_MINOR_VERSION 4
-#define COMPAS_PATCH_VERSION 0
+#define COMPAS_PATCH_VERSION 1
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -1180,6 +1180,8 @@ void calc_flux(geometry_t *window, window_t *windat, win_priv_t *wincon,
 void calc_flux_old(geometry_t *window, window_t *windat, win_priv_t *wincon, double dt);
 void check_bounds(char *text, geometry_t *window, window_t *windat, 
 		  win_priv_t *wincon);
+int find_tracer(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		double *tr, char *buf);
 
 /*------------------------------------------------------------------*/
 /* 2D velocity subroutines                                          */
@@ -1671,6 +1673,7 @@ void pt_params_init(master_t *master, FILE * fp);
 void pt_update(master_t *master, geometry_t **window, window_t **windat, win_priv_t **wincon);
 void pt_setup(master_t *master, geometry_t **window, window_t **windat, win_priv_t **wincon);
 void ptrack_end(void);
+void set_macrop_class(master_t *master);
 
 /*------------------------------------------------------------------*/
 /* Source / sink routines                                           */
@@ -1841,6 +1844,30 @@ double bf_gauss_w(geometry_t *window, window_t *windat,
 void bf_gauss_t(master_t *master, open_bdrys_t *open_w,
                bdry_details_t *data, geometry_t *window, window_t *windat);
 void bf_gauss_free(master_t *master, bdry_details_t *data);
+void bf_stk_to_u1_init_m(master_t *master, open_bdrys_t *open,
+                        bdry_details_t *d);
+void bf_stk_to_u1_init_w(geometry_t *window, open_bdrys_t *open,
+                        bdry_details_t *d, bdry_details_t *din);
+void bf_stk_to_u1_m(geometry_t *geom, master_t *master, open_bdrys_t *open,
+                   bdry_details_t *data);
+double bf_stk_to_u1_w(geometry_t *window, window_t *windat,
+                     win_priv_t *wincon, open_bdrys_t *open, double t,
+                     int c, int cc, bdry_details_t *data);
+void bf_stk_to_u1_t(master_t *master, open_bdrys_t *open_w,
+                   bdry_details_t *data, geometry_t *window,
+                   window_t *windat);
+void bf_stk_to_u2_init_m(master_t *master, open_bdrys_t *open,
+                        bdry_details_t *d);
+void bf_stk_to_u2_init_w(geometry_t *window, open_bdrys_t *open,
+                        bdry_details_t *d, bdry_details_t *din);
+void bf_stk_to_u2_m(geometry_t *geom, master_t *master, open_bdrys_t *open,
+                   bdry_details_t *data);
+double bf_stk_to_u2_w(geometry_t *window, window_t *windat,
+                     win_priv_t *wincon, open_bdrys_t *open, double t,
+                     int c, int cc, bdry_details_t *data);
+void bf_stk_to_u2_t(master_t *master, open_bdrys_t *open_w,
+                   bdry_details_t *data, geometry_t *window,
+                   window_t *windat);
 
 void bf_ts_free(master_t *master, bdry_details_t *data);
 void bf_c2cc_free(geometry_t *window, bdry_details_t *data);

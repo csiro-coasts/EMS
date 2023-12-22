@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vel3d.c 7335 2023-04-11 02:34:41Z her127 $
+ *  $Id: vel3d.c 7408 2023-10-05 02:08:06Z her127 $
  *
  */
 
@@ -4955,12 +4955,16 @@ void wave_av_sbc(geometry_t *window, window_t *windat, win_priv_t *wincon)
     /* Leibniz's rule creates the gradient of sea level, not in the  */
     /* surface B.C. explicitly. If this were used without wave terms */
     /* then sea level gradient appears twice. Here we remove this    */
-    /* term.                                                         
+    /* term.                                                         */  
+    /* Note that d1 is negative in Eq. 7 and subtracted in Eq. 33,   */
+    /* hence we add d1 here.                                         */ 
+    /*
     P[c] = windat->eta[c] + d1 - (P[c] - windat->wave_Kb[c]) / wincon->g;
     windat->wave_Kb[c] = 0.0;
     */
+
     P[c] = d1 - (P[c] - windat->wave_Kb[c]) / wincon->g;
-    /*if (isnan(P[c])) hd_quit("P=NaN @ wn%d c=%d KB=%f d1=%f k=%f\n",window->wn, c, windat->wave_Kb[c], d1, k[c]);*/
+    if (isnan(P[c])) hd_quit("P=NaN @ wn%d c=%d cg=%d KB=%f d1=%f k=%f\n",window->wn, c, window->wsa[c],windat->wave_Kb[c], d1, k[c]);
   }
 }
 
@@ -5067,6 +5071,7 @@ void bernoulli_head(geometry_t *window, window_t *windat, win_priv_t *wincon)
     c1 = window->e2c[e][0];
     c2 = window->e2c[e][1];
     d1 = (Kz[c1] - Kz[c2]) * windat->dzu1[e];
+    /* MH 7/03 Should subtract? */
     wincon->tend3d[T_STK][e] += windat->dt * wincon->u1c6[es] * d1;
     /* Integrate surface and average density for 2D mode             */
     wincon->u1inter[es] += wincon->u1c6[es] * d1 * windat->dzu1[e];

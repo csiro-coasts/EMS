@@ -686,23 +686,50 @@ void write_rendered_globals(master_t *master,
 /*------------------------------------------------------------------*/
 int get_rendered_hydroparams(char *name, parameters_t *params)
 {
-  int n, m;
+  int n, m, i;
   parameters_t *in;
-  open_bdrys_t **open;
-
+  int dof = 1;
+  
   for (n = 0; strcmp(hydro_param[n].name, "NULL") != 0; ++n) {
     if (strcmp(hydro_param[n].name, name) == 0) {
       hd_warn("get_rendered_hydroparams: Using parameter set PARAMETERS_%s\n", name);
       in = hydro_param[n].param;
-      open = &hydro_param[n].obc;
+
       copy_hydroparameter_info(params, in);
-      /*
-      for (m = 0; m < in->nobc; m++) {
-	if (params->open == NULL) params->open[m] = OBC_alloc();
-	params->open[m]->ntr = in->ntr;
-	copy_OBC_conds(params->open[n], in->open[m], m, NULL);
+
+      /* Open boundaries                                            */
+      if (in->nobc && dof) {
+	params->open =
+	  (open_bdrys_t **)malloc(sizeof(open_bdrys_t *) * in->nobc);
+	for (m = 0; m < in->nobc; m++) {
+	  open_bdrys_t *open = &hydro_param[n].obc[m];
+	  params->open[m] = OBC_alloc();
+
+	  params->open[m]->ntr = open->ntr;
+	  params->open[m]->atr = open->atr;
+
+	  open->bcond_tra = i_alloc_1d(open->ntr+1);
+	  open->clampv = d_alloc_1d(open->ntr);
+	  open->relax_zone_tra = i_alloc_1d(open->ntr);
+	  open->rtra_b = d_alloc_1d(open->ntr);
+	  open->rtra_i = d_alloc_1d(open->ntr);
+	  open->trpc = d_alloc_1d(open->ntr);
+
+	  init_OBC_conds(params, params->open[m]);
+	  copy_OBC_conds(open, params->open[m], m, NULL);
+	  params->open[m]->type |= REN_OBC;
+	  /* Custom boundary info */
+	  strcpy(params->open[m]->tsfn, open->tsfn);
+	  strcpy(params->open[m]->cusname_eta, open->cusname_eta);
+	  strcpy(params->open[m]->cusname_u1, open->cusname_u1);
+	  strcpy(params->open[m]->cusname_u2, open->cusname_u2);
+	  strcpy(params->open[m]->cusname_u1av, open->cusname_u1av);
+	  strcpy(params->open[m]->cusname_u2av, open->cusname_u2av);
+	  if (strlen(open->bflow))
+	    strcpy(params->open[m]->bflow, open->bflow);
+	}
       }
-      */
+
       return(0);
     }
   }
@@ -1349,6 +1376,8 @@ void render_hydro_parameters(master_t *master, FILE *fp, char *name)
   fprintf(fp, "\nparameters_t HYDRO_%s = {\n", name);
   fprintf(fp, "  .codeheader = \"%s\",\n", params->codeheader);
   fprintf(fp, "  .parameterheader = \"%s\",\n", params->parameterheader);
+  fprintf(fp, "  .grid_name = \"%s\",\n", params->grid_name);
+  fprintf(fp, "  .grid_desc = \"%s\",\n", params->grid_desc);
   fprintf(fp, "  .reference = \"%s\",\n", params->reference);
   fprintf(fp, "  .notes = \"%s\",\n", params->notes);
   fprintf(fp, "  .trl = \"%s\",\n", params->trl);
@@ -1356,6 +1385,7 @@ void render_hydro_parameters(master_t *master, FILE *fp, char *name)
   fprintf(fp, "  .gridcode = 0x%x,\n", params->gridcode);
   fprintf(fp, "  .projection = \"%s\",\n", params->projection);
   fprintf(fp, "  .us_type = 0x%x,\n", params->us_type);
+  fprintf(fp, "  .oname = \"%s\",\n", params->oname);
   fprintf(fp, "  .opath = \"%s\",\n", params->opath);
   fprintf(fp, "  .trkey = \"%s\",\n", params->trkey);
   fprintf(fp, "  .sequence = \"%s\",\n", params->sequence);
@@ -1460,6 +1490,8 @@ void render_hydro_parameters(master_t *master, FILE *fp, char *name)
   fprintf(fp, "  .win_type = 0x%x,\n", params->win_type);
   fprintf(fp, "  .win_block = 0x%x,\n", params->win_block);
   fprintf(fp, "  .win_file = \"%s\",\n", params->win_file);
+  fprintf(fp, "  .geom_file = \"%s\",\n", params->geom_file);
+  fprintf(fp, "  .map_type = %d,\n", params->map_type);
   for (n = 0; n < params->nwindows; n++) {
     if (params->win_size != NULL) {
       fprintf(fp, "  .win_size[%d] = %f,\n", n, params->win_size[n]);
@@ -1699,6 +1731,12 @@ void render_OBC_parameters(master_t *master, FILE *fp, char *name)
     fprintf(fp, "    .bcond_Vz = 0x%x,\n", open->bcond_Vz);
     fprintf(fp, "    .bcond_Kz = 0x%x,\n", open->bcond_Kz);
     fprintf(fp, "    .sbcond = %d,\n", open->sbcond);
+    fprintf(fp, "    .tsfn = \"%s\",\n", open->tsfn);
+    fprintf(fp, "    .cusname_u1 = \"%s\",\n", open->cusname_u1);
+    fprintf(fp, "    .cusname_u2 = \"%s\",\n", open->cusname_u2);
+    fprintf(fp, "    .cusname_u1av = \"%s\",\n", open->cusname_u1av);
+    fprintf(fp, "    .cusname_u2av = \"%s\",\n", open->cusname_u2av);
+    fprintf(fp, "    .cusname_eta = \"%s\",\n", open->cusname_eta);
     fprintf(fp, "    .stagger = 0x%x,\n", open->stagger);
     fprintf(fp, "    .options = 0x%x,\n", open->options);
     fprintf(fp, "    .adjust_flux = %e,\n", open->adjust_flux);
@@ -1747,6 +1785,7 @@ void render_OBC_parameters(master_t *master, FILE *fp, char *name)
     fprintf(fp, "    .v3 = %e,\n", open->v3);
     fprintf(fp, "    .bflow = \"%s\",\n", open->bflow);
     fprintf(fp, "    .nzone = \"%s\",\n", open->nzone);
+    fprintf(fp, "    .scale_e = \"%s\",\n", open->scale_e);
     fprintf(fp, "    .intype = %d,\n", open->intype);
     fprintf(fp, "    .nedges = %d,\n", open->nedges);
     fprintf(fp, "    .minlat = %e,\n", open->minlat);
@@ -1760,12 +1799,14 @@ void render_OBC_parameters(master_t *master, FILE *fp, char *name)
     fprintf(fp, "    .mlon = %e,\n", open->mlon);
     fprintf(fp, "    .mlat = %e,\n", open->mlat);
     fprintf(fp, "    .tide_con = \"%s\",\n", open->tide_con);
-    fprintf(fp, "    .bstdf = %d,\n", open->bstdf);
-    fprintf(fp, "    .nbstd = %d,\n", open->nbstd);
-    /*
+    /* Boundaries always written in full form */
+    /*fprintf(fp, "    .bstdf = %d,\n", open->bstdf);*/
+    /*fprintf(fp, "    .nbstd = %d,\n", open->nbstd);*/
+    fprintf(fp, "    .bstdf = -1,\n");
+    fprintf(fp, "    .nbstd = 0,\n");
+
     fprintf(fp, "    .ntr = %d,\n", open->ntr);
     fprintf(fp, "    .atr = %d,\n", open->atr);
-    */
     /*
     for (i = 0; i < open->ntr; i++) {
       fprintf(fp, "    .bcond_tra[%d] = 0x%x,\n", i, open->bcond_tra[i]);
@@ -1775,12 +1816,13 @@ void render_OBC_parameters(master_t *master, FILE *fp, char *name)
       fprintf(fp, "    .trpc[%d] = %e,\n", i, open->trpc[i]);
       fprintf(fp, "    .clampv[%d] = %e,\n", i, open->clampv[i]);
     }
-    */
+
     if (open->bstd != NULL) {
       for (i = 0; i < NBSTD; i++) {
 	fprintf(fp, "    .open->bstd[%d] = \"%s\",\n", i, open->bstd[i]);
       }
     }
+    */
     if (n == nobc - 1)
       fprintf(fp, "  }\n");
     else
@@ -1802,9 +1844,11 @@ void copy_hydroparameter_info(parameters_t *params, parameters_t *in) {
   strcpy(params->codeheader, in->codeheader);
   strcpy(params->parameterheader, in->parameterheader);
   strcpy(params->reference, in->reference);
-  strcpy(params->reference, in->reference);
+  strcpy(params->grid_name, in->grid_name);
+  strcpy(params->grid_desc, in->grid_desc);
   strcpy(params->notes, in->notes);
   strcpy(params->trl, in->trl);
+  strcpy(params->oname, in->oname);
   strcpy(params->opath, in->opath);
   strcpy(params->gridtype, in->gridtype);
   params->gridcode, in->gridcode;
@@ -1916,6 +1960,8 @@ void copy_hydroparameter_info(parameters_t *params, parameters_t *in) {
   params->win_type = in->win_type;
   params->win_block = in->win_block;
   strcpy(params->win_file, in->win_file);
+  strcpy(params->geom_file, in->geom_file);
+  params->map_type = in->map_type;
   for (n = 0; n < in->nwindows; n++) {
     if (in->win_size) params->win_size[n] = in->win_size[n];
     if (in->nwn) {

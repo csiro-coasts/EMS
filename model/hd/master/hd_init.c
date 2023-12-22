@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 7060 2022-03-16 01:57:13Z her127 $
+ *  $Id: hd_init.c 7450 2023-12-13 03:44:41Z her127 $
  *
  */
 
@@ -218,6 +218,7 @@ hd_data_t *hd_init(FILE * prmfd)
   /* Initialise the tracer resetting.  */
   tracer_reset_init(master);
   tracer_reset2d_init(master);
+
   /* Initialise the DHW diagnostic.  */
   /*tracer_dhw_init(master);*/
 
@@ -327,6 +328,9 @@ hd_data_t *hd_init(FILE * prmfd)
 
   custom_init(hd_data);
 
+  if (!(params->compatible & V7367) && params->runmode & TRANS)
+    trans_reset_init(params, master);     
+
   /* Register an interest with the scheduler for dumping the */
   /* output to file.  */
   if (!(params->runmode & DUMP)) {
@@ -368,7 +372,9 @@ hd_data_t *hd_init(FILE * prmfd)
   /* Register an interest with the scheduler for resetting   */
   /* the transport variables. This should always occur before */
   /* output dumps occur (hence register an interest after dumps). */
-  if (params->runmode & TRANS) trans_reset_init(params, master);     
+  if (params->compatible & V7367 && params->runmode & TRANS)
+    trans_reset_init(params, master);
+  /*if (params->runmode & TRANS) trans_reset_init(params, master);     */
 
   geom_free(master, UNUSED);
   if (DEBUG("init_m"))

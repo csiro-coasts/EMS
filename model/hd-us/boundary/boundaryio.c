@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 7152 2022-07-07 02:30:28Z her127 $
+ *  $Id: boundaryio.c 7456 2023-12-13 03:49:13Z her127 $
  *
  */
 
@@ -69,6 +69,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   char key2[MAXSTRLEN];         /* Buffer for I/O */
   char bname[MAXSTRLEN];        /* Boundary condation name */
   int bdf = 0;                  /* Check for custom routine success */
+  int initf = 1;                /* Initialise OBC conditions */
   double d1, d2, d3, d4;        /* Dummies */
 
   prm_set_errfn(hd_quit);
@@ -76,16 +77,18 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   /* Get the open boundary condition type */
   open->id = n;
   sprintf(keyword, "BOUNDARY%1d.TYPE", n);
-  prm_read_char(fp, keyword, buf);
-  if (strcasecmp(buf, "u1") == 0) {
-    open->type |= U1BDRY;
-  } else if (strcasecmp(buf, "u2") == 0) {
-    open->type |= U2BDRY;
-  } else
-    hd_quit
-      ("Unsupported boundary type '%s'.\nMust be 'u1', 'u2' or 'velocity'.\n",
-       buf);
-
+  if (prm_read_char(fp, keyword, buf)) {
+    if (strcasecmp(buf, "u1") == 0) {
+      open->type |= U1BDRY;
+    } else if (strcasecmp(buf, "u2") == 0) {
+      open->type |= U2BDRY;
+    } else
+      hd_quit
+	("Unsupported boundary type '%s'.\nMust be 'u1', 'u2' or 'velocity'.\n",
+	 buf);
+  }
+  if (open->type & REN_OBC) initf = 0;
+  
   /* Get the name of the open boundary */
   prm_set_errfn(hd_silent_warn);
   sprintf(keyword, "BOUNDARY%1d.NAME", n);
@@ -93,7 +96,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 
   /*-----------------------------------------------------------------*/
   /* Initialise and allocate memory */
-  init_OBC_conds(params, open);
+  if (initf) init_OBC_conds(params, open);
 
   /*-----------------------------------------------------------------*/
   /* Read general boundary information */
@@ -159,7 +162,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 
   /*-----------------------------------------------------------------*/
   /* Normal velocity components */
-  open->bcond_nor = NOTHIN;
   sprintf(keyword, "BOUNDARY%1d.BCOND_NOR", n);
   if (prm_read_char(fp, keyword, buf)) {
     open->bcond_nor = get_bcond_no(buf);
@@ -171,17 +173,18 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       hd_quit("Boundary %d: Unsupported normal boundary condition type %s.\n", n, bname);
     }
   }
-  open->bcond_nor2d = open->bcond_nor;
-  if (open->bcond_nor & (FILEIN | CUSTOM))
-    open->bcond_nor2d = VERTIN;
-  sprintf(buf, "NULL");
-  sprintf(keyword, "BOUNDARY%1d.BCOND_NOR2D", n);
-  prm_read_char(fp, keyword, buf);
-  if (strcmp(buf, "NULL") != 0)
-    open->bcond_nor2d = get_bcond_no(buf);
-  get_relax_time(open, fp, bname, n, open->bcond_nor, open->bcond_nor2d);
-  open->relax_zone_nor = 0;
-  open->rnor_b = open->rnor_i = 0.0;
+  if (initf) {
+    open->bcond_nor2d = open->bcond_nor;
+    if (open->bcond_nor & (FILEIN | CUSTOM))
+      open->bcond_nor2d = VERTIN;
+    sprintf(buf, "NULL");
+    sprintf(keyword, "BOUNDARY%1d.BCOND_NOR2D", n);
+    prm_read_char(fp, keyword, buf);
+    if (strcmp(buf, "NULL") != 0)
+      open->bcond_nor2d = get_bcond_no(buf);
+    get_relax_time(open, fp, bname, n, open->bcond_nor, open->bcond_nor2d);
+  }
+
   sprintf(keyword, "BOUNDARY%1d.RELAX_ZONE_NOR", n);
   if (prm_read_char(fp, keyword, buf)) {
     char *fields[MAXSTRLEN * MAXNUMARGS];
@@ -192,13 +195,11 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       open->rnor_i = atof(fields[2]);
     }
   }
-  open->linear_zone_nor = 0;
   sprintf(keyword, "BOUNDARY%1d.LINEAR_ZONE_NOR", n);
   prm_read_int(fp, keyword, &open->linear_zone_nor);
 
   /*-----------------------------------------------------------------*/
   /* Tracer components */
-  open->tidemem_depth = 0.0;
   sprintf(buf, "NULL");
   /* Set all the automatically generated tracers */
   for (i = 0; i < open->atr; i++) {
@@ -373,7 +374,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 
   /*-----------------------------------------------------------------*/
   /* Elevation */
-  open->bcond_ele = NOTHIN;
   sprintf(keyword, "BOUNDARY%1d.BCOND_ELE", n);
   if (prm_read_char(fp, keyword, buf)) {
     open->bcond_ele = get_bcond_no(buf);
@@ -385,6 +385,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       hd_quit("Boundary %d: Unsupported elevation boundary condition type %s.\n", n, bname);
     }
   }
+
   if (open->adjust_flux == 0.0 && open->afr == 0.0 && open->nbstd == 0)
     get_relax_time(open, fp, bname, n, open->bcond_ele, NOTHIN);
   if (open->bcond_ele & TIDEBC) {
@@ -423,7 +424,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       !(open->bcond_ele & (FILEIN|TIDALC|TIDALH)) && !strlen(open->bstd[0]))
 	hd_quit("Boundary%d elevation DATA must be supplied using ADJUST_RATIO.\n", open->id);
 
-  open->relax_zone_ele = 0;
   sprintf(keyword, "BOUNDARY%1d.RELAX_ZONE_ELE", n);
   prm_read_int(fp, keyword, &open->relax_zone_ele);
   if (open->bcond_ele & FILEIN || strlen(open->bstd[0])) {
@@ -434,7 +434,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 
   /*-----------------------------------------------------------------*/
   /* Tangential velocity components */
-  open->bcond_tan = NOTHIN;
   sprintf(keyword, "BOUNDARY%1d.BCOND_TAN", n);
   if (prm_read_char(fp, keyword, buf)) {
     open->bcond_tan = get_bcond_no(buf);
@@ -445,17 +444,17 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     } else if (open->bcond_tan & (UPSTRM | TIDALM | TIDEBC | TRFLUX | TRCONC | TRCONF))
       hd_quit("Boundary %d: Unsupported tangential boundary condition type %s.\n", n, bname);
   }
-  open->bcond_tan2d = open->bcond_tan;
-  if (open->bcond_tan & (FILEIN | CUSTOM))
-    open->bcond_tan2d = VERTIN;
-  sprintf(buf, "NULL");
-  sprintf(keyword, "BOUNDARY%1d.BCOND_TAN2D", n);
-  prm_read_char(fp, keyword, buf);
-  if (strcmp(buf, "NULL") != 0)
-    open->bcond_tan2d = get_bcond_no(buf);
-  get_relax_time(open, fp, bname, n, open->bcond_tan, open->bcond_tan2d);
-  open->relax_zone_tan = 0;
-  open->rnor_b = open->rnor_i = 0.0;
+  if (initf) {
+    open->bcond_tan2d = open->bcond_tan;
+    if (open->bcond_tan & (FILEIN | CUSTOM))
+      open->bcond_tan2d = VERTIN;
+    sprintf(buf, "NULL");
+    sprintf(keyword, "BOUNDARY%1d.BCOND_TAN2D", n);
+    prm_read_char(fp, keyword, buf);
+    if (strcmp(buf, "NULL") != 0)
+      open->bcond_tan2d = get_bcond_no(buf);
+    get_relax_time(open, fp, bname, n, open->bcond_tan, open->bcond_tan2d);
+  }
   sprintf(keyword, "BOUNDARY%1d.RELAX_ZONE_TAN", n);
   if (prm_read_char(fp, keyword, buf)) {
     char *fields[MAXSTRLEN * MAXNUMARGS];
@@ -466,7 +465,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
       open->rtan_i = atof(fields[2]);
     }
   }
-  open->linear_zone_tan = 0;
   sprintf(keyword, "BOUNDARY%1d.LINEAR_ZONE_TAN", n);
   prm_read_int(fp, keyword, &open->linear_zone_tan);
 
@@ -483,7 +481,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 
   /*-----------------------------------------------------------------*/
   /* Vertical velocity coefficients */
-  open->bcond_w = NOTHIN;
   if (params->runmode & TRANS) open->bcond_w = NOGRAD;
   sprintf(keyword, "BOUNDARY%1d.BCOND_W", n);
   if (prm_read_char(fp, keyword, buf)) {
@@ -499,7 +496,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 
   /*-----------------------------------------------------------------*/
   /* Vertical mixing coefficients */
-  open->bcond_Vz = open->bcond_Kz = NOTHIN;
   sprintf(keyword, "BOUNDARY%1d.BCOND_VZ", n);
   if (prm_read_char(fp, keyword, buf)) {
     open->bcond_Vz = get_bcond_no(buf);
@@ -534,15 +530,30 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   prm_set_errfn(hd_silent_warn);
 
   /*-----------------------------------------------------------------*/
+  /* Wave variables (for SWAN coupling)                              */
+  sprintf(keyword, "BOUNDARY%1d.BCOND_WAVE", n);
+  if (prm_read_char(fp, keyword, buf)) {
+    open->bcond_wav = get_bcond_no(buf);
+    bcname(open->bcond_wav, bname);
+  }
+  if (open->bcond_wav <= 0 || open->bcond_wav > maxbc) {
+    hd_warn("Boundary %d: Wave variable boundary condition type unspecified.\n", n);
+    open->bcond_wav = NOTHIN;
+  } else
+    if (!
+        (open->
+         bcond_Vz & (CLAMPD | CYCLIC | CYCLED | FILEIN | LINEXT | POLEXT | NOGRAD | NOTHIN))) {
+      hd_quit("Boundary %d: Unsupported wave variable boundary condition type %s.\n", n, bname);
+  }
+
+  /*-----------------------------------------------------------------*/
   /* Read boundary forcing data if present */
-  sprintf(open->tsfn, "%c", '\0');
   sprintf(keyword, "BOUNDARY%1d.DATA", n);
   prm_read_char(fp, keyword, open->tsfn);
   if (strlen(params->bdrypath) && strlen(open->tsfn)) {
     sprintf(buf, "%s%s", params->bdrypath, open->tsfn);
     strcpy(open->tsfn, buf);
   }
-  sprintf(open->i_rule, "%c", '\0');
   sprintf(keyword, "BOUNDARY%1d.INTERP_RULE", n);
   prm_read_char(fp, keyword, open->i_rule);
 
@@ -550,13 +561,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   /* Check if a custom boundary condition has been specified.        */
   /* Normal velocity custom routines are associated with cusname_u1  */
   /* and tangential custom routines with cusname_u2.                 */
-  sprintf(open->cusname_u1, "%c", '\0');
-  sprintf(open->cusname_u2, "%c", '\0');
-  sprintf(open->cusname_u1av, "%c", '\0');
-  sprintf(open->cusname_u2av, "%c", '\0');
-  sprintf(open->cusname_eta, "%c", '\0');
-  open->custype = U1BDRY;
-  sprintf(keyword, "BOUNDARY%1d.CUSTOM.%s", n, "eta");
   sprintf(keyword, "BOUNDARY%1d.CUSTOM.%s", n, "eta");
   if (prm_read_char(fp, keyword, open->cusname_eta))
     bdf = 1;
@@ -567,6 +571,7 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
     hd_warn
       ("Multiple custom routines (eta and nor) specified for BOUNDARY%1d.\n",
        n);
+
   sprintf(keyword, "BOUNDARY%1d.CUSTOM.%s", n, "u2");
   sprintf(key2, "BOUNDARY%1d.CUSTOM.%s", n, "tan");
   if ((prm_read_char(fp, keyword, open->cusname_u2) ||
@@ -593,7 +598,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   }
 
   /* eta scaling */
-  sprintf(open->scale_e, "%c", '\0');
   sprintf(keyword, "BOUNDARY%1d.SCALE_ETA", n);
   prm_read_char(fp, keyword, open->scale_e);
 
@@ -621,7 +625,6 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
   }
 
   /* Nudging zone for T and S                                        */
-  sprintf(open->nzone, "%c", '\0');
   sprintf(keyword, "BOUNDARY%1d.NUDGE_ZONE", n);
   prm_read_char(fp, keyword, open->nzone);
 
@@ -683,6 +686,13 @@ void get_OBC_conds(parameters_t *params,   /*      Input parameters        */
 	open->options |= OP_WAVES;
     }
   }
+  /* Set the waves option if coupled to SWAN                         */
+  if (!(open->bcond_wav & NOTHIN)) {
+    if (open->options == NONE)
+      open->options = OP_WAVES;
+    else
+      open->options |= OP_WAVES;
+  }
 
   /*-----------------------------------------------------------------*/
   /* Standard conditions */
@@ -718,6 +728,19 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
 {
   int i;
 
+  open->bcond_nor = NOTHIN;
+  open->bcond_tan = NOTHIN;
+  open->bcond_ele = NOTHIN;
+  open->bcond_w = NOTHIN;
+  open->bcond_Vz = open->bcond_Kz = NOTHIN;
+  open->bcond_wav = NOTHIN;
+  sprintf(open->tsfn, "%c", '\0');
+  sprintf(open->cusname_u1, "%c", '\0');
+  sprintf(open->cusname_u2, "%c", '\0');
+  sprintf(open->cusname_u1av, "%c", '\0');
+  sprintf(open->cusname_u2av, "%c", '\0');
+  sprintf(open->cusname_eta, "%c", '\0');
+  open->custype = U1BDRY;
   open->bathycon = 0;
   open->smooth_z = 0;
   open->smooth_n = 0;
@@ -733,6 +756,9 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->relax_zone_tan = 0;
   open->rtan_b = 0.0;
   open->rtan_i = 0.0;
+  open->relax_zone_ele = 0;
+  open->linear_zone_nor = 0;
+  open->linear_zone_tan = 0;
   open->inverse_barometer = 1;
   open->meanc = 0.0;
   open->bflux_2d = 0.0;
@@ -749,6 +775,7 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   sprintf(open->bflow, "%c", '\0');
   sprintf(open->nzone, "%c", '\0');
   sprintf(open->i_rule, "%c", '\0');
+  sprintf(open->scale_e, "%c", '\0');
   open->rlen = 0.0;
   open->bhc = NOTVALID;
   open->bgz = 0;
@@ -765,6 +792,8 @@ void init_OBC_conds(parameters_t *params, open_bdrys_t *open)
   open->intype = 0;
   open->nedges = 0;
   open->flag = FI_ETA;
+  open->ncyc = 0;
+  open->tidemem_depth = 0.0;
   if (open->ntr > 0) {
     /*UR-FIX assign extra element  bcond_tra - otherwise read 
      * from uninitialised value 
@@ -850,6 +879,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->bcond_w = io->bcond_w;
   open->bcond_Vz = io->bcond_Vz;
   open->bcond_Kz = io->bcond_Kz;
+  open->bcond_wav = io->bcond_wav;
   open->relax_zone_ele = io->relax_zone_ele;
   open->relax_ele = io->relax_ele;
   open->rele_b = io->rele_b;
@@ -876,10 +906,14 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->tidemem_depth = io->tidemem_depth;
   open->ncyc = io->ncyc;
   if (open->ncyc > 0) {
-    open->ilocc = i_alloc_1d(open->ncyc);
-    memcpy(open->ilocc, io->ilocc, open->ncyc * sizeof(int));
-    open->jlocc = i_alloc_1d(open->ncyc);
-    memcpy(open->jlocc, io->jlocc, open->ncyc * sizeof(int));
+    if (io->ilocc != NULL) {
+      open->ilocc = i_alloc_1d(open->ncyc);
+      memcpy(open->ilocc, io->ilocc, open->ncyc * sizeof(int));
+    }
+    if (io->jlocc != NULL) {
+      open->jlocc = i_alloc_1d(open->ncyc);
+      memcpy(open->jlocc, io->jlocc, open->ncyc * sizeof(int));
+    }
   }
 
   /*-----------------------------------------------------------------*/
@@ -896,6 +930,7 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
   open->file_next = io->file_next;
   strcpy(open->tsfn, io->tsfn);
   strcpy(open->nzone, io->nzone);
+  strcpy(open->scale_e, io->scale_e);
   strcpy(open->i_rule, io->i_rule);
   open->sbcond = io->sbcond;
   open->bstdf = io->bstdf;
@@ -940,6 +975,9 @@ void copy_OBC_conds(open_bdrys_t *io, /* ParamStruct open boundary data
     open->tideforce[i].mtp = io->tideforce[i].mtp;
     open->tideforce[i].dtp = io->tideforce[i].dtp;
   }
+
+  /* Forcing */
+  
 }
 
 /* END copy_OBC_conds()                                              */
@@ -1572,13 +1610,13 @@ void bdry_custom_init(master_t *master, open_bdrys_t *open,
 {
   int t;
   char files[MAXNUMTSFILES][MAXSTRLEN];
-
+  char buf[MAXSTRLEN];
+  
   /*-----------------------------------------------------------------*/
   /* Copy boundary forcing data if present                           */
-  if (strlen(open->tsfn)) {
-    open->ntsfiles =
-      parseline(open->tsfn, (char **)files, MAXNUMTSFILES);
-    
+  strcpy(buf, open->tsfn);
+  if (strlen(buf)) {
+    open->ntsfiles = parseline(buf, (char **)files, MAXNUMTSFILES);
     open->filenames =
       (cstring *) malloc(sizeof(cstring) * open->ntsfiles);
 
@@ -1649,6 +1687,7 @@ int read_bdry_custom(open_bdrys_t *open,  /* Open boundary structure */
 {
   int i;
   int ret = 0;
+  char buf[MAXSTRLEN];
   prm_set_errfn(hd_silent_warn);
   data->explct = 0;
   data->nargs = 0;
@@ -1682,9 +1721,10 @@ int read_bdry_custom(open_bdrys_t *open,  /* Open boundary structure */
            strcmp(name, "u2") != 0)
     strcpy(data->name, name);
 
-  if (strlen(cusname)) {
+  strcpy(buf, cusname);
+  if (strlen(buf)) {
     char *fields[MAXSTRLEN * MAXNUMARGS];
-    int nf = parseline(cusname, fields, MAXNUMARGS);
+    int nf = parseline(buf, fields, MAXNUMARGS);
     data->explct = 1;
     strcpy(data->i_rule, open->i_rule);
 
@@ -1924,6 +1964,10 @@ void locate_boundary_function(open_bdrys_t *open, const char *tag,
      bf_use_eqn_trans, bf_eqn_free, bf_void_free},
     {"tra_gauss", bf_gauss_init_m, bf_gauss_init_w, bf_gauss_m, bf_gauss_w, 
      bf_gauss_t, bf_gauss_free, bf_void_free},
+    {"stk_to_u1", bf_stk_to_u1_init_m, bf_stk_to_u1_init_w,
+     bf_stk_to_u1_m, bf_stk_to_u1_w, bf_stk_to_u1_t, bf_ts_free, bf_void_free},     
+    {"stk_to_u2", bf_stk_to_u2_init_m, bf_stk_to_u2_init_w,
+     bf_stk_to_u2_m, bf_stk_to_u2_w, bf_stk_to_u2_t, bf_ts_free, bf_void_free},     
     {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
   };
 
@@ -2185,6 +2229,7 @@ int bdry_reinit(geometry_t *geom,        /* Global geometry          */
 	  open_w->bcond_tan2d = open->bcond_tan2d;
 	  open_w->bcond_Vz = open->bcond_Vz;
 	  open_w->bcond_Kz = open->bcond_Kz;
+	  open_w->bcond_wav = open->bcond_wav;
 	  open_w->adjust_flux = open->adjust_flux;
 	  open_w->adjust_flux_s = open->adjust_flux_s;
 	  open_w->afr = open->afr;
@@ -2558,18 +2603,19 @@ void get_obc_list(open_bdrys_t *open, FILE *fp, int n, char *key) {
   prm_set_errfn(hd_silent_warn);
   sprintf(key1, "%s%1d.CYCLED_POINTS", key, n);
   if (prm_read_int(fp, key1, &open->ncyc)) {
-    if (open->ncyc != open->npts) {
-      hd_quit("params_read: CYCLED boundary  points must = %d for boundary %d list.\n", open->npts, n);
-    }
-    open->ilocc = i_alloc_1d(open->ncyc);
-    open->jlocc = i_alloc_1d(open->ncyc);
-    for (nn = 0; nn < open->ncyc; nn++) {
-      if (fscanf(fp, "%d %d", &open->ilocc[nn],
-		 &open->jlocc[nn]) != 2)
-	hd_quit("params_read: Can't read i j in CYCLED boundary  points list.\n");
-      /* Flush the remainder of the line */
-      prm_flush_line(fp);
-    }
+    /*
+      if (open->ncyc != open->npts) {
+	hd_quit("params_read: CYCLED boundary  points must = %d for boundary %d list.\n", open->npts, n);
+      }
+      open->ilocc = i_alloc_1d(open->ncyc);
+      open->jlocc = i_alloc_1d(open->ncyc);
+      for (nn = 0; nn < open->ncyc; nn++) {
+	if (fscanf(fp, "%d %d", &open->ilocc[nn],
+		   &open->jlocc[nn]) != 2)
+	  hd_quit("params_read: Can't read i j in CYCLED boundary  points list.\n");
+	prm_flush_line(fp);
+      }
+    */
   }
 
   sprintf(key1, "%s%1d.CYCLED_RANGE", key, n);

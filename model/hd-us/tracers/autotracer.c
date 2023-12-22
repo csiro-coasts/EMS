@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 7280 2022-12-14 05:41:05Z her127 $
+ *  $Id: load_tracer.c 7413 2023-10-05 02:10:10Z her127 $
  *
  */
 
@@ -22,7 +22,7 @@
 #include "hd.h"
 #include "tracer.h"
 
-int NAUTOTR = 217;
+int NAUTOTR = 221;
 tracer_info_t autotracerlist[] = {
   {
     .name = "salt",
@@ -2358,7 +2358,7 @@ tracer_info_t autotracerlist[] = {
     .units = "m2s-2",
     .valid_range_wc[0] = -1.00e+10,
     .valid_range_wc[1] = 1.00e+10,
-    .fill_value_wc = 0.0,
+    .fill_value_wc = 0.00,
     .type = INTER|WAVE|FORCING,
     .inwc = 1,
     .dissol = 1,
@@ -2374,7 +2374,7 @@ tracer_info_t autotracerlist[] = {
     .units = "m-1",
     .valid_range_wc[0] = -1.00e+10,
     .valid_range_wc[1] = 1.00e+10,
-    .fill_value_wc = 1e-4,
+    .fill_value_wc = 0.01,
     .type = INTER|WAVE|FORCING,
     .inwc = 1,
     .dissol = 1,
@@ -2382,7 +2382,7 @@ tracer_info_t autotracerlist[] = {
     .diffuse = 0,
     .diagn = 0,
     .m = -1,
-    .groupkey = "wave_nearshore"
+    .groupkey = "NONE"
   },
   {
     .name = "wave_P",
@@ -2438,7 +2438,7 @@ tracer_info_t autotracerlist[] = {
     .units = "s",
     .valid_range_wc[0] = 0.00e+00,
     .valid_range_wc[1] = 1.00e+04,
-    .fill_value_wc = 0.00,
+    .fill_value_wc = 10.00,
     .type = INTER|WAVE|PROGNOSTIC,
     .inwc = 1,
     .dissol = 1,
@@ -3027,6 +3027,38 @@ tracer_info_t autotracerlist[] = {
     .groupkey = "NONE"
   },
   {
+    .name = "wind_speed",
+    .long_name = "Wind speed",
+    .units = "ms-1",
+    .valid_range_wc[0] = -1.00e+04,
+    .valid_range_wc[1] = 1.00e+04,
+    .fill_value_wc = 0.00,
+    .type = INTER|HYDRO|DIAGNOSTIC,
+    .inwc = 1,
+    .dissol = 1,
+    .advect = 0,
+    .diffuse = 0,
+    .diagn = 0,
+    .m = -1,
+    .groupkey = "wind"
+  },
+  {
+    .name = "wind_dir",
+    .long_name = "Wind direction",
+    .units = "degT",
+    .valid_range_wc[0] = -1.00e+04,
+    .valid_range_wc[1] = 1.00e+04,
+    .fill_value_wc = 0.00,
+    .type = INTER|HYDRO|DIAGNOSTIC,
+    .inwc = 1,
+    .dissol = 1,
+    .advect = 0,
+    .diffuse = 0,
+    .diagn = 0,
+    .m = -1,
+    .groupkey = "wind"
+  },
+  {
     .name = "wet_cells",
     .long_name = "Wet cell diagnostic",
     .units = "",
@@ -3545,5 +3577,37 @@ tracer_info_t autotracerlist[] = {
     .vector_name = "Forcing 3D current",
     .vector_components = "velu_force velv_force",
     .groupkey = "FORCE3D"
+  },
+  {
+    .name = "VZ0",
+    .long_name = "Background vertical viscosity",
+    .units = "m2s-1",
+    .valid_range_wc[0] = 1.00e+00,
+    .valid_range_wc[1] = 1.00e+01,
+    .fill_value_wc = 0.00,
+    .type = WATER|HYDRO|DIAGNOSTIC,
+    .inwc = 1,
+    .dissol = 1,
+    .advect = 0,
+    .diffuse = 0,
+    .diagn = 0,
+    .m = -1,
+    .groupkey = "NONE"
+  },
+  {
+    .name = "KZ0",
+    .long_name = "Background vertical diffusivity",
+    .units = "m2s-1",
+    .valid_range_wc[0] = 0.00e+00,
+    .valid_range_wc[1] = 1.00e+01,
+    .fill_value_wc = 0.00,
+    .type = WATER|HYDRO|DIAGNOSTIC,
+    .inwc = 1,
+    .dissol = 1,
+    .advect = 0,
+    .diffuse = 0,
+    .diagn = 0,
+    .m = -1,
+    .groupkey = "NONE"
   }
 };
