@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: writeatts.c 7465 2023-12-13 03:52:41Z her127 $
+ *  $Id: writeatts.c 7480 2024-02-01 03:49:57Z riz008 $
  *
  */
 
@@ -516,6 +516,7 @@ void write_dump_attributes(dump_data_t *dumpdata, int cdfid,
   sprintf(buf, "%s/%s", buf, dumpdata->prmname);
   write_text_att(cdfid, NC_GLOBAL, "paramfile", buf);
   write_text_att(cdfid, NC_GLOBAL, "ems_version", version);
+  write_date_created(cdfid);
   write_text_att(cdfid, NC_GLOBAL, "Conventions", "CMR/Timeseries/SHOC");
   if (dumpdata->runno >= 0)
     write_text_att(cdfid, NC_GLOBAL, "Run_ID", dumpdata->runnoc);
@@ -673,6 +674,16 @@ static void write_grid_atts(dump_data_t *dumpdata, int fid, int ilower,
     nc_put_att_double(fid, NC_GLOBAL, "rotation",
                       NC_DOUBLE, 1, &dumpdata->pg->rotation);
   }
+}
+
+void write_date_created(int cdfid)
+{
+  time_t now = time(NULL);
+  char buf[32];
+  sprintf(buf, "%s", ctime(&now));
+  /* Remove trailing newline */
+  buf[strlen(buf)-1] = '\0';
+  write_text_att(cdfid, NC_GLOBAL, "date_created", buf);
 }
 
 void read_grid_atts(parameters_t *params, int fid)

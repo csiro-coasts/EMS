@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed_init.c 7186 2022-08-17 05:48:47Z mar644 $
+ *  $Id: sed_init.c 7481 2024-02-01 03:50:21Z riz008 $
  *
  */
 
@@ -572,7 +572,7 @@ static void sed_tracers_init(FILE * prmfd, sediment_t *sediment)
     np = param->ntr + 30;
     //allocate mem
     param->prmpointS = (double ***)p_alloc_2d(param->ncol,np);
-    fprintf(stderr, "sed_init.c: ncol = %d, np = %d \n", param->ncol, np);
+    // fprintf(stderr, "sed_init.c: ncol = %d, np = %d \n", param->ncol, np);
 
     param->prmnameS = (char **)p_alloc_1d(np);
     param->prmindexS = i_alloc_1d(np);

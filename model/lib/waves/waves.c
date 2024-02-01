@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: waves.c 7315 2023-04-11 02:03:36Z her127 $
+ *  $Id: waves.c 7482 2024-02-01 03:50:47Z riz008 $
  *
  */
 
@@ -612,20 +612,6 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
       emstag(LTRACE,"waves:init","Wave tracer %d = %s.\n", n, wave->trname_2d[n]);
   }
 
-  /* Get the grid angles                                            */
-  /* Not used
-  wave->thetau1 = d_alloc_1d(size);
-  wave->thetau2 = d_alloc_1d(size);
-  wave->sinthcell = d_alloc_1d(size);
-  wave->costhcell = d_alloc_1d(size);
-  for (i = 1; i <= wave->cols; i++) {
-    wave->thetau1[i] = i_get_thetau1(model, i);
-    wave->thetau2[i] = i_get_thetau2(model, i);
-    wave->sinthcell[i] = i_get_sinthcell(model, i);
-    wave->sinthcell[i] = i_get_costhcell(model, i);
-  }
-  */
-
   if (!(wave->do_waves & WSWAN)) {
     size = i_get_winsize(model);
     if (wave->Sxyid >= 0 && wave->Syxid >= 0) {
@@ -671,6 +657,21 @@ void wave_init(void* model, wave_t *wave, FILE *fp) {
     if (wave->do_dir & WFILE)
       emstag(LWARN,"waves:init","Overwriting wave direction file input with wind wave direction.\n");
     wave->do_dir = WWIND;
+  }
+
+  /* Get the grid angles                                            */
+  if (wave->do_rs) {
+    wave->thetau1 = d_alloc_1d(size);
+    wave->thetau2 = d_alloc_1d(size);
+    /* Not used */
+    // wave->sinthcell = d_alloc_1d(size);
+    // wave->costhcell = d_alloc_1d(size);
+    for (i = 1; i <= wave->cols; i++) {
+      wave->thetau1[i] = i_get_thetau1(model, i);
+      wave->thetau2[i] = i_get_thetau2(model, i);
+      //wave->sinthcell[i] = i_get_sinthcell(model, i);
+      //wave->sinthcell[i] = i_get_costhcell(model, i);
+    }
   }
 
   /* Free memory                                                    */
