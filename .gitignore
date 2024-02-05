@@ -35,3 +35,11 @@ model/tests/**/test*/runlog
 model/tests/**/test*/setup.txt
 model/tests/**/test*/totals*.ts
 model/tests/**/test*/zoom.points
+model/tests/**/inputs/in_test.nc
+model/tests/**/inputs/test_trans*.nc
+model/tests/**/inputs/test_*.tran
+model/tests/**/outputs
+model/tests/**/tran_outputs
+model/tests/**/sedlog.txt
+model/tests/**/sed_mass*.txt
+model/tests/**/trans.mnc

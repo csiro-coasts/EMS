@@ -25,19 +25,23 @@ echo
 EMS_TEST_INCLUDE="${EMS_TEST_INCLUDE:-${EMS_BASE}/model/tests}"
 echo "EMS_TEST_INCLUDE = '${EMS_TEST_INCLUDE}'"
 
-EMS_TEST_EXCLUDE="${EMS_TEST_EXCLUDE:-}"
+EMS_TEST_EXCLUDE="${EMS_TEST_EXCLUDE:-} ${EMS_BASE}/model/tests/run-tests.sh"
 if [ -z "${SHOC}" ]; then
     EMS_TEST_EXCLUDE="${EMS_TEST_EXCLUDE} '${EMS_BASE}/model/tests/hd/*'"
+else
+    EMS_TEST_EXCLUDE="${EMS_TEST_EXCLUDE} '${EMS_BASE}/model/tests/hd/run_tests'"    
 fi
 if [ -z "${COMPAS}" ]; then
     EMS_TEST_EXCLUDE="${EMS_TEST_EXCLUDE} '${EMS_BASE}/model/tests/hd-us/*'"
+else
+    EMS_TEST_EXCLUDE="${EMS_TEST_EXCLUDE} '${EMS_BASE}/model/tests/hd-us/run_tests'"
 fi
 echo "EMS_TEST_EXCLUDE = '${EMS_TEST_EXCLUDE}'"
 
 TEST_COUNT=0
 
 for ti in $EMS_TEST_INCLUDE; do
-    FIND_CMD="find ${ti} -type f \( -regex '^.*/run_test[0-9]*$' -o -name 'run*.sh' -o -regex '^.*/run_[^\.]*$' \) ! -iname '.*'"
+    FIND_CMD="find ${ti} -type f \( -regex '^.*/run_test[0-9]*$' -o -name 'run_all.sh' -o -regex '^.*/run_[^\.]*$' \) ! -iname '.*'"
     for te in $EMS_TEST_EXCLUDE; do
         FIND_CMD="${FIND_CMD} ! -path ${te}"
     done
