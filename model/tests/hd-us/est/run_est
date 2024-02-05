@@ -1,47 +1,54 @@
-#!/bin/csh -f
+#!/bin/csh -ef
+
+if (! $?SHOC || "$SHOC" == "") then
+    set SHOC='../shoc'
+endif
+
+if (! $?COMPAS || "$COMPAS" == "") then
+    set COMPAS='../compas'
+endif
+
 
 echo "Testing SHOC..."
-rm est.nc
-rm out1.nc
+rm -f est.nc
+rm -f out1.nc
 
-../shoc -g est.prm est.nc
+$SHOC -g est.prm est.nc
 
-../shoc -p est.prm
+$SHOC -p est.prm
 
 echo "DONE"
 
 echo "Testing COMPAS quad..."
-rm est_quad.nc
-rm out1_quad.nc
+rm -f est_quad.nc
+rm -f out1_quad.nc
 
-../compas -g est_quad.prm est_quad.nc
+$COMPAS -g est_quad.prm est_quad.nc
 
-../compas -p est_quad.prm
+$COMPAS -p est_quad.prm
 
 echo "DONE"
 
 echo "Testing COMPAS quad 5 window..."
-rm out1_quad5w.nc
+rm -f out1_quad5w.nc
 
-../compas -p est_quad5w.prm
+$COMPAS -p est_quad5w.prm
 
 echo "DONE"
 
 echo "Testing COMPAS hex..."
-rm est_hex.nc
-rm out1_hex.nc
+rm -f est_hex.nc
+rm -f out1_hex.nc
 
-../compas -g est_hex.prm est_hex.nc
+$COMPAS -g est_hex.prm est_hex.nc
 
-../compas -p est_hex.prm
+$COMPAS -p est_hex.prm
 
 echo "DONE"
 
 echo "Testing COMPAS hex 5 window..."
-rm out1_hex5w.nc
+rm -f out1_hex5w.nc
 
-../compas -p est_hex5w.prm
+$COMPAS -p est_hex5w.prm
 
 echo "DONE"
-
-

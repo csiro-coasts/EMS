@@ -1,41 +1,47 @@
-#!/bin/csh -f
+#!/bin/csh -ef
+
+if (! $?SHOC || "$SHOC" == "") then
+    set SHOC='../shoc'
+endif
+
+if (! $?COMPAS || "$COMPAS" == "") then
+    set COMPAS='../compas'
+endif
 
 echo "Testing SHOC..."
-rm in1.nc
-rm out1.nc
+rm -f in1.nc
+rm -f out1.nc
 
-../../shoc -g test2.prm in1.nc
+$SHOC -g test2.prm in1.nc
 
-../../shoc -p test2.prm
+$SHOC -p test2.prm
 
 echo "DONE"
 
 echo "Testing COMPAS quad..."
-rm in1_quad.nc
-rm s_in1_quad.nc
-rm out1_quad.nc
+rm -f in1_quad.nc
+rm -f s_in1_quad.nc
+rm -f out1_quad.nc
 
-../../compas -g test2_quad.prm in1_quad.nc
+$COMPAS -g test2_quad.prm in1_quad.nc
 
-../../compas -p test2_quad.prm
+$COMPAS -p test2_quad.prm
 
 echo "DONE"
 
 echo "Testing COMPAS quad 2 window..."
-rm out1_quad2w.nc
+rm -f out1_quad2w.nc
 
-../../compas -p test2_quad2w.prm
+$COMPAS -p test2_quad2w.prm
 
 echo "DONE"
 
 echo "Testing COMPAS hex..."
-rm in1_hex.nc
-rm out1_hex.nc
+rm -f in1_hex.nc
+rm -f out1_hex.nc
 
-../../compas -g test2_hex.prm in1_hex.nc
+$COMPAS -g test2_hex.prm in1_hex.nc
 
-../../compas -p test2_hex.prm
+$COMPAS -p test2_hex.prm
 
 echo "DONE"
-
-
