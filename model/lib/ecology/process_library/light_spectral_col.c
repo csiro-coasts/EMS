@@ -55,7 +55,8 @@
  *         13. Prevent products being calculated with zero Rrs.
  *         26. Give canopy order in the optical_setup.nc
  *         27. Check out-of-bounds reflectance from benthic substrates - some are zero.
- *         30. Coral skeleton reflectance is hardwired - would need another tracer attribute. 
+ *         30. Coral skeleton reflectance is hardwired - need another tracer attribute.
+ *         31. Suspended macroalgae is hardwired - need another tracer attribute.
  *         39. Colour_of_source_in_water (flu and bio) to add attribute to optical_setup.nc
  *         45. Add potassium decay as light source.
  *         47. Add passive fluorescence for all phytoplankton? Even Symbiodinium?
@@ -76,6 +77,7 @@
  *         72. We don't have a simulated satellite products for Secchi.
  *         73. Light_spectral_col doesn't work for KEYWORD specification of tracers.
  *         74. Likely to be problems with using col->b to identify output columns in fully-coupled version.
+ *         75. Put in ems version into optical_setup.nc file attributes.
  */
 
 #include <stdlib.h>
@@ -1434,14 +1436,7 @@ void light_spectral_col_init(eprocess* p)
 
     write_text_att(ncid1, NC_GLOBAL, "title", "CSIRO Environmental Modelling Suite (EMS) Optical setup file");
     write_text_att(ncid1, NC_GLOBAL, "description", "Optical grid and optical parameter values on the optical grid");
-
-    /* Output time created */
-
-    time_t now = time(NULL);
-    // char buf[32];
-    // sprintf(buf, "%s", ctime(&now));
-    // buf[0] = '\0'; // Remove trailing newline
-    // write_text_att(ncid1, NC_GLOBAL, "date_created", buf);
+    write_date_created(ncid1);
 
     /* Source file and date created */
 
@@ -1488,12 +1483,12 @@ void light_spectral_col_init(eprocess* p)
     nc_put_att_text(ncid1, varid1, "orientation", 35,"First is higher in the water column");
 
     nc_def_var(ncid1,"PARbot",NC_DOUBLE,0,dim_dummy,&varid1);
-    nc_put_att_text(ncid1, varid1, "description", 24,"PAR bot range wavelength");
+    nc_put_att_text(ncid1, varid1, "description", 28,"Lower wavelength edge of PAR");
     nc_put_att_text(ncid1, varid1, "units", 2,"nm");
     nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
 
     nc_def_var(ncid1,"PARtop",NC_DOUBLE,0,dim_dummy,&varid1);
-    nc_put_att_text(ncid1, varid1, "description", 24,"PAR top range wavelength");
+    nc_put_att_text(ncid1, varid1, "description", 28,"Upper wavelength edge of PAR");
     nc_put_att_text(ncid1, varid1, "units", 2,"nm");
     nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
 
@@ -2201,11 +2196,7 @@ void light_spectral_col_init(eprocess* p)
       write_text_att(ncid, NC_GLOBAL, "title", "CSIRO Environmental Modelling Suite (EMS) optical model output.");
       write_text_att(ncid, NC_GLOBAL, "description", "Spectrally-resolved optical properties in a model column.");
       write_text_att(ncid, NC_GLOBAL, "vertical grid", "Depth is relative to the moving surface, so f(space,time).");
-      time_t now1 = time(NULL); 
-      char buf1[32];
-      // sprintf(buf1, "%s", ctime(&now1));
-      buf1[strlen(buf1)-1] = '\0'; // Remove trailing newline
-      // write_text_att(ncid, NC_GLOBAL, "date_created", buf1);
+      write_date_created(ncid);
       
       nc_def_var(ncid,"i_index",NC_INT,0,0,&varid);
       nc_def_var(ncid,"j_index",NC_INT,0,0,&varid);
