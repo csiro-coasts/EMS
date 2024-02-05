@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 if [ $# == 1 ] 
 then
@@ -13,16 +13,19 @@ then
 else
   echo ""
 fi
+
+SHOC="${SHOC:-./shoc}"
+mkdir -p outputs
   
 echo "Cleaning up"
-rm outputs/*
-rm inputs/in_test.nc
-rm diag.txt runlog sedlog.txt setup.txt sed_mass_*.txt
+rm -f outputs/*
+rm -f inputs/in_test.nc
+rm -f diag.txt runlog sedlog.txt setup.txt sed_mass_*.txt
 echo ""
 
 echo "Simulating coupled hd and sediment transport in a wind driven, closed basin"
-./shoc -g inputs/test.prm inputs/in_test.nc
-./shoc -p inputs/test.prm
+$SHOC -g inputs/test.prm inputs/in_test.nc
+$SHOC -p inputs/test.prm
 echo "OK: Run complete"
 echo ""
 
@@ -40,5 +43,5 @@ print("OK: mass conservation of mud"); \
 else print("ERROR: mass conservation of mud");}' sed_mass_end.txt
 
 echo ""
-rm  sed_mass_*.txt
+rm  -f sed_mass_*.txt
 echo "3D TEST COMPLETE"
