@@ -22,3 +22,16 @@ libjigsaw64r.so
 # Misc
 sediments-us
 
+# Test output files
+model/tests/**/test*/in*.nc
+model/tests/**/test*/alert.ts
+model/tests/**/test*/alert.txt
+model/tests/**/test*/core*
+model/tests/**/test*/diag.txt
+model/tests/**/test*/flushing.ts
+model/tests/**/test*/loc*.ts
+model/tests/**/test*/out*.nc
+model/tests/**/test*/runlog
+model/tests/**/test*/setup.txt
+model/tests/**/test*/totals*.ts
+model/tests/**/test*/zoom.points
