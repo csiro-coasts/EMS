@@ -34,3 +34,5 @@ model/tests/**/obc_spec.txt
 model/tests/**/out*.nc
 model/tests/**/runlog
 model/tests/**/setup.txt
+model/tests/**/out/*
+!model/tests/**/out/.empty

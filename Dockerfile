@@ -1,5 +1,5 @@
 #------------------------------------------------------------------------------
-# CSIRO EMSr Image Build Script
+# CSIRO EMS Image Build Script
 #------------------------------------------------------------------------------
 # The recommended base image is one of the onaci/ereefs-netcdf-base variants,
 # as those have been designed to include all the EMS dependencies.

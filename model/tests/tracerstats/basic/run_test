@@ -13,6 +13,7 @@ if (! -e $SHOC) then
 endif
 
 # Ensure output dir is empty
+set nonomatch
 mkdir -p out
 rm -rf out/*
 
