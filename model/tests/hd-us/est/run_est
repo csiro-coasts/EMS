@@ -22,6 +22,7 @@ echo "DONE"
 echo "Testing COMPAS quad..."
 rm -f est_quad.nc
 rm -f out1_quad.nc
+rm -f s_est_quad.nc
 
 $COMPAS -g est_quad.prm est_quad.nc
 

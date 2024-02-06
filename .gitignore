@@ -22,42 +22,15 @@ libjigsaw64r.so
 # Misc
 sediments-us
 
-# Test output files
-model/tests/**/test*/in*.nc
-model/tests/**/alert.ts
-model/tests/**/alert.txt
-model/tests/**/core*
+# Common test output files
+# (Test directories may also have their own .gitignore files)
+model/tests/ems_test.log
+model/tests/**/alert.*
+model/tests/**/core.*
 model/tests/**/diag.txt
-model/tests/**/test*/flushing.ts
+model/tests/**/in*.nc
 model/tests/**/loc*.ts
+model/tests/**/obc_spec.txt
 model/tests/**/out*.nc
 model/tests/**/runlog
 model/tests/**/setup.txt
-model/tests/**/test*/totals*.ts
-model/tests/**/test*/zoom.points
-model/tests/**/inputs/in_test.nc
-model/tests/**/inputs/test_trans*.nc
-model/tests/**/inputs/test_*.tran
-model/tests/**/outputs
-model/tests/**/tran_outputs
-model/tests/**/sedlog.txt
-model/tests/**/sed_mass*.txt
-model/tests/**/trans.mnc
-model/tests/hd-us/**/boundary.txt
-model/tests/hd-us/**/obc_spec.txt
-model/tests/hd-us/**/plot*.m
-model/tests/hd-us/**/*_quad.nc
-model/tests/hd-us/**/*_quad*.txt
-model/tests/hd-us/**/*_hex.nc
-model/tests/hd-us/**/*_hex*.txt
-model/tests/hd-us/cetas/auto*.*
-model/tests/hd-us/cetas/cetas*.*
-model/tests/hd-us/cetas/in.*
-model/tests/hd-us/closed/totals.ts
-model/tests/hd-us/est/est*.*
-model/tests/hd-us/est/points.txt
-model/tests/hd-us/est/segment.txt
-model/tests/hd-us/**/in1.nc
-model/tests/hd-us/**/in1*.us
-model/tests/hd-us/**/closed.nc
-model/tests/hd-us/**/closed*.us

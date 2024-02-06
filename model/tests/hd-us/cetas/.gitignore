@@ -1,0 +1,10 @@
+*.msh
+*.txt
+*.us
+*.jig
+*.site
+in.nc
+in.prm
+outputs/*
+!outputs/.empty
+plot_auto.m

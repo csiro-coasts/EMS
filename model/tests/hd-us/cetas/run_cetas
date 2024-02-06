@@ -1,16 +1,18 @@
-#!/bin/csh -ef
+#!/bin/csh -exf
 
 echo "Testing COMPAS cetas..."
+
+if (! $?COMPAS || "$COMPAS" == "") then
+    set COMPAS='../compas'
+endif
+
+set nonomatch
 rm -f *.msh
 rm -f *.txt
 rm -f *.us
 rm -f *.jig
 rm -f *.site
 rm -f in.nc
-
-if (! $?COMPAS || "$COMPAS" == "") then
-    set COMPAS='../compas'
-endif
 
 $COMPAS -ag auto.prm
 
