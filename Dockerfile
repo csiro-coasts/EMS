@@ -5,7 +5,7 @@
 # as those have been designed to include all the EMS dependencies.
 # Allow it to be overridden in order to choose *which* variant, or even
 # something completely different.
-ARG BASE_IMAGE="onaci/ereefs-netcdf-base:ems"
+ARG BASE_IMAGE="onaci/ereefs-netcdf-base:python-3.11-slim-bullseye"
 FROM ${BASE_IMAGE}
 
 # Record the actual base image used from the FROM command as a label.
