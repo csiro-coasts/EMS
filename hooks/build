@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Source environment variables for this repository branch
+if [ -f .env ]; then
+    source .env
+fi
+
+# Derive some more variables from the dockerhub build environment
+BUILD_TIMESTAMP="$(date --rfc-3339=seconds)"
+DOCKER_TAG="${DOCKER_TAG:-}"
+SAFE_TIMESTAMP="$(echo $BUILD_TIMESTAMP | sed 's/ /T/g' | sed 's/:/-/g' | sed 's/\+.*//')"
+SOURCE_URL="$(git remote get-url origin || true)"
+VERSION_TAG="${SOURCE_BRANCH}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
+
+
+# Treat most DOCKER_TAG values as overrides for the
+# BASE_IMAGE variable sourced from the .env file
+if [[ -n "${DOCKER_TAG}" ]] && [[ "${DOCKER_TAG}" != "latest" ]] && [[ "${DOCKER_TAG}" != "${SOURCE_BRANCH}" ]]; then
+    # Prepend the non-default docker tag to the versioned docker tag
+    VERSION_TAG="${DOCKER_TAG}_${VERSION_TAG}"
+
+    # Derive the BASE_IMAGE from the DOCKER_TAG
+    if [[ $DOCKER_TAG =~ ^r-base- ]]; then
+        BASE_IMAGE=$(echo "${DOCKER_TAG}" | sed 's/^r-base-/r-base:/')
+    elif [[ $DOCKER_TAG =~ ^rocker-r- ]]; then
+        BASE_IMAGE=$(echo "${DOCKER_TAG}" | sed 's/\-/:/3' | sed 's|\-|/|1')
+    else
+        BASE_IMAGE=$(echo "${DOCKER_TAG}" | sed 's/\-/:/1')
+    fi
+fi
+
+# Build our customised docker image
+docker build --pull \
+    --build-arg "BASE_IMAGE=${BASE_IMAGE:-}" \
+    --build-arg "EMS_RM_DIRS=${EMS_RM_DIRS:-}" \
+    --build-arg "EMS_TEST_RUN=0" \
+    --label "org.opencontainers.image.authors=${BUILD_AUTHORS:-CSIRO Coastal Group}" \
+    --label "org.opencontainers.image.branch=${SOURCE_BRANCH}" \
+    --label "org.opencontainers.image.buildhost=${DOCKER_REPO}" \
+    --label "org.opencontainers.image.created=${BUILD_TIMESTAMP}" \
+    --label "org.opencontainers.image.licenses=https://github.com/csiro-coasts/EMS/blob/master/LICENSE.md" \
+    --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
+    --label "org.opencontainers.image.source=${SOURCE_URL}" \
+    --label "org.opencontainers.image.title=${DOCKER_REPO:-csiro-coasts/EMS}" \
+    --label "org.opencontainers.image.url=https://github.com/csiro-coasts/EMS" \
+    --label "org.opencontainers.image.vendor=CSIRO" \
+    --label "org.opencontainers.image.version=${VERSION_TAG}" \
+    -f ${DOCKERFILE_PATH} \
+    -t ${IMAGE_NAME} \
+    .
