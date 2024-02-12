@@ -1,8 +1,23 @@
 #!/bin/bash
 
-# Source environment variables for this repository branch
-if [ -f .env ]; then
-    source .env
+# Ensure we have values for all required build arguments.
+# These can be configured as environment variables on the dockerhub build,
+# but if they are not, then we parse the defaults out of the Dockerfile.
+BASE_IMAGE="${BASE_IMAGE:-}"
+if [ -z "${BASE_IMAGE:-}" ]; then
+    BASE_IMAGE=$(grep 'ARG BASE_IMAGE=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+fi
+EMS_CONFIGURE_OPTS="${EMS_CONFIGURE_OPTS:-}"
+if [ -z "${EMS_CONFIGURE_OPTS:-}" ]; then
+    EMS_CONFIGURE_OPTS=$(grep 'ARG EMS_CONFIGURE_OPTS=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+fi
+EMS_RM_DIRS="${EMS_RM_DIRS:-}"
+if [ -z "${EMS_RM_DIRS:-}" ]; then
+    EMS_RM_DIRS=$(grep 'ARG EMS_RM_DIRS=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+fi
+EMS_TEST_RUN="${EMS_TEST_RUN:-}"
+if [ -z "${EMS_TEST_RUN:-}" ]; then
+    EMS_TEST_RUN=$(grep 'ARG EMS_TEST_RUN=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
 fi
 
 # Derive some more variables from the dockerhub build environment
@@ -12,22 +27,23 @@ SAFE_TIMESTAMP="$(echo $BUILD_TIMESTAMP | sed 's/ /T/g' | sed 's/:/-/g' | sed 's
 SOURCE_URL="$(git remote get-url origin || true)"
 VERSION_TAG="${SOURCE_BRANCH}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
 
-
 # Treat most DOCKER_TAG values as overrides for the
 # BASE_IMAGE variable sourced from the .env file
 if [[ -n "${DOCKER_TAG}" ]] && [[ "${DOCKER_TAG}" != "latest" ]] && [[ "${DOCKER_TAG}" != "${SOURCE_BRANCH}" ]]; then
-    # Assume the custom docker tag is the tag of our desired BASE_IMAGE.
-    BASE_IMAGE="onaci/ereefs-netcdf-base:${DOCKER_TAG}"
+    # Assume the custom docker tag is an override for the tag part of
+    # the BASE_IMAGE configured in the Dockerfile and any .env file.
+    BASE_IMAGE="$(echo $BASE_IMAGE | sed -E 's/^([^:]*):.*$/\1/'):${DOCKER_TAG}"
 
-    # Override the VERSION_TAG to include it
+    # Override the VERSION_TAG to include it there too.
     VERSION_TAG="${SOURCE_BRANCH}_${DOCKER_TAG}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
 fi
 
 # Build our customised docker image
 docker build --pull \
-    --build-arg "BASE_IMAGE=${BASE_IMAGE:-}" \
-    --build-arg "EMS_RM_DIRS=${EMS_RM_DIRS:-}" \
-    --build-arg "EMS_TEST_RUN=0" \
+    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+    --build-arg "EMS_CONFIGURE_OPTS=${EMS_CONFIGURE_OPTS}" \
+    --build-arg "EMS_RM_DIRS=${EMS_RM_DIRS}" \
+    --build-arg "EMS_TEST_RUN=${EMS_TEST_RUN}" \
     --label "org.opencontainers.image.authors=${BUILD_AUTHORS:-CSIRO Coastal Group}" \
     --label "org.opencontainers.image.branch=${SOURCE_BRANCH}" \
     --label "org.opencontainers.image.buildhost=${DOCKER_REPO}" \
