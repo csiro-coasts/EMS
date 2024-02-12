@@ -1,31 +1,33 @@
 #!/bin/bash
 
+# Derive useful variables from the dockerhub build environment
+BUILD_TIMESTAMP="$(date --rfc-3339=seconds)"
+DOCKER_TAG="${DOCKER_TAG:-}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-./Dockerfile}"
+IMAGE_NAME="${IMAGE_NAME:-csiro-coasts/ems}"
+SAFE_TIMESTAMP="$(echo $BUILD_TIMESTAMP | sed 's/ /T/g' | sed 's/:/-/g' | sed 's/\+.*//')"
+SOURCE_URL="$(git remote get-url origin || true)"
+VERSION_TAG="${SOURCE_BRANCH}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
+
 # Ensure we have values for all required build arguments.
 # These can be configured as environment variables on the dockerhub build,
 # but if they are not, then we parse the defaults out of the Dockerfile.
 BASE_IMAGE="${BASE_IMAGE:-}"
 if [ -z "${BASE_IMAGE:-}" ]; then
-    BASE_IMAGE=$(grep 'ARG BASE_IMAGE=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+    BASE_IMAGE=$(grep 'ARG BASE_IMAGE=' ./Dockerfile | tr '"' ' ' | awk '{print $3}')
 fi
 EMS_CONFIGURE_OPTS="${EMS_CONFIGURE_OPTS:-}"
 if [ -z "${EMS_CONFIGURE_OPTS:-}" ]; then
-    EMS_CONFIGURE_OPTS=$(grep 'ARG EMS_CONFIGURE_OPTS=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+    EMS_CONFIGURE_OPTS=$(grep 'ARG EMS_CONFIGURE_OPTS=' ./Dockerfile | tr '"' ' ' | awk '{print $3}')
 fi
 EMS_RM_DIRS="${EMS_RM_DIRS:-}"
 if [ -z "${EMS_RM_DIRS:-}" ]; then
-    EMS_RM_DIRS=$(grep 'ARG EMS_RM_DIRS=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+    EMS_RM_DIRS=$(grep 'ARG EMS_RM_DIRS=' ./Dockerfile | tr '"' ' ' | awk '{print $3}')
 fi
 EMS_TEST_RUN="${EMS_TEST_RUN:-}"
 if [ -z "${EMS_TEST_RUN:-}" ]; then
-    EMS_TEST_RUN=$(grep 'ARG EMS_TEST_RUN=' ./Dockerfile | tr '"' ' ' | awk '{print $3}'); fi
+    EMS_TEST_RUN=$(grep 'ARG EMS_TEST_RUN=' ./Dockerfile | tr '"' ' ' | awk '{print $3}')
 fi
-
-# Derive some more variables from the dockerhub build environment
-BUILD_TIMESTAMP="$(date --rfc-3339=seconds)"
-DOCKER_TAG="${DOCKER_TAG:-}"
-SAFE_TIMESTAMP="$(echo $BUILD_TIMESTAMP | sed 's/ /T/g' | sed 's/:/-/g' | sed 's/\+.*//')"
-SOURCE_URL="$(git remote get-url origin || true)"
-VERSION_TAG="${SOURCE_BRANCH}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
 
 # Treat most DOCKER_TAG values as overrides for the
 # BASE_IMAGE variable sourced from the .env file
