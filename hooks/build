@@ -16,17 +16,11 @@ VERSION_TAG="${SOURCE_BRANCH}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
 # Treat most DOCKER_TAG values as overrides for the
 # BASE_IMAGE variable sourced from the .env file
 if [[ -n "${DOCKER_TAG}" ]] && [[ "${DOCKER_TAG}" != "latest" ]] && [[ "${DOCKER_TAG}" != "${SOURCE_BRANCH}" ]]; then
-    # Prepend the non-default docker tag to the versioned docker tag
-    VERSION_TAG="${DOCKER_TAG}_${VERSION_TAG}"
+    # Assume the custom docker tag is the tag of our desired BASE_IMAGE.
+    BASE_IMAGE="onaci/ereefs-netcdf-base:${DOCKER_TAG}"
 
-    # Derive the BASE_IMAGE from the DOCKER_TAG
-    if [[ $DOCKER_TAG =~ ^r-base- ]]; then
-        BASE_IMAGE=$(echo "${DOCKER_TAG}" | sed 's/^r-base-/r-base:/')
-    elif [[ $DOCKER_TAG =~ ^rocker-r- ]]; then
-        BASE_IMAGE=$(echo "${DOCKER_TAG}" | sed 's/\-/:/3' | sed 's|\-|/|1')
-    else
-        BASE_IMAGE=$(echo "${DOCKER_TAG}" | sed 's/\-/:/1')
-    fi
+    # Override the VERSION_TAG to include it
+    VERSION_TAG="${SOURCE_BRANCH}_${DOCKER_TAG}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
 fi
 
 # Build our customised docker image
