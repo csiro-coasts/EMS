@@ -1,0 +1,23 @@
+---
+#-------------------------------------------------------------------------------
+# Docker development environment composition for ems
+# (Not for production use!)
+#
+# This default compose stack is designed for use on a local development host.
+#-------------------------------------------------------------------------------
+version: "3.8"
+
+services:
+  ems:
+    build:
+      context: .
+      args:
+        #EMS_RM_DIRS: "ext/swan model/lib/da model/lib/exchange"
+        EMS_TEST_RUN: 0
+    command: "run-ems-tests"
+    container_name: ems
+    environment:
+      EMS_TEST_INCLUDE: '/usr/local/src/ems/model/tests'
+    image: onaci/ereefs-ems-shoc:dev
+    volumes:
+      - ./model/tests/:/usr/local/src/ems/model/tests/

@@ -1,23 +1,24 @@
-#!/bin/csh -f
+#!/bin/csh -ef
+
+if (! $?SHOC || "$SHOC" == "") then
+    set SHOC='../shoc'
+endif
 
 echo "Testing 'z' model..."
-rm in8.nc
-rm out8_z.nc
-rm out8_msl_z.nc
+rm -f in8.nc || true
+rm -f out8_z.nc || true
+rm -f out8_msl_z.nc || true
 
-../shoc -g test8.prm in8.nc
+$SHOC -g test8.prm in8.nc
 
 echo "Running, takes ~ 10 minutes...."
-../shoc -p test8.prm
+$SHOC -p test8.prm
 
 echo "DONE"
 
 echo "Running msl, takes ~ 10 minutes...."
-../shoc -p test8_msl.prm
+$SHOC -p test8_msl.prm
 
 echo "DONE"
 
-rm in8.nc
-
-
-
+rm -f in8.nc || true

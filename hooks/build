@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Derive useful variables from the dockerhub build environment
+BUILD_TIMESTAMP="$(date --rfc-3339=seconds)"
+DOCKER_TAG="${DOCKER_TAG:-}"
+DOCKERFILE_PATH="${DOCKERFILE_PATH:-./Dockerfile}"
+IMAGE_NAME="${IMAGE_NAME:-csiro-coasts/ems}"
+SAFE_TIMESTAMP="$(echo $BUILD_TIMESTAMP | sed 's/ /T/g' | sed 's/:/-/g' | sed 's/\+.*//')"
+SOURCE_URL="$(git remote get-url origin || true)"
+VERSION_TAG="${SOURCE_BRANCH}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
+
+# Ensure we have values for all required build arguments.
+# These can be configured as environment variables on the dockerhub build,
+# but if they are not, then we parse the defaults out of the Dockerfile.
+BASE_IMAGE="${BASE_IMAGE:-}"
+if [ -z "${BASE_IMAGE:-}" ]; then
+    BASE_IMAGE=$(grep 'ARG BASE_IMAGE=' ./Dockerfile | tr '"' ' ' | tr '=' ' ' | awk '{print $3}')
+fi
+EMS_CONFIGURE_OPTS="${EMS_CONFIGURE_OPTS:-}"
+if [ -z "${EMS_CONFIGURE_OPTS:-}" ]; then
+    EMS_CONFIGURE_OPTS=$(grep 'ARG EMS_CONFIGURE_OPTS=' ./Dockerfile | tr '"' ' ' | tr '=' ' ' | awk '{print $3}')
+fi
+EMS_RM_DIRS="${EMS_RM_DIRS:-}"
+if [ -z "${EMS_RM_DIRS:-}" ]; then
+    EMS_RM_DIRS=$(grep 'ARG EMS_RM_DIRS=' ./Dockerfile | tr '"' ' ' | tr '=' ' ' | awk '{print $3}')
+fi
+EMS_TEST_RUN="${EMS_TEST_RUN:-}"
+if [ -z "${EMS_TEST_RUN:-}" ]; then
+    EMS_TEST_RUN=$(grep 'ARG EMS_TEST_RUN=' ./Dockerfile | tr '"' ' ' | tr '=' ' ' | awk '{print $3}')
+fi
+
+# Treat most DOCKER_TAG values as overrides for the
+# BASE_IMAGE variable sourced from the .env file
+if [[ -n "${DOCKER_TAG}" ]] && [[ "${DOCKER_TAG}" != "latest" ]] && [[ "${DOCKER_TAG}" != "${SOURCE_BRANCH}" ]]; then
+    # Assume the custom docker tag is an override for the tag part of
+    # the BASE_IMAGE configured in the Dockerfile and any .env file.
+    BASE_IMAGE="$(echo $BASE_IMAGE | sed -E 's/^([^:]*):.*$/\1/'):${DOCKER_TAG}"
+
+    # Override the VERSION_TAG to include it there too.
+    VERSION_TAG="${SOURCE_BRANCH}_${DOCKER_TAG}_v${SAFE_TIMESTAMP}-${SOURCE_COMMIT}"
+fi
+
+# Build our customised docker image
+docker build --pull \
+    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+    --build-arg "EMS_CONFIGURE_OPTS=${EMS_CONFIGURE_OPTS}" \
+    --build-arg "EMS_RM_DIRS=${EMS_RM_DIRS}" \
+    --build-arg "EMS_TEST_RUN=${EMS_TEST_RUN}" \
+    --label "org.opencontainers.image.authors=${BUILD_AUTHORS:-CSIRO Coastal Group}" \
+    --label "org.opencontainers.image.branch=${SOURCE_BRANCH}" \
+    --label "org.opencontainers.image.buildhost=${DOCKER_REPO}" \
+    --label "org.opencontainers.image.created=${BUILD_TIMESTAMP}" \
+    --label "org.opencontainers.image.licenses=https://github.com/csiro-coasts/EMS/blob/master/LICENSE.md" \
+    --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
+    --label "org.opencontainers.image.source=${SOURCE_URL}" \
+    --label "org.opencontainers.image.title=${DOCKER_REPO:-csiro-coasts/EMS}" \
+    --label "org.opencontainers.image.url=https://github.com/csiro-coasts/EMS" \
+    --label "org.opencontainers.image.vendor=CSIRO" \
+    --label "org.opencontainers.image.version=${VERSION_TAG}" \
+    -f ${DOCKERFILE_PATH} \
+    -t ${IMAGE_NAME} \
+    .

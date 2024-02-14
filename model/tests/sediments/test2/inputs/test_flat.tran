@@ -311,3 +311,6 @@ TS0.reference        msl
 # Open boundaries
 NBOUNDARIES           0
 
+
+ID_CODE SHOC grid|G1.0|H|S|B
+

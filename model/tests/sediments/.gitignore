@@ -1,0 +1,4 @@
+test_trans*.nc
+sed_mass*.txt
+sedlog.txt
+trans.mnc

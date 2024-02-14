@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 if [ $# == 1 ] 
 then
@@ -14,23 +14,26 @@ else
   echo ""
 fi
   
+SHOC="${SHOC:-./shoc}"
+mkdir -p outputs tran_outputs
+
 echo "Cleaning up"
-rm outputs/*
-rm tran_outputs/*
-rm inputs/in_test.nc
-rm inputs/test_trans_1990-01.nc
-rm diag.txt runlog mass.txt sedlog.txt setup.txt trans.mnc sed_mass_*.txt
+rm -f outputs/*
+rm -f tran_outputs/*
+rm -f inputs/in_test.nc
+rm -f inputs/test_trans_1990-01.nc
+rm -f diag.txt runlog mass.txt sedlog.txt setup.txt trans.mnc sed_mass_*.txt
 echo ""
 
 echo "Simulating hd in a wind driven, closed basin"
-./shoc -g inputs/test.prm inputs/in_test.nc
-./shoc -p inputs/test.prm
+$SHOC -g inputs/test.prm inputs/in_test.nc
+$SHOC -p inputs/test.prm
 echo "OK: HD forcing files complete"
 echo ""
 
 
 echo "Simulating transport of particulate and dissolver tracers"
-./shoc -t inputs/test_flat.tran
+$SHOC -t inputs/test_flat.tran
 awk 'BEGIN{a=0;} {if ($NR eq 3) a=$4;} END{if((a-$4)<0.1) \
 print("OK: mass conservation of dissolved tracer"); \
 else print("ERROR: mass conservation of dissolved tracer");}' sed_mass_end.txt
@@ -45,5 +48,5 @@ print("OK: mass conservation of mud"); \
 else print("ERROR: mass conservation of mud");}' sed_mass_end.txt
 
 echo ""
-rm  sed_mass_*.txt
+rm -f sed_mass_*.txt
 echo "3D TEST COMPLETE"
