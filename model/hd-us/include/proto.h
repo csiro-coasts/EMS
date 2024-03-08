@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 7477 2023-12-22 01:31:36Z riz008 $
+ *  $Id: proto.h 7480 2024-02-01 03:49:57Z riz008 $
  *
  */
 
@@ -1587,6 +1587,7 @@ landfillfn_t locate_landfill_function(const char *tag);
 void dump_bathy_mask(dump_data_t *dumpdata, double bathyf);
 void write_text_att(int cdfid, int varid, const char *name,
                     const char *text);
+void write_date_created(int cdfid);
 void dump_windows(master_t *master, geometry_t **window, char *name, char *iname);
 void read_windows(geometry_t *geom, geometry_t **window, char *name);
 void check_window_map_us(geometry_t *geom, geometry_t **window, char *name);

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 7449 2023-12-13 03:44:20Z her127 $
+ *  $Id: readparam.c 7479 2024-02-01 03:49:06Z riz008 $
  *
  */
 
@@ -1759,7 +1759,6 @@ parameters_t *params_read(FILE *fp)
 	       strcmp(tracer->name, "salt") == 0 || strcmp(tracer->name, "temp") == 0 ) {
 	    params->tdif_v[m] = n;
             m++;
-	    printf("tracer %s %x\n",tracer->name,tracer->type);
 	  }
         } else {
 	  if(!(tracer->type & CLOSURE)) {
@@ -3037,7 +3036,6 @@ parameters_t *auto_params(FILE * fp, int autof)
     for (c = 0; c < params->nvals; c++)
       printf("%d %f\n",c,params->bathy[c]);
   */
-  printf("a %f\n",params->bathy[1]);
   if (!prm_read_double(fp, "BATHYMIN", &params->bmin)) {
     params->bmin = 1e10;
     for (c = 0; c < params->nvals; c++) {

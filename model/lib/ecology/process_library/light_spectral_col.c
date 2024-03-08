@@ -55,7 +55,8 @@
  *         13. Prevent products being calculated with zero Rrs.
  *         26. Give canopy order in the optical_setup.nc
  *         27. Check out-of-bounds reflectance from benthic substrates - some are zero.
- *         30. Coral skeleton reflectance is hardwired - would need another tracer attribute. 
+ *         30. Coral skeleton reflectance is hardwired - need another tracer attribute.
+ *         31. Suspended macroalgae is hardwired - need another tracer attribute.
  *         39. Colour_of_source_in_water (flu and bio) to add attribute to optical_setup.nc
  *         45. Add potassium decay as light source.
  *         47. Add passive fluorescence for all phytoplankton? Even Symbiodinium?
@@ -76,6 +77,8 @@
  *         72. We don't have a simulated satellite products for Secchi.
  *         73. Light_spectral_col doesn't work for KEYWORD specification of tracers.
  *         74. Likely to be problems with using col->b to identify output columns in fully-coupled version.
+ *         75. Put in ems version into optical_setup.nc file attributes.
+ *         76. write_date_created(ncid1) only works for shoc, so commented out.
  */
 
 #include <stdlib.h>
@@ -311,9 +314,11 @@ typedef struct {
   int Kd_490_i;
   int at_440_i;
   int bt_550_i;
+  int bb_590_i;
   int bb_700_i;
   int BLP_i;
   int PFL_i;
+  int Turbidity_i;
 
   int Kd_PAR_i;
 
@@ -905,6 +910,14 @@ void light_spectral_col_init(eprocess* p)
   ws->at_440_i = -1;
   ws->at_440_i =  e->try_index(tracers, "at_440", e);
 
+  ws->bb_590_i = -1;
+  ws->bb_590_i =  e->try_index(tracers, "bb_590", e);
+
+  ws->Turbidity_i = -1;
+  ws->Turbidity_i   = e->try_index(tracers, "Turbidity", e);
+  if (ws->bb_590_i == -1)
+    ws->Turbidity_i = -1; // needs bb_590 to calculate
+
   ws->bb_700_i = -1;
   ws->bb_700_i =  e->try_index(tracers, "bb_700", e);
   
@@ -1390,6 +1403,8 @@ void light_spectral_col_init(eprocess* p)
     e->quitfn("Kd_490 is in tracer list, but 490 nm is not in the optical grid.");
   if ((ws->w550 == -1) && (ws->bt_550_i > -1))
     e->quitfn("bt_550 is in tracer list, but 550 nm is not in the optical grid.");
+  if ((ws->w590 == -1) && (ws->bb_590_i > -1))
+    e->quitfn("bb_590 is in tracer list, but 590 nm is not in the optical grid.");
   if ((ws->w700 == -1) && (ws->bb_700_i > -1))
     e->quitfn("bb_700 is in tracer list, but 700 nm is not in the optical grid.");
 
@@ -1434,14 +1449,7 @@ void light_spectral_col_init(eprocess* p)
 
     write_text_att(ncid1, NC_GLOBAL, "title", "CSIRO Environmental Modelling Suite (EMS) Optical setup file");
     write_text_att(ncid1, NC_GLOBAL, "description", "Optical grid and optical parameter values on the optical grid");
-
-    /* Output time created */
-
-    time_t now = time(NULL);
-    // char buf[32];
-    // sprintf(buf, "%s", ctime(&now));
-    // buf[0] = '\0'; // Remove trailing newline
-    // write_text_att(ncid1, NC_GLOBAL, "date_created", buf);
+    write_date_created(ncid1);
 
     /* Source file and date created */
 
@@ -1488,12 +1496,12 @@ void light_spectral_col_init(eprocess* p)
     nc_put_att_text(ncid1, varid1, "orientation", 35,"First is higher in the water column");
 
     nc_def_var(ncid1,"PARbot",NC_DOUBLE,0,dim_dummy,&varid1);
-    nc_put_att_text(ncid1, varid1, "description", 24,"PAR bot range wavelength");
+    nc_put_att_text(ncid1, varid1, "description", 28,"Lower wavelength edge of PAR");
     nc_put_att_text(ncid1, varid1, "units", 2,"nm");
     nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
 
     nc_def_var(ncid1,"PARtop",NC_DOUBLE,0,dim_dummy,&varid1);
-    nc_put_att_text(ncid1, varid1, "description", 24,"PAR top range wavelength");
+    nc_put_att_text(ncid1, varid1, "description", 28,"Upper wavelength edge of PAR");
     nc_put_att_text(ncid1, varid1, "units", 2,"nm");
     nc_put_att_text(ncid1, varid1, "puv_uom",52,"http://vocab.nerc.ac.uk/collection/P06/current/UXNM/");
 
@@ -2201,11 +2209,7 @@ void light_spectral_col_init(eprocess* p)
       write_text_att(ncid, NC_GLOBAL, "title", "CSIRO Environmental Modelling Suite (EMS) optical model output.");
       write_text_att(ncid, NC_GLOBAL, "description", "Spectrally-resolved optical properties in a model column.");
       write_text_att(ncid, NC_GLOBAL, "vertical grid", "Depth is relative to the moving surface, so f(space,time).");
-      time_t now1 = time(NULL); 
-      char buf1[32];
-      // sprintf(buf1, "%s", ctime(&now1));
-      buf1[strlen(buf1)-1] = '\0'; // Remove trailing newline
-      // write_text_att(ncid, NC_GLOBAL, "date_created", buf1);
+      write_date_created(ncid);
       
       nc_def_var(ncid,"i_index",NC_INT,0,0,&varid);
       nc_def_var(ncid,"j_index",NC_INT,0,0,&varid);
@@ -4350,6 +4354,18 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
   if (ws->bt_550_i > -1){ // i.e. outputting 
     for (n = 0; n<col->n_wc; n++) { // 0 is top 
       y[ws->bt_550_i][n] = bt[ws->w550][n];
+    }
+  }
+
+  if (ws->bb_590_i > -1){ // i.e. outputting 
+    for (n = 0; n<col->n_wc; n++) { // 0 is top 
+      y[ws->bb_590_i][n] = bb[ws->w590][n];
+    }
+  }
+
+  if (ws->Turbidity_i > -1){ // i.e. outputting 
+    for (n = 0; n<col->n_wc; n++) { // 0 is top 
+      y[ws->Turbidity_i][n] = 47.02 * (bb[ws->w590][n] - 0.5 * ws->bw[ws->w590]) + 0.13;
     }
   }
 

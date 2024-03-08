@@ -1,15 +1,17 @@
-#!/bin/csh -f
+#!/bin/csh -ef
+
+# Set relative path to shoc executable
+set SHOC='../../../hd/shoc'
 
 echo "Testing 'z' model..."
-rm in6.nc
-rm out6_z.nc
+rm -f in6.nc || true
+rm -f out6_z.nc || true
 
-../shoc -g test6.prm in6.nc
+$SHOC -g test6.prm in6.nc
 
 echo "Running, takes ~ 2 minutes...."
-../shoc -p test6.prm
+$SHOC -p test6.prm
 
 echo "DONE"
 
-rm in6.nc
-
+rm -f in6.nc || true

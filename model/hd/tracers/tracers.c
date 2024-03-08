@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 6844 2021-06-30 00:15:15Z her127 $
+ *  $Id: tracers.c 7498 2024-03-07 04:54:13Z riz008 $
  *
  */
 
@@ -5907,7 +5907,7 @@ void reset_dz(geometry_t *window,  /* Processing window */
   int zp1, zm1;                 /* Sparse cell above / below cell c */
   double top;                   /* Top face of a cell */
   double bot;                   /* Bottom face of a cell */
-  int vc;                       /* Tracer cells to provess counter */
+  int vc = 0;                   /* Tracer cells to provess counter */
   int vcs;                      /* Surface tracer cells to process counter */
 
   /*-----------------------------------------------------------------*/
