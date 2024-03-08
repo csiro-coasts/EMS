@@ -78,6 +78,7 @@
  *         73. Light_spectral_col doesn't work for KEYWORD specification of tracers.
  *         74. Likely to be problems with using col->b to identify output columns in fully-coupled version.
  *         75. Put in ems version into optical_setup.nc file attributes.
+ *         76. write_date_created(ncid1) only works for shoc, so commented out.
  */
 
 #include <stdlib.h>
@@ -313,9 +314,11 @@ typedef struct {
   int Kd_490_i;
   int at_440_i;
   int bt_550_i;
+  int bb_590_i;
   int bb_700_i;
   int BLP_i;
   int PFL_i;
+  int Turbidity_i;
 
   int Kd_PAR_i;
 
@@ -907,6 +910,14 @@ void light_spectral_col_init(eprocess* p)
   ws->at_440_i = -1;
   ws->at_440_i =  e->try_index(tracers, "at_440", e);
 
+  ws->bb_590_i = -1;
+  ws->bb_590_i =  e->try_index(tracers, "bb_590", e);
+
+  ws->Turbidity_i = -1;
+  ws->Turbidity_i   = e->try_index(tracers, "Turbidity", e);
+  if (ws->bb_590_i == -1)
+    ws->Turbidity_i = -1; // needs bb_590 to calculate
+
   ws->bb_700_i = -1;
   ws->bb_700_i =  e->try_index(tracers, "bb_700", e);
   
@@ -1392,6 +1403,8 @@ void light_spectral_col_init(eprocess* p)
     e->quitfn("Kd_490 is in tracer list, but 490 nm is not in the optical grid.");
   if ((ws->w550 == -1) && (ws->bt_550_i > -1))
     e->quitfn("bt_550 is in tracer list, but 550 nm is not in the optical grid.");
+  if ((ws->w590 == -1) && (ws->bb_590_i > -1))
+    e->quitfn("bb_590 is in tracer list, but 590 nm is not in the optical grid.");
   if ((ws->w700 == -1) && (ws->bb_700_i > -1))
     e->quitfn("bb_700 is in tracer list, but 700 nm is not in the optical grid.");
 
@@ -4341,6 +4354,18 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
   if (ws->bt_550_i > -1){ // i.e. outputting 
     for (n = 0; n<col->n_wc; n++) { // 0 is top 
       y[ws->bt_550_i][n] = bt[ws->w550][n];
+    }
+  }
+
+  if (ws->bb_590_i > -1){ // i.e. outputting 
+    for (n = 0; n<col->n_wc; n++) { // 0 is top 
+      y[ws->bb_590_i][n] = bb[ws->w590][n];
+    }
+  }
+
+  if (ws->Turbidity_i > -1){ // i.e. outputting 
+    for (n = 0; n<col->n_wc; n++) { // 0 is top 
+      y[ws->Turbidity_i][n] = 47.02 * (bb[ws->w590][n] - 0.5 * ws->bw[ws->w590]) + 0.13;
     }
   }
 

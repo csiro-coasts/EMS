@@ -1,7 +1,64 @@
-#!/bin/csh -f
+#!/bin/bash
+#
+# Top-level script to run hd-us tests
+#
 
-cp ~/ems_us/main/model/hd/shoc .
-cp ~/ems_us/main/model/hd-us/compas .
+# Build list of test directories
+TESTDIRS=("closed")
+LEN=${#TESTDIRS[@]}
+
+ARG=""
+if [ $# -gt 0 ]; then
+    ARG=$1
+fi
+
+COMPAS=../../hd-us/compas
+if [ ! -f $COMPAS ];then
+    echo "COMPAS executable ($COMPAS) not found, skipping ...."
+    exit -1
+fi
+
+echo "---------------------------"
+echo "Found ${LEN} tests in hd-us"
+echo "---------------------------"
+p=0
+exit_status=0
+for (( i=0; i<LEN; i++ )); do
+    dname=${TESTDIRS[$i]}
+    cd ${dname}
+    echo "Running $dname ..."
+    # cat README.md
+    ./run_${dname}
+    # Check exit status
+    if [ $? -ne 0 ]; then
+	echo -e "FAILED ${dname}\n"
+	exit_status=1
+    else
+	echo -e "PASSED ${dname}\n"
+	((p=p+1))
+    fi
+    cd ..
+done
+
+echo "#############################"
+echo "PASSED $p out of ${LEN} tests"
+echo "#############################"
+
+# Format table for internal dev
+if [ "${ARG}" = "cronicle" ];then
+    read -r -d '' VAR << EOM
+{
+   "html": {
+      "title": "Run results",
+      "content": "<h1>Passed $p out of ${LEN} tests</h1>",
+      "caption": "Run results, see below for any errors"
+   }
+}
+EOM
+echo $VAR
+fi
+
+exit $exit_status
 
 echo "Running test2/closed..."
 cd test2/closed

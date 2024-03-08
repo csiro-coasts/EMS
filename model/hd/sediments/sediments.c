@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 7384 2023-08-08 00:33:51Z mar644 $
+ *  $Id: sediments.c 7484 2024-02-13 23:53:02Z mar644 $
  *
  */
 
@@ -109,6 +109,9 @@ double sinterface_erflux_scale(FILE* prmfd);
 // (to overwrire default values when present in the tracer specifications)
 double sinterface_get_css_erosion(void* model, char *name);
 double sinterface_get_css_deposition(void* model, char *name);
+
+//NMY 2024 Amanda
+int sinterface_getflocfile(FILE* prmfd, char *flocfile);
 
 /*-------------------------------------------------------------------*/
 /* Sediment specific interface routines
@@ -658,6 +661,8 @@ int sinterface_getflocmode(FILE* prmfd)
 	 v=3;
      else if (strcmp(buf,"FLOC4")==0)
 	 v=4;
+     else if (strcmp(buf,"FLOC5")==0) // NMY 2024 Amanda
+         v=5;
  }
  else
  {
@@ -665,6 +670,26 @@ int sinterface_getflocmode(FILE* prmfd)
  }
  return v;
 }
+
+
+// NMY 2024 Amanda
+// read floc d50 lookup array
+int sinterface_getflocfile(FILE* prmfd, char *flocfile)
+{
+    int v=0;
+    // char buf[MAXSTRLEN];
+    if( prm_read_char(prmfd,"FLOC_FILE",flocfile) > 0) {
+      v=1;
+    }
+    else
+    {
+        v=0;
+    }
+    return v;
+}
+
+
+
 double sinterface_getflocprm1(FILE* prmfd)
 {
     double v;

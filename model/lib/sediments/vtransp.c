@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: vtransp.c 7382 2023-08-07 02:04:56Z mar644 $
+ *  $Id: vtransp.c 7485 2024-02-16 03:28:52Z mar644 $
  *
  */
 
@@ -355,7 +355,7 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
     }
     case 4:
     {
-
+   // Brisbane river
  for (k = bk_wc; k <= tk_wc; k++) {
    c_fine = 0.;
    /* get rtracer which contribute to c-fine */
@@ -370,6 +370,85 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
  }
       break;
     }
+
+    case 5: //NMY 2024 Amanda
+    {
+         // Amanda eReefs floc formulation
+         double grav = 9.8;
+         double sal_delta, tur_delta, ggg_delta;
+         double salVal, turVal, gggVal;
+         double df; // floc diameter
+
+         double viskin = 1e-6; //kinematoc viscosity at 20C im m2/s
+         double Cd=2e-3;
+         double epsi; //dissipation rate
+         double ustar = sm->ustrcw_skin;
+         double vankar = 0.41; // van Karman constanta
+         double height; // above the seabed
+
+         double b1 = 18.; // range (18-24)
+         double b2 = 0.548;
+         double nf = 1.7; // Amanda
+         double Rs = (2650 - 1000) / 1000;
+         double dp = 3.1 * 1e-6; // disaggregated particle diameter (Amanda value)
+         int ii,jj,kk;
+
+         //fprintf(stderr,"vtransp.c: flocmode=%d \n", param->flocmode);
+
+         // eReefs formula (from Amanda, Joye, Rodrigo regression trees to lookup table)
+         for (k = bk_wc; k <= tk_wc; k++) {
+           c_fine = 0.;
+           /* get rtracer which contribute to c-fine */
+           for (n = 0; n < param->n_vtransp_floc; n++) {
+             c_fine += sm->tr_wc[param->vtransp_floc[n]][k];
+           }
+           c_salt = sm->tr_wc[n_salt][k];
+           if (c_salt>0.1) {
+
+           // get input values
+           salVal = sm->tr_wc[n_salt][k];
+           turVal = c_fine * 1000; // proxy for turbidity (NTU)
+           height = sm->cellz_wc[k] - sm->botz_wc;
+           // Sahin et al., 2017
+           epsi = ustar*ustar*ustar/(vankar * height);
+           gggVal = sqrt(epsi/viskin); // shear rate
+
+           // constrain values within min max
+           salVal = (salVal > param->floc_salmin) ? salVal : param->floc_salmin;
+           salVal = (salVal < param->floc_salmax) ? salVal : param->floc_salmax;
+           turVal = (turVal > param->floc_turmin) ? turVal : param->floc_turmin;
+           turVal = (turVal < param->floc_turmax) ? turVal : param->floc_turmax;
+           gggVal = (gggVal > param->floc_gggmin) ? gggVal : param->floc_gggmin;
+           gggVal = (gggVal < param->floc_gggmax) ? gggVal : param->floc_gggmax;
+           // get an increment
+           sal_delta = (param->floc_salmax - param->floc_salmin) / param->floc_imax;
+           tur_delta = (param->floc_turmax - param->floc_turmin) / param->floc_jmax;
+           ggg_delta = (param->floc_gggmax - param->floc_gggmin) / param->floc_kmax;
+           // then get get data from lookup array
+           ii = (int)( (salVal - param->floc_salmin) / sal_delta ); ii = min(ii,  param->floc_imax-1);
+           jj = (int)( (turVal - param->floc_turmin) / tur_delta ); jj = min(jj,  param->floc_jmax-1);
+           kk = (int)( (gggVal - param->floc_gggmin) / ggg_delta ); kk = min(kk,  param->floc_kmax-1);
+
+
+           //fprintf(stderr,"vtransp.c: k=%d, ii=%d, jj=%d, kk=%d \n", k,ii,jj,kk);
+           df = 1e-6 * param->floc_d50_3d[ii][jj][kk];
+
+
+           // Strom and Keyvani., 2011
+           // nf = 3 * pow( df/dp, -0.1);
+           nf = param->flocprm1; // (1.5 - 2.9) range
+           sm->svel_floc[k] = -grav*Rs*pow(df, nf-1) / ( b1*viskin*pow(dp,nf-3) + b2*sqrt(grav*Rs*pow(df, nf)*pow(dp,nf-3)) ) ;
+           //sm->svel_floc[k] *= param->flocprm1; // nudging coefficient
+
+           }  else {
+             sm->svel_floc[k] = 0.;
+           }
+         }
+         break;
+    }
+
+
+
 
     default:
       break;
@@ -411,6 +490,23 @@ static void update_svel_floc(sediment_t *sediment, sed_column_t *sm)
 
     }
   }
+
+
+  // NMY 2024 Amanda tmp must have 3D dignostic tracer "svelFloc3d" in the tran file to visualise flocs svel !
+/*
+   for (n = 0; n < param->ntr; n++) {
+      sed_tracer_t *tracer = &sediment->mstracers[n];
+      if ( strcmp("svelFloc3d",tracer->name) == 0) {
+         for (k = bk_wc; k <= tk_wc; k++) {
+            sm->tr_wc[n][k] = sm->svel_floc[k];
+         }
+      }
+   }
+*/
+   ////////////////
+
+
+
 
   for (n = 0; n < param->ntr; n++) {
       sed_tracer_t *tr = &sediment->mstracers[n];

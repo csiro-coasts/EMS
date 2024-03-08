@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 7354 2023-05-08 05:34:29Z riz008 $
+ *  $Id: main.c 7500 2024-03-07 11:16:51Z riz008 $
  *
  */
 
@@ -28,6 +28,9 @@
 #include "hd.h"
 #include "tracer.h"
 #include "ems_version.h"
+#ifdef HAVE_METIS
+#include "metis.h"
+#endif
 
 #ifdef HAVE_GSL
 #include "gsl/gsl_version.h"
@@ -130,6 +133,16 @@ void print_vers(void)
 #ifdef HAVE_ECOLOGY_MODULE
   fprintf(stderr, "ecology\t\t %d.%d.%d\n", get_ecology_major_vers(),
 	  get_ecology_minor_vers(),get_ecology_patch_vers());
+#endif
+#ifdef HAVE_SWAN
+  fprintf(stderr, "swan\t\t 41.31\text\n"); // Need a proper interface function here
+#endif
+#ifdef HAVE_METIS
+  fprintf(stderr, "metis\t\t %d.%d.%d\text\n", METIS_VER_MAJOR, METIS_VER_MINOR,
+	  METIS_VER_SUBMINOR);
+#endif
+#ifdef HAVE_JIGSAWLIB
+  fprintf(stderr, "jigsaw\t\t 0.9.7\text\n"); // Need a proper interface function here
 #endif
   fprintf(stderr,"\n");
 }

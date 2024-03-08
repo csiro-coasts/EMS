@@ -3551,6 +3551,13 @@ fi
 
 
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking C complier version" >&5
+$as_echo_n "checking C complier version... " >&6; }
+CVERS=`$CC --version | head -1`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $CVERS" >&5
+$as_echo "$CVERS" >&6; }
+
+
 
 
 ac_ext=c

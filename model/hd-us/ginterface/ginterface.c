@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 7430 2023-10-25 01:28:17Z her127 $
+ *  $Id: ginterface.c 7488 2024-02-18 04:01:39Z bai155 $
  *
  */
 
@@ -3812,6 +3812,8 @@ void ginterface_moonvars(void *hmodel, int b,
   /* Julian date starts at midday - adjust half a day                */
   jt = (double)jd - 0.5;
 
+  
+
   /* Get the day of the year                                         */
   if (window->is_geog) {
     dtime(NULL, master->timeunit, windat->t, &yr, &day, &lon);
@@ -3823,13 +3825,18 @@ void ginterface_moonvars(void *hmodel, int b,
   /* Get the Greenwhich mean sidereal time in hours                  */
   /* see https://aa.usno.navy.mil/faq/docs/GAST.php                  */
   jt += windat->days - floor(windat->days);
+
+  // appliedOrbitalHW5.m has 18.697374458 !
+
+  jt -= tm_tz_offset(ginterface_gettimeunits(hmodel)) / 86400.0;  // moonvars is expecting UTC.
+  
   gmst = fmod(18.697374558 + 24.06570982441908 * (jt - 2451545.0), 24.0) * PI / 12.0;
   
   /* Call EMS library function */
 
   // printf("Passing jt = %e to moonvars \n",jt);
 
-  moonvars(jt, &Al, &dec, mlon, mlat, &radius[0]);
+  moonvars(jt, &Al, &dec, &mlon[0], &mlat[0], &radius[0]);
   radius[0] *= 1e3;   /* Convert to metres */
 
   /* Get the lunar hour angle (Pugh Eq. 3.20a)                       */
@@ -3845,10 +3852,12 @@ void ginterface_moonvars(void *hmodel, int b,
   /* Calculate Moon Phase - New Moon in Hobart 4.13 am, 7 Jan 2000 */
   /* Need to make this work for any time */
 
-  int newmoonday = date_to_jul(1, 7, 2000);
-  double newmoon_jt = (double)newmoonday + 4./24.+ 13./(60.*24.) + 0.5;
-  double partday = (windat->days+12./24. - floor(windat->days+12./24.));
-  double moonphase = fmod((double)jd + partday - newmoon_jt,29.530588853)/29.530588853;
+  // int newmoonday = date_to_jul(1, 7, 2000);
+  // double newmoon_jt = (double)newmoonday + 4./24.+ 13./(60.*24.) + 0.5;
+  // double partday = (windat->days+12./24. - floor(windat->days+12./24.));
+  // double moonphase = fmod((double)jd + partday - newmoon_jt,29.530588853)/29.530588853;
+
+  double moonphase = 0.0; // calculated elsewhere.
 
   /* calculate lunar declination using earth's declination (off by a maximum of 5 degrees) */
 

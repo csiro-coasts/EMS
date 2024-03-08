@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.h 7355 2023-05-08 05:36:40Z riz008 $
+ *  $Id: sediments.h 7484 2024-02-13 23:53:02Z mar644 $
  *
  */
 
@@ -209,6 +209,16 @@ struct sed_params {
   int cssmode;                  /* Erosion calculation mode (0-3) */
   int flocmode;                 /* Flocculation calculation mode (0, 1) */
   double flocprm1, flocprm2;    /* Flocculation parameters */
+
+  // NMY 2024 floc Amanda
+  //char flocfile[MAXSTRLEN];
+  int    floc_Nlines;
+  int    floc_imax,   floc_jmax,   floc_kmax;
+  double floc_salmax, floc_turmax, floc_gggmax;
+  double floc_salmin, floc_turmin, floc_gggmin;
+  double *floc_d50_1d, ***floc_d50_3d;
+
+
   double css_dep, css_scale;    /* Deposition critical stress N/m*m */
   double consolrate;            /* Consolidation time [day] */
   int consolidate;              /* Activators */

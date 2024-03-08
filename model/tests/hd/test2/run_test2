@@ -1,23 +1,26 @@
-#!/bin/csh -f
+#!/bin/csh -ef
+
+# Set relative path to shoc executable
+set SHOC='../../../hd/shoc'
 
 echo "Testing 'z' model..."
-rm in2.nc
-rm out2_z.nc
+rm -f in2.nc || true
+rm -f out2_z.nc || true
 
-../shoc -g test2.prm in2.nc
+$SHOC -g test2.prm in2.nc
 
-../shoc -p test2.prm
+$SHOC -p test2.prm
 
 echo "DONE"
 
 echo "Testing sigma model..."
-rm in2.nc
-rm out2_s.nc
+rm -f in2.nc || true
+rm -f out2_s.nc || true
 
-../shoc -g test2_s.prm in2.nc
+$SHOC -g test2_s.prm in2.nc
 
-../shoc -p test2_s.prm
+$SHOC -p test2_s.prm
 
 echo "DONE"
 
-rm in2.nc
+rm -f in2.nc || true

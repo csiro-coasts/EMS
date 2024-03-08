@@ -212,3 +212,4 @@ SURFACE    1350
 
 # Bathymetry
 BATHYFILE           closed_bathy.nc
+BATHY_INTERP_RULE   linear
