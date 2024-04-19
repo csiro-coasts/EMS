@@ -1,7 +1,8 @@
 #!/bin/csh -ef
 
 if (! $?SHOC || "$SHOC" == "") then
-    set SHOC='../shoc'
+    # Set relative path to shoc executable
+    set SHOC='../../../hd/shoc'
 endif
 
 echo "Testing 'z' model..."
@@ -15,7 +16,7 @@ $SHOC -g test7_diag.prm in7.nc
 echo "Running, takes ~ 3 minutes...."
 $SHOC -p test7.prm
 
-echo "Running diagnostic test, takes ~ 40 minutes...."
+echo "Running diagnostic test, takes ~ 2 minutes...."
 rm -f out7_d.nc || true
 rm -f out_pt.nc || true
 $SHOC -p test7_diag.prm

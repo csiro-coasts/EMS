@@ -1,7 +1,8 @@
 #!/bin/csh -ef
 
 if (! $?SHOC || "$SHOC" == "") then
-    set SHOC='../shoc'
+    # Set relative path to shoc executable
+    set SHOC='../../../hd/shoc'
 endif
 
 echo "Testing 'z' model..."

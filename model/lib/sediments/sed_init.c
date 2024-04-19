@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed_init.c 7481 2024-02-01 03:50:21Z riz008 $
+ *  $Id: sed_init.c 7484 2024-02-13 23:53:02Z mar644 $
  *
  */
 
@@ -72,6 +72,9 @@ int sinterface_getcssmode(FILE* prmfd);
 double sinterface_getcss(FILE* prmfd);
 double sinterface_getcssdep(FILE* prmfd);
 int sinterface_getflocmode(FILE* prmfd);
+/* NMY 2024 Amanda*/
+int sinterface_getflocfile(FILE* prmfd, char *flocfile);
+
 double sinterface_getflocprm1(FILE* prmfd);
 double sinterface_getflocprm2(FILE* prmfd);
 int sinterface_getbblnonlinear(FILE* prmfd);
@@ -253,6 +256,7 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
 
   int i,j,k;
   char shipfile[MAXSTRLEN],buf[MAXSTRLEN];
+  char flocfile[MAXSTRLEN]; // NMY 2024 Amanda
   void *hmodel = sediment->hmodel;
   FILE *flog, *fp;
 
@@ -358,6 +362,50 @@ static void sed_params_init(FILE * prmfd, sediment_t *sediment)
   param->flocmode = sinterface_getflocmode(prmfd);
   param->flocprm1 = sinterface_getflocprm1( prmfd);
   param->flocprm2 = sinterface_getflocprm2( prmfd);
+
+
+  // NMY 2024 Amanda
+  /*************************/
+  k = sinterface_getflocfile(prmfd, flocfile);
+//k=1;
+//strcpy(flocfile, "/g/data/et4/nym599/svn_Apr2023/main/model/lib/sediments/d50_lookup_GUpdate_nm.txt");
+
+  if(k) {
+    int n;
+    fp = fopen(flocfile,"r");
+    fscanf(fp,"%s",buf);  fscanf(fp,"%d",&param->floc_Nlines);
+    fscanf(fp,"%d",&param->floc_imax);    fscanf(fp,"%d",&param->floc_jmax);    fscanf(fp,"%d",&param->floc_kmax);
+    fscanf(fp,"%lf",&param->floc_salmin); fscanf(fp,"%lf",&param->floc_turmin); fscanf(fp,"%lf",&param->floc_gggmin);
+    fscanf(fp,"%lf",&param->floc_salmax); fscanf(fp,"%lf",&param->floc_turmax); fscanf(fp,"%lf",&param->floc_gggmax);
+    // alloc 1d lookup array
+    param->floc_d50_1d = (double *) d_alloc_1d(param->floc_Nlines);
+
+    for (i=0;i<param->floc_Nlines;i++) {
+       fscanf(fp,"%lf",&param->floc_d50_1d[i]);
+    }
+    fclose(fp);
+
+    //check
+    if(param->floc_Nlines != param->floc_imax*param->floc_jmax*param->floc_kmax) {
+        fprintf(stderr,
+           "sed_init.c: reading floc d50 lookup array: the number of lines in 1d array not matching the number of elements in 3d array \n");
+        exit(1);
+    }
+
+    // alloc 3d lookup array
+    param->floc_d50_3d = (double ***) d_alloc_3d(param->floc_kmax, param->floc_jmax, param->floc_imax);
+    n=0;
+    for (i=0;i<param->floc_imax;i++) {
+        for (j=0;j<param->floc_jmax;j++) {
+            for (k=0;k<param->floc_kmax;k++) {
+                param->floc_d50_3d[i][j][k] = param->floc_d50_1d[n];
+                n++;
+    }}}
+
+  } // end if(k)
+  /******************/
+
+
   param->bbl_nonlinear = sinterface_getbblnonlinear( prmfd);
   param->hindered_svel_patch = sinterface_gethindered_svel_patch( prmfd);
   param->hindered_svel = sinterface_gethindered_svel( prmfd);

@@ -1,48 +1,49 @@
 #!/bin/csh -ef
 
-if (! $?SHOC || "$SHOC" == "") then
-    set SHOC='../shoc'
-endif
-
 if (! $?COMPAS || "$COMPAS" == "") then
-    set COMPAS='../compas'
+    # Set relative path to compas executable
+    set COMPAS='../../../hd-us/compas'
+endif
+if (! $?SHOC || "$SHOC" == "") then
+    # Set relative path to shoc executable
+    set SHOC='../../../hd/shoc'
 endif
 
 echo "Testing SHOC..."
-rm -f closed.nc
-rm -f out1.nc
+rm -f closed.nc || true
+rm -f out1.nc || true
 
-$SHOC -g closed.prm closed.nc
-
-$SHOC -p closed.prm
+if (-f $SHOC) then
+    $SHOC -g closed.prm closed.nc
+    $SHOC -p closed.prm
+else
+    echo "SHOC not found, skipping ..."
+endif
 
 echo "DONE"
 
 echo "Testing COMPAS quad..."
-rm -f closed_quad.nc
-rm -f s_closed_quad.nc
-rm -f out1_quad.nc
-rm -f pt.nc
+rm -f closed_quad.nc || true
+rm -f s_closed_quad.nc || true
+rm -f out1_quad.nc || true
+rm -f pt.nc || true
 
 $COMPAS -g closed_quad.prm closed_quad.nc
-
 $COMPAS -p closed_quad.prm
 
 echo "DONE"
 
 echo "Testing COMPAS quad 5 window..."
-rm -f out1_quad5w.nc
-
+rm -f out1_quad5w.nc || true
 $COMPAS -p closed_quad5w.prm
 
 echo "DONE"
 
 echo "Testing COMPAS hex..."
-rm -f closed_hex.nc
-rm -f out1_hex.nc
+rm -f closed_hex.nc || true
+rm -f out1_hex.nc || true
 
 $COMPAS -g closed_hex.prm closed_hex.nc
-
 $COMPAS -p closed_hex.prm
 
 echo "DONE"

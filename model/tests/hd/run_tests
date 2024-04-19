@@ -1,52 +1,62 @@
-#!/bin/csh -f
+#!/bin/bash
+#
+# Top-level script to run hd tests
+#
 
-echo "Running test1..."
-cd test1
-cat README
-./run_test1
-echo "Done test1"
-echo "-------------------------------"
-echo "Running test2..."
-cd ../test2
-cat README
-./run_test2
-echo "Done test2"
-echo "-------------------------------"
-echo "Running test3..."
-cd ../test3
-cat README
-./run_test3
-echo "Done test3"
-echo "-------------------------------"
-echo "Running test4..."
-cd ../test4
-cat README
-./run_test4
-echo "Done test4"
-echo "-------------------------------"
-echo "Running test5..."
-cd ../test5
-cat README
-./run_test5
-echo "Done test5"
-echo "-------------------------------"
-echo "Running test6..."
-cd ../test6
-cat README
-./run_test6
-echo "Done test6"
-echo "-------------------------------"
-echo "Running test7..."
-cd ../test7
-cat README
-./run_test7
-echo "Done test7"
-echo "-------------------------------"
-echo "Running test8..."
-cd ../test8
-cat README
-./run_test8
-echo "Done test8"
+# Build list of test directories
+TESTDIRS=(`ls -d test*`)
+LEN=${#TESTDIRS[@]}
 
+ARG=""
+if [ $# -gt 0 ]; then
+    ARG=$1
+fi
 
+SHOC=../../hd/shoc
+if [ ! -f $SHOC ];then
+    echo "SHOC executable ($SHOC) not found, skipping ...."
+    exit -1
+fi
+
+echo "------------------------"
+echo "Found ${LEN} tests in hd"
+echo "------------------------"
+p=0
+exit_status=0
+for (( i=0; i<LEN; i++ )); do
+    dname=${TESTDIRS[$i]}
+    cd ${dname}
+    echo "Running $dname ..."
+    head README.md
+    ./run_${dname}
+    # Check exit status
+    if [ $? -ne 0 ]; then
+	echo -e "FAILED ${dname}\n"
+	exit_status=1
+    else
+	echo -e "PASSED ${dname}\n"
+	((p=p+1))
+    fi
+    cd ..
+done
+
+echo "#############################"
+echo "PASSED $p out of ${LEN} tests"
+echo "#############################"
+
+# Format table for internal dev
+if [ "${ARG}" = "cronicle" ];then
+    read -r -d '' VAR << EOM
+{
+   "html": {
+      "title": "Run results",
+      "content": "<h1>Passed $p out of ${LEN} tests</h1>",
+      "caption": "Run results, see below for any errors"
+   }
+}
+EOM
+echo $VAR
+fi
+
+exit $exit_status
 
