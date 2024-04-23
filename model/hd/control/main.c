@@ -1,20 +1,20 @@
 /*
  *
  *  ENVIRONMENTAL MODELLING SUITE (EMS)
- *  
+ *
  *  File: model/hd/control/main.c
- *  
+ *
  *  Description:
  *  This file contains the main skeleton
  *  of the 3-d non-linear hydrodynamic
  *  model
- *  
+ *
  *  Copyright:
  *  Copyright (c) 2018. Commonwealth Scientific and Industrial
  *  Research Organisation (CSIRO). ABN 41 687 119 230. All rights
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
- *  
+ *
  *  $Id: main.c 6597 2020-09-03 05:29:26Z riz008 $
  *
  */
@@ -121,7 +121,7 @@ void print_vers(void)
   fprintf(stderr, "waves\t\t %d.%d.%d\n", get_waves_major_vers(),
     get_waves_minor_vers(),get_waves_patch_vers());
 #endif
-#ifdef HAVE_SEDIMENT_MODULE  
+#ifdef HAVE_SEDIMENT_MODULE
   fprintf(stderr, "sediments\t %d.%d.%d\n", get_sediments_major_vers(),
     get_sediments_minor_vers(),get_sediments_patch_vers());
 #endif
@@ -137,9 +137,9 @@ void process_args(int argc, char *argv[])
 {
   if (argc <= 1)
     usage();
-  /*UR store the name of this executable for logging */  
+  /*UR store the name of this executable for logging */
   strcpy(executable, argv[0]);
-  
+
   strcpy(diag_logfile, "diag.txt");
   strcpy(setup_logfile, "setup.txt");
   strcpy(window_geom_logfile, "window_geom.txt");
@@ -372,11 +372,11 @@ void print_trace (void)
   int size, i;
   char **strings;
   int k = 0;
-  
+
   size    = backtrace(array, 30);
   strings = backtrace_symbols(array, size);
 
-  hd_error("Segmentation violation detect (simulation time = %.4f days)\n", master->days);
+  hd_error("Segmentation violation detected\n");
   hd_error("Stack trace:\n", size);
 
   /*
@@ -388,7 +388,7 @@ void print_trace (void)
    */
   for (i = 3; i < size; i++)
     hd_error(" [%d] %s\n", k++, strings[i]);
-  
+
   free(strings);
 }
 
@@ -454,7 +454,7 @@ int main(int argc, char *argv[])
 #else
   sprintf(version, "%s", EMS_VERSION);
 #endif
-  
+
   /* print heading */
   now = time(NULL);
   fprintf(stderr, "\t\tSHOC: Sparse Hydrodynamic Ocean Code\n");
@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
   /* params_read(prmfd); */
 
   if (autof == 9) calc_perc(prmfd);
-  
+
   /*UR-ADDED to initialise any ems lib specific functions
    * leave this in front */
 #ifdef HAVE_MPI
@@ -484,14 +484,14 @@ int main(int argc, char *argv[])
 
   INIT_TIMING;
 
-/* 
+/*
  * Schedule the events and the main data.
  * Maintain order.
  */
   schedule = sched_init(prmfd, now);
   hd_data = hd_init(prmfd);
 
-  /* 
+  /*
    * Start the main loop
    */
 
@@ -546,7 +546,7 @@ int main(int argc, char *argv[])
   if (killed) {
     dump_snapshot(sched_get_even_by_name(schedule, "dumps"), schedule->t);
   }
-    
+
   emstag(LINFO,"hd:main:main","Finishid at model time = %f days.\n", schedule->t / 86400.0);
 
   model_running = 0;
@@ -603,4 +603,3 @@ int verbosity()
 {
   return 0;
 }
-
