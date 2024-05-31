@@ -1,16 +1,16 @@
-# Test 7 of model shoc: 50 by 27 by 24 closed basin with sloping 
-# bottom (southern hemisphere) is forced with wind stress in the 
+# Test 7 of model shoc: 50 by 27 by 24 closed basin with sloping
+# bottom (southern hemisphere) is forced with wind stress in the
 # e1 ditrection having positive curl. Anti-cyclonic circulation
 # is set up due to topographically induced conservation of potential
 # vorticity, where the centre of the gyre biased to the west.
-# Conservation of potential vorticity theory (e.g. Herzfeld & Tomczak 
+# Conservation of potential vorticity theory (e.g. Herzfeld & Tomczak
 # (1999), Aust. J. Marine Freshw. Res., 50, 613 - 627.) predicts that :
 # A poitive gradient of f/H (f < 0) results in an eastward biased gyre.
 # A poitive gradient of f/H (f > 0) results in an westward biased gyre.
 # Constant depth (BATHYMAX = 50) results in a gyre with no bias.
 # A change in sign of the wind curl (WIND_SPEED_SCALE = -1.0) results
 # in a cyclonic gyre with no change to the bias.
-   
+
 CODEHEADER           SHOC default version : leapfrog
 PARAMETERHEADER      Test 7 - closed basin with +ve wind curl
 DESCRIPTION          SHOC test 7
@@ -47,7 +47,7 @@ RAMPSTART            0 days
 RAMPEND              1 days
 MERGE_THIN           YES
 HMIN                 0.1400
-SLIP                 1.0   
+SLIP                 1.0
 SIGMA                NO
 COMPATIBLE           V4201
 
@@ -97,50 +97,50 @@ ALERT      	     NONE
 MOM_TEND	     YES
 CALC_FLUXES          NONE
 FLUSHING_TR          NO
-STERIC_HEIGHT        0.00  
+STERIC_HEIGHT        0.00
 TOTALS               YES Sand Silt Fine tss
 
 # Grid
 GRIDTYPE             GEOGRAPHIC_RECTANGULAR
 NCE1                 50
 NCE2                 27
-X00                  0.00000 
-Y00                  0.00000 
+X00                  0.00000
+Y00                  0.00000
 DX                   25000.000
 DY                   25000.000
-ROTATION             0.0   
+ROTATION             0.0
 
 # Vertical grid spacing
 LAYERFACES           24
--110.00 
--105.00 
--100.00 
--95.00  
--90.00  
--85.00  
--80.00  
--75.00  
--70.00  
--65.00  
--60.00  
--55.00  
--50.00  
--45.00  
--40.00  
--35.00  
--30.00  
--25.00  
--20.00  
--15.00  
--10.00  
--5.00   
--2.00   
-0.00    
+-110.00
+-105.00
+-100.00
+-95.00
+-90.00
+-85.00
+-80.00
+-75.00
+-70.00
+-65.00
+-60.00
+-55.00
+-50.00
+-45.00
+-40.00
+-35.00
+-30.00
+-25.00
+-20.00
+-15.00
+-10.00
+-5.00
+-2.00
+0.00
 
 # Bathymetry limits
-BATHYMIN             50.0  
-BATHYMAX             120.0 
-ETAMAX               10.0  
+BATHYMIN             50.0
+BATHYMAX             120.0
+ETAMAX               10.0
 MIN_CELL_THICKNESS   25%
 
 # Tracers
@@ -150,8 +150,8 @@ TRACER0.name         salt
 TRACER0.long_name    Salinity
 TRACER0.type         WATER SEDIMENT
 TRACER0.units        PSU
-TRACER0.fill_value   35.0  
-TRACER0.valid_range  0.0    40.0  
+TRACER0.fill_value   35.0
+TRACER0.valid_range  0.0    40.0
 TRACER0.advect       1
 TRACER0.diffuse      1
 TRACER0.diagn        0
@@ -161,8 +161,8 @@ TRACER1.name         temp
 TRACER1.long_name    Temperature
 TRACER1.type         WATER SEDIMENT
 TRACER1.units        degrees C
-TRACER1.fill_value   20.0  
-TRACER1.valid_range  0.0    40.0  
+TRACER1.fill_value   20.0
+TRACER1.valid_range  0.0    40.0
 TRACER1.advect       1
 TRACER1.diffuse      1
 TRACER1.diagn        0
@@ -277,7 +277,7 @@ TRACER5.cohesive        0
 TRACER6.name            depth_sed
 TRACER6.long_name       depth_sed
 TRACER6.type            BENTHIC
-TRACER6.units 
+TRACER6.units
 TRACER6.fill_value_wc   0.0
 TRACER6.fill_value_sed  0.0
 TRACER6.valid_range_wc  0 10
@@ -302,7 +302,7 @@ TRACER6.cohesive        0
 TRACER7.name            ustrcw_skin
 TRACER7.long_name       ustrcw_skin
 TRACER7.type            BENTHIC
-TRACER7.units 
+TRACER7.units
 TRACER7.fill_value_wc   0.0
 TRACER7.fill_value_sed  0.0
 TRACER7.valid_range_wc  0 30
@@ -327,11 +327,11 @@ TRACER7.cohesive        0
 # Forcing
 WIND_TS              wind_test7.nc
 WIND_INPUT_DT        10   days
-WIND_SPEED_SCALE     1.0   
-DRAG_LAW_V0          10.0  
-DRAG_LAW_V1          26.0  
-DRAG_LAW_CD0         0.00114 
-DRAG_LAW_CD1         0.00218 
+WIND_SPEED_SCALE     1.0
+DRAG_LAW_V0          10.0
+DRAG_LAW_V1          26.0
+DRAG_LAW_CD0         0.00114
+DRAG_LAW_CD1         0.00218
 
 # Time series
 TSPOINTS             1
@@ -385,7 +385,7 @@ CSS_ER            0.2
 
 # FLOCCULATION
 # Modes: FLOC0, FLOC1
-# Default: FLOC0 - no flocculation 
+# Default: FLOC0 - no flocculation
 FLOC_MODE        FLOC0
 FLOC_PRM1  0.01
 FLOC_PRM2  3
@@ -1800,5 +1800,5 @@ BATHY    1350
 
 
 ID_CODE SHOC grid|G1.0|H1.0|S|B
-çU
+ÔøΩU
 |B0.00

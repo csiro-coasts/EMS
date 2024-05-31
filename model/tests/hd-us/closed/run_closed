@@ -1,8 +1,13 @@
 #!/bin/csh -ef
 
-# Set relative path to compas executable
-set COMPAS='../../../hd-us/compas'
-set SHOC='../../../hd/shoc'
+if (! $?COMPAS || "$COMPAS" == "") then
+    # Set relative path to compas executable
+    set COMPAS='../../../hd-us/compas'
+endif
+if (! $?SHOC || "$SHOC" == "") then
+    # Set relative path to shoc executable
+    set SHOC='../../../hd/shoc'
+endif
 
 echo "Testing SHOC..."
 rm -f closed.nc || true
@@ -14,7 +19,7 @@ if (-f $SHOC) then
 else
     echo "SHOC not found, skipping ..."
 endif
-    
+
 echo "DONE"
 
 echo "Testing COMPAS quad..."
@@ -42,6 +47,3 @@ $COMPAS -g closed_hex.prm closed_hex.nc
 $COMPAS -p closed_hex.prm
 
 echo "DONE"
-
-
-

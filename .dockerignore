@@ -1,0 +1,6 @@
+.env
+.gitlab_ci.yaml
+*.log
+*.md
+docker-compose.yml
+hooks

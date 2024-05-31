@@ -1,0 +1,22 @@
+---
+#-------------------------------------------------------------------------------
+# Docker *test* environment composition for EMS
+# This exists to support the autotest option for a Dockerhub repository build
+# (See: https://docs.docker.com/docker-hub/builds/automated-testing/)
+#
+# If this repository and rbanch are configured as Dockerhub autotest
+# repositories, this will automatically build and test EMS with all default
+# settings every time a push is made to the repository.
+#
+# The resulting image is not automatically pushed to the DockerHub registry
+# unless the same respository is automatically configured for autobuild.
+#-------------------------------------------------------------------------------
+version: "3.8"
+
+services:
+  ems:
+    build:
+      context: .
+      args:
+        EMS_TEST_RUN: 0
+    command: "run-ems-tests"

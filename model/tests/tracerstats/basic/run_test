@@ -1,23 +1,25 @@
-#!/bin/csh -f
+#!/bin/csh -ef
 
 # Script to run test
 
+if (! $?SHOC || "$SHOC" == "") then
+    set SHOC='../../../hd/shoc'
+endif
+
 # check shoc
-if (! -e ../../../hd/shoc) then
+if (! -e $SHOC) then
     echo "cannot find the shoc executable, please build and try again"
     exit(0)
 endif
 
-# check output dir
-if (! -d out) then
-    mkdir out
-else
-    rm -r out/*
-endif
+# Ensure output dir is empty
+set nonomatch
+mkdir -p out
+rm -rf out/*
 
 # Kick off model
 echo "Starting model ..."
-../../../hd/shoc -p basic.prm
+$SHOC -p basic.prm
 
 if ($status) then
     echo ".... uh oh!"
@@ -26,4 +28,3 @@ else
     echo " "
     echo "Run out.m in Matlab to see results"
 endif
-

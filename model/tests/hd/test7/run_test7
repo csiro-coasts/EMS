@@ -1,7 +1,9 @@
 #!/bin/csh -ef
 
-# Set relative path to shoc executable
-set SHOC='../../../hd/shoc'
+if (! $?SHOC || "$SHOC" == "") then
+    # Set relative path to shoc executable
+    set SHOC='../../../hd/shoc'
+endif
 
 echo "Testing 'z' model..."
 rm -f in7.nc || true
