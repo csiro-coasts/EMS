@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 7576 2024-05-30 03:47:52Z riz008 $
+ *  $Id: ginterface.c 7578 2024-05-31 01:32:53Z riz008 $
  *
  */
 
@@ -3957,6 +3957,8 @@ double ginterface_get_eta(void* hmodel, int b)
  */
 int ginterface_is_window1(void *hmodel)
 {
-  geometry_t* window = (geometry_t*) hmodel;
-  return (window->wn == 1);
+  if (hmodel == NULL)
+    return 1;
+  else
+    return (((geometry_t*)hmodel)->wn == 1);
 }

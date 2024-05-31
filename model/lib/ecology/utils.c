@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: utils.c 7576 2024-05-30 03:47:52Z riz008 $
+ *  $Id: utils.c 7578 2024-05-31 01:32:53Z riz008 $
  *
  */
 
@@ -286,7 +286,7 @@ double get_parameter_value(ecology* e, char* s)
   
   // Output parameter values to a netcdf file.
 
-  if (ginterface_is_window1(e->model)) {
+  if (!e->pre_build && ginterface_is_window1(e->model)) {
     int var_exists = 0;
     int varid;
     int ncid = e->eco_params_ncid;
@@ -448,7 +448,7 @@ double try_parameter_value(ecology* e, char* s)
       return NaN;
     }else{
       eco_write_setup(e,"Ecol. parameter tried to read %s and found %e \n",s,e->pinfo[index].value[0]);
-      if (ginterface_is_window1(e->model)) {
+      if (!e->pre_build && ginterface_is_window1(e->model)) {
 	int ncid = e->eco_params_ncid,varid;
 	var_exists = nc_inq_varid(ncid,s,&varid);
 	
