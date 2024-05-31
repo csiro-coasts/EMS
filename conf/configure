@@ -741,6 +741,7 @@ enable_swan
 enable_ecology_custom
 enable_do_timing
 enable_mkl
+enable_kdtree
 with_mkl
 with_gsl
 enable_da
@@ -1385,6 +1386,7 @@ Optional Features:
 --enable-ecology-custom=standard|anm|... - The ecological model custom version
   --enable-do-timing      enables timing profile
   --enable-mkl      enables building with MKL
+  --enable-kdtree         Enable KDTREE feature
   --enable-da         enables building with the DA library
   --disable-openmp        do not use OpenMP
   --enable-omp              enables building with OpenMP
@@ -5552,6 +5554,17 @@ if test "$ENABLE_MKL"; then
    $as_echo "#define HAVE_MKL 1" >>confdefs.h
 
 fi
+
+# Check whether --enable-kdtree was given.
+if test "${enable_kdtree+set}" = set; then :
+  enableval=$enable_kdtree; if test "$enableval" = "yes"; then
+                  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: KDTREE help for delaunay walk is enabled, results may vary." >&5
+$as_echo "$as_me: WARNING: KDTREE help for delaunay walk is enabled, results may vary." >&2;}
+                 $as_echo "#define USE_KDTREE 1" >>confdefs.h
+
+               fi
+fi
+
 
 
 # Check whether --with-mkl was given.

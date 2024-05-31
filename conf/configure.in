@@ -335,6 +335,16 @@ if test "$ENABLE_MKL"; then
 fi
 
 dnl ###########################################################################
+dnl #### kdtree vs delaunay
+dnl ###########################################################################
+AC_ARG_ENABLE([kdtree],
+              [AS_HELP_STRING([--enable-kdtree], [Enable KDTREE feature])],
+              [if test "$enableval" = "yes"; then
+                  AC_MSG_WARN([KDTREE help for delaunay walk is enabled, results may vary.])
+                 AC_DEFINE([USE_KDTREE])
+               fi])
+
+dnl ###########################################################################
 dnl #### Intel Math Kernel Library (MKL)
 dnl ###########################################################################
 AC_ARG_WITH(mkl, [  --with-mkl=<path>       Path to mkl root], MKL_ROOT=$withval, MKL_ROOT=)

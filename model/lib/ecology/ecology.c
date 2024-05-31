@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 7197 2022-09-13 10:41:09Z bai155 $
+ *  $Id: ecology.c 7576 2024-05-30 03:47:52Z riz008 $
  *
  */
 
@@ -788,14 +788,34 @@ ecology* ecology_build(void* model, char* prmfname)
      *  - Do this after the initial create_processes call to only
      *    capture the events once (see call below)
      */
-    e->eco_setup = e_fopen("ecology_setup.txt", "w");
-    {
+    if (ginterface_is_window1(model)) {
+      e->eco_setup = e_fopen("ecology_setup.txt", "w");
       /* Open file in the outputs area */
       char *opath = ginterface_get_output_path();
       if (opath) {
 	sprintf(buf, "%s/ecology_setup.txt", opath);
 	e->eco_osetup = e_fopen(buf, "w");
       }
+    }
+
+    /* Remove ecology_parameter_setup.nc if it exists */
+    //  - replaced with CLOBBER below
+    // system("rm ecology_parameter_setup.nc");
+
+    /* 
+     * Create file, clobber if it exists 
+     *    - it's closed towards the end of this function 
+     */
+    if (ginterface_is_window1(model)) {
+      int ncid;
+      ncw_create(ECO_PARAMS_SETUP, NC_CLOBBER, &ncid);
+      write_text_att(ncid, NC_GLOBAL, "title", "CSIRO Environmental Modelling Suite (EMS) biological parameter setup.");
+      write_text_att(ncid, NC_GLOBAL, "description", "All variables specified in the biological parameter file");
+      write_date_created(ncid);
+      /* utils.c calls ncredef */
+      nc_enddef(ncid);
+      /* cache netcdf file id */
+      e->eco_params_ncid = ncid;
     }
 	
     /* 
@@ -967,6 +987,9 @@ ecology* ecology_build(void* model, char* prmfname)
     }
 #endif
 
+    if (ginterface_is_window1(model))
+      ncw_close(ECO_PARAMS_SETUP, e->eco_params_ncid);
+
     fclose(prmfile);
 
     /* Initialise bio optical properties, if needed */
@@ -1000,7 +1023,8 @@ ecology* ecology_build(void* model, char* prmfname)
     einterface_ecologyinit(model, e);
 
     /* Close setup file, use the runlog from now on */
-    fclose(e->eco_setup);
+    if (e->eco_setup)
+      fclose(e->eco_setup);
     if (e->eco_osetup)
       fclose(e->eco_osetup);
     e->eco_setup  = NULL;
@@ -1571,16 +1595,18 @@ void eco_write_setup(ecology *e, const char *str, ...)
 
   /* Guard against pre_build */
   if (e->eco_setup == NULL) return;
-
-  va_start(args, str);
-  vfprintf(e->eco_setup, str, args);
-  va_end(args);
-
-  /* Write into outputs as well */
-  if (e->eco_osetup) {
+  
+  if (ginterface_is_window1(e->model)) {
     va_start(args, str);
-    vfprintf(e->eco_osetup, str, args);
+    vfprintf(e->eco_setup, str, args);
     va_end(args);
+    
+    /* Write into outputs as well */
+    if (e->eco_osetup) {
+      va_start(args, str);
+      vfprintf(e->eco_osetup, str, args);
+      va_end(args);
+    }
   }
 }
 

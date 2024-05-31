@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_init.c 7464 2023-12-13 03:52:01Z her127 $
+ *  $Id: hd_init.c 7563 2024-05-27 05:01:21Z her127 $
  *
  */
 
@@ -610,6 +610,7 @@ void compute_constants(parameters_t *params, /* Parameter structure  */
   strcpy(master->u1vhci, params->u1vhc);
   strcpy(master->u1khci, params->u1khc);
   master->stab = params->stab;
+  master->trsf = params->trsf;
   master->thin_merge = params->thin_merge;
   master->sigma = params->sigma;
   master->nonlinear = params->nonlinear;

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.h 7484 2024-02-13 23:53:02Z mar644 $
+ *  $Id: sediments.h 7577 2024-05-31 00:36:37Z riz008 $
  *
  */
 
@@ -41,7 +41,7 @@ extern sedlogtag sedtag;
 /* Release verions and getters */
 #define SEDIMENTS_MAJOR_VERSION 1
 #define SEDIMENTS_MINOR_VERSION 1
-#define SEDIMENTS_PATCH_VERSION 3
+#define SEDIMENTS_PATCH_VERSION 4
 
 int get_sediments_major_vers(void);
 int get_sediments_minor_vers(void);

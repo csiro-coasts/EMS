@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: df_ugrid.c 7336 2023-04-11 02:35:01Z her127 $
+ *  $Id: df_ugrid.c 7553 2024-05-16 03:40:07Z riz008 $
  *
  */
 
@@ -575,6 +575,13 @@ void write_dump_attributes_ugrid(dump_data_t *dumpdata, int cdfid,
     tracer_write_nc(cdfid, dumpdata->ntrS, dumpdata->trinfo_2d, 2, attr);
   }
 
+  {
+    tracer_att_t attr[] = { {"tracer_sed", "true"},
+    {"coordinates", "t, Mesh2_face_x, Mesh2_face_y, Mesh2_layers_sed"}
+    };
+    tracer_write_nc(cdfid, dumpdata->nsed, dumpdata->trinfo_sed, 2, attr);
+  }
+  
   if (dumpdata->nvars) {
     int i, j, dims[10];
     char buf[MAXSTRLEN];
@@ -1104,6 +1111,13 @@ void write_dump_attributes_ugrid3(dump_data_t *dumpdata, dump_file_t *df, int cd
     tracer_write_nc(cdfid, dumpdata->ntrS, dumpdata->trinfo_2d, 2, attr);
   }
 
+  {
+    tracer_att_t attr[] = { {"tracer_sed", "true"},
+    {"coordinates", "t, Mesh2_face_x, Mesh2_face_y, Mesh2_layers_sed"}
+    };
+    tracer_write_nc(cdfid, dumpdata->nsed, dumpdata->trinfo_sed, 2, attr);
+  }
+  
   /* global attributes */
   write_text_att(cdfid, NC_GLOBAL, "title", codeheader);
   write_text_att(cdfid, NC_GLOBAL, "paramhead", parameterheader);
@@ -1547,11 +1561,11 @@ void df_ugrid_write(dump_data_t *dumpdata, dump_file_t *df, double t)
   if (dumpdata->sednz > 0) {
     count[1] = dumpdata->sednz;
     count[2] = df->nface2;
-    pack_ugrids(dumpdata->sednz - 1, count[2], geom->cellz_sed, dumpdata->wc, oset);
+    pack_ugrids(dumpdata->sednz, count[2], geom->cellz_sed, dumpdata->wc, oset);
     nc_d_writesub_2d(fid, ncw_var_id(fid, "Mesh2_layers_sed"), start, count, dumpdata->wc);
 
     count[1] = dumpdata->sednz + 1;
-    pack_ugrids(dumpdata->sednz, count[2], geom->gridz_sed, dumpdata->wc, oset);
+    pack_ugrids(dumpdata->sednz+1, count[2], geom->gridz_sed, dumpdata->wc, oset);
     nc_d_writesub_2d(fid, ncw_var_id(fid, "Mesh2_layerfaces_sed"), start, count, dumpdata->wc);
   }
 

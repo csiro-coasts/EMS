@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 7427 2023-10-25 01:26:35Z her127 $
+ *  $Id: monitor.c 7574 2024-05-30 03:39:28Z riz008 $
  *
  */
 
@@ -60,7 +60,6 @@ void print_total_mass(master_t *master);
 void psorts(double *a, int *c, int n);
 void porders(double *p, double *q, int *i, int *j);
 void sound_channel(geometry_t *window, window_t *windat, win_priv_t *wincon);
-void quicksort(double *p, int *q, int l, int r);
 int partition(double *p, int *q, int l, int r);
 int mergeSort(int a[], int start, int end );
 double vertex_mean(geometry_t *window, double *a, int c);
@@ -2473,13 +2472,18 @@ void calc_cfl(geometry_t *window,   /* Window geometry               */
 	for (j = 1; j < window->npe[c]; j++) {
 	  int e = window->c2e[j][c];
 	  int es = window->m2de[e];
+	  int c1 = window->e2c[e][0];
+	  int c2 = window->e2c[e][1];
 	  u = fabs(windat->u1[e]);
 	  windat->courn[c] = max(windat->courn[c], u * windat->dt / window->h2au1[es]);
 	  /*windat->courn[c] = u * windat->dt / window->h2au1[es];*/
 	  u = (u) ? window->h2au1[es] / u : HUGE;
 	  windat->cour[c] = min(windat->cour[c], u);
-	  u = fabs(windat->u[window->e2c[e][0]] - 
-		   windat->u[window->e2c[e][1]]);
+	  u = fabs(windat->u[c1] * window->costhu1[es] + 
+		   windat->v[c1] * window->sinthu1[es] -
+		   windat->u[c2] * window->costhu1[es] - 
+		   windat->v[c2] * window->sinthu1[es]);
+	  /*u = fabs(windat->u[c1] - windat->u[c2]);*/
 	  u = (u) ? window->h2au1[es] / u : HUGE;
 	  windat->lips[c] = min(windat->lips[c], u);
 	}
@@ -4065,7 +4069,7 @@ void mass_diag(geometry_t *window,     /* Window geometry            */
   }
 
   /* Add sediment mass if this tracer has a sediment component       */
-  npor = tracer_find_index("porosity", wincon->ntr, wincon->trinfo_sed);
+  npor = tracer_find_index("porosity", wincon->nsed, wincon->trinfo_sed);
   for (n = 0; n < windat->ntot; n++) {
     if ((trn = windat->totid_sed[n]) >= 0) {
       for(cc = 1; cc <= window->b2_t; cc++) {

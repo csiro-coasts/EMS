@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dhw.c 6710 2021-03-29 00:54:11Z her127 $
+ *  $Id: dhw.c 7542 2024-05-09 03:27:40Z her127 $
  *
  */
 
@@ -30,6 +30,7 @@ double thresh = 1.0;
 static int dhw_init(sched_event_t *event);
 double dhw_event(sched_event_t *event, double t);
 static void dhw_cleanup(sched_event_t *event, double t);
+int ts_check_time(timeseries_t *ts, double r);
 
 typedef struct {
   master_t *master;             /* Grid associated with */
@@ -161,6 +162,7 @@ double dhw_event(sched_event_t *event, double t)
       varid = ts_get_index(ts, fv_get_varname(dhw->tsnames[n], tname, buf));
       if (varid < 0) found = 0;
     }
+
     if (found && !dhw->checked) {
       prm_set_errfn(hd_silent_warn);
       hd_ts_multifile_check(dhw->ntsfiles, dhw->tsfiles, dhw->tsnames, tname,
@@ -171,7 +173,7 @@ double dhw_event(sched_event_t *event, double t)
     /* Check if the offset dhd value is in the file                  */
     tin = t - dhw->offset;
     for (n = 0; n < dhw->ntsfiles; n++) {
-      if (ts_has_time(dhw->tsfiles[n], tin) == 0)
+      if (ts_check_time(dhw->tsfiles[n], tin) == 0)
 	found = 0;
     }
 
@@ -206,7 +208,6 @@ double dhw_event(sched_event_t *event, double t)
 	if (master->dhd[tn][c] > master->dhwc[tn][c] + thresh)
 	  master->dhw[tn][c] += fact * ((master->dhd[tn][c] - master->dhwc[tn][c]) - dhdo);
       }
-
       /* Reinitialize the dhd value                                  */
       master->dhd[tn][c] = 0.0;
     }
@@ -296,4 +297,41 @@ void calc_dhd(geometry_t *window,       /* Window geometry       */
 }
 
 /* END calc_dhd()                                                    */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Wrapper to check if a record exists in a file                     */
+/*-------------------------------------------------------------------*/
+int ts_check_time(timeseries_t *ts, double r)
+{
+  datafile_t   *df = ts->df;
+  int ilow = 0;
+  int ihigh = df->nrecords - 1;
+
+  if (df->records == NULL) {
+    return(0);
+  }
+
+  /* If the time has not changed since the last function call, then
+     return the previously calculated bounds and fraction. */
+  if (r == df->t0) {
+    return(1);
+  }
+
+  if (r <= df->records[ilow]) {
+    return(0);
+  }
+
+  if (r >= df->records[ihigh]) {
+    ts_has_time(ts, r);
+    if (r >= df->records[ihigh]) {
+      return(0);
+    } else
+      return(1);
+  }
+  return(1);
+}
+
+/* END ts_check_time()                                               */
 /*-------------------------------------------------------------------*/

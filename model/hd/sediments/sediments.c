@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sediments.c 7484 2024-02-13 23:53:02Z mar644 $
+ *  $Id: sediments.c 7568 2024-05-27 07:06:54Z riz008 $
  *
  */
 
@@ -2163,7 +2163,8 @@ static int sed_set_autotracer(FILE *fp,
 			      int ntr, int tn,
 			      int   nsedclass,
 			      char *sedclass[],
-			      int trinfo_type)
+			      int trinfo_type,
+			      int isauto)  /* params->runmode & AUTO */
 {
   char *vars[MAXSTRLEN * MAXNUMARGS], buf[MAXSTRLEN];
   int m, n, i;
@@ -2198,11 +2199,9 @@ static int sed_set_autotracer(FILE *fp,
 	     */
 	    sed_read_tr_atts(&trinfo[tn], fp, sedclass[i]);
 	    trinfo[tn].m = -1; // does not exist in the prm-file
+	    if (isauto)
+	      trinfo[tn].m = tn; // Overwrite for AUTO mode
 	    tracer_re_read(&trinfo[tn], fp, trinfo_type);
-	    /*
-	     * Fill in the tracer number
-	     */
-	    trinfo[tn].n = tn;
 	    tn++;
 	  }
 	}
@@ -2222,9 +2221,11 @@ static int sed_set_autotracer(FILE *fp,
 	sed_read_tr_atts(&trinfo[tn], fp, sedclass[i]);
 	tracer_re_read(&trinfo[tn], fp, trinfo_type);
 	/*
-	 * Fill in the tracer number
+	 * Fill in the tracer number for AUTO mode only
 	 */
-	trinfo[tn].n = tn;
+	trinfo[tn].m = -1;
+	if (isauto)
+	  trinfo[tn].m = tn;
 	tn++;
       }
     }
@@ -2238,17 +2239,17 @@ static int sed_set_autotracer(FILE *fp,
       ./hd/tracers/load_tracer.c      */
 /*-------------------------------------------------------------------*/
 int sediment_autotracer_3d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs,
-			    tracer_info_t *trinfo, int ntr, int tn)
+			   tracer_info_t *trinfo, int ntr, int tn, int isauto)
 {
   int i;
   /* SED CLASSES */
   if (do_sed && strlen(sed_vars)) {
     tn = sed_set_autotracer(fp, sed_vars, sed_defs, trinfo,  ntr, tn,
-			    NUM_SED_VARS, SEDCLASS, WATER);
+			    NUM_SED_VARS, SEDCLASS, WATER, isauto);
     
     /* SED 3D - mandatory*/
     tn = sed_set_autotracer(fp, NULL, sed_defs, trinfo,  ntr, tn,
-			    NUM_SED_VARS_3D, SEDNAME3D, WATER);
+			    NUM_SED_VARS_3D, SEDNAME3D, WATER, isauto);
   }
   return(tn);
 }
@@ -2262,12 +2263,12 @@ int sediment_autotracer_3d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs,
     ./hd/tracers/load_tracer.c           */
 /*-------------------------------------------------------------------*/
 int sediment_autotracer_2d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs,
-			   tracer_info_t *trinfo, int ntr, int tn)
+			   tracer_info_t *trinfo, int ntr, int tn, int isauto)
 {
   /* SED 2D - mandatory */
   if (do_sed && strlen(sed_vars)) {
     tn = sed_set_autotracer(fp, NULL, sed_defs, trinfo,  ntr, tn,
-			    NUM_SED_VARS_2D, SEDNAME2D, INTER);
+			    NUM_SED_VARS_2D, SEDNAME2D, INTER, isauto);
   }
   return(tn);
 }
@@ -2281,7 +2282,7 @@ int sediment_autotracer_2d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs,
      ./hd/tracers/load_tracer.c      */
 /*-------------------------------------------------------------------*/
 int sediment_autotracer_sed(FILE *fp, int do_sed, char *sed_vars, char *sed_defs,
-			    tracer_info_t *trinfo, int ntr, int tn)
+			    tracer_info_t *trinfo, int ntr, int tn, int isauto)
 {
 
   /* Temperature and salinity */
@@ -2323,11 +2324,11 @@ int sediment_autotracer_sed(FILE *fp, int do_sed, char *sed_vars, char *sed_defs
   /* SED CLASSES */
   if (do_sed && strlen(sed_vars)) {
     tn = sed_set_autotracer(fp, sed_vars, sed_defs, trinfo,  ntr, tn,
-			    NUM_SED_VARS, SEDCLASS, SEDIM);
+			    NUM_SED_VARS, SEDCLASS, SEDIM, isauto);
     
     /* SED 3D - mandatory */
     tn = sed_set_autotracer(fp, NULL, sed_defs, trinfo,  ntr, tn,
-			    NUM_SED_VARS_3D, SEDNAME3D, SEDIM);
+			    NUM_SED_VARS_3D, SEDNAME3D, SEDIM, isauto);
   }
   return(tn);
 }

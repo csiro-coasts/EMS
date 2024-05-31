@@ -129,3 +129,6 @@
 
 /* GSL */
 #undef HAVE_GSL
+
+/* Define to enable KDTREE feature. */
+#undef USE_KDTREE

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: run_setup.c 7458 2023-12-13 03:50:02Z her127 $
+ *  $Id: run_setup.c 7557 2024-05-27 04:58:31Z her127 $
  *
  */
 
@@ -299,11 +299,17 @@ void write_run_setup(hd_data_t *hd_data)
 
   if (params->stab & NONE)
     fprintf(fp, "No stability compensation\n");
-  if (params->stab & SUB_STEP)
+  if (params->stab & SUB_STEP) {
     fprintf(fp, "Sub-stepping stability compensation\n");
-  if (params->stab & SUB_STEP_NOSURF)
+    if (params->trsf != 0.8)
+      fprintf(fp, "  Sub-step safety factor = %5.2f\n", params->trsf);
+  }
+  if (params->stab & SUB_STEP_NOSURF) {
     fprintf(fp,
             "Sub-stepping stability compensation; excluding surface layer\n");
+    if (params->trsf != 0.8)
+      fprintf(fp, "  Sub-step safety factor = %5.2f\n", params->trsf);
+  }
   if (params->stab & SUB_STEP_TRACER)
     fprintf(fp, "Sub-stepping stability compensation; tracers only\n");
   if (params->thin_merge)
@@ -688,9 +694,22 @@ void write_run_setup(hd_data_t *hd_data)
   if (params->trasc & FFSL && params->trasc & VANLEER)
     fprintf(fp, "Split FFSL/Van Leer tracer advection scheme.\n");
   if (params->ultimate) {
-    if (params->trasc == FFSL)
-      fprintf(fp, "Universal flux limiter invoked.\n");
-    else
+    if (params->trasc == FFSL) {
+      if (params->ultimate & UL_DO)
+	fprintf(fp, "Universal flux limiter invoked.\n");
+      if (params->ultimate & UL_IPROJ)
+	fprintf(fp, "  Min/max at destination cell is projected tracer value.\n");
+      if (params->ultimate & UL_SPROJ)
+	fprintf(fp, "  Min/max along streamline is projected tracer value.\n");
+      if (params->ultimate & UL_ITR)
+	fprintf(fp, "  Min/max at destination cell is tracer value.\n");
+      if (params->ultimate & UL_SSTCL)
+	fprintf(fp, "  Min/max along streamline is stencil values.\n");
+      if (params->ultimate & UL_REFINE)
+	fprintf(fp, "  Upstream refinements applied to fluxes.\n");
+      if (params->ultimate & UL_CLIP)
+	fprintf(fp, "  Limited tracer values clipped after update.\n");
+    } else
       fprintf(fp, "Ultimate filter invoked.\n");
 
   }
@@ -2963,7 +2982,7 @@ void history_log(master_t *master, int mode)
 	  if (j == 5) fprintf(dp, "Transport model\n");
 	  fprintf(dp, "Run%d:              %s", params->hrun, ctime(&t));
 	  fprintf(dp, "EMS Version:       %s\n", version);
-	  fprintf(dp, "Executable file:   %s\n",executable);
+	  fprintf(dp, "Executable file:   %s\n", executable);
 	  getcwd(buf, MAXSTRLEN);
 	  fprintf(dp, "Working directory: %s\n",buf);
 	  fprintf(dp, "Parameter file:    %s\n", params->prmname);
@@ -2973,6 +2992,7 @@ void history_log(master_t *master, int mode)
 	  fprintf(dp, "Parameter header:  %s\n", params->parameterheader);
 	  if (strlen(params->notes))
 	    fprintf(dp, "Version notes:     %s\n", params->notes);
+	  if (forced_restart) fprintf(params->hstfd, "Restart run.\n");
 	  fprintf(dp, "Start time:        %s\n", params->start_time);
 	  fprintf(dp, "Stop time:         %s\n", params->stop_time);
 	  
@@ -3084,6 +3104,10 @@ void history_log(master_t *master, int mode)
       fprintf(params->hstfd, "Run successful at %s\n", ctime(&t));
       fclose(params->hstfd);
     }
+    if ((dp = fopen(params->histnamem, "a+")) != NULL) {
+      fprintf(params->hstfd, "Run successful at %s\n", ctime(&t));
+      fclose(dp);
+    }
   }
 
   if (mode == HST_NOK) {
@@ -3091,6 +3115,10 @@ void history_log(master_t *master, int mode)
     if (params->hstfd != NULL) {
       fprintf(params->hstfd, "Crashed %4.3f days: %s\n", master->days, ctime(&t));
       fclose(params->hstfd);
+    }
+    if ((dp = fopen(params->histnamem, "a+")) != NULL) {
+      fprintf(params->hstfd, "Crashed %4.3f days: %s\n", master->days, ctime(&t));
+      fclose(dp);
     }
   }
 }

@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: hd_params.h 7459 2023-12-13 03:50:20Z her127 $
+ *  $Id: hd_params.h 7558 2024-05-27 04:58:58Z her127 $
  *
  */
 
@@ -405,6 +405,15 @@
 #define TR_FIRST      0x000001
 #define TR_LIND2      0x000002
 #define TR_LIND3      0x000004
+
+/* Ultimate limiter flags */
+#define UL_DO         0x01
+#define UL_CLIP       0x02
+#define UL_IPROJ      0x04
+#define UL_ITR        0x08
+#define UL_SPROJ      0x10
+#define UL_SSTCL      0x20
+#define UL_REFINE     0x40
 
 /* Momentum ommission flags                                                  */
 #define ADVECT        1
@@ -805,6 +814,7 @@
 #define DF_TAN            0x0040
 #define DF_TILE           0x0080
 #define DF_OBC            0x0100
+#define DF_STO            0x0200
 
 /* DA flags */
 #define NO_DA             1
@@ -899,10 +909,16 @@
 
 /* METIS options */
 #define METIS_VOLUME_WEIGHTED 0x0001
+#define METIS_REORDER         0x0002
 
 /* Point source/sinks */
 # define PSS_AW    0x0001
 # define PSS_VW    0x0002
+# define PSS_DP    0x0004
+# define PSS_DR    0x0008
+# define PSS_AP    0x0010
+# define PSS_AR    0x0020
+# define PSS_F     0x0040
 
 /* Tracer filtering */
 # define TRF_FILL    0x0001
@@ -1093,8 +1109,11 @@
 
 /* Mesh reorder */
 #define MR_READ    0x001
-#define MR_WRITE   0x002
-#define MR_WRITEX  0x004
+#define MR_READM   0x002
+#define MR_WRITE   0x004
+#define MR_WRITEX  0x008
+#define MR_HORZ    0x010
+#define MR_VERT    0x020
 
 /* Particles */
 #define PT_DO        0x01

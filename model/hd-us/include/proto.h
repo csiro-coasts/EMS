@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 7480 2024-02-01 03:49:57Z riz008 $
+ *  $Id: proto.h 7577 2024-05-31 00:36:37Z riz008 $
  *
  */
 
@@ -26,7 +26,7 @@
 /*------------------------------------------------------------------*/
 #define COMPAS_MAJOR_VERSION 1
 #define COMPAS_MINOR_VERSION 4
-#define COMPAS_PATCH_VERSION 1
+#define COMPAS_PATCH_VERSION 2
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -74,6 +74,8 @@ void read_decorr(parameters_t *params, FILE *fp, int mode);
 void read_monotone(parameters_t *params, FILE *fp, int mode);
 int read_dhw(parameters_t *params, FILE *fp);
 void read_trflux(parameters_t *params, FILE *fp);
+int read_reorder(parameters_t *params, FILE *fp);
+void read_ultimate(parameters_t *params, FILE *fp);
 void tracer_setup(parameters_t *params, FILE *fp);
 int numbers_init(parameters_t *params);
 int import_init(parameters_t *params, FILE *fp);
@@ -174,7 +176,7 @@ void convert_jigsaw_msh(parameters_t *params, char *infile,
 void mesh_ofile_name(parameters_t *params, char *key);
 delaunay *make_dual(geometry_t *geom, int kin);
 int mesh_expand_w(geometry_t *window, int *vec);
-int mesh_expand_3d(geometry_t *window, double *u1);
+int mesh_expand_3d(geometry_t *window, double *u1, int *vec);
 point *convex_hull(point *v,  int *count);
 void write_swan_mesh(master_t *master, geometry_t **window, window_t **windat,
 		     win_priv_t **wincon);
@@ -203,6 +205,8 @@ void get_local_wsv(geometry_t *geom, int *vec, int nvec, int nvec2D, geometry_t 
 void get_window_cells(geometry_t *geom, int wn, int *wsa, int *wsize,
 		      int *ws2, int wsizeS);
 void get_window_cells_h(geometry_t *geom, int wn, int *wsa, int *wsize,
+                        int *ws2, int wsizeS);
+void get_window_cells_v(geometry_t *geom, int wn, int *wsa, int *wsize,
                         int *ws2, int wsizeS);
 void get_gl_maps(geometry_t *geom, int nwindows, int **ws2, int *wsizeS);
 void set_mask(geometry_t *window);
@@ -260,7 +264,7 @@ void get_local_ghost(geometry_t *geom, geometry_t *window, int n);
 void windows_clear(hd_data_t *hd_data);
 void reset_windows(hd_data_t *hd_data);
 void reorder_cells(geometry_t *window, int *ncells, int *cells,
-       int vc, int vcs, int *bot, int mode);
+		   int vc, int vcs, int *map, int mode);
 int get_local_sur(geometry_t *window, int cl, int ks);
 void process_cell_mask(geometry_t *window, int *cells, int ncells);
 void read_window_info(parameters_t *params, FILE *fp);
@@ -726,6 +730,7 @@ int edge_sort_double (void const *x1, void const *x2);
 int edge_sort_compare (void const *x1, void const *x2);
 void perc_diag(geometry_t *window, window_t *windat, win_priv_t *wincon);
 void calc_perc(FILE *fp);
+void quicksort(double *p, int *q, int l, int r);
 void check_flux(geometry_t *window, window_t *windat, win_priv_t *wincon,
                 int dw, int dc);
 double is_night(double lat, double t);
@@ -1110,6 +1115,8 @@ double hd_trans_interp(geometry_t *window, GRID_SPECS **gs, double x, double y, 
 		       int c, int co, int vid);
 void clip_ffsl(geometry_t *window, window_t *windat, win_priv_t *wincon,
 	       double *tr);
+void clip_ffsl_ultimate(geometry_t *window, window_t *windat, win_priv_t *wincon,
+			double *tr);
 void get_source_minmax(geometry_t *window, window_t *windat, win_priv_t *wincon,
 		       double *tr, double dtu, int mode);
 void order2_upwind(geometry_t *window, window_t *windat, win_priv_t *wincon,
@@ -1436,6 +1443,7 @@ void dumpdata_init_geom(parameters_t *params, geometry_t *geom, dump_data_t *dum
 void dumpdata_fill(geometry_t *geom, master_t *master,
                    dump_data_t *dumpdata);
 void dumpdata_cleanup(dump_data_t *dumpdata, int mode);
+void dumpadata_create_stgrid(dump_data_t *dumpdata, double r);
 int dump_open_us(parameters_t *params, char *name, int check);
 void dump_close(int cdfid);
 int dump_choose_by_time(parameters_t *params, int fid, double t);
@@ -1936,6 +1944,7 @@ void ginterface_moonvars(void *hmodel, int c,
 			 double *dist_earth_sun, double *dist_moon_earth,
 			 double *lunar_angle, double *sun_angle,double *moon_phase,double *lunar_dec);
 double ginterface_get_cloud(void *hmodel, int c);
+int ginterface_is_window1(void *hmodel);
 
 
 /*------------------------------------------------------------------*/

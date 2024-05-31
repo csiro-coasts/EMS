@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: MY2-0.c 7457 2023-12-13 03:49:40Z her127 $
+ *  $Id: MY2-0.c 7504 2024-03-11 22:37:52Z her127 $
  *
  */
 
@@ -168,6 +168,8 @@ void closure_MY2(geometry_t *window,  /* Processing window */
         KAPPA * ((window->cellz[c3] - window->cellz[c]) * wincon->Ds[cs] +
                  wincon->zs);
       lscale = min(l1, l2);
+      /* Blackadar, 1962 modification for local characteristics of   */
+      /* flow: e.g. GOTM manual (1999) Eq. 2.61.                     */
       lscale = lscale / (1 + lscale / lasymp);
       if (windat->L)
         windat->L[c] = lscale;

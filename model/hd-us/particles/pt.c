@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pt.c 7409 2023-10-05 02:08:32Z her127 $
+ *  $Id: pt.c 7511 2024-03-11 22:40:17Z her127 $
  *
  */
 
@@ -1782,15 +1782,17 @@ int get_pos_m(master_t *master,   /* Window geometry                 */
       isghost = 1;
     }
     cns = geom->m2d[cn];
+    if (cn <= 0)
+      hd_warn("Can't find horizontal streamline position: destination = %d[%f %f]->[%f %f]. (i,j)=(%d,%d)]\n",
+	    c, geom->cellx[cs], geom->celly[cs], slon, slat, i, j);
   } else {
     /* Unstructured meshes: walk through the Voronoi mesh            */
     cn = found = find_cell(geom, c, slon, slat, &nx, &ny);
     cns = geom->m2d[cn];
-
-  }
-  if (cn <= 0)
-    hd_warn("Can't find horizontal streamline position: destination = %d[%f %f]->[%f %f]. Intersection=[%f %f]\n",
+    if (cn <= 0)
+      hd_warn("Can't find horizontal streamline position: destination = %d[%f %f]->[%f %f]. Intersection=[%f %f]\n",
 	    c, geom->cellx[cs], geom->celly[cs], slon, slat, nx, ny);
+  }
 
   /* Get the vertical layer of the source cell                       */
   if (cn == geom->zm1[cn]) cn = geom->zp1[cn];

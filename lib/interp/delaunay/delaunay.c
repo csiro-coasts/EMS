@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: delaunay.c 6924 2021-10-08 04:41:47Z her127 $
+ *  $Id: delaunay.c 7533 2024-04-24 04:03:08Z tho861 $
  *
  */
 
@@ -30,6 +30,10 @@
 #include "delaunay.h"
 #include "emsmath.h"
 #include "emsalloc.h"
+
+#ifdef USE_KDTREE
+    #include "errfn.h"
+#endif
 
 //
 int verbose = 0;
@@ -132,6 +136,10 @@ delaunay* delaunay_create()
     d->nflags = 0;
     d->nflagsallocated = 0;
     d->flagids = NULL;
+    #if (defined USE_KDTREE) || (defined USE_RTREE)
+        d->centroids = NULL;
+        d->rt = NULL;
+    #endif
 
     return d;
 }
@@ -365,6 +373,32 @@ static void tio2delaunay_v(struct triangulateio* tio_out, struct triangulateio* 
     }
 }
 
+
+void output_triangles(delaunay* d, const char* base_filename) {
+    char filename[1024];
+    snprintf(filename, sizeof(filename), "%s_%p.txt", base_filename, (void*)d);
+
+    FILE* file = fopen(filename, "w");
+    if (!file) {
+        perror("Failed to open triangles data file");
+        return;
+    }
+
+    for (int i = 0; i < d->ntriangles; ++i) {
+        triangle* t = &d->triangles[i];
+        // Output format: TriangleID, x1, y1, x2, y2, x3, y3
+        fprintf(file, "%d, %f, %f, %f, %f, %f, %f\n", i,
+                d->points[t->vids[0]].x, d->points[t->vids[0]].y,
+                d->points[t->vids[1]].x, d->points[t->vids[1]].y,
+                d->points[t->vids[2]].x, d->points[t->vids[2]].y);
+    }
+
+    fclose(file);
+    printf("Triangle data written to %s\n", filename);
+}
+
+
+
 /* Builds Delaunay triangulation of the given array of points.
  *
  * @param np Number of points
@@ -439,6 +473,21 @@ delaunay* delaunay_build(int np, point points[], int ns, int segments[], int nh,
     tio_destroy(&tio_in);
     tio_destroy(&tio_out);
 
+    #ifdef USE_KDTREE
+        // make centroids for kdtree:
+        d->centroids = malloc(d->ntriangles * sizeof(point));
+        for (int i = 0; i < d->ntriangles; ++i) {
+            triangle* t = &d->triangles[i];
+            double centroidX = (d->points[t->vids[0]].x + d->points[t->vids[1]].x + d->points[t->vids[2]].x) / 3.0;
+            double centroidY = (d->points[t->vids[0]].y + d->points[t->vids[1]].y + d->points[t->vids[2]].y) / 3.0;
+            d->centroids[i].x = centroidX;
+            d->centroids[i].y = centroidY;
+            // output_triangles(d,"triangles.txt");
+        }
+        warn("building kdtree\n");
+        d->rt = create_kdtree(d->centroids, d->ntriangles, 10); // last arg is max leaf size, perhaps this could be in the prm/tran
+    #endif
+
     return d;
 }
 
@@ -477,6 +526,12 @@ void delaunay_destroy(delaunay* d)
         istack_destroy(d->t_out);
     if (d->flagids != NULL)
         free(d->flagids);
+    #if (defined USE_KDTREE)
+        if (d->rt != NULL)
+            delete_kdtree(d->rt);
+        if (d->centroids != NULL)
+            free(d->centroids);
+    #endif
     free(d);
 }
 
@@ -502,6 +557,12 @@ int delaunay_xytoi(delaunay* d, point* p, int id)
     if (p->x < d->xmin || p->x > d->xmax || p->y < d->ymin || p->y > d->ymax)
         return -1;
 
+    #ifdef USE_KDTREE
+        id = find_nearest_vertex(d->rt, (float[]){p->x, p->y});
+        if (id < 0) warn("kdtree could not find nearest centroid to  %.12f %.12f\n", p->x, p->y);
+        // printf("delaunay_xytoi : kdtree result = %i ", id);
+    #endif
+
     if (id < 0 || id > d->ntriangles)
         id = 0;
     t = &d->triangles[id];
@@ -518,6 +579,7 @@ int delaunay_xytoi(delaunay* d, point* p, int id)
         }
     } while (i < 3);
 
+    // printf("delaunay result = %i \n", id);
     return id;
 }
 
@@ -533,6 +595,12 @@ int delaunay_xytoi_ng(delaunay* d, point* p, int id)
 
     if (p->x < d->xmin || p->x > d->xmax || p->y < d->ymin || p->y > d->ymax)
         return id;
+
+    #ifdef USE_KDTREE
+        id = find_nearest_vertex(d->rt, (float[]){p->x, p->y});
+        if (id < 0) warn("kdtree could not find nearest centroid to  %.12f %.12f\n", p->x, p->y);
+        // printf("delaunay_xytoi_ng : kdtree result = %i ", id);
+    #endif
 
     if (id < 0 || id > d->ntriangles)
         id = 0;
@@ -554,6 +622,7 @@ int delaunay_xytoi_ng(delaunay* d, point* p, int id)
         }
     } while (i < 3);
 
+    // printf("delaunay_xytoi : kdtree result = %i ", id);
     return id;
 }
 
@@ -591,6 +660,13 @@ int delaunay_xytoi_lag(delaunay* d, point* p, int id)
 
     if(fabs(p->x - d->points[t->vids[0]].x) < 1e-5 &&
        fabs(p->y - d->points[t->vids[0]].y) < 1e-5) return(id);
+
+    #ifdef USE_KDTREE
+        // // The walk goes into an infinite loop if seeded with an id so not implementing here.
+        // id = find_nearest_vertex(d->rt, (float[]){p->x, p->y});
+        // printf("delaunay_xytoi_lag : kdtree result = %i ", id);
+    #endif
+
     do {
         for (i = 0; i < 3; ++i) {
 	  int i1 = (i + 1) % 3, i2;
@@ -626,7 +702,7 @@ int delaunay_xytoi_lag(delaunay* d, point* p, int id)
             }
         }
     } while (i < 3);
-
+    // printf("delaunay_xytoi_lag : del = %i  \n", id);
     return id;
 }
 
@@ -646,6 +722,13 @@ int delaunay_xytoi_lago(delaunay* d, point* p, int id)
 
     if(fabs(p->x - d->points[t->vids[0]].x) < 1e-5 &&
        fabs(p->y - d->points[t->vids[0]].y) < 1e-5) return(id);
+
+    #ifdef USE_KDTREE
+        // // This function delaunay_xytoi_lago doesn't seem to be called anyway so not including
+        // id = find_nearest_vertex(d->rt, (float[]){p->x, p->y});
+        // printf("delaunay_xytoi_lago : kdtree result = %i ", id);
+    #endif
+
     do {
         for (i = 0; i < 3; ++i) {
             int i1 = (i + 1) % 3;
@@ -681,6 +764,7 @@ int delaunay_xytoi_lago(delaunay* d, point* p, int id)
         }
     } while (i < 3);
 
+    // printf(" delaunay_xytoi_lago : delaunay result = %i  ", id);
     return id;
 }
 

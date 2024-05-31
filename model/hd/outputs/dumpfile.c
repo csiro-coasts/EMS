@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 7064 2022-03-16 01:58:29Z her127 $
+ *  $Id: dumpfile.c 7575 2024-05-30 03:44:13Z riz008 $
  *
  */
 
@@ -193,7 +193,8 @@ double dump_event(sched_event_t *event, double t)
   master_t *master = (master_t *)schedGetPublicData(event);
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
-  df_dispatch_data_t* dispatch_data = malloc(sizeof(df_dispatch_data_t));
+  df_dispatch_data_t* dispatch_data =
+    (df_dispatch_data_t*)schedGetPrivateData(event);
   int debug = 0;
 
   /* Output dump and test point values if required */
@@ -240,11 +241,15 @@ double dump_event(sched_event_t *event, double t)
   }
 #endif
 
+  if (dispatch_data == NULL) {
+    dispatch_data = (df_dispatch_data_t*)calloc(1,sizeof(df_dispatch_data_t));
+    schedSetPrivateData(event,dispatch_data);
+  }
+  
   TIMING_SET;
   dumpdata_fill(geom, master, dumpdata);
   TIMING_DUMP(1,"   dumpdata_fill");
   dispatch_data->t = t;
-  schedSetPrivateData(event,dispatch_data);
 
   /* Run through the list of dumpfiles and find the the one that        */
   /* next fires off - after the current one

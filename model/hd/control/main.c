@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: main.c 6597 2020-09-03 05:29:26Z riz008 $
+ *  $Id: main.c 7569 2024-05-27 07:14:59Z riz008 $
  *
  */
 
@@ -376,7 +376,10 @@ void print_trace (void)
   size    = backtrace(array, 30);
   strings = backtrace_symbols(array, size);
 
-  hd_error("Segmentation violation detect (simulation time = %.4f days)\n", master->days);
+  if (master)
+    hd_error("Segmentation violation detect (simulation time = %.4f days)\n", master->days);
+  else
+    hd_error("Segmentation violation detected\n");
   hd_error("Stack trace:\n", size);
 
   /*

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sourcesink.c 6494 2020-03-26 01:18:52Z her127 $
+ *  $Id: sourcesink.c 7510 2024-03-11 22:39:58Z her127 $
  *
  */
 
@@ -24,7 +24,7 @@
 #include <hd.h>
 #include <tracer.h>
 
-static int parse_ss_location(pss_t *p, char *line);
+static int parse_ss_location(pss_t *p, char *line, int wn);
 static void pss_locate(pss_t *p, double t);
 
 void ref_depth(geometry_t *window, window_t *windat, win_priv_t *wincon, 
@@ -40,9 +40,11 @@ int pss_init_region_w(geometry_t *window, char *dname, pss_t *pss);
 void write_auto_pss(char *key, char *t_units);
 void hd_pss_read(char *name, char *t_units, pss_t **pss,
 		 int *np, void *data,
-		 int (*xyzijk) (void *, double, double, double, int *, int *,
-				int *), int (*trI) (void *, char *), int (*pss_vec) (void *, pss_t *),
-		 int (*pss_region) (void *, char *, pss_t *));
+		 int (*xyzijk) (void *, double, double, double, int *, 
+				int *, int *), int (*trI) (void *, char *), 
+		 int (*pss_vec) (void *, pss_t *),
+		 int (*pss_region) (void *, char *, pss_t *),
+		 int wn);
 
 /*-------------------------------------------------------------------*/
 /* Initialisation routine for sources and sinks - called once at     */
@@ -65,7 +67,7 @@ void sourcesink_init(parameters_t *params,  /* Input parameters      */
   /* Initialise point source/sinks on the master                     */
   hd_pss_read(params->prmname, master->timeunit, &master->pss,
            &master->npss, master, hd_xyztoindex_m, hd_get_tracer_index_m, 
-	      hd_pss_vec_m, hd_pss_region_m);
+	      hd_pss_vec_m, hd_pss_region_m, 0);
   
   for (s = 0; s < master->npss; s++) {
     pss_t *pss = &master->pss[s];
@@ -123,8 +125,7 @@ void sourcesink_init(parameters_t *params,  /* Input parameters      */
     hd_pss_read(params->prmname, master->timeunit, &wincon[n]->pss,
              &wincon[n]->npss, window[n],
              hd_xyztoindex_w, hd_get_tracer_index_w, hd_pss_vec_w,
-	     hd_pss_region_w);
-
+		hd_pss_region_w, n);
     if (wincon[n]->npss) {
       m += wincon[n]->npss;
       for (s = 0; s < wincon[n]->npss; s++) {
@@ -724,7 +725,6 @@ void ss_tracer(geometry_t *window,  /* Window geometry               */
 
 	    /* Fraction of flow in this cell                         */
 	    frac = (zhigh - zlow) / pdz;
-
 	    /* If this source/sink is not associated with temp or    */
 	    /* sal and a volume influx is specified (trf=CONC_NOTR)  */
 	    /* then assume tracer is input with the ambient water    */
@@ -759,6 +759,7 @@ void ss_tracer(geometry_t *window,  /* Window geometry               */
 	    c = window->zm1[c];
 	  }
 	} else {
+	  if(p->flag & PSS_AR) continue;
 	  if (p->watertsid >= 0) {
 	    if (master->trasc == FFSL && master->conserve & CONS_PSS)
 	      val = windat->waterss[c] * window->cellarea[c2];
@@ -852,7 +853,8 @@ void hd_pss_read(char *name,        /* File name                      */
 		 int (*xyzijk) (void *, double, double, double, int *, int *, int *),
 		 int (*trI) (void *, char *), 
 		 int (*pss_vec) (void *, pss_t *),
-		 int (*pss_region) (void *, char *, pss_t *)
+		 int (*pss_region) (void *, char *, pss_t *),
+		 int wn
 		 )
 {
   FILE* fp;
@@ -908,6 +910,7 @@ void hd_pss_read(char *name,        /* File name                      */
   for (i = 0, j = 0; i < npss; i++) {
 
     p[j].vc = 0;
+    p[j].flag = 0;
 
     /* Store index routine pointer and data needed by it             */
     p[j].xyzijk = xyzijk;
@@ -928,7 +931,7 @@ void hd_pss_read(char *name,        /* File name                      */
       sprintf(key, "pss%d.location", i);
       prm_read_char(fpp, key, buf);
     }
-    if (!parse_ss_location(&p[j], buf))
+    if (!parse_ss_location(&p[j], buf, wn))
       continue;
 
     /* Regions or blocks                                             */
@@ -937,12 +940,16 @@ void hd_pss_read(char *name,        /* File name                      */
       if (prm_read_char(fpp, key, buf)) {
         if (!((*pss_region) (model_data, buf, &p[j])))
           continue;
+	else
+	  p[j].flag |= PSS_AR;
       }
       sprintf(key, "pss%d.ncells", i);
       if (prm_skip_to_end_of_key(fpp, key)) {
 	read_blocks(fpp, key, &p[j].vc, &p[j].iloc, &p[j].jloc, NULL);
 	if (!((*pss_vec) (model_data, &p[j])))
 	  continue;
+	else
+	  p[j].flag |= PSS_AR;
       }
     }
 
@@ -964,7 +971,6 @@ void hd_pss_read(char *name,        /* File name                      */
     }
 
     /* Flags                                                         */
-    p[j].flag = 0;
     sprintf(key, "pss%1d.flag", i);
     if (prm_read_char(fpp, key, buf)) {
       if (contains_token(buf, "NONE") != NULL) {
@@ -1066,7 +1072,7 @@ static void pss_locate(pss_t *p, double t)
        p->name, p->x, p->y, p->z);
 }
 
-static int parse_ss_location(pss_t *p, char *line)
+static int parse_ss_location(pss_t *p, char *line, int wn)
 {
   int e1, e2, e3;
   FILE *fp;
@@ -1078,14 +1084,15 @@ static int parse_ss_location(pss_t *p, char *line)
   /* Time independent, range of z values                             */
   if (sscanf(line, "%lf %lf %lf %lf", &p->x, &p->y, &p->zlow, &p->zhigh) ==
       4) {
+
     if (p->zlow >= p->zhigh)
       hd_quit("pss_read: %s has bad z range (must be low then high)\n",
               p->name);
     p->z = (p->zlow + p->zhigh) / 2;
     if ((*(p->xyzijk)) (p->model_data, p->x, p->y, p->z, &e1, &e2, &e3) <=
         0) {
-      emstag(LWARN,"pss_read","%s location (%.10g,%.10g,%.10g) can't be converted to indices\n",
-         p->name, p->x, p->y, p->z);
+      emstag(LWARN,"pss_read","window%d %s location (%.10g,%.10g,%.10g) can't be converted to indices\n",
+	     wn, p->name, p->x, p->y, p->z);
       /*
       warn
         ("pss_read: %s location (%.10g,%.10g,%.10g) can't be converted to indices\n",
@@ -1100,13 +1107,14 @@ static int parse_ss_location(pss_t *p, char *line)
     p->e1[0] = e1;
     p->e2[0] = e2;
     p->e3[0] = e3;
+    p->flag |= (PSS_AP|PSS_DR);
   }
   /* Time independent, single z value                                */
   else if (sscanf(line, "%lf %lf %lf", &p->x, &p->y, &p->z) == 3) {
     if ((*(p->xyzijk)) (p->model_data, p->x, p->y, p->z, &e1, &e2, &e3) <=
         0) {
-      emstag(LTRACE,"pss_read","%s location (%.10g,%.10g,%.10g) can't be converted to indices\n",
-         p->name, p->x, p->y, p->z);
+      emstag(LTRACE,"pss_read","window%d %s location (%.10g,%.10g,%.10g) can't be converted to indices\n",
+	     wn, p->name, p->x, p->y, p->z);
       /*
       warn
         ("pss_read: %s location (%.10g,%.10g,%.10g) can't be converted to indices\n",
@@ -1123,6 +1131,7 @@ static int parse_ss_location(pss_t *p, char *line)
     p->e3[0] = e3;
     p->zlow = p->z;
     p->zhigh = p->z;
+    p->flag |= (PSS_AP|PSS_DP);
   }
   else if (sscanf(line, "%lf %lf", &p->zlow, &p->zhigh) == 2) {
     if (p->zlow >= p->zhigh)
@@ -1130,6 +1139,7 @@ static int parse_ss_location(pss_t *p, char *line)
               p->name);
     p->z = (p->zlow + p->zhigh) / 2;
     p->x = p->y = NOTVALID;
+    p->flag |= PSS_DR;
   }
   /* Time dependent, all coords from a time series                   */
   else if ((fp = fopen(line, "r+")) != NULL) {
@@ -1156,6 +1166,7 @@ static int parse_ss_location(pss_t *p, char *line)
     p->e1 = i_alloc_1d(p->vc);
     p->e2 = i_alloc_1d(p->vc);
     p->e3 = i_alloc_1d(p->vc);
+    p->flag |= PSS_F;
     /* Set location at some arbitrary initial time. Probably don't really
        need to do this here, as any routines using the structure should
        call the location routine themselves. */

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: string_utils.c 5831 2018-06-26 23:48:06Z riz008 $
+ *  $Id: string_utils.c 7573 2024-05-30 03:37:46Z riz008 $
  */
 
 
@@ -251,13 +251,13 @@ void stripend(char *str)
  */
 int is_true(const char *tag)
 {
-  char ltag[MAXLINELEN];
+  char ltag[MAXLINELEN] = {'\0'};
   int i;
   int n = strlen(tag);
 
   for (i = 0; i < n; ++i)
     ltag[i] = tolower(tag[i]);
-  ltag[n] = 0;
+  ltag[n] = 0; // equivalent to '\0'
 
   if (strcmp(ltag, "true") == 0)
     return 1;

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: riverflow.c 6879 2021-07-29 00:43:55Z her127 $
+ *  $Id: riverflow.c 7503 2024-03-11 22:37:32Z her127 $
  *
  */
 
@@ -144,6 +144,8 @@ double bf_u1_flow_w(geometry_t *window, window_t *windat,
     u1_flow_do(window, windat, data, e, cs, open->bot_t[cc]);
     if (windat->riverflow)
       windat->riverflow[cs] += data->flow / (double)open->no2_e1;
+    if (windat->iriverflow)
+      windat->iriverflow[cs] += data->flow * windat->dttr;
     if (windat->riverdepth) windat->riverdepth[cs] = data->hc;
   }
   return (data->v_river[e] * open->dir[ee] / (double)open->no2_e1);

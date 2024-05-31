@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: utils.c 5846 2018-06-29 04:14:26Z riz008 $
+ *  $Id: utils.c 7576 2024-05-30 03:47:52Z riz008 $
  *
  */
 
@@ -282,7 +282,31 @@ double get_parameter_value(ecology* e, char* s)
   double *ptr = get_parameter_value_ptr(e, s);
   emstag(LDEBUG,"Ecological parameter read, %s = %e \n",s,*ptr);
   eco_write_setup(e,"Ecol. parameter forced read, %s = %e \n",s,*ptr);
+  int index = find_index(e->prms, s, e);
+  
+  // Output parameter values to a netcdf file.
 
+  if (ginterface_is_window1(e->model)) {
+    int var_exists = 0;
+    int varid;
+    int ncid = e->eco_params_ncid;
+    
+    var_exists = nc_inq_varid(ncid,s,&varid);
+    
+    if (var_exists != 0){
+      ncredef(ncid);
+      nc_def_var(ncid,s,NC_DOUBLE,0,0,&varid);
+      nc_put_att_text(ncid, varid, "name",strlen(s),s);
+      char* ttz = e->pinfo[index].desc;
+      nc_put_att_text(ncid, varid, "description",strlen(ttz),ttz);
+      char* ttt = e->pinfo[index].units;
+      nc_put_att_text(ncid, varid, "units",strlen(ttt),ttt);
+      nc_put_att_text(ncid, varid, "function_call",13,"get_parameter");
+      nc_enddef(ncid);
+      ncw_put_var_double(ECO_PARAMS_SETUP,ncid,varid,ptr);
+    }
+  }
+  
   return(*ptr);
 }
 
@@ -417,16 +441,34 @@ int string_exists(stringtable* st, char* s, ecology* e)
 double try_parameter_value(ecology* e, char* s)
 {
     int index = try_index(e->prms, s, e);
+    int var_exists = 0;
     
     if (index < 0){
       eco_write_setup(e,"Ecol. parameter tried to read %s, but not in parameter file \n",s);
       return NaN;
     }else{
       eco_write_setup(e,"Ecol. parameter tried to read %s and found %e \n",s,e->pinfo[index].value[0]);
+      if (ginterface_is_window1(e->model)) {
+	int ncid = e->eco_params_ncid,varid;
+	var_exists = nc_inq_varid(ncid,s,&varid);
+	
+	if (var_exists != 0){
+	  ncredef(ncid);
+	  nc_def_var(ncid,s,NC_DOUBLE,0,0,&varid);
+	  char* tty = e->pinfo[index].name;
+	  nc_put_att_text(ncid, varid, "name",strlen(tty),tty);
+	  char* ttz = e->pinfo[index].desc;
+	  nc_put_att_text(ncid, varid, "description",strlen(ttz),ttz);
+	  char* ttt = e->pinfo[index].units;
+	  nc_put_att_text(ncid, varid, "units",strlen(ttt),ttt);
+	  nc_put_att_text(ncid, varid, "function_call",13,"try_parameter");
+	  nc_enddef(ncid);
+	  ncw_put_var_double(ECO_PARAMS_SETUP,ncid,varid,&e->pinfo[index].value[0]);
+	}
+      }
+      return e->pinfo[index].value[0];
     }
-    return e->pinfo[index].value[0];
 }
-
 
 /** Gets parameter value for a parameter. Unlike get_parameter_value(),
  * goes on if the parameter is not found.

@@ -121,6 +121,7 @@ misc/istack.o
 INTERPOBJS = \
 interp/csa/csa.o \
 interp/delaunay/delaunay.o \
+interp/delaunay/nanoflann_wrappers.o \
 interp/delaunay/triangle.o \
 interp/gridmap/gridaverager.o \
 interp/gridmap/gridmap.o \
@@ -172,6 +173,10 @@ tests/dftest.o
 	$(CC) $(CFLAGS) $(NETCDFINC) -o $*.o -c $(DEBUGINC) $*.cpp
 
 all:	$(EMSLIB)
+
+# Special rule for nanoflann
+interp/delaunay/nanoflann_wrappers.o: interp/delaunay/nanoflann_wrappers.cpp
+	$(CXX) -I./include -Ofast -c $< -o $@
 
 # Special rule for triangle
 interp/delaunay/triangle.o : interp/delaunay/triangle.c

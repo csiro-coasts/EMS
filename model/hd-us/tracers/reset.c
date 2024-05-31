@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: reset.c 7471 2023-12-13 04:02:46Z her127 $
+ *  $Id: reset.c 7571 2024-05-28 05:20:55Z riz008 $
  *
  */
 
@@ -733,6 +733,18 @@ static double trans_reset_event(sched_event_t *event, double t)
     tsync = master->dt;
     tsin = reset->tnext + master->grid_dt;
   }
+
+  /*
+   * The above block can cause tsin to be set beyond the end of
+   * simulation. This can cause the eval routines below issuing a
+   * FATAL error. The following early return is to prevent this early
+   * exit. This function returns to sched_set_time which returns to
+   * the while loop in main. As we'll be at the last time point, the
+   * while loop in main will exit anyway
+   */
+  if (tsin > tsout)
+    return(tsout);
+  
   if (master->tmode & SP_STRUCT) {
     ve3 = geom->s2c;
     ve2 = geom->s2c;

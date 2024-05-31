@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam_t.c 7405 2023-10-05 02:07:11Z her127 $
+ *  $Id: readparam_t.c 7562 2024-05-27 05:00:50Z her127 $
  *
  */
 
@@ -187,9 +187,12 @@ FILE *fp;
   }
   if (params->trasc & LAGRANGE)
     params->ntr += 1;         /* Volume error                        */
+  read_ultimate(params, fp);
+  /*
   sprintf(keyword, "ULTIMATE");
   if (prm_read_char(fp, keyword, buf))
     params->ultimate = is_true(buf);
+  */
   /* Runge-Kutta stages                                              */
   sprintf(keyword, "RUNGE-KUTTA");
   prm_read_int(fp, keyword, &params->rkstage);
@@ -229,6 +232,8 @@ FILE *fp;
     if (strcmp(buf, "SUB-STEP-TRACER") == 0)
       params->stab = SUB_STEP_TRACER;
   }
+  sprintf(keyword, "SUB-STEP_SAFETY");
+  prm_read_double(fp, keyword, &params->trsf);
   params->thin_merge = 0;
   sprintf(keyword, "MERGE_THIN");
   if (prm_read_char(fp, keyword, buf))

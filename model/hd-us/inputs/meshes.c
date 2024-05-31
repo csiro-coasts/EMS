@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: meshes.c 7462 2023-12-13 03:51:20Z her127 $
+ *  $Id: meshes.c 7546 2024-05-10 05:24:35Z her127 $
  *
  */
 
@@ -2918,7 +2918,7 @@ int get_mesh_obc(parameters_t *params,
 		 int **neic
 		 )
 {
-  FILE *fp, *op;
+  FILE *fp, *sp, *op;
   int n, m, cc, c, cn, cs, i, j, jj, jn, js, jss;
   int np;               /* Size of the perimeter array               */
   int *perm;            /* Mesh indices of the perimeter             */
@@ -3185,6 +3185,7 @@ int get_mesh_obc(parameters_t *params,
     mesh->obc =  i_alloc_3d(2, mobc+1, mesh->nobc);
   }
   fp = fopen("boundary.txt", "w");
+  sp = fopen("boundary.site", "w");
   op = fopen("obc_spec.txt", "w");
 
   /*-----------------------------------------------------------------*/
@@ -3356,6 +3357,23 @@ int get_mesh_obc(parameters_t *params,
 	}
 	fprintf(fp, "NaN NaN\n");
       }
+      if (sp != NULL) {
+	double x = 0.5 * (mesh->xloc[mesh->obc[m][1][0]] + 
+			  mesh->xloc[mesh->obc[m][1][1]]);
+	double y = 0.5 * (mesh->yloc[mesh->obc[m][1][0]] + 
+			  mesh->yloc[mesh->obc[m][1][1]]);
+	fprintf(sp, "%f %f %s_s\n", x, y, open->name);
+	if (donef[m] != 1) {
+	  double x = 0.5 * (mesh->xloc[mesh->obc[m][mesh->npts[m]][0]] + 
+			    mesh->xloc[mesh->obc[m][mesh->npts[m]][1]]);
+	  double y = 0.5 * (mesh->yloc[mesh->obc[m][mesh->npts[m]][0]] + 
+			    mesh->yloc[mesh->obc[m][mesh->npts[m]][1]]);
+	  fprintf(sp, "%f %f %s_e\n", x, y, open->name);
+	}
+	if (donef[m] == 0) {
+	  fprintf(sp, "%f %f %s_m\n", open->mlon, open->mlat, open->name);
+	}
+      }
     }
     if (op  != NULL) {
       fprintf(op, "\nBOUNDARY%d.UPOINTS     %d\n", m, mesh->npts[m]);
@@ -3371,6 +3389,7 @@ int get_mesh_obc(parameters_t *params,
     }
   }
   fclose(fp);
+  fclose(sp);
   fclose(op);
   i_free_1d(si);
   i_free_1d(ei);
@@ -8774,7 +8793,8 @@ int mesh_expand_w(geometry_t *window,  /* Window geometry            */
 /* outgoing flow.                                                    */
 /*-------------------------------------------------------------------*/
 int mesh_expand_3d(geometry_t *window,  /* Window geometry           */
-		   double *u            /* Velocity array            */
+		   double *u,           /* Velocity array            */
+		   int *vecin           /* Cells to process          */
 		   )            
 {
   win_priv_t *wincon = window->wincon;
@@ -8786,39 +8806,45 @@ int mesh_expand_3d(geometry_t *window,  /* Window geometry           */
   double d1;
   int *vec = wincon->s6;
   int *c2cc = wincon->s7;
+  int *ctp = wincon->s1;
+  int nctp = wincon->vc;
 
   memset(vec, 0, window->szc * sizeof(int));
   memset(c2cc, 0, window->szc * sizeof(int));
   filla = i_alloc_1d(window->szc);
   memset(filla, 0, window->szc * sizeof(int));
   ni = 1;
-  for (cc = 1; cc <=wincon->vcs; cc++) {
-    c = wincon->s1[cc];
-    c2 = window->m2d[c];
-    c2cc[c2] = cc;
+  /* If vec is provided, then this contains non-monotonic cells,     */
+  /* and only expand out from these.                                 */               
+  if (vecin != NULL) {
+    ctp = vecin;
+    nctp = vecin[0];
   }
-  for (cc = 1; cc <=wincon->vc; cc++) {
-    c = wincon->s1[cc];
-    c2 = window->m2d[c];
-    n = 0;
-    for (ee = 1; ee <= window->npe[c2]; ee++) {
-      e = window->c2e[ee][c];
-      /* Direction of flow                                           */
-      dir = (window->eSc[ee][c2] * u[e] >= 0.0) ? 1 : -1;
-      /* Sum the edges with outgoing flow                            */
-      if (dir == 1) n++;
-    }
-    /* All edges are outflow                                         */
-    if (!filla[c] && n == window->npe[c2]) {
-      /*printf("start %d %d %d(%d %d)\n",master->nstep,ni,c,window->s2i[c],window->s2j[c]);*/
-      vec[ni++] = c;
-      filla[c] = 1;
-      mesh_expand_do(window, u, vec, &ni, filla);
+
+  if (vecin == NULL) {
+    for (cc = 1; cc <=wincon->vc; cc++) {
+      c = wincon->s1[cc];
+      c2 = window->m2d[c];
+      n = 0;
+      for (ee = 1; ee <= window->npe[c2]; ee++) {
+	e = window->c2e[ee][c];
+	/* Direction of flow                                         */
+	dir = (window->eSc[ee][c2] * u[e] >= 0.0) ? 1 : -1;
+	/* Sum the edges with outgoing flow                          */
+	if (dir == 1) n++;
+      }
+      /* All edges are outflow                                       */
+      if (!filla[c] && n == window->npe[c2]) {
+	/*printf("start %d %d %d(%d %d)\n",master->nstep,ni,c,window->s2i[c],window->s2j[c]);*/
+	vec[ni++] = c;
+	filla[c] = 1;
+	mesh_expand_do(window, u, vec, &ni, filla);
+      }
     }
   }
   /* Collect unassigned cells having at least one outflow edge       */
-  for (cc = 1; cc <=wincon->vc; cc++) {
-    c = wincon->s1[cc];
+  for (cc = 1; cc <= nctp; cc++) {
+    c = ctp[cc];
     c2 = window->m2d[c];
     for (ee = 1; ee <= window->npe[c2]; ee++) {
       e = window->c2e[ee][c];
@@ -8832,6 +8858,13 @@ int mesh_expand_3d(geometry_t *window,  /* Window geometry           */
   }
   ni--;
   vec[0] = ni;
+
+  for (cc = 1; cc <=wincon->vcs; cc++) {
+    c = wincon->s1[cc];
+    c2 = window->m2d[c];
+    c2cc[c2] = cc;
+  }
+
   return(ni);
 }
 
@@ -9453,9 +9486,18 @@ void add_quad_grid(parameters_t *params, char *iname, int mode)
     prm_read_int(pp, "NCE2", &ice2);
     if (prm_read_char(fp, "SUBSECTION", buf))
     sscanf(buf, "(%d,%d)-(%d,%d)", &si, &sj, &ei, &ej);
+    if (si > ei) {
+      i = ei;
+      ei = si;
+      si = i;
+    }
+    if (sj > ej) {
+      j = ej;
+      ej = sj;
+      sj = j;
+    }
     nce1 = ei - si + 1;
     nce2 = ej - sj + 1;
-
     if (!prm_read_double(fp, "BATHYVAL", &nbathy)) {
       prm_read_darray(pp, "BATHY", &b1, &i);
       bathyin = d_alloc_1d(nce1 * nce2 + 1);
@@ -9781,7 +9823,7 @@ void add_quad_grid(parameters_t *params, char *iname, int mode)
 	fprintf(dp, "%f %f\n",lon[i][j], lat[i][j]);
 	fprintf(op, "%f %f e%d\n",lon[i][j], lat[i][j], n);
 	n++;
-      }
+      } 
       fprintf(dp, "%f %f\n",lon[i][1], lat[i][1]);
       fprintf(dp, "NaN NaN\n");
     }

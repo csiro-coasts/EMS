@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 7413 2023-10-05 02:10:10Z her127 $
+ *  $Id: load_tracer.c 7517 2024-03-18 00:35:51Z her127 $
  *
  */
 
@@ -22,7 +22,6 @@
 #include "hd.h"
 #include "tracer.h"
 
-int NAUTOTR = 221;
 tracer_info_t autotracerlist[] = {
   {
     .name = "salt",
@@ -1254,7 +1253,7 @@ tracer_info_t autotracerlist[] = {
     .type = WATER|HYDRO|DIAGNOSTIC,
     .inwc = 1,
     .dissol = 1,
-    .advect = 1,
+    .advect = 0,
     .diffuse = 0,
     .diagn = 0,
     .m = -1,
@@ -3156,7 +3155,7 @@ tracer_info_t autotracerlist[] = {
     .diffuse = 0,
     .diagn = 0,
     .m = -1,
-    .groupkey = "botstress"
+    .groupkey = "NONE"
   },
   {
     .name = "swr_attenuation",
@@ -3172,7 +3171,7 @@ tracer_info_t autotracerlist[] = {
     .diffuse = 0,
     .diagn = 0,
     .m = -1,
-    .groupkey = "botstress"
+    .groupkey = "NONE"
   },
   {
     .name = "swr_deep_attenuation",
@@ -3284,7 +3283,23 @@ tracer_info_t autotracerlist[] = {
     .diffuse = 0,
     .diagn = 0,
     .m = -1,
-    .groupkey = "NONE"
+    .groupkey = "riverflow"
+  },
+  {
+    .name = "iflow",
+    .long_name = "Accumulated river flow",
+    .units = "m3",
+    .valid_range_wc[0] = 0.00e+00,
+    .valid_range_wc[1] = 1.00e+10,
+    .fill_value_wc = 0.00,
+    .type = INTER|HYDRO|DIAGNOSTIC,
+    .inwc = 1,
+    .dissol = 1,
+    .advect = 0,
+    .diffuse = 0,
+    .diagn = 0,
+    .m = -1,
+    .groupkey = "riverflow"
   },
   {
     .name = "flow_depth",
@@ -3611,3 +3626,5 @@ tracer_info_t autotracerlist[] = {
     .groupkey = "NONE"
   }
 };
+
+int NAUTOTR = (int)(sizeof(autotracerlist) / sizeof(tracer_info_t));
