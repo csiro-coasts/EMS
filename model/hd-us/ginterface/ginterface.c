@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ginterface.c 7488 2024-02-18 04:01:39Z bai155 $
+ *  $Id: ginterface.c 7578 2024-05-31 01:32:53Z riz008 $
  *
  */
 
@@ -3949,4 +3949,16 @@ double ginterface_get_eta(void* hmodel, int b)
     int c2 = window->m2d[c];
     double v = windat->eta[c2];
     return v;
+}
+
+/*
+ * Handy utility for when singleton operations are needed in a
+ * multi-window environemnt. eg. ecology file operations
+ */
+int ginterface_is_window1(void *hmodel)
+{
+  if (hmodel == NULL)
+    return 1;
+  else
+    return (((geometry_t*)hmodel)->wn == 1);
 }

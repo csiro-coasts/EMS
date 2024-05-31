@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: transport.c 7473 2023-12-13 04:03:27Z her127 $
+ *  $Id: transport.c 7566 2024-05-27 05:02:47Z her127 $
  *
  */
 
@@ -100,13 +100,19 @@ double get_dist(double x1, double y1, double x2, double y2);
 void ffsl_doc(geometry_t *window, window_t *windat, win_priv_t *wincon, 
 	      double *ntr, double dtu, int mode);
 void check_monotone(geometry_t *window, window_t *windat, win_priv_t *wincon, double tr, int c);
-void universal_limit(geometry_t *window, window_t *windat, win_priv_t *wincon,
-		     int cin, int co, int cs, int cb, double dt, double *tr, double *Fx, double *Fz, int *mask);
+int universal_limit(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		     int cin, int co, int cs, int cb, double dt, double *tr, 
+		    double *Fx, double *Fz, int *mask);
+void universal_limith(geometry_t *window, window_t *windat, win_priv_t *wincon,
+		      int cin, int co, int cs, int cb, double dt, double *tr, double *Fx, double *Fz, 
+		      int *mask);
 void ffsl_van_leer(double *F, double *tr, double *vel, double *crf, int *cl,
 		   int c, int *fmap, int *bmap, double *sminz, double *smaxz);
 void ffsl_quickest(geometry_t *window, double *F, double *tr, double *vel,
 		   double *crf, int *cl, int c, int *fmap, int *bmap,
 		   double *sminz, double *smaxz);
+double check_tr_value(geometry_t *window, window_t *windat, win_priv_t *wincon, double *tr, 
+		      double *Fx, double *Fz, double dt, int c);
 
 /*-------------------------------------------------------------------*/
 /* Transport step                                                    */
@@ -2008,7 +2014,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
   int sodanos = 0;     /* Compute distances on spheriod              */
   int tranf;           /* Transverse term flag                       */
   int doint = 1;       /* Integrate tracers along streamline         */
-  int momo2 = 1;       /* Second order momentum estimation           */
+  int momo2 = 0;       /* Second order momentum estimation           */
   int vscheme = V_VC;  /* Vertical scheme                            */
   int verbose = 0;
 
@@ -2137,6 +2143,13 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
       windat->monox[e] = -HUGE;
     }
   }
+  if (windat->trmin && windat->trmax) {
+    for (cc = 1; cc <= window->n3_t; cc++) {
+      c = window->w3_t[ee];
+      windat->trmin[c] = HUGE;
+      windat->trmax[c] = -HUGE;
+    }
+  }
   /*
   for (ee = 1; ee <= window->n3_e1; ee++) {
     e = window->w3_e1[ee];
@@ -2192,7 +2205,10 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
     ei = e;
 
     if (wincon->fillf & CLIP) smin[e] = smax[e] = tr[cl[ee]];
-    if (wincon->ultimate) smin[e] = smax[e] = tr_mod[cl[ee]];
+    /* Get the initial min/max in the cell (Thuburn, Eq. 32 & 33)    */
+    if (wincon->ultimate & UL_IPROJ) smin[e] = smax[e] = tr_mod[cl[ee]];
+    if (wincon->ultimate & UL_ITR) smin[e] = smax[e] = tr[cl[ee]];
+
     /*if (tmode) first = 1;*/
     while (cl[ee] > 0) {
       double uu = u, vv = v;
@@ -2280,8 +2296,16 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
       /* Get the minimum and maximum values encountered in the       */
       /* stencil along the streamline.                               */
       if (wincon->ultimate) {
-	get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
-	get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
+	if (wincon->ultimate & UL_SPROJ) {
+	  /* Get the upstream min/max bounds ((Thuburn, Eq. 32 & 33) */
+	  get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
+	  get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
+	}
+	/* Widen the range for inflow bounds (Thuburn, Eq. 46 & 47)  */
+	if (wincon->ultimate & UL_SSTCL) {
+	  get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
+	  get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
+	}
       } else if (wincon->fillf & CLIP) {
 	get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
 	get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
@@ -2303,8 +2327,8 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
 
       /* Get the number of sub-timesteps used                        */
       n++;
-      if(n > 10) {
-	printf("stuck in loop wn=%d e=%d [%f %f]\n",window->wn,e,window->u1x[window->m2de[e]],window->u1y[window->m2de[e]]);
+      if(n > 100) {
+	printf("stuck in loop wn=%d e=%d [%f %f] dt=%f\n",window->wn,e,window->u1x[window->m2de[e]],window->u1y[window->m2de[e]], dtu);
 	exit(0);
       }
       /* Get the contributions to the horizontal transverse terms    */
@@ -2388,7 +2412,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
   if (tranf & T_HORZ) {
     for (cc = 1; cc <= window->b3_t; cc++) {
       c = window->w3_t[cc];
-      tr_moc[c] /= (double)mask[c];
+      if(mask[c]) tr_moc[c] /= (double)mask[c];
       tr_moc[c] = tf * tr_moc[c] + (1.0 - tf) * tr[c];
     }
     set_tr_nograd(window, tr_moc);
@@ -2436,6 +2460,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
     }
     if (wincon->fillf & CLIP) sminz[c] = smaxz[c] = tr[c2];
     if (wincon->ultimate) sminz[c] = smaxz[c] = tr_moc[c2];
+    /*if (wincon->ultimate & UL_ITR) sminz[c] = smaxz[c] = tr[c2];*/
 
     if (w[c] == 0.0 || zm1 == window->zm1[zm1]) {
       Fz[c] = 0.0;
@@ -2452,9 +2477,13 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
     while (dz < dist) {
       /* Get the minimum and maximum values encountered in the       */
       /* stencil along the streamline.                               */
-      if (wincon->ultimate) {
+      if (wincon->ultimate) {	
 	sminz[c] = min(sminz[c], tr_moc[ci]);
 	smaxz[c] = max(smaxz[c], tr_moc[ci]);
+	/*
+	sminz[c] = min(sminz[c], tr[ci]);
+	smaxz[c] = max(smaxz[c], tr[ci]);
+	*/
       } else if (wincon->fillf & CLIP) {
 	sminz[c] = min(sminz[c], tr[ci]);
 	smaxz[c] = max(smaxz[c], tr[ci]);
@@ -2487,6 +2516,30 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
 
   /* Limit the mean tracer value if rquired                          */
   if (wincon->ultimate) {
+
+    /* Make an array of non-monotonic values in order of decreasing  */
+    /* value, and expand the mesh around these points.               
+    mask[0] = 0;
+    for (cc = 1; cc <= wincon->vc; cc++) {
+      c = wincon->s1[cc];
+      if ((d1 = check_tr_value(window, windat, wincon, tr, Fx, Fz, dtu, c))) {
+	mask[0]++;
+	mask[mask[0]] = c;
+	dint[mask[0]] = d1;
+	n++;
+      }
+    }
+    if (mask[0]) {
+      quicksort(dint, mask, 1, mask[0]);
+      n = wincon->s7[0] = mask[0];
+      for (cc = mask[0]; cc > 0; cc--) {
+	wincon->s7[cc] = mask[n--];
+      }
+      mesh_expand_3d(window, u1, wincon->s7);
+    } else 
+      return;
+    */
+
     memset(mask, 0, window->sze * sizeof(int));
     /* Limit the horizontal fluxes in the order of the sparse        */
     /* vector. Some edges may be missed doing this if a cell is      */
@@ -2500,7 +2553,7 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
       cs = wincon->i2[cc];
       cb = wincon->i1[cc];
       while (c != window->zm1[c]) {
-	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
+	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask, 0);
 	c = window->zm1[c];
       }
     }
@@ -2517,11 +2570,13 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
       cs = window->nsur_t[cco];
       cb = window->bot_t[cco];
       while (c != window->zm1[c]) {
-	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
+	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask, 0);
 	c = window->zm1[c];
       }
     }
     */
+
+    /* Limit fluxes with the universal limiter                       */
     for (cc = 1; cc <= wincon->s6[0]; cc++) {
       int cco, co, cs, cb, c2;
       c = wincon->s6[cc];
@@ -2537,520 +2592,12 @@ void ffsl_don(geometry_t *window,           /* Window geometry        */
       cs = window->nsur_t[cco];
       cb = window->bot_t[cco];
       */
-      universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
+      universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);      
     }
   }
 }
 
 /* END ffsl_don()                                                    */
-/*-------------------------------------------------------------------*/
-
-
-/*-------------------------------------------------------------------*/
-/* Flux Form semi-Lagrange: tracks streamlines from cell edges and   */
-/* piecewise linearly integrates tracer values to get a streamline   */
-/* mean value, which it then applies to that edge. Also invokes a    */
-/* limiter (using streamline mean cell centered values) to keep the  */
-/* solution monotonic.                                               */
-/* Duplicate routine of ffsl_don() to parallel process.              */
-/*-------------------------------------------------------------------*/
-void ffsl_donc(geometry_t *window,         /* Window geometry        */
-	     window_t *windat,             /* Window data            */
-	     win_priv_t *wincon,           /* Window constants       */
-	     double *tr,                   /* Tracer array           */
-	     double *Fx,                   /* Horizontal flux        */
-	     double *Fz,                   /* Vertical flux          */
-	     double dtu                    /* Timestep               */
-	  )
-{
-  double dt;                  /* Sub-time step for Euler velocity    */
-  double time_left;           /* Number of sub-timesteps per dt      */
-  double *u1, *u2;            /* Horizontal edge velocity            */
-  double *w;                  /* Vertical velocity                   */
-  double *u1v;                /* Horizontal volume flux              */
-  double *nu, *nv;            /* Cell centered horizontal velocity   */
-  double *nw = wincon->nw;    /* Cell centered vertical velocity     */
-  double *cx = wincon->tr_mod_x;  /* x position of streamline        */
-  double *cy = wincon->tr_mod_y;  /* y position of streamline        */
-  double *cz = wincon->tr_mod_z;  /* z poition of streamline         */
-  double *tr_mod = wincon->tr_mod; /* z transverse tracer            */
-  double *crfzf;   /* Fractional factors of face trajectories        */
-  double *crfzc;   /* Fractional factors of centre trajectories      */
-  int *clzf;       /* Cell counter at face source cell               */
-  int *clzc;       /* Cell counter cell centre source                */
-  double *ntr = wincon->w5;   /* New tracer value                    */
-  double *dint = wincon->w3;  /* Streamline integrated tracer value  */
-  double *smin = wincon->crfxc; /* Minimum streamline value          */
-  double *smax = wincon->crfyc; /* Maximum streamline value          */
-  double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
-  double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
-  double *tr_moc = wincon->Fzh;
-  int *cl = wincon->s2;       /* Cell location of streamline         */
-  int *e2ee = wincon->s4;     /* Mapping from edge to index          */
-  int *mask = wincon->s3;
-  double u, v;                /* Velocities                          */
-  double trs, tre;            /* Tracer at start and end of segments */
-  double dz;                  /* Cell thickness                      */
-  double dist, d1;            /* Lengths of segment                  */
-  double sinth, costh;        /* sin and cos of edge angle           */
-  double m2deg = 1.0 / (60.0 * 1852.0);  /* Meter to degree          */
-  double px, py, pz;
-  int cc, c, cs, ci, kb, zm1, zp1;
-  int ee, e, e2, es, ei, pei;
-  int c1, c2;
-  int n;
-  int has_proj = (strlen(projection) > 0);
-  int is_geog = has_proj && (strcasecmp(projection, GEOGRAPHIC_TAG) == 0);
-  double tf = 0.55; /* Factor for implicitness of cross terms (0.5:1)*/
-  int trconcf = 1;            /* TRCONC on OBCs                      */
-  int tmode = (wincon->means & TRANSPORT) ? 1 : 0;
-  int sodanos = 0;            /* Compute distances on spheriod       */
-  int tranf;                  /* Transverse term flag                */
-  int doint = 1;              /* Integrate tracers along streamline  */
-  int momo2 = 0;              /* Second order momentum estimation    */
-
-  int nmax = 0, emax;
-  double **cxc, **cyc;
-  int **clc;
-
-
-  /* Set which transverse terms are used                             */
-  tranf = (T_VERT|T_HORZ|T_HV);
-  if (!is_geog) m2deg = 1.0;
-  if (tmode) {
-    u1 = windat->ume;
-    w = windat->wm;
-    u1v = windat->u1vm;
-    /* Get the u2 (tangential) velocity at the edge.                 */
-    u2 = wincon->crfxc;
-    for (ee = 1; ee <= window->b3_e1; ee++) {
-      int eoe;
-      double fs;
-      e = window->w3_e1[ee];
-      es = window->m2de[e];
-      u2[e] = 0.0;
-      for (n = 1; n <= window->nee[es]; n++) {
-	eoe = window->eSe[n][e];
-	fs = window->h1au1[window->m2de[eoe]] / window->h2au1[es];
-	if (!eoe) continue;
-	u2[e] += fs * window->wAe[n][e] * u1[eoe];
-      }
-    }
-  } else {
-    u1 = windat->u1;
-    u2 = windat->u2;
-    w = windat->w;
-    u1v = windat->u1flux3d;
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Initialise                                                      */
-  memset(cx, 0, window->sze * sizeof(double));
-  memset(cy, 0, window->sze * sizeof(double));
-  memset(cz, 0, window->sze * sizeof(double));
-  memset(ntr, 0.0, window->sze * sizeof(double));
-  memset(dint, 0.0, window->sze * sizeof(double));
-  memset(tr_moc, 0.0, window->szc * sizeof(double));
-  memset(mask, 0, window->szc * sizeof(int));
-
-  /*-----------------------------------------------------------------*/
-  /* Define a new tracer with z-direction transverse terms           */
-  clzf = wincon->clzf;
-  clzc = wincon->clzc;
-  crfzf = wincon->crfzf;
-  crfzc = wincon->crfzc;
-  memcpy(tr_mod, tr, window->szc * sizeof(double));
-  if (tranf & T_VERT) {
-    for (cc = 1; cc <= window->a3_t; cc++) {
-      c = window->w3_t[cc];
-      zp1 =  (nw[c] < 0.0) ? clzc[c] : window->zm1[clzc[c]];
-      ci = (nw[c] < 0.0) ?  window->zm1[zp1] : clzc[c];
-      tr_mod[c] = tf * tr[ci] + (1.0 - tf) * tr[c];
-      /* Note: tf determines how much of the tracer at the forward   */
-      /* timestep is used (i.e. the 'implicitness' of the solution). */
-      /* This should lie between 0.5 (centered) or 1 (implicit). The */
-      /* implicit solutions tend to be more diffuse.                 */
-      if (crfzc[c] > 0.) {
-	tr_mod[c] += tf * (crfzc[c] * (tr[zp1] - tr[ci]));
-      }
-    }
-    set_tr_nograd(window, tr_mod);
-    /* OBC ghost cells                                               */
-    for (n = 0; n < window->nobc; n++) {
-      open_bdrys_t *open = window->open[n];
-      int trn = (int)tr[0];
-      for (ee = 1; ee <= open->no3_e1; ee++) {
-	c = c2 = open->obc_e2[ee];
-	zp1 =  (nw[c] < 0.0) ? clzc[c] : window->zm1[clzc[c]];
-	ci = (nw[c] < 0.0) ?  window->zm1[zp1] : clzc[c];
-	do {
-	  c = open->omape[ee][c];
-	  zp1 = open->omape[ee][zp1];
-	  ci = open->omape[ee][ci];
-	  tr_mod[c] = tf * tr[ci] + (1.0 - tf) * tr[c];
-	  if (crfzc[c2] > 0.)
-	    tr_mod[c] += tf * (crfzc[c2] * (tr[zp1] - tr[ci]));
-	} while (c != open->omape[ee][c]);
-      }
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Set the initial streamline location                             */
-  for (ee = 1; ee <= window->a3_e1; ee++) {
-    e = window->w3_e1[ee];
-    e2 = window->m2de[e];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-    cx[e] = window->u1x[e2];
-    cy[e] = window->u1y[e2];
-    cz[e] = 0.5 * (wincon->cellz[c1] + wincon->cellz[c2]);
-    e2ee[e] = ee;
-  }
-  /*
-  for (ee = 1; ee <= window->n3_e1; ee++) {
-    e = window->w3_e1[ee];
-    smin[e] = HUGE;
-    smax[e] = -HUGE;
-  }
-  */
-  /* Get the initial cell centre; this is the cell upstream of the   */
-  /* edge.                                                           */
-  for (cc = 1; cc <= window->b3_t; cc++) {
-    c = window->w3_t[cc];
-    c2 = window->m2d[c];
-    for (n = 1; n <= window->npe[c2]; n++) {
-      e = window->c2e[n][c];
-      ee = e2ee[e];
-      if (u1[e] > 0.0)
-	cl[ee] = (window->eSc[n][c2] < 0) ? window->c2c[n][c] : c;
-      else
-	cl[ee] = (window->eSc[n][c2] < 0) ? c : window->c2c[n][c];
-    }
-  }
-  /* Use interior cells for normal open boundary edges               */
-  for (n = 0; n < window->nobc; n++) {
-    open_bdrys_t *open = window->open[n];
-    int trn = (int)tr[0];
-    if (!(open->bcond_tra[trn] & TRCONC)) {
-      trconcf = 0;
-      for (ee = 1; ee <= open->no3_e1; ee++) {
-	e = open->obc_e1[ee];
-       cl[e2ee[e]] = open->obc_e2[ee];
-      }
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Limit least squares interpolation functions                     */
-  get_linear_limit(window, windat, wincon, tr_mod);
-
-  /*-----------------------------------------------------------------*/
-  /* Trace the streamline back to the origin                         */
-  for (ee = 1; ee <= window->a3_e1; ee++) {
-    int first = 0;
-    e = window->w3_e1[ee];
-    if (!trconcf && window->eask[e] & (W_NOBC|W_TOBC)) continue;
-    es = window->m2de[e];
-    c1 = window->e2c[e][0];
-    c2 = window->e2c[e][1];
-    time_left = dtu;
-    u = u1[e] * window->costhu1[es] + u2[e] * window->costhu2[es];
-    v = u1[e] * window->sinthu1[es] + u2[e] * window->sinthu2[es];
-    n = 0;
-    ei = e;
- 
-    if (wincon->fillf & CLIP) smin[e] = smax[e] = tr[cl[ee]];
-    if (wincon->ultimate) smin[e] = smax[e] = tr_mod[cl[ee]];
-
-    /*if (tmode) first = 1;*/
-
-    while (cl[ee] > 0) {
-      double uu = u, vv = v;
-      /* Set the current cell the streamline resides in. Note; these */
-      /* locations are cell centre locations, stored for every edge. */
-      c = ci = cl[ee];
-      pz = wincon->cellz[ci];
-
-      /* Get the velocties at the origin. For the first segment      */
-      /* sub-step use (rotated u1) velocities at the edge location.  */
-      if (first) {
-	u = hd_trans_interp(window, windat->gsx, cx[e], cy[e], pz, c, 0, 0);
-	v = hd_trans_interp(window, windat->gsy, cx[e], cy[e], pz, c, 0, 1);
-      }
-      first = 1;
-
-      /* If the streamline crosses an open boundary (i.e. the source */
-      /* edge is a normal boundary edge) then compute the remaining  */
-      /* distance using the normal open boundary velocity, and set   */
-      /* the segment end concentration to that in the boundary ghost */
-      /* cell. Then terminate the streamline tracing.                */
-      if (window->eask[ei] & W_NOBC && window->cask[abs(cl[ee])] & W_GOBC) {
-	dist = time_left * fabs(windat->u1[ei]);
-	cl[ee] = abs(cl[ee]);
-	trs = tre;
-	tre = tr[cl[ee]];
-	dint[e] += dist;
-	if (doint) {
-	  ntr[e] += 0.5 * dist * (trs + tre);
-	} else
-	  ntr[e] += (tr_mod[ci] * dist);
-	if (tranf & T_HV) {
-	  tr_moc[c1] += tre;
-	  tr_moc[c2] += tre;
-	  mask[c1]++;
-	  mask[c2]++;
-	}
-	cl[ee] = -cl[ee];
-	break;
-      }
-
-      /* Get the new location of the streamline origin               */
-      px = cx[e];
-      py = cy[e];
-      pei = ei;
-      cl[ee] = get_posc(window, &ei, c, u, v, &cx[e], &cy[e], time_left, 1, &dist);
-
-      /* Use a second order approximation for the velocity used to   */
-      /* track the streamline.                                       */
-      if (momo2) {
-	double u2 = hd_trans_interp(window, windat->gsx, cx[e], cy[e], pz, c, 0, 0);
-	double v2 = hd_trans_interp(window, windat->gsy, cx[e], cy[e], pz, c, 0, 1);
-	u = 0.5 * (u + u2);
-	v = 0.5 * (v + v2);
-	cx[e] = px;
-	cy[e] = py;
-	ei = pei;
-	cl[ee] = get_posc(window, &ei, c, u, v, &cx[e], &cy[e], time_left, 1, &dist);
-      }
-
-      /* If the source lies in a wet cell, then get the time it's    */
-      /* taken to cross the cell.                                    */
-      if (cl[ee] > 0) {
-	d1 = sqrt(u * u + v * v);
-	dt = dist / d1;
-	time_left -= dt;
-      }
-      /*
-      if (window->wgst[cl[ee]] && window->zp1[cl[ee]] != window->wgst[cl[ee]] &&
-	  ee <= window->v3_e1) 
-	printf("Streamline in ghost @ %f %d : %f %f\n",windat->days, e, window->cellx[window->m2d[cl[ee]]], 
-				       window->celly[window->m2d[cl[ee]]]);
-
-      if (cl[ee] <=0 || cl[ee] >= window->szc) 
-	printf("Streamline out of bounds @ %f %d %f %f\n", windat->days, e, window->cellx[window->m2d[cl[ee]]], 
-				       window->celly[window->m2d[cl[ee]]]);
-      */
-      trs = get_linear_value(window, windat, wincon, tr_mod, ci, px, py, pz);
-      tre = get_linear_value(window, windat, wincon, tr_mod, ci, cx[e], cy[e], pz);
-
-      /* Get the minimum and maximum values encountered in the       */
-      /* stencil along the streamline.                               */
-      if (wincon->ultimate) {
-	get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
-	get_local_bounds(window, windat, wincon, tr_mod[cl[cc]], NULL, e, abs(cl[ee]), smin, smax, 0);
-      } else if (wincon->fillf & CLIP) {
-	get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
-	get_local_bounds(window, windat, wincon, tre, tr, e, abs(cl[ee]), smin, smax, 2);
-      }
-
-      /* Integrate (linearly) the tracer along the streamline        */
-      /* segment.                                                    */
-      dint[e] += dist;
-
-      if (doint) {
-	ntr[e] += 0.5 * dist * (trs + tre);
-      } else
-	ntr[e] += (tr_mod[ci] * dist);
-
-      /* Get the number of sub-timesteps used                        */
-      n++;
-      if(n > 100) {
-	char name[MAXSTRLEN];
-	int tn = find_tracer(window, windat, wincon, tr, name);
-	printf("Tracer %d (%s) stuck in loop e=%d [%f %f]\n",tn, name, e,
-	       window->u1x[window->m2de[e]], window->u1y[window->m2de[e]]);
-	exit(0);
-      }
-      /* Get the contributions to the horizontal transverse terms    */
-      /* for the vertical advection, this is the tracer value at the */
-      /* current source location.                                    */
-      if (tranf & T_HV) {
-	if (cl[ee] < 0) {
-	  tre = get_linear_value(window, windat, wincon, tr, ci, cx[e], cy[e], pz);
-	  tr_moc[c1] += tre;
-	  tr_moc[c2] += tre;
-	  mask[c1]++;
-	  mask[c2]++;
-	}
-      }
-    }
-    if (n > nmax) {
-      nmax = n;
-      emax = e;
-    }
-
-    /* Get the mean tracer value along the streamline                */
-    Fx[e] = (dint[e]) ? ntr[e] / dint[e] : Fx[e];
-
-    /* Universal flux limiter Eq 34 & 35 of Thuburn (1995)           */
-    if (wincon->ultimate) {
-      Fx[e] = min(Fx[e], smax[e]);
-      Fx[e] = max(Fx[e], smin[e]);
-    }
-  }
-
-  debug_c(window, D_TS, D_STRML);
-
-  /* Multiply the tracer by the volume flux                          */
-  for (ee = 1; ee <= window->n3_e1; ee++) {
-    e = window->w3_e1[ee];
-    Fx[e] *= u1v[e];
-  }
-
-  /* Get the horizontal transverse terms by interpolating tr at the  */
-  /* source location. Note: the weights and slope limiter for the    */
-  /* least squares interpolation must be reset using tr (rather than */
-  /* tr_mod).                                                        */
-  if (!(tranf & T_HV)) {
-    get_linear_limit(window, windat, wincon, tr);
-    for (ee = 1; ee <= window->a3_e1; ee++) {
-      e = window->w3_e1[ee];
-      c = -cl[ee];
-      c1 = window->e2c[e][0];
-      c2 = window->e2c[e][1];
-      pz = wincon->cellz[c];
-      tre = get_linear_value(window, windat, wincon, tr, c, cx[e], cy[e], pz);
-      tr_moc[c1] += tre;
-      tr_moc[c2] += tre;
-      mask[c1]++;
-      mask[c2]++;
-    }
-  }
-
-  /*-----------------------------------------------------------------*/
-  /* Define a new tracer with horizontal-direction transverse terms  */
-  /* (note: we use the interpolated value at the streamline end      */
-  /* directly in tr_moc).                                            */
-  if (tranf & T_HORZ) {
-    for (cc = 1; cc <= window->b3_t; cc++) {
-      c = window->w3_t[cc];
-      tr_moc[c] /= (double)mask[c];
-      tr_moc[c] = tf * tr_moc[c] + (1.0 - tf) * tr[c];
-    }
-    set_tr_nograd(window, tr_moc);
-  } else
-    memcpy(tr_moc, tr, window->szc * sizeof(double));
-
-  /*-----------------------------------------------------------------*/
-  /* Vertical fluxes                                                 */
-  /* Calculate the fractional part of the volume flux, using the     */
-  /* Van Leer algorithm to get the tracer value on the face.         */
-  ff_sl_van_leer(Fz, tr_moc, w, crfzf, clzf, 1, wincon->vc, wincon->s1, window->zp1, window->zm1,
-		 sminz, smaxz);
-
-  for (cc = 1; cc <= wincon->vc; cc++) {
-    c = wincon->s1[cc];
-    ci = (w[c] > 0.0) ? c : window->zm1[c];
-    c2 = (w[c] > 0.0) ? window->zm1[c] : c;
-    if (wincon->fillf & CLIP) sminz[c] = smaxz[c] = tr[c2];
-    if (wincon->ultimate) sminz[c] = smaxz[c] = tr_moc[c2];
-    if (w[c] == 0.0) {
-      Fz[c] = 0.0;
-      continue;
-    }
-    ci = clzf[c];
-    Fz[c] *= (crfzf[c] * wincon->dz[ci]);
-
-    /* Integrate over the "integer" component of the trajectory      */
-    ci = (w[c] > 0.0) ? window->zm1[c] : wincon->s1[cc];
-    dz = wincon->dz[ci];
-    dist = fabs(w[c] * dtu);
-    while (dz < dist) {
-      /* Get the minimum and maximum values encountered in the       */
-      /* stencil along the streamline.                               */
-      if (wincon->ultimate) {
-	sminz[c] = min(sminz[c], tr_moc[ci]);
-	smaxz[c] = max(smaxz[c], tr_moc[ci]);
-      } else if (wincon->fillf & CLIP) {
-	sminz[c] = min(sminz[c], tr[ci]);
-	smaxz[c] = max(smaxz[c], tr[ci]);
-      }
-      Fz[c] += (dz * tr_moc[ci]);
-      dist -= dz;
-      ci = (w[c] < 0.0) ? window->zp1[ci] : window->zm1[ci];
-      if (wincon->dz[ci] > 0)
-	dz = wincon->dz[ci];
-    }
-
-    /* Ensure Fz has correct sign */
-    if (w[c] < 0)
-      Fz[c] *= -1.0;
-
-    /* Universal flux limiter Eq 34 & 35 of Thuburn (1995)           */
-    if (wincon->ultimate) {
-      Fz[c] = min(Fz[c], smaxz[c] * w[c] * dtu);
-      Fz[c] = max(Fz[c], sminz[c] * w[c] * dtu);
-    }
-  }
-
-  /* Limit the mean tracer value if rquired                          */
-  if (wincon->ultimate) {
-    memset(mask, 0, window->sze * sizeof(int));
-    /* Limit the horizontal fluxes in the order of the sparse        */
-    /* vector. Some edges may be missed doing this if a cell is      */
-    /* limited and the incoming flux is an outgoing flux for a       */
-    /* subsequent cell.                                              */
-    /*
-    for (cc = 1; cc <= wincon->vcs1; cc++) {
-      int co, cs, cb;
-      c = wincon->s1[cc];
-      co = wincon->i3[cc];
-      cs = wincon->i2[cc];
-      cb = wincon->i1[cc];
-      while (c != window->zm1[c]) {
-	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
-	c = window->zm1[c];
-      }
-    }
-
-    /* Limit the horizontal fluxes following outgoing flow from      */
-    /* cells.                                                        */
-    /*
-    for (cc = 1; cc <= window->b2_t; cc++) {
-      int cco, co, cs, cb;
-      c = wincon->i6[cc];
-      if (!(window->cask[c] & (W_WET|W_AUX))) continue;
-      cco = window->c2cc[c];
-      co = window->sur_t[cco];
-      cs = window->nsur_t[cco];
-      cb = window->bot_t[cco];
-      while (c != window->zm1[c]) {
-	universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
-	c = window->zm1[c];
-      }
-    }
-    */
-    for (cc = 1; cc <= wincon->s6[0]; cc++) {
-      int cco, co, cs, cb, c2;
-      c = wincon->s6[cc];
-      c2 = window->m2d[c];
-      if (!(window->cask[c] & (W_WET|W_AUX))) continue;
-      cco = wincon->s7[c2];
-      co = wincon->i3[cco];
-      cs = max(co, wincon->i2[cco]);
-      cb = wincon->i1[cco];
-      /*
-      co = window->sur_t[cco];
-      cs = window->nsur_t[cco];
-      cb = window->bot_t[cco];
-      */
-      universal_limit(window, windat, wincon, c, co, cs, cb, dtu, tr, Fx, Fz, mask);
-    }
-  }
-}
-
-/* END ffsl_donc()                                                   */
 /*-------------------------------------------------------------------*/
 
 
@@ -3168,10 +2715,11 @@ void ffsl_init(geometry_t *window,  /* Window geometry               */
   delaunay_reinit(window, windat->d, 2, nw);
 
   /* Make a contiguous mapping of cell locations                     */
-  if (wincon->ultimate)
-    mesh_expand_3d(window, u1);
 
-    wincon->flag |= F_FFSL;
+  if (wincon->ultimate)
+    mesh_expand_3d(window, u1, NULL);
+
+  wincon->flag |= F_FFSL;
 }
 
 /* END ffsl_init()                                                   */
@@ -3292,7 +2840,7 @@ void universal_limith(geometry_t *window,       /* Window geometry    */
   int dolimit = 1;
   int cd = 0;
 
-  if (checkf && window->s2i[c] == 47&& window->s2j[c] == 25 && window->s2k[c] == 22) cd = c;
+  /*if (checkf && window->s2i[c] == 47&& window->s2j[c] == 25 && window->s2k[c] == 22) cd = c;*/
 
   /* Set the pointers                                                */
   if (wincon->means & TRANSPORT) {
@@ -3525,7 +3073,7 @@ void universal_limith(geometry_t *window,       /* Window geometry    */
 	mask[e] = 1;
 	d1 = window->eSc[ee][c2] * hflux[e];
 	flux =  Fx[e];
-	if (c == cd) printf("limit %f : ",Fx[e]);
+	if (c == cd) printf("limit %d e=%d %f : ", ee, e, Fx[e]);
 	Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
 	if (c == cd) printf("%f : ",Fx[e]);
 	Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
@@ -3561,28 +3109,73 @@ void universal_limith(geometry_t *window,       /* Window geometry    */
   }
 }
 
-/* END universal_limit()                                             */
+/* END universal_limith()                                            */
 /*-------------------------------------------------------------------*/
 
 
 /*-------------------------------------------------------------------*/
-/* Universal flux limiter, see Thuburn (1996), JCP.                  */
+/* Universal flux limiter, see Thuburn (1996), Multidimensional flux */
+/* limited advection schemes. JCP, 123, 74-83.                       */
 /* Assumes the upstream biased minimum and maximum values are stored */
 /* in smin and smax. Limits horizontal and vertical fluxes.          */
+/* The tracer update uses cell volumes rather than Courant numbers,  */
+/* as in Thuburn, e.g. Eq. 9. Here we use:                           */
+/* t(n+1) = (t(n)*(old volume) - (dtracer + vflux)) / (new volume)   */
+/* The steps used by Thuburn are:                                    */
+/* (i) Define the inflow bounds, smin, smax, sminz, smaxz; Eq. 32 &  */
+/*     33. This is carried out in ffsl_don(). Several options exist  */
+/*     to do this, using initial values of the tracer in the dest    */
+/*     cell (UL_ITR), projected tracer values in the dest cell       */
+/*     (UL_IPROJ), tracer values included in the interpolation       */
+/*     stencil along the streamline (UL_SSTCL) or projected tracer   */
+/*     values along the streamline (UL_SPROJ). UL_IPROJ and UL_SPROJ */
+/*     are the default.                                              */
+/* (ii) Limit the edge values used in Fx and Fz to the inflow bounds */
+/*      Eq. 34 & 35. This is carried out in ffsl_don().              */
+/* (iii)  Define the min and max values a tracer can achieve after   */
+/*        the update, Eq. 38 & 39. These are the min/max of (i) over */
+/*        all faces (qn & qx).                                       */
+/* (iv) Compute the outflow bounds each face must fall within, Eq.   */
+/*      42 and 43 (qmin & qmax). Note that a maximum tracer value in */
+/*      a cell is achieved with maximum inflow of mass and minimum   */
+/*      outflow of mass.                                             */
+/* (v) Adjust the edge values to lie within the bounds from (iv),    */
+/*     Eq. 44 & 45. Note that these are adjusted in terms of fluxes  */
+/*     rather than tracer values, taking care of the sign of the     */
+/*     flux.                                                         */
+/* The refinement (Eq. 48 & 49) may be invoked prior to computing    */
+/* the inflow fluxes, cn and cx. Take care of the sign when finding  */
+/* min/max values of fluxes.                                         */
+/* Things to remember:                                               */
+/*  : w is poitive upwards.                                          */
+/*  : eSc is poitive for an outward vector, negative inward.         */
+/*  : eSc * Fx is positive for outgoing flow.                        */
+/*  : Fz is multiplied by dt, Fx isn't.                              */
+/*  : qmax is the maximum edge value for outflow required to achive  */
+/*    the minimum tracer update (qn). If there is an undershoot, we  */
+/*    require the t(n+1) to be qn, hence edge values must be < qmax. */
+/*  : qmin is the minimum edge value for outflow required to achive  */
+/*    the maximum tracer update (qx). If there is an overshoot, we   */
+/*    require the t(n+1) to be qx, hence edge values must be > qmin. */
+/*  : whenever a cell is limited, ALL faces must be masked, so that  */
+/*    the divergence doesn't change from other cell's limiting.      */
+/*    Similar reasoning applies in the vertical, so we only limit    */
+/*    the bottom face of a cell, as the top face may alter the mass  */
+/*    balance in the cell above if it is limited.                    */
 /*-------------------------------------------------------------------*/
-void universal_limit(geometry_t *window,       /* Window geometry    */
-		     window_t *windat,         /* Window data        */
-		     win_priv_t *wincon,       /* Window constants   */
-		     int ci,
-		     int co,
-		     int cs,	
-		     int cb,
-		     double dt,
-		     double *tr,
-		     double *Fx,
-		     double *Fz,
-		     int *mask
-		     )
+int universal_limit(geometry_t *window,        /* Window geometry    */
+		    window_t *windat,          /* Window data        */
+		    win_priv_t *wincon,        /* Window constants   */
+		    int ci,
+		    int co,
+		    int cs,	
+		    int cb,
+		    double dt,
+		    double *tr,
+		    double *Fx,
+		    double *Fz,
+		    int *mask
+		    )
 {
   int c, e, es, ee;
   int c2 = window->m2d[ci];
@@ -3606,14 +3199,19 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
   double *tr_mod = wincon->tr_mod; /* z transverse tracer            */
   double *tr_moc = wincon->Fzh;    /* Horizontal transverse tracer   */
   double *w;                     /* Vertical velocity                */
-  double d1;                     /* Dummy                            */
-  int checkf = 0;
-  int dolimit = 1;
+  double d1, d2, d3, d4;         /* Dummy                            */
+  int ismono = 0;                /* 1 = overshoot, -1 = undershoot   */
+  int dolimit = 1;               /* Perform limiting                 */
+  int monof = 0;                 /* Check monotonicity               */
+  int checkf = 0;                /* Report for cell cd               */
   int cd = 0;
 
   c = ci;
-  /*if (checkf && window->s2i[c] == 28 && window->s2j[c] == 26 && window->s2k[c] == 22) cd = c;*/
-  /*if (checkf && c == 1) cd = c;*/
+  /* Only report if cd is non-monotonic                              */
+  /*
+  if (checkf && c == cd)
+    checkf = check_tr_value(window, windat, wincon, tr, Fx, Fz, dt, c);
+  */
 
   /* Set the pointers                                                */
   if (wincon->means & TRANSPORT) {
@@ -3624,6 +3222,7 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
     w = windat->w;
   }
 
+  /*-----------------------------------------------------------------*/
   /* Get the cell volumes at time t and t-1                          */
   if (c == cs) {
     double watertop;
@@ -3655,24 +3254,30 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
     tro = tr[c] * volo;
   }
 
+  /*-----------------------------------------------------------------*/
   /* Diagnostics                                                     */
   if(checkf && c == cd) {
-    printf("-----------------------------\n");
-    printf("start %f %s %d %d[%d %d %d](%f %f) cs=%d co=%d tr=%f dt=%f\n",windat->days,
-	   wincon->trinfo_3d[(int)tr[0]].name, 
+    printf("\n-----------------------------\n");
+    printf("start %f %d %s %d %d[%d %d %d](%f %f) cs=%d co=%d zp1=%d\n",windat->days,
+	   master->nstep, wincon->trinfo_3d[(int)tr[0]].name, 
 	   windat->nstep, c, window->s2i[c], window->s2j[c], window->s2k[c],
-	   window->cellx[c2], window->celly[c2], cs, co, tr[c], dt);
-    printf("eta(t)=%f eta(t-1)=%f volo=%f vol=%f\n", subeta[c2], osubeta[c2],
-	   volo/window->cellarea[c2], vol/window->cellarea[c2]);
+	   window->cellx[c2], window->celly[c2], cs, co, window->zp1[c]);
+    printf("      tracer value=%f dt=%f\n",tr[c], dt);
+    printf("      eta(t)=%f eta(t-1)=%f volo=%f vol=%f\n", subeta[c2], osubeta[c2],
+	   volo, vol);
+    printf("     ------------\n");
+    printf("Fluxes\n");
   }
 
+  /*-----------------------------------------------------------------*/
   /* Get the sum of fluxes                                           */
+  c = ci;
   qn = min(tr_mod[c], tr_moc[c]);
   qx = max(tr_mod[c], tr_moc[c]);
+
   cn = cx = cout = cin = 0.0;
   ni = no = 0;
   dtracer = 0.0;
-  c = ci;
 
   /* Increment the fluxes from the current layer to the layer below  */
   /* that containing the old surface. If elevation has risen through */
@@ -3685,17 +3290,23 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 	es = window->m2de[e];
 	flux = window->eSc[ee][c2] * hflux[e] * dt;
 	dtracer += window->eSc[ee][c2] * Fx[e] * dt;
-	if(c==cd)printf("drop\n");
+	if(checkf && c==cd)printf("drop\n");
 	if (flux > 0.0) {
-	  cout += flux;
+	  if (!mask[e]) 
+	    cout += flux;
+	  else {
+	    cn -= window->eSc[ee][c2] * Fx[e] * dt;
+	    cx -= window->eSc[ee][c2] * Fx[e] * dt;
+	    cin += flux;
+	  }
 	  no++;
 	} else if (flux < 0.0) {
-	  mask[e] = 1;
 	  qn = min(qn, smin[e]);
 	  qx = max(qx, smax[e]);
 	  cn -= smin[e] * flux;
 	  cx -= smax[e] * flux;
 	  cin -= flux;
+	  mask[e] = 1;
 	  ni++; 
 	}
       }
@@ -3703,7 +3314,9 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
     }
   }
 
-  /* Increment the fluxes for the layer containing the old surface   */
+  /* Increment the fluxes for the layer containing the old surface.  */
+  /* Cells in the main water column, with constant volume, fall      */
+  /* within this loop.                                               */
   for (ee = 1; ee <= window->npe[c2]; ee++) {
     e = window->c2e[ee][c];
     es = window->m2de[e];
@@ -3713,21 +3326,43 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
     dtracer += window->eSc[ee][c2] * Fx[e] * dt;
     if (flux > 0.0) {              /* Outflow                        */
       sf[ee] = 1;
-      cout += flux;
-      if(c==cd)printf("aout %d e=%d min=%f Fx=%f\n",ee, e, 
-		      smin[e] * flux, Fx[e]);
-      no++;
-    } else if (flux < 0.0) {
+      if (!mask[e]) {
+	cout += flux;
+	if(checkf && c==cd)printf("outflow face%d e=%d eSc=%d vol flux=%f Fx=%f mass out=%f\n",
+				  ee, e, window->eSc[ee][c2], flux, 
+				  Fx[e], window->eSc[ee][c2] * Fx[e] * dt);
+	no++;
+      } else {
+	/* For masked outgoing fluxes, subtract outgoing mass from   */
+	/* the accumulated incoming mass, cn and cx.                 */
+	cn -= window->eSc[ee][c2] * Fx[e] * dt;
+	cx -= window->eSc[ee][c2] * Fx[e] * dt;
+	cin -= flux;
+	if(checkf && c==cd)printf("outflow masked face%d e=%d eSc=%d vol flux=%f Fx=%f mass out=%f\n",
+				  ee, e, window->eSc[ee][c2], flux, 
+				  Fx[e], window->eSc[ee][c2] * Fx[e] * dt);
+      }
+    } else if (flux < 0.0) { /* Add incoming mass: Note: eSc.Fx < 0  */
       sf[ee] = -1;
-      mask[e] = 1;
+      /* Thuburn (1996) Eq. 38 & 39                                  */
       qn = min(qn, smin[e]);
       qx = max(qx, smax[e]);
-      /* Thuburn (1996) Eq. 48 & 49 */
-      cn -= min(window->eSc[ee][c2] * Fx[e]*dt, smin[e] * flux);
-      cx -= max(window->eSc[ee][c2] * Fx[e]*dt, smax[e] * flux);
+      /* Thuburn (1996) Eq. 48 & 49                                  */
+      if (wincon->ultimate & UL_REFINE) {
+	cn -= max(window->eSc[ee][c2] * Fx[e]*dt, smin[e] * flux);
+	cx -= min(window->eSc[ee][c2] * Fx[e]*dt, smax[e] * flux);
+      } else {
+	cn -= window->eSc[ee][c2] * Fx[e]*dt;
+	cx -= window->eSc[ee][c2] * Fx[e]*dt;
+      }
       cin -= flux;
-      if(c==cd)printf("ain %d e=%d min=%f max=%f Fx=%f\n",ee,e,
-		      cn, cx, Fx[e]*dt);
+      if(checkf && c==cd) {
+	printf("inflow face%d e=%d eSc=%d vol flux=%f Fx=%f mass out=%f\n",
+	       ee, e, window->eSc[ee][c2], flux, Fx[e], window->eSc[ee][c2] * Fx[e] * dt);
+	printf("  cn=%f cx=%f smin mass=%f smax mass=%f\n", 
+	       cn, cx, smin[e] * flux, smax[e] * flux);
+      }
+      mask[e] = 1;
       ni++; 
     }
   }
@@ -3745,17 +3380,23 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 	es = window->m2de[e];
 	flux = window->eSc[ee][c2] * hflux[e] * dt;
 	dtracer += window->eSc[ee][c2] * Fx[e] * dt;
-	if(c==cd)printf("rise\n");
+	if(checkf && c==cd)printf("rise\n");
 	if (flux > 0.0) {
-	  cout += flux;
+	  if (!mask[e]) 
+	    cout += flux;
+	  else {
+	    cn -= window->eSc[ee][c2] * Fx[e] * dt;
+	    cx -= window->eSc[ee][c2] * Fx[e] * dt;
+	    cin += flux;
+	  }
 	  no++;
 	} else if (flux < 0.0) {
-	  mask[e] = 1;
 	  qn = min(qn, smin[e]);
 	  qx = max(qx, smax[e]);
 	  cn -= smin[e] * flux;
 	  cx -= smax[e] * flux;
 	  cin -= flux;
+	  mask[e] = 1;
 	  ni++; 
 	}
       }
@@ -3764,92 +3405,182 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 
   /* Vertical fluxes into the cell                                   */
   c = ci;
+  /* Bottom face. This face is limited for outflow.                  */
   flux = w[c] * window->cellarea[c2] * dt;
   if (flux > 0.0) {
     qn = min(qn, sminz[c]);
     qx = max(qx, smaxz[c]);
-    /* Thuburn (1996) Eq. 48 & 49 */
-    cn += min(Fz[c] * window->cellarea[c2], sminz[c] * flux);
-    cx += max(Fz[c] * window->cellarea[c2], smaxz[c] * flux);
+    /* Thuburn (1996) Eq. 48 & 49                                    */
+    if (wincon->ultimate & UL_REFINE) {
+      cn += min(Fz[c] * window->cellarea[c2], sminz[c] * flux);
+      cx += max(Fz[c] * window->cellarea[c2], smaxz[c] * flux);
+    } else {
+      cn += Fz[c] * window->cellarea[c2];
+      cx += Fz[c] * window->cellarea[c2];
+    }
+    if(checkf && c==cd) {
+      printf("zin c=%d cn=%f cx=%f Fz=%f vol flux=%f mass in=%f\n",
+	     c, cn, cx, Fz[c], flux, Fz[c] * window->cellarea[c2]);
+      printf("  tracer face value=%f sminz mass=%f smaxz mass=%f\n", 
+	     Fz[c]/flux, sminz[c] * flux, smaxz[c] * flux);
+    }
     cin += flux;
     ni++;
   } else if (flux < 0.0) {
+    if(checkf && c==cd)printf("zout c=%d Fz=%f vol flux=%f mass out=%f \n",
+			      c, Fz[c], flux, Fz[c] * window->cellarea[c2]);
     cout -= flux;
     no++;
   }
+
+  /* Top face. This face is never limited, since if it is we may     */
+  /* alter the mass balance in the cell above to be non-monotonic.   */
+  /* Subtract the outgoing fluxes from cn, cx, and do not increment  */
+  /* cout.                                                           */
   if (c != cs) {
     zp1 = window->zp1[c];
     flux = w[zp1] * window->cellarea[c2] * dt;
     if (flux < 0.0) {
       qn = min(qn, sminz[zp1]);
       qx = max(qx, smaxz[zp1]);
-      cn -= min(Fz[zp1] * window->cellarea[c2], sminz[zp1] * flux);
-      cx -= max(Fz[zp1] * window->cellarea[c2], smaxz[zp1] * flux);
+      /* Note: flux is < 0 for ingoing fluxes, so the minimum flux   */
+      /* in is max(Fzp1, smin.flux) and the maximum flux out is      */
+      /* max(Fzp1, smax.flux).                                       */
+      if (wincon->ultimate & UL_REFINE) {
+	cn -= max(Fz[zp1] * window->cellarea[c2], sminz[zp1] * flux);
+	cx -= min(Fz[zp1] * window->cellarea[c2], smaxz[zp1] * flux);
+      } else {
+	cn -= Fz[zp1] * window->cellarea[c2];
+	cx -= Fz[zp1] * window->cellarea[c2];
+      }
+      if(checkf && c==cd) {
+	printf("zpin c=%d cn=%f cx=%f Fzp=%f vol flux=%f zp mass in=%f\n",
+	       c, cn, cx, Fz[zp1], flux, Fz[zp1] * window->cellarea[c2]);
+	printf("  tracer face value=%f sminz mass=%f smaxz mass=%f\n", 
+	       Fz[zp1]/flux, sminz[zp1] * flux, smaxz[zp1] * flux);
+      }
       cin -= flux;
       ni++;
     } else if (flux > 0.0) {
-      cout += flux;
+      if(checkf && c==cd)printf("zpout c=%d Fzp=%f vol flux=%f mass out=%f\n",
+				c, Fz[zp1], flux, Fz[zp1] * window->cellarea[c2]);
+      cn -= Fz[zp1] * window->cellarea[c2];
+      cx -= Fz[zp1] * window->cellarea[c2];
+      cin += flux;
+      /*cout += flux;*/
       no++;
     }
   }
-  if (!cout) return;
+  c = ci;
+  /* No inflow, commentry in Thuburn post Eq. 39.                    */
   if (!ni) {
     qn = qx = tr[c];
+    if(checkf && c==cd) printf("No inflow edges in this cell : qn=qx=tr, cn=cx=0\n");
+  }
+  windat->trmin[c] = qn;
+  windat->trmax[c] = qx;
+  if (!cout) {
+    if(checkf && c==cd) printf("No unmasked outflow edges in this cell to limit.\n");
+    return(0);
   }
 
-  /* Get the horizontal outflow bounding values                      */
-  qmin = (tro - vol * qx + cx) / (cout);
-  qmax = (tro - vol * qn + cn) / (cout);
+  /*-----------------------------------------------------------------*/
+  /* Get the unlimited updated tracer                                */
+  vflux = - Fz[c] * window->cellarea[c2] ;
+  if (c != cs) vflux += Fz[zp1] * window->cellarea[c2];
+  d1 = (volo * tr[c] - (dtracer + vflux)) / vol;
+  if (d1 < qn) ismono = -1;
+  if (d1 > qx) ismono = 1;
+  if(!ismono) return(0);
+  if(checkf && c==cd) {
+    printf("     ------------\n");
+    printf("Un-limited  new tracer value = %f (should lie between %f %f). ismono=%d\n", 
+	   d1, qn, qx, ismono);
+  }
 
-  /* Check                                                           */
-  if (c == cd) {
-    double d2, d3;
-    dtracer = 0.0;
+  /*-----------------------------------------------------------------*/
+  /* Monotonicity check using original fluxes                        */
+  if (monof == 2) {
+    double eps = -1e-6;
+    if (d1 - qn < eps) {
+      printf("\n-----------------------------\nStart\n");
+      printf("Monotonicity min pre error %f %d tr=%f, min=%f, max=%f\n", windat->days, c, d1, qn, qx);
+      cd = c;
+      checkf = 1;
+    }
+    if (qx - d1 < eps) {
+      printf("\n-----------------------------\nStart\n");
+      printf("Monotonicity max pre error %f %d tr=%f, min=%f, max=%f\n", windat->days, c, d1, qn, qx);
+      cd = c;
+      checkf = 1;
+    }
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Get the horizontal outflow bounding values (Eq. 42 & 43)        */
+  qmin = max(0.0, (tro - vol * qx + cx) / (cout));
+  qmax = max(0.0, (tro - vol * qn + cn) / (cout));
+  if(checkf && c==cd) {
+    printf("     ------------\n");
+    printf("Outflow bounding values qmin=%f qmax=%f\n", qmin,qmax);
+    printf("Initial mass=%f, volume out=%f\n", tro, cout);
+    printf("min mass in (cn)=%f max mass in (cx)=%f\n", cn, cx);
+  }
+
+  /*-----------------------------------------------------------------*/
+  /* Checks                                                          */
+  if (checkf && c == cd) {
+    printf("     ------------\n");
+    printf("Checks:\n");
     /* Get the continuity (volume) balance. This is independent of   */
     /* tracer value and checks volume fluxes and sea levels are      */
     /* correct. Should be ~1e-10.                                    */
     d1 = (volo - vol) - ((cout-cin));
-    printf("cnt=%e flux=%f\n", d1, cout-cin);
-    /* Print the vertical mass fluxes                                */
+    printf("Volume continuity=%e (should be ~1e-10) volume flux divergence=%f\n", d1, cout-cin);
 
-    vflux = - Fz[c] * window->cellarea[c2] ;
-    flux = w[c] * dt;
-    if (Fz[c] >= 0.0)
-      printf("  vin Fz=%f vol=%f min=%f max=%f tr=%f\n", Fz[c], flux, 
-	     flux * sminz[c], flux * smaxz[c], Fz[c]/flux);
-    else
-      printf("  vout Fz=%f vol=%f min=%f max=%f tr=%f\n", Fz[c], flux, 
-	     flux * sminz[c], flux * smaxz[c], Fz[c]/flux);
-    if (c != cs) {
-      vflux += Fz[zp1] * window->cellarea[c2];
-      flux = w[zp1] * window->cellarea[c2] * dt;
+    /* Get the tracer values using qmin and qmax                     */
+    d2 = (tro - qmin * cout + cx) / vol;
+    d3 = (tro - qmax * cout + cn) / vol;
+    printf("New tracer using qmax/qmin face values = %f %f\n", d3, d2);
 
-      if (Fz[zp1] < 0.0)
-	printf("  vp1in Fzp1=%f vol=%f min=%f max=%f tr=%f\n", Fz[zp1], flux, 
-	       flux * sminz[zp1], flux * smaxz[zp1], Fz[zp1]/flux);
-      else
-	printf("  vp1out Fzp1=%f vol=%f min=%f max=%f tr=%f\n", Fz[zp1], flux, 
-	       flux * sminz[zp1], flux * smaxz[zp1], Fz[zp1]/flux);
-    }
     /* Print the horizontal mass fluxes                              */
     for (ee = 1; ee <= window->npe[c2]; ee++) {
       e = window->c2e[ee][c];
       flux = window->eSc[ee][c2] * hflux[e] * dt;
-      dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
-      if (sf[ee] == 1)printf("  out%d Fx=%f vol=%f min=%f max=%f tr=%f\n",ee, 
-			     window->eSc[ee][c2] * Fx[e], hflux[e], hflux[e] * smin[e], 
-			     hflux[e] * smax[e], Fx[e]/hflux[e]);
-      if (sf[ee] == -1)printf("  in%d Fx=%f vol=%f min=%f max=%f tr=%f\n",ee, 
-			      window->eSc[ee][c2] * Fx[e], hflux[e], hflux[e] * smin[e], 
-			      hflux[e] * smax[e], Fx[e]/hflux[e]);
+      if (sf[ee] == 1)
+	printf("  out%d mass limits: actual=%f  min=%f max=%f\n", 
+	       ee, window->eSc[ee][c2] * Fx[e] * dt, flux * qmin, flux * qmax);
+      if (sf[ee] == -1) 
+	printf("  out%d mass limits: actual=%f  min=%f max=%f\n", 
+	       ee, window->eSc[ee][c2] * Fx[e] * dt, flux * qmin, flux * qmax);
     }
-
-    d1 = (volo * tr[c] - (dtracer + vflux)) / vol;
-    printf("  cn=%f cx=%f min=%f max=%f tr=%f qmin=%f qmax=%f\n",cn, cx, qn, qx, d1, qmin, qmax);
+    /* Print the vertical mass fluxes                                */
+    flux = w[c] * window->cellarea[c2] * dt;
+    if (Fz[c] >= 0.0)
+      printf("  vin mass limits: actual=%f min=%f max=%f\n", 
+	     -Fz[c] * window->cellarea[c2], -flux * qmin, -flux * qmax);
+    else {
+      printf("  vout mass limits: actual=%f min=%f max=%f\n", 
+	     -Fz[c] * window->cellarea[c2], -flux * qmin, -flux * qmax);
+    }
+    if (c != cs) {
+      flux = w[zp1] * window->cellarea[c2] * dt;
+      if (Fz[zp1] < 0.0)
+	printf("  vpin mass limits: actual=%f min=%f max=%f\n", 
+	       Fz[zp1] * window->cellarea[c2], flux * qmin, flux * qmax);
+      else
+	printf("  vpout mass limits: actual=%f min=%f max=%f\n",
+	       Fz[zp1] * window->cellarea[c2], flux * qmin, flux * qmax);
+    }
   }
 
-  /* Limit the outflow edges                                         */
+  /*-----------------------------------------------------------------*/
+  /* Limit the outflow edges (Eq. 44 & 45)                           */
   if (dolimit) {
+    if(checkf && c==cd) {
+      printf("     ------------\n");
+      printf("Limits\n");
+    }
     dtracer = 0.0;
     /* Limit the fluxes from the current layer to the layer below    */
     /* that containing the old surface.                              */
@@ -3861,15 +3592,14 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 	  if (!mask[e] && window->eSc[ee][c2] * hflux[e] > 0) {
 	    mask[e] = 1;
 	    d1 = window->eSc[ee][c2] * hflux[e];
-	    Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
-	    Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	    if (ismono == 1) Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	    if (ismono == -1) Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
 	  }
 	  dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
 	}
 	c = zp1;
       }
     }
-
     /* Limit the fluxes for the layer containing the old surface     */
     for (ee = 1; ee <= window->npe[c2]; ee++) {
       e = window->c2e[ee][c];
@@ -3877,11 +3607,21 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 	mask[e] = 1;
 	d1 = window->eSc[ee][c2] * hflux[e];
 	flux =  Fx[e];
-	if (c == cd) printf("limit %f : ",Fx[e]);
-	Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
-	if (c == cd) printf("%f : ",Fx[e]);
-	Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
-	if (c == cd) printf("%f\n",Fx[e]);
+	if (checkf && c == cd) printf("limit %d e=%d tr=%f Fx=%f : ", ee, e, fabs(Fx[e] / d1), Fx[e]);
+	/* Fx.eSc > 0 for outgoing fluxes.                           */
+
+	if (ismono == 1) Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	if (ismono == -1) Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
+	/*
+	if (ismono == 1) Fx[e] = qmin * hflux[e];
+	if (ismono == -1) Fx[e] = qmax * hflux[e];
+	*/
+	if (checkf && c == cd) {
+	  printf("%f\n",Fx[e]);
+	  printf("  eSc=%d flux=%f mass limits=%f %f\n",window->eSc[ee][c2], Fx[e] * window->eSc[ee][c2],
+		 qmin * d1, qmax * d1);
+	  printf("  new mass out%d = %f\n", ee, window->eSc[ee][c2] * Fx[e]*dt);
+	}
 	/*if (fabs(flux - Fx[e]) > 1e-8) hd_quit("limit at c=%d d=%d %f %f\n",c, e, flux, Fx[e]);*/
       }
       dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
@@ -3897,8 +3637,8 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 	  if (!mask[e] && window->eSc[ee][c2] * hflux[e] > 0) {
 	    mask[e] = 1;
 	    d1 = window->eSc[ee][c2] * hflux[e];
-	    Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
-	    Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	    if (ismono == 1) Fx[e] = max(Fx[e] * window->eSc[ee][c2], qmin * d1) * window->eSc[ee][c2];
+	    if (ismono == -1) Fx[e] = min(Fx[e] * window->eSc[ee][c2], qmax * d1) * window->eSc[ee][c2];
 	  }
 	  dtracer += (window->eSc[ee][c2] * Fx[e] * dt);
 	}
@@ -3907,31 +3647,173 @@ void universal_limit(geometry_t *window,       /* Window geometry    */
 
     /* Limit the vertical outgoing fluxes                            */
     c = ci;
+    /* Note: Fz[c] is < 0 for outgoing fluxes.                       */
     if (Fz[c] < 0) {
-      if (c == cd) printf("limit lower %f : ",Fz[c]);
-      Fz[c] = max(Fz[c], qmax * w[c] * dt);
-      if (c == cd) printf("%f : ",Fz[c]);
-      Fz[c] = min(Fz[c], qmin * w[c] * dt);
-      if (c == cd) printf("%f\n",Fz[c]);
+      if (checkf && c == cd) printf("limit lower %f : ",Fz[c]);
+
+      if (ismono == 1) Fz[c] = min(Fz[c], qmin * w[c] * dt);
+      if (ismono == -1) Fz[c] = max(Fz[c], qmax * w[c] * dt);
+      /*
+      if (ismono == 1) Fz[c] = qmin * w[c] * dt;
+      if (ismono == -1) Fz[c] = qmax * w[c] * dt;
+      */
+      if (checkf && c == cd) {
+	printf("%f : limits=%f %f\n",Fz[c],qmin * w[c] * dt,qmax * w[c] * dt);
+	printf("  new mass out lower = %f\n", ee, -Fz[c] * window->cellarea[c2]);
+      }
     }
+    /* Outgoing fluxes are > 0 for zp1 are not limited.
     zp1 = window->zp1[c];
     if (c != cs && Fz[zp1] > 0.0) {
-      if (c == cd) printf("limit upper %f : ",Fz[zp1]);
-      Fz[zp1] = min(Fz[zp1], qmax * w[zp1] * dt);
-      if (c == cd) printf("%f : ",Fz[zp1]);
-      Fz[zp1] = max(Fz[zp1], qmin * w[zp1] * dt);
-      if (c == cd) printf("%f\n",Fz[zp1]);
+      if (checkf && c == cd) printf("limit upper %f : ",Fz[zp1]);
+      
+      if (ismono == 1) Fz[zp1] = max(Fz[zp1], qmin * w[zp1] * dt);
+      if (ismono == -1) Fz[zp1] = min(Fz[zp1], qmax * w[zp1] * dt);
+      
+      if (ismono == 1) Fz[zp1] = qmin * w[zp1] * dt;
+      if (ismono == -1) Fz[zp1] = qmax * w[zp1] * dt;
+      if (checkf && c == cd) {
+	printf("%f\n",Fz[zp1]);
+	printf("  new mass out upper = %f\n", ee, Fz[c] * window->cellarea[c2]);
+      }
     }
+    */
   }
 
+  c = ci;
+  /*-----------------------------------------------------------------*/
   /* Check                                                           */
-  if (checkf && c == cd) {
-    d1 = (tro - (dtracer + vflux)) / vol;
-    printf("new dtracer=%f tr=%f\n", dtracer, d1);
+  if (!monof && checkf && c == cd) {
+    d1 = (volo * tr[c] - (dtracer + vflux)) / vol;
+    printf("tr=%f min=%f max=%f\n", d1, windat->trmin[c], windat->trmax[c]);
   }
+  /* Monotonicity check using limited fluxes                         */
+  if (monof) {
+    double eps = -1e-6;
+    zp1 = window->zp1[c];
+    vflux = - Fz[c] * window->cellarea[c2] ;
+    if (c != cs) vflux += Fz[zp1] * window->cellarea[c2];
+    d1 = (volo * tr[c] - (dtracer + vflux)) / vol;
+    if(checkf && c == cd) {
+      printf("new tr=%f min=%f max=%f\n", d1, qn, qx);
+      if (d1 - qn >= eps && qx - d1 >= eps)
+      printf("New tracer monotonic using limited fluxes.\n");
+    }
+    if (d1 - qn < eps) {
+      hd_quit("Monotonicity min post error %f %d k=%d tr=%f, qn=%f, qx=%f\n", 
+	     windat->days, c, window->s2k[c], d1, qn, qx);
+      if(checkf && c == cd) hd_quit("Quitting\n");
+      return(1);
+    }
+    if (qx - d1 < eps) {
+      hd_quit("Monotonicity max post error %f %d k=%d tr=%f, qn=%f, qx=%f\n", 
+	     windat->days, c, window->s2k[c], d1, qn, qx);
+      if(checkf && c == cd) hd_quit("Quitting\n");
+      return(1);
+    }
+  }
+  return(0);
 }
 
 /* END universal_limit()                                             */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Checks an updated tracer value against smin, smax                 */
+/*-------------------------------------------------------------------*/
+double check_tr_value(geometry_t *window, 
+		      window_t *windat, 
+		      win_priv_t *wincon, 
+		      double *tr,
+		      double *Fx,
+		      double *Fz,
+		      double dt,
+		      int c
+		      )
+{
+  int cc, cc1, c1, e, ee;
+  int  c2 = window->m2d[c];       /* 2D cell corresponding to 3D cell*/
+  int zp1 = window->zp1[c];       /* Cell above cell c               */
+  int scf = 0;                    /* Surface cell flag               */
+  double trn = tr[c];             /* New tracer                      */
+  double *dtracer = wincon->w1;   /* Horizontal fluxes               */
+  double *osubeta = wincon->d1;   /* Old elevation                   */
+  double *subeta = wincon->d2;    /* Elevation                       */
+  double *smin = wincon->crfxc;   /* Minimum horz streamline value   */
+  double *smax = wincon->crfyc;   /* Maximum horz streamline value   */
+  double *sminz = wincon->crfxf;  /* Minimum vert streamline value   */
+  double *smaxz = wincon->crfyf;  /* Maximum vert streamline value   */
+  double mn, mx;                  /* Min / max values at c           */
+  double eps = 1e-5;              /* Tolerance for non-monotonicity  */
+  int verbose = 0;                /* Print output                    */
+  double ret = 0.0;
+
+  /* Local bounds                                                    */
+  mn = sminz[c];
+  mx = smaxz[c];
+  for (ee = 1; ee <= window->npe[c2]; ee++) {
+    e = window->c2e[ee][c];
+    mn = min(mn, smin[e]);
+    mx = max(mx, smax[e]);
+  }
+
+  /* Check if it's a surface cell                                    */
+  for (cc1 = 1; cc1 <= wincon->vcs1; cc1++) {
+    if (c == wincon->s1[cc1]) {
+      scf = 1;
+      break;
+    }
+  }
+
+  /* Tracer horizontal fluxes                                        */
+  if (scf) {
+    c1 = c2;
+    while (c1 != window->zm1[c]) {
+      dtracer[c1] = 0.0;
+      for (ee = 1; ee <= window->npe[c2]; ee++) {
+	e = window->c2e[ee][c1];
+	dtracer[c1] += (window->eSc[ee][c2] * Fx[e] * dt);
+      }
+      c1 = window->zm1[c1];
+    }
+  } else {
+    for (ee = 1; ee <= window->npe[c2]; ee++) {
+      e = window->c2e[ee][c];
+      dtracer[c] += (window->eSc[ee][c2] * Fx[e] * dt);
+    }
+  }
+
+  /* Update                                                          */
+  if (scf) {
+    double top = -Fz[c] * window->cellarea[c2];
+    trn = surf_conc(window, windat, wincon, tr, osubeta[c2], 
+		    subeta[c2], c, c2, cc1, top, dtracer);
+  } else {
+    trn *= wincon->Ds[c2];
+    trn -= ((dtracer[c] / window->cellarea[c2] +
+	     (Fz[zp1] - Fz[c])) / wincon->dz[c]);
+  }
+  trn = max(trn, 0.0);
+  if (trn - mn < -eps) ret = fabs(trn - mn);
+  if (trn - mx > eps) ret = fabs(trn - mx);
+  if (verbose) {
+    if (verbose == 1) {
+      if (scf) 
+	printf("%f : surface cell %d tr=%f, trn=%f (mn=%f, mx=%f)\n", windat->days, c, tr[c], trn, mn, mx);
+      else
+	printf("%f : cell %d tr=%f, trn=%f (mn=%f, mx=%f)\n", windat->days, c, tr[c], trn, mn, mx);
+    } else if (verbose == 2 && ret) {
+      if (scf) 
+	printf("%f : surface cell %d tr=%f, trn=%f (mn=%f, mx=%f) r=%f\n", windat->days, c, tr[c], trn, mn, mx, ret);
+      else
+	printf("%f : cell %d tr=%f, trn=%f (mn=%f, mx=%f) r=%f\n", windat->days, c, tr[c], trn, mn, mx, ret);
+    }
+  }
+  return(ret);
+}
+
+/* END check_tr_value()                                              */
 /*-------------------------------------------------------------------*/
 
 
@@ -4250,7 +4132,7 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
   double *smax = wincon->crfyc; /* Maximum streamline value          */
   double *sminz = wincon->crfxf; /* Minimum vertical streamline value*/
   double *smaxz = wincon->crfyf; /* Maximum vertical streamline value*/
-  return;
+
   /* Get the min/max along all streamlines                           */
   for (cc = 1; cc <= window->b3_t; cc++) {
     c = window->w3_t[cc];
@@ -4381,6 +4263,50 @@ void clip_ffsl(geometry_t *window,        /* Window geometry         */
 }
 
 /* END clip_ffsl()                                                   */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Clips tracer values to the minimum and maximum values set in the  */
+/* universal_limit() function.                                       */
+/*-------------------------------------------------------------------*/
+void clip_ffsl_ultimate(geometry_t *window,    /* Window geometry    */
+			window_t *windat,      /* Window data        */
+			win_priv_t *wincon,    /* Window constants   */
+			double *tr             /* Tracer array       */
+			)
+{
+  int cc, c;
+  double *mn = windat->trmin;   /* Minimum value                     */
+  double *mx = windat->trmax;   /* Maximum value                     */
+  double eps = -1e-6;
+  int checkf = 0;
+
+  if (checkf) {
+    for (cc = 1; cc <= wincon->vc1; cc++) {
+      c = wincon->s1[cc];
+      if (window->cask[c] & W_WET) {
+	if (mn[c] != HUGE && tr[c] - mn[c] < eps) {
+	  hd_quit("Monotonicity tr min error %f %d k=%d tr=%f, min=%f, max=%f\n", 
+		  windat->days, c, window->s2k[c], tr[c], 
+		  windat->trmin[c], windat->trmin[c]);
+	}
+	if (mx[c] != -HUGE && mx[c] - tr[c] < eps) {
+	  hd_quit("Monotonicity tr max error %f %d k=%d tr=%f, min=%f, max=%f\n", 
+		  windat->days, c, window->s2k[c], tr[c], 
+		  windat->trmin[c], windat->trmax[c]);
+	}
+      }
+    }
+  }
+
+  for (cc = 1; cc <= window->v3_t; cc++) {
+    c = window->w3_t[cc];
+    tr[c] =  max(min(mx[c], tr[c]), mn[c]);
+  }
+}
+
+/* END clip_ffsl_ultimate()                                          */
 /*-------------------------------------------------------------------*/
 
 

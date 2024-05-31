@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: globals.c 5841 2018-06-28 06:51:55Z riz008 $
+ *  $Id: globals.c 7569 2024-05-27 07:14:59Z riz008 $
  *
  */
 
@@ -47,15 +47,15 @@ double ambpress;                /* Ambient atmospheric pressure */
 double g;                       /* gravity */
 double spec_heat;               /* Specific heat of water */
 
-hd_data_t *hd_data;
-geometry_t *geom;
-geometry_t **window;
-open_bdrys_t **Opens;
-window_t **windat;
-win_priv_t **wincon;
-master_t *master;
-parameters_t *params;
-dump_data_t *dumpdata;
+hd_data_t *hd_data = NULL;
+geometry_t *geom = NULL;
+geometry_t **window = NULL;
+open_bdrys_t **Opens = NULL;
+window_t **windat = NULL;
+win_priv_t **wincon = NULL;
+master_t *master = NULL;
+parameters_t *params = NULL;
+dump_data_t *dumpdata = NULL;
 ts_point_t tsflush;
 ts_point_t tsphist;
 ts_point_t tsalert;

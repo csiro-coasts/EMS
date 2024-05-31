@@ -16,7 +16,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.c 7337 2023-04-11 02:35:26Z her127 $
+ *  $Id: dumpfile.c 7575 2024-05-30 03:44:13Z riz008 $
  *
  */
 
@@ -69,6 +69,63 @@ typedef struct {
   void* data ;                  /* Netcdf record number */
 } df_dispatch_data_t;
 
+typedef struct {
+  GRID_SPECS **gs;              /* Grid spec for parray interpolation */
+  delaunay **d;                 /* Delaunay data structure for centre interpolation */
+  int *cells;                   /* Cell locations used in the interpolation */
+  int *ids;                     /* Delaunay indices used in the interpolation */
+  int *c2k;                     /* Interpolation cells to layer map */
+  int *botk;                    /* Bottom layer number for cell centres */
+  int ncells;                   /* Number of cells used in the interpolation */
+  int nz;                       /* Surface layer number */
+  int ncs;                      /* Cell centres in surface layer */
+  int nc;                       /* Total cell centres */
+
+  GRID_SPECS **ge;              /* Grid spec for parray interpolation */
+  delaunay **de;                /* Delaunay data structure for edge interpolation */
+  int *eells;                   /* Edge locations used in the interpolation */
+  int *eds;                     /* Delaunay indices used in the interpolation */
+  int *e2k;                     /* Interpolation edge to layer map */
+  int *botek;                   /* Bottom layer number for edges */
+  int neells;                   /* Number of edgess used in the interpolation */
+  int nes;                      /* Edges in surface layer */
+  int ec;                       /* Total edge centres */
+} df_interp_t;
+
+typedef struct {
+  void **v;                     /* Pointer to values */
+  int ndims;                    /* Number of spatial dimensions */
+  char name[MAXSTRLEN];         /* df_variable_t name */
+  char units[MAXSTRLEN];        /* df_variable_t units */
+  char long_name[MAXSTRLEN];    /* Descriptive name */
+  int vector_mode;              /* NONE, east, north, mag, dirn */
+  nc_type fptype;               /* Data type. */
+  double valid_range[2];        /* df_variable_t valid range */
+  double scale;                 /* Scale factor */
+  double offset;                /* Scale factor */
+  int xylocation[2];
+  int zlocation[2];
+  int sediment;                 /* Sediment flag */
+  void **data[2];               /* Pointer to values (scalar or vector) */
+
+} df_parray_var_t;
+
+
+/* Structure to describe each dump file. Also used for memory output */
+typedef struct {
+  int type;                     /* DF_PARRAY or DF_MEMORY */
+  int fid;                      /* Netcdf file id */
+  int nextrec;                  /* Netcdf record number */
+  df_parray_var_t *vars;        /* List of point array dump file variables */
+  df_mempack_t *data;           /* Output data structure for memory output */
+  df_interp_t *interp;          /* Interpolation data */
+} df_parray_data_t;
+
+INLINE double *get_data(df_parray_var_t *var)
+{
+  void *p = var->v;
+  return (*(double **)p);
+}
 
 /* Prototypes for routines below */
 static int read_subsection_range(FILE * fp, char *key, int nc, int nf,
@@ -84,6 +141,12 @@ void write_text_att(int cdfid, int varid, const char *name,
 int find_next_restart_record(dump_file_t *df, int cdfid,
                                     char *timevar, double tref);
 void df_null_reset(dump_data_t *dumpdata, dump_file_t *df, double t);
+static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
+                                int fid);
+static double get_var_value(dump_file_t *df, df_parray_var_t *var, 
+			    df_interp_t *interp, int id, int i, int k);
+static void df_interp_init_data(dump_data_t *dumpdata, dump_file_t *df,
+				df_interp_t *interp, int af);
 
 /* History output file prototypes */
 static void *df_restart_create(dump_data_t *dumpdata, dump_file_t *df);
@@ -131,8 +194,24 @@ void df_filter_2d(dump_file_t *df, dump_data_t *dumpdata, double **a,
 void df_filter_3d(dump_file_t *df, dump_data_t *dumpdata, double ***a, 
 		  int is, int ie, int js, int je, int ks, int ke);
 
-void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df);
-void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df);
+void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df, df_interp_t *interp);
+void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df, df_interp_t *interp);
+int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
+                          char *name, df_parray_var_t *var);
+static void df_interp_writesub_2d(dump_data_t *dumpdata, 
+				  dump_file_t *df, df_interp_t *interp, double *values);
+static void df_interp_writesub_3d(dump_data_t *dumpdata, 
+				  dump_file_t *df, df_interp_t *interp, double *values);
+static void df_interp_writevec_2d(dump_data_t *dumpdata, 
+				  dump_file_t *df, df_interp_t *interp, double *values);
+static void df_interp_writevec_3d(dump_data_t *dumpdata, 
+				  dump_file_t *df, df_interp_t *interp, double *values);
+static void df_interp_writevec_cen_2d(dump_data_t *dumpdata, dump_file_t *df,
+				      df_interp_t *interp, double *values_i,
+				      double *values_j);
+static void df_interp_writevec_cen_3d(dump_data_t *dumpdata, dump_file_t *df,
+				      df_interp_t *interp, double *values_i,
+				      double *values_j);
 
 /* Memory output prototypes */
 void *df_memory_create(dump_data_t *dumpdata, dump_file_t *df);
@@ -190,7 +269,8 @@ double dump_event(sched_event_t *event, double t)
   master_t *master = (master_t *)schedGetPublicData(event);
   geometry_t *geom = master->geom;
   dump_data_t *dumpdata = master->dumpdata;
-  df_dispatch_data_t* dispatch_data = malloc(sizeof(df_dispatch_data_t));
+  df_dispatch_data_t* dispatch_data =
+    (df_dispatch_data_t*)schedGetPrivateData(event);
   int debug = 0;
 
   /* Output dump and test point values if required */
@@ -216,9 +296,13 @@ double dump_event(sched_event_t *event, double t)
   }
 #endif
 
+  if (dispatch_data == NULL) {
+    dispatch_data = (df_dispatch_data_t*)calloc(1,sizeof(df_dispatch_data_t));
+    schedSetPrivateData(event,dispatch_data);
+  }
+  
   dumpdata_fill(geom, master, dumpdata);
   dispatch_data->t = t;
-  schedSetPrivateData(event,dispatch_data);
 
   /* Run through the list of dumpfiles and find the the one that        */
   /* next fires off - after the current one
@@ -1139,6 +1223,8 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   if (!(dumpdata->us_type & US_IJ) && (strcmp(buf, "ugrid") != 0 && 
 				       strcmp(buf, "sparse") != 0 &&
 				       strcmp(buf, "parray") != 0 &&
+				       strcmp(buf, "simple") != 0 &&
+				       strcmp(buf, "simple_cf") != 0 &&
 				       strcmp(buf, "memory") != 0))
     hd_quit("read_dumpfiles: Unstructured grid can only dump filetype 'ugrid' or 'parray'.\n");
 
@@ -1158,6 +1244,17 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
   if ( (df_func_map[mapIndex].tag == NULL) && !(params->runmode & PRE_MARVL) )
     hd_quit("dumpfile_init: '%s' is unknown output type.\n", buf);
   if (strcmp(list->type, "memory") == 0) list->flag |= DF_MPK;
+
+  if (!(dumpdata->us_type & US_IJ) && 
+      (strcmp(list->type, "simple") == 0 || strcmp(list->type, "simple_cf") == 0) &&
+      !(list->flag & DF_STO)) {
+    double res;
+    sprintf(key, "file%d.resolution", f);
+    if (!(prm_read_double(fp, key, &res)))
+      res = sqrt(master->amean);
+    dumpadata_create_stgrid(dumpdata, res);
+    list->flag |= DF_STO;
+  }
 
   /* Read the time 2-way nest sync time increment */
   sprintf(key, "file%d.sync_dt", f);
@@ -1334,9 +1431,9 @@ void read_dumpfiles(FILE *fp, dump_file_t *list, dump_data_t *dumpdata,
 
   /* Overwrite file name for chunking */
   set_chunk_name(dumpdata, list, t);
-
   if (!(params->runmode & PRE_MARVL))
     list->private_data = list->create(dumpdata, list);
+
   list->finished = 0;
 }
 
@@ -2895,8 +2992,12 @@ typedef struct {
   int fid;                      /* Netcdf file id */
   int nextrec;                  /* Netcdf record number */
   df_simple_var_t *vars;        /* List of simple dump file variables */
+  df_parray_var_t *varsp;       /* List of point array dump file variables */
+  df_interp_t *interp;          /* Interpolation data */
 } df_simple_data_t;
 
+static void df_simplep_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
+				   int n, double *values);
 static void df_simple_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
                                   int vid);
 static void df_simple_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
@@ -2943,7 +3044,7 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
 
   // Get the nc_mode flag
   nc_mode = get_nc_mode(df);
-  
+
   /* create the netCDF file */
   if (ncw_create(df->name, nc_mode, &cdfid) != NC_NOERR)
     hd_quit("dumpfile_create: Couldn't create output dump file %s\n",
@@ -3037,6 +3138,30 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
     write_text_att(cdfid, vid, "coordinate_type", "Z");
   }
 
+  if (df->flag & DF_STO) {
+    master_t *master = dumpdata->master;
+    geometry_t *geom = master->geom;
+    int i, j, cc, c;
+    df->npoints = 0;
+    for (j = 0; j < dumpdata->nce2; j++)
+      for (i = 0; i < dumpdata->nce1; i++)
+	if (!(dumpdata->flag[dumpdata->nz-1][j][i] & SOLID))
+	  df->npoints += 1;
+    df->x = d_alloc_1d(df->npoints);
+    df->y = d_alloc_1d(df->npoints);
+    c = 0;
+    for (j = 0; j < dumpdata->nce2; j++) {
+      for (i = 0; i < dumpdata->nce1; i++) {
+	if (!(dumpdata->flag[dumpdata->nz-1][j][i] & SOLID)) {
+	  df->x[c] = dumpdata->cellx[j][i];
+	  df->y[c] = dumpdata->celly[j][i];
+	  dumpdata->ij2c[j][i] = c;
+	  c++;
+	}
+      }
+    }
+  }
+
   df_simple_init_data(dumpdata, df, cdfid);
   data = (df_simple_data_t *)df->private_data;
 
@@ -3044,8 +3169,8 @@ static void *df_simple_create(dump_data_t *dumpdata, dump_file_t *df)
     if (!data->vars[n].sediment && data->vars[n].ndims == 2) {
       dims[1] = jid;
       dims[2] = iid;
-
       ncw_def_var2(df->name, cdfid, data->vars[n].name, data->vars[n].fptype, 3, dims, &vid, df->compress);
+
       if (is_geog)
         write_text_att(cdfid, vid, "coordinates",
                        "time, latitude, longitude");
@@ -3306,6 +3431,30 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
     write_text_att(cdfid, vid, "coordinate_type", "Z");
   }
 
+  if (df->flag & DF_STO) {
+    master_t *master = dumpdata->master;
+    geometry_t *geom = master->geom;
+    int i, j, cc, c;
+    df->npoints = 0;
+    for (j = 0; j < dumpdata->nce2; j++)
+      for (i = 0; i < dumpdata->nce1; i++)
+	if (!(dumpdata->flag[dumpdata->nz-1][j][i] & SOLID))
+	  df->npoints += 1;
+    df->x = d_alloc_1d(df->npoints);
+    df->y = d_alloc_1d(df->npoints);
+    c = 0;
+    for (j = 0; j < dumpdata->nce2; j++) {
+      for (i = 0; i < dumpdata->nce1; i++) {
+	if (!(dumpdata->flag[dumpdata->nz-1][j][i] & SOLID)) {
+	  df->x[c] = dumpdata->cellx[j][i];
+	  df->y[c] = dumpdata->celly[j][i];
+	  dumpdata->ij2c[j][i] = c;
+	  c++;
+	}
+      }
+    }
+  }
+
   df_simple_init_data(dumpdata, df, cdfid);
   data = (df_simple_data_t *)df->private_data;
 
@@ -3437,10 +3586,24 @@ static void *df_simple_cf_create(dump_data_t *dumpdata, dump_file_t *df)
   return data;
 }
 
+/*-------------------------------------------------------------------*/
+/* Write the simple file.                                            */
+/* For STRUCTURED grids, this is a copy of the structured state      */
+/* variables. The dumpdata structure makes a copy of all these       */
+/* variables for output purposes (filled in dumpdata_fill()); this   */
+/* is quite memory inefficient, and could be streamlined by filling  */
+/* 2D or 3D dummy variables with state data on the fly.              */
+/* For UNSTRUCTURED meshes (df->flag & DF_STO), state variables are  */
+/* interpolated onto a structured grid with specified resolution. A  */
+/* copy of state variables is not made in dumpadat, rather dummy     */
+/* arrays, dumpdata->w2 & w3, are used (hence void *p is set to      */
+/* these). Only cell centered variables should be specified to be    */
+/* interpolated onto simple grids.                                   */
+/*-------------------------------------------------------------------*/
 static void df_simple_write(dump_data_t *dumpdata, dump_file_t *df,
                             double t)
 {
-  int n;
+  int n, np;
   size_t start[4];
   size_t count[4];
   double newt = t;
@@ -3470,18 +3633,22 @@ static void df_simple_write(dump_data_t *dumpdata, dump_file_t *df,
   for (n = 0; n < df->nvars; n++) {
     df_simple_var_t *var = &data->vars[n];
     void *p = var->v;
+
     if (var->ndims == 2) {
       start[1] = df->jlower;
       start[2] = df->ilower;
       count[1] = df->nce2;
       count[2] = df->nce1;
-      if (var->vector_mode == VM_NONE)
+
+      if (var->vector_mode == VM_NONE) {
+	if (df->flag & DF_STO) p = (void **)&dumpdata->w2;
         df_simple_writesub_2d(dumpdata, df, n,
                               start, count, (*((double ***)p)));
-      else
+      } else {
         df_simple_writevec_2d(dumpdata, df, n);
+      }
     } else if (var->ndims == 3) {
-      
+      if (df->flag & DF_STO) p = (void ***)&dumpdata->w3;
       if (var->sediment) {
         start[1] = 0;
         count[1] = df->nz_sed;
@@ -4064,8 +4231,9 @@ static int df_simple_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
 static void df_simple_init_data(dump_data_t *dumpdata, dump_file_t *df,
                                 int fid)
 {
-  int i;
+  int i, n;
   df_simple_data_t *data = NULL;
+  df_interp_t *interp = NULL;
 
   df_parse_vars(dumpdata,df,NULL,SIMPLE_ALL_VARS);
   
@@ -4093,6 +4261,34 @@ static void df_simple_init_data(dump_data_t *dumpdata, dump_file_t *df,
       hd_quit("dumpfile:df_simple_init_data: Unknown variable '%s'.", df->vars[i]);
   }
   data->fid = fid;
+
+  /* Initialise the interpolation structures */
+  if (df->flag & DF_STO) {
+    /* parray variable info. The pointers in this structure differ to  */
+    /* those in the simple structure, and are required for             */
+    /* interpolation. An interpolated simple variable  must be         */
+    /* available in both the simple and parray variable info           */
+    /* structures.                                                     */
+    if ((data->varsp =
+       (df_parray_var_t *)malloc(df->nvars * sizeof(df_parray_var_t))) ==
+	NULL)
+      hd_quit("dumpfile_vars: Can't allocate memory for variable info.\n");
+    for (i = 0; i < df->nvars; i++) {
+      df_parray_var_t *var = &data->varsp[i];
+      if (df_parray_get_varinfo(dumpdata, df, df->vars[i], var) == 0)
+	hd_quit("dumpfile:df_simple_init_data: Unknown parray variable '%s'.", df->vars[i]);
+    }
+
+    /* Set up the interpolation structure                              */
+    interp = (df_interp_t *)malloc(sizeof(df_interp_t));
+    memset(interp, 0, sizeof(df_interp_t));
+    /* Check for edge vectors requiring output                         */
+    i = 1;
+    for (n = 0; n < df->nvars; n++)
+      if (data->vars[n].vector_mode & (VM_NOR|VM_TAN)) i = 0;
+    df_interp_init_data(dumpdata, df, interp, i);
+    data->interp = interp;
+  }
 
   /* Set next record to zero */
   data->nextrec = 0;
@@ -4122,8 +4318,13 @@ static void df_simple_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
   count[1] = df->nce2;
   count[2] = df->nce1;
 
-  vector_component(dumpdata, vi, vj, df->ilower, df->jlower,
-                   df->nce1, df->nce2, var->vector_mode, c);
+  /* Get the rotated nort/east cell centered component.             */
+  /* Interpolated values are already expected to be rotated and     */
+  /* centered (e.g. uav, vav), so this is not necessary.            */
+  if (!(df->flag & DF_STO))
+    vector_component(dumpdata, vi, vj, df->ilower, df->jlower,
+		     df->nce1, df->nce2, var->vector_mode, c);
+
   df_simple_writesub_2d(dumpdata, df, vid, start, count, c);
   d_free_2d(c);
 }
@@ -4150,9 +4351,11 @@ static void df_simple_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
   count[1] = df->nz;
   count[2] = df->nce2;
   count[3] = df->nce1;
-  for (k = klower, nk = 0; k <= kupper; ++k, ++nk)
-    vector_component(dumpdata, vi[k], vj[k], df->ilower, df->jlower,
-                     df->nce1, df->nce2, var->vector_mode, c[nk]);
+
+  if (!(df->flag & DF_STO))
+    for (k = klower, nk = 0; k <= kupper; ++k, ++nk)
+      vector_component(dumpdata, vi[k], vj[k], df->ilower, df->jlower,
+		       df->nce1, df->nce2, var->vector_mode, c[nk]);
 
   df_simple_writesub_3d(dumpdata, df, vid, start, count, c, df->klower);
   d_free_3d(c);
@@ -4164,6 +4367,7 @@ static void df_simple_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_simple_data_t *data = (df_simple_data_t *)df->private_data;
   df_simple_var_t *var = &data->vars[vid];
+  df_interp_t *interp = data->interp;
   /*UR-FIX for icc */
   int nd = 0;
   unsigned int offset = 0;      /* Has a record dimension = 1, else 0 */
@@ -4173,6 +4377,12 @@ static void df_simple_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   unsigned int nzm1 = dumpdata->nz - 1;
+
+  /* Interpolate onto the (i,j) location */
+  if (df->flag & DF_STO) {
+    df_parray_var_t *varp = &data->varsp[vid];
+    df_interp_writesub_2d(dumpdata, df, interp, get_data(varp));
+  }
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 2);
@@ -4193,7 +4403,16 @@ static void df_simple_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
 	    df->landfill == locate_landfill_function("default"))
           nvals[j][i] = SIMPLE_MISSING_VALUE;
         else {
-          nvals[j][i] = values[oj][oi];
+	  /* Interpolate onto the (i,j) location */
+	  if (df->flag & DF_STO) {
+	    df_parray_var_t *varp = &data->varsp[vid];
+	    int c, id, k = dumpdata->nz-1;
+	    c = dumpdata->ij2c[j][i];
+	    id = interp->ids[c];
+	    nvals[j][i] = get_var_value(df, varp, interp, id, c, k);
+	  }
+	  else
+	    nvals[j][i] = values[oj][oi];
 	}
       }
     }
@@ -4215,6 +4434,7 @@ static void df_simple_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_simple_data_t *data = (df_simple_data_t *)df->private_data;
   df_simple_var_t *var = &data->vars[vid];
+  df_interp_t *interp = data->interp;
   /*UR-FIX for icc */
   int nd = 0;
   unsigned int offset = 0;      /* Has a record dimension = 1, else 0 */
@@ -4224,6 +4444,11 @@ static void df_simple_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
   unsigned int varid = ncw_var_id(fid, df->vars[vid]);
   unsigned int i, j, k;
 
+  /* Interpolate onto the (i,j) location */
+  if (df->flag & DF_STO) {
+    df_parray_var_t *varp = &data->varsp[vid];
+    df_interp_writesub_3d(dumpdata, df, interp, get_data(varp));
+  }
 
   nc_inq_varndims(fid, varid, &nd);
   offset = (nd > 3);
@@ -4247,7 +4472,16 @@ static void df_simple_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
 		df->landfill == locate_landfill_function("default"))
               nvals[k][j][i] = SIMPLE_MISSING_VALUE;
             else
-              nvals[k][j][i] = values[ok][oj][oi];
+	      /* Interpolate onto the (i,j) location */
+	      if (df->flag & DF_STO) {
+		df_parray_var_t *varp = &data->varsp[vid];
+		int c, id;
+		c = dumpdata->ij2c[j][i];
+		id = interp->ids[c];
+		nvals[k][j][i] = get_var_value(df, varp, interp, id, c, ok);
+	      }
+	      else
+		nvals[k][j][i] = values[ok][oj][oi];
           }
         }
       }
@@ -4630,10 +4864,8 @@ static int contains_string(char *p, char *tag)
 
 /* Prototypes for routines below */
 static void df_parray_writegeom(dump_data_t *dumpdata, dump_file_t *df);
-static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
-                                int fid);
 static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
-                                  int n, double *values);
+				  int n, double *values);
 static void df_parray_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
                                   int n, double *values);
 static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
@@ -4669,62 +4901,14 @@ typedef struct {
   int sediment;                 /* Flag; = 1 if variable is tracer */
 } df_parray_var_old_t;
 
-typedef struct {
-  void **v;                     /* Pointer to values */
-  int ndims;                    /* Number of spatial dimensions */
-  char name[MAXSTRLEN];         /* df_variable_t name */
-  char units[MAXSTRLEN];        /* df_variable_t units */
-  char long_name[MAXSTRLEN];    /* Descriptive name */
-  int vector_mode;              /* NONE, east, north, mag, dirn */
-  nc_type fptype;               /* Data type. */
-  double valid_range[2];        /* df_variable_t valid range */
-  double scale;                 /* Scale factor */
-  double offset;                /* Scale factor */
-  int xylocation[2];
-  int zlocation[2];
-  int sediment;                 /* Sediment flag */
-  void **data[2];               /* Pointer to values (scalar or vector) */
-
-} df_parray_var_t;
-
-/* Structure to describe each dump file. Also used for memory output */
-typedef struct {
-  int type;                     /* DF_PARRAY or DF_MEMORY */
-  int fid;                      /* Netcdf file id */
-  int nextrec;                  /* Netcdf record number */
-  df_parray_var_t *vars;        /* List of point array dump file variables */
-  df_mempack_t *data;           /* Output data structure for memory output */
-
-  GRID_SPECS **gs;              /* Grid spec for parray interpolation */
-  delaunay **d;                 /* Delaunay data structure for centre interpolation */
-  int *cells;                   /* Cell locations used in the interpolation */
-  int *ids;                     /* Delaunay indices used in the interpolation */
-  int *c2k;                     /* Interpolation cells to layer map */
-  int *botk;                    /* Bottom layer number for cell centres */
-  int ncells;                   /* Number of cells used in the interpolation */
-  int nz;                       /* Surface layer number */
-  int ncs;                      /* Cell centres in surface layer */
-  int nc;                       /* Total cell centres */
-
-  GRID_SPECS **ge;              /* Grid spec for parray interpolation */
-  delaunay **de;                /* Delaunay data structure for edge interpolation */
-  int *eells;                   /* Edge locations used in the interpolation */
-  int *eds;                     /* Delaunay indices used in the interpolation */
-  int *e2k;                     /* Interpolation edge to layer map */
-  int *botek;                   /* Bottom layer number for edges */
-  int neells;                   /* Number of edgess used in the interpolation */
-  int nes;                      /* Edges in surface layer */
-  int ec;                       /* Total edge centres */
-
-} df_parray_data_t;
 
 /* Cell corners */
 static double xcorner[4] = { 0, 1, 1, 0 };
 static double ycorner[4] = { 0, 0, 1, 1 };
 
 /*UR declare here to use in write_geom */
-static double get_var_value_2d(dump_file_t *df, df_parray_var_t *var, int id, int k);
-static double get_var_value(dump_file_t *df, df_parray_var_t *var, int id, int i, int k);
+static double get_var_value_2d(dump_file_t *df, df_parray_var_t *var, 
+			       df_interp_t *interp, int id, int k);
 
 static double get_missing(df_parray_var_t *var);
 
@@ -4742,13 +4926,13 @@ INLINE void set_data_vector(df_parray_var_t *var, int vm, void *data_i,
   var->data[0] = data_i;
   var->data[1] = data_j;
 }
-
+/*
 INLINE double *get_data(df_parray_var_t *var)
 {
   void *p = var->v;
   return (*(double **)p);
 }
-
+*/
 INLINE double **get_data_2d(df_parray_var_t *var)
 {
   return (*(double ***)var->data[0]);
@@ -5219,21 +5403,22 @@ static void df_parray_writegeom(dump_data_t *dumpdata, dump_file_t *df)
 
   /*UR-ADDED botz - write this here and not as a var */
   if(params->parray_inter_botz) {
-    delaunay **d = data->d;
+    df_interp_t *interp = data->interp;
+    delaunay **d = interp->d;
     /* Fill the Delaunay structure with values */
-    for (i = 0; i < data->ncells; i++) {
-      c = data->cells[i];
+    for (i = 0; i < interp->ncells; i++) {
+      c = interp->cells[i];
       if (c == geom->m2d[c]) {
-	id = data->ids[i];
-	k = data->c2k[i];
+	id = interp->ids[i];
+	k = interp->c2k[i];
 	d[k]->points[id].v[0] = geom->botz[c];
       }
     }
 
     /*UR interpolate in the same fashion as other variables */
     for (i = 0; i < df->npoints; ++i) {
-      id = data->ids[i];
-      v[i] = get_var_value(df, NULL, id, i, geom->nz-1);
+      id = interp->ids[i];
+      v[i] = get_var_value(df, NULL, data->interp, id, i, geom->nz-1);
     }
   } else {
     /*UR don't interpolate, just output the value of the column the location falls into*/
@@ -5503,8 +5688,9 @@ int df_parray_get_varinfo(dump_data_t *dumpdata, dump_file_t *df,
 static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
                                 int fid)
 {
-  int i;
+  int i, n;
   df_parray_data_t *data = NULL;
+  df_interp_t *interp = NULL;
 
   df_parse_vars(dumpdata,df,PARRAY_EXCLUDE_VARS,PARRAY_ALL_VARS);
   
@@ -5514,7 +5700,7 @@ static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
       free(((df_parray_data_t *)df->private_data)->vars);
     free(df->private_data);
   }
-  
+
   data = (df_parray_data_t *)malloc(sizeof(df_parray_data_t));
   memset(data, 0, sizeof(df_parray_data_t));
   df->private_data = data;
@@ -5535,15 +5721,15 @@ static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
 
   data->fid = fid;
 
-  /* Allocate and initialize the grid_spec structures for            */
-  /* interpolation. Note: two of these exist; one for cell centered  */
-  /* variables (which can be interpolated onto a geographic          */
-  /* location using the i_rule) or edge variables (which are dumped  */
-  /* as the nearest neighbour edge to the geographic location).      */
-  /* The var->vector_mode distinguished between centred and edge     */
-  /* variables.                                                      */
-  parray_grid_init(dumpdata, df);
-  parray_gride_init(dumpdata, df);
+  /* Initialise the interpolation structures */
+  interp = (df_interp_t *)malloc(sizeof(df_interp_t));
+  memset(interp, 0, sizeof(df_interp_t));
+  /* Check for edge vectors requiring output                         */
+  i = 1;
+  for (n = 0; n < df->nvars; n++)
+    if (data->vars[n].vector_mode & (VM_NOR|VM_TAN)) i = 0;
+  df_interp_init_data(dumpdata, df, interp, i);
+  data->interp = interp;
 
   /* Set next record to zero */
   data->nextrec = 0;
@@ -5554,10 +5740,30 @@ static void df_parray_init_data(dump_data_t *dumpdata, dump_file_t *df,
          df->name, df->tinc);
 }
 
-static double get_var_value(dump_file_t *df, df_parray_var_t *var, int id, int i, int k)
+/* Allocate and initialize the grid_spec structures for              */
+/* interpolation. Note: two of these exist; one for cell centered    */
+/* variables (which can be interpolated onto a geographic            */
+/* location using the i_rule) or edge variables (which are dumped    */
+/* as the nearest neighbour edge to the geographic location).        */
+/* The var->vector_mode distinguished between centred and edge       */
+/* variables.                                                        */
+static void df_interp_init_data(dump_data_t *dumpdata, 
+				dump_file_t *df,
+				df_interp_t *interp,
+				int af)
 {
-  df_parray_data_t *data = (df_parray_data_t *)df->private_data;
-  GRID_SPECS **gs = (var->vector_mode & (VM_NOR|VM_TAN)) ? data->ge : data->gs;
+  parray_grid_init(dumpdata, df, interp);
+  if (!af) parray_gride_init(dumpdata, df, interp);
+}
+
+static double get_var_value(dump_file_t *df, 
+			    df_parray_var_t *var, 
+			    df_interp_t *interp, 
+			    int id, 
+			    int i, 
+			    int k)
+{
+  GRID_SPECS **gs = (var->vector_mode & (VM_NOR|VM_TAN)) ? interp->ge : interp->gs;
   double x, y;
   double v = 0.0;
 
@@ -5580,30 +5786,33 @@ static double get_var_value(dump_file_t *df, df_parray_var_t *var, int id, int i
   return v;
 }
 
-static double get_var_value_2d(dump_file_t *df, df_parray_var_t *var, int id, int k)
+static double get_var_value_2d(dump_file_t *df, 
+			       df_parray_var_t *var, 
+			       df_interp_t *interp, 
+			       int id, 
+			       int k)
 {
-  df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   GRID_SPECS **gs;
   double x, y;
   double v = 0.0;
 
   if (var == NULL)
-    gs = data->gs;
+    gs = interp->gs;
   else
-    gs = (var->vector_mode & (VM_NOR|VM_TAN)) ? data->ge : data->gs;
+    gs = (var->vector_mode & (VM_NOR|VM_TAN)) ? interp->ge : interp->gs;
   
   if (df->osl & (L_BAYLIN|L_BILIN)) {
     x = (int)id;
     y = (int)id;
   } else {
-    x = data->d[k]->points[id].x;
-    y = data->d[k]->points[id].y;
+    x = interp->d[k]->points[id].x;
+    y = interp->d[k]->points[id].y;
   }
   v = grid_interp_on_point(gs[k], x, y);
 
   if (df->osl & (L_BAYLIN|L_BILIN)) {
-    x = data->d[k]->points[id].x;
-    y = data->d[k]->points[id].y;
+    x = interp->d[k]->points[id].x;
+    y = interp->d[k]->points[id].y;
   }
     
   if (var != NULL && var->fptype == NC_SHORT)
@@ -5612,11 +5821,15 @@ static double get_var_value_2d(dump_file_t *df, df_parray_var_t *var, int id, in
   return v;
 }
 
-static double get_var_value_3d(dump_file_t *df, df_parray_var_t *var, int id, int k)
+static double get_var_value_3d(dump_file_t *df, 
+			       df_parray_var_t *var, 
+			       df_interp_t *interp, 
+			       int id, 
+			       int k)
 {
   double v;
 
-  v = get_var_value_2d(df, var, id, k);
+  v = get_var_value_2d(df, var, interp, id, k);
   return(v);
 
 }
@@ -5633,24 +5846,54 @@ static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &data->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d =  data->d;
-  GRID_SPECS **gs = data->gs;
+  df_interp_t *interp = data->interp;
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
-  int i, k, c, id;
-  int fi, fj;
+  int i, id;
+  int k = dumpdata->nz-1;
   double *v = d_alloc_1d(df->npoints);
   size_t start[2];
   size_t count[2];
 
+  df_interp_writesub_2d(dumpdata, df, interp, values);
+
+  for(i = 0; i < df->npoints; i++) {
+    v[i] = get_missing(var);
+  }
+
+  for (i = 0; i < df->npoints; ++i) {
+    id = interp->ids[i];
+    v[i] = get_var_value(df, var, interp, id, i, k);
+  }
+
+  start[0] = data->nextrec;
+  start[1] = 0;
+  count[0] = 1;
+  count[1] = df->npoints;
+
+  nc_put_vara_double(fid, varid, start, count, v);
+
+  d_free_1d(v);
+
+}
+
+static void df_interp_writesub_2d(dump_data_t *dumpdata,
+				  dump_file_t *df,
+				  df_interp_t *interp, 
+				  double *values)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  delaunay **d =  interp->d;
+  GRID_SPECS **gs = interp->gs;
+  int i, k, c, id;
+
   /* Fill the Delaunay structure with values */
-  for (i = 0; i < data->ncells; i++) {
-    c = data->cells[i];
+  for (i = 0; i < interp->ncells; i++) {
+    c = interp->cells[i];
     if (c == geom->m2d[c]) {
-      id = data->ids[i];
-      k = data->c2k[i];
+      id = interp->ids[i];
+      k = interp->c2k[i];
       d[k]->vid = 0;
       if (df->filter)
 	d[k]->points[id].v[0] = df_filter(geom, df, values, c);
@@ -5672,11 +5915,11 @@ static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
   else
     gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
   if(df->osl & (L_BILIN|L_BAYLIN)) {
-    for (i = 0; i < data->ncells; i++) {
-      c = data->cells[i];
+    for (i = 0; i < interp->ncells; i++) {
+      c = interp->cells[i];
       if (c == geom->m2d[c]) {
-	id = data->ids[i];
-	k = data->c2k[i];
+	id = interp->ids[i];
+	k = interp->c2k[i];
 	if (df->filter)
 	  d[k]->points[id].v[0] = df_filter(geom, df, values, c);
 	else
@@ -5684,50 +5927,67 @@ static void df_parray_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
       }
     }
   }
-
-  for(i = 0; i < df->npoints; i++) {
-    v[i] = get_missing(var);
-  }
-
-  for (i = 0; i < df->npoints; ++i) {
-    id = data->ids[i];
-    v[i] = get_var_value(df, var, id, i, k);
-  }
-
-  start[0] = data->nextrec;
-  start[1] = 0;
-  count[0] = 1;
-  count[1] = df->npoints;
-
-  nc_put_vara_double(fid, varid, start, count, v);
-
-  d_free_1d(v);
-
 }
 
-static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
-                                  int vid, double *values, int klower,
+static void df_parray_writesub_3d(dump_data_t *dumpdata, 
+				  dump_file_t *df,
+                                  int vid, 
+				  double *values, 
+				  int klower,
                                   int nz)
 {
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &data->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = data->d;
-  GRID_SPECS **gs = data->gs;
+  df_interp_t *interp = data->interp;
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
-  int i, k, c, id;
-  int fi, fj;
+  int i, k, id;
   double **v = d_alloc_2d(df->npoints, nz);
   size_t start[3];
   size_t count[3];
 
+  df_interp_writesub_3d(dumpdata, df, interp, values);
+
+  for(i = 0; i < df->npoints; i++)
+    for (k = 0; k < nz; ++k)
+      v[k][i] = 1.0;
+  /*v[k][i] = get_missing(var);*/
+  for (i = 0; i < df->npoints; ++i) {
+    for (k = 0; k < nz; ++k){
+      if (interp->d[k] == NULL) continue;
+      id = interp->ids[i];
+      v[k][i] = get_var_value(df, var, interp, id, i, k);
+    }
+  }
+
+  start[0] = data->nextrec;
+  start[1] = 0;
+  start[2] = 0;
+  count[0] = 1;
+  count[1] = nz;
+  count[2] = df->npoints;
+
+  nc_put_vara_double(fid, varid, start, count, v[0]);
+
+  d_free_2d(v);
+}
+
+static void df_interp_writesub_3d(dump_data_t *dumpdata,
+				  dump_file_t *df,
+				  df_interp_t *interp,
+                                  double *values)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  delaunay **d = interp->d;
+  GRID_SPECS **gs = interp->gs;
+  int i, k, c, id;
+
   /* Fill the Delaunay structure with values */
-  for (i = 0; i < data->ncells; i++) {
-    c = data->cells[i];
-    id = data->ids[i];
-    k = data->c2k[i];
+  for (i = 0; i < interp->ncells; i++) {
+    c = interp->cells[i];
+    id = interp->ids[i];
+    k = interp->c2k[i];
     d[k]->vid = 0;
     if (df->filter)
       d[k]->points[id].v[0] = df_filter(geom, df, values, c);
@@ -5745,31 +6005,52 @@ static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
     if (d[k] == NULL) continue;
     if (df->osl & (L_SIB|L_NONSIB))
       for (i = 0; i < d[k]->npoints; i++)
-	data->gs[k]->rebuild(data->gs[k]->interpolator, &d[k]->points[i]);
+	interp->gs[k]->rebuild(interp->gs[k]->interpolator, &d[k]->points[i]);
     else
-      data->gs[k]->rebuild(data->gs[k]->interpolator, d[k]->points);
+      interp->gs[k]->rebuild(interp->gs[k]->interpolator, d[k]->points);
   }
   if(df->osl & (L_BILIN|L_BAYLIN)) {
-    for (i = 0; i < data->ncells; i++) {
-      c = data->cells[i];
-      id = data->ids[i];
-      k = data->c2k[i];
+    for (i = 0; i < interp->ncells; i++) {
+      c = interp->cells[i];
+      id = interp->ids[i];
+      k = interp->c2k[i];
       if (df->filter)
 	d[k]->points[id].v[0] = df_filter(geom, df, values, c);
       else
 	d[k]->points[id].v[0] = values[c];
     }
   }
+}
+
+static void df_parray_writevec_3d(dump_data_t *dumpdata, 
+				  dump_file_t *df,
+                                  int vid, 
+				  double *values, 
+				  int klower,
+                                  int nz)
+{
+  df_parray_data_t *data = (df_parray_data_t *)df->private_data;
+  df_parray_var_t *var = &data->vars[vid];
+  df_interp_t *interp = data->interp;
+  int fid = data->fid;
+  int varid = ncw_var_id(fid, df->vars[vid]);
+  int i, k, id;
+  double **v = d_alloc_2d(df->npoints, nz);
+  size_t start[3];
+  size_t count[3];
+
+  df_interp_writevec_2d(dumpdata, df, interp, values);
 
   for(i = 0; i < df->npoints; i++)
     for (k = 0; k < nz; ++k)
       v[k][i] = 1.0;
   /*v[k][i] = get_missing(var);*/
+
   for (i = 0; i < df->npoints; ++i) {
     for (k = 0; k < nz; ++k){
-      if (d[k] == NULL) continue;
-      id = data->ids[i];
-      v[k][i] = get_var_value(df, var, id, i, k);
+      if (interp->d[k] == NULL) continue;
+      id = interp->eds[i];
+      v[k][i] = get_var_value(df, var, interp, id, i, k);
     }
   }
 
@@ -5785,29 +6066,20 @@ static void df_parray_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
   d_free_2d(v);
 }
 
-static void df_parray_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
-                                  int vid, double *values, int klower,
-                                  int nz)
+static void df_interp_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
+                                  df_interp_t *interp, double *values)
 {
-  df_parray_data_t *data = (df_parray_data_t *)df->private_data;
-  df_parray_var_t *var = &data->vars[vid];
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
-  delaunay **d = data->de;
-  GRID_SPECS **gs = data->ge;
-  int fid = data->fid;
-  int varid = ncw_var_id(fid, df->vars[vid]);
+  delaunay **d = interp->de;
+  GRID_SPECS **gs = interp->ge;
   int i, k, e, id;
-  int fi, fj;
-  double **v = d_alloc_2d(df->npoints, nz);
-  size_t start[3];
-  size_t count[3];
 
   /* Fill the Delaunay structure with values */
-  for (i = 0; i < data->neells; i++) {
-    e = data->eells[i];
-    id = data->eds[i];
-    k = data->e2k[i];
+  for (i = 0; i < interp->neells; i++) {
+    e = interp->eells[i];
+    id = interp->eds[i];
+    k = interp->e2k[i];
     d[k]->vid = 0;
     if (df->filter)
       d[k]->points[id].v[0] = df_filter(geom, df, values, e);
@@ -5819,31 +6091,8 @@ static void df_parray_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
   /* Rebuild the weights.                                            */
   for (k = 0; k < geom->nz; k++) {
     if (d[k] == NULL) continue;
-    data->gs[k]->rebuild(data->gs[k]->interpolator, d[k]->points);
+    interp->gs[k]->rebuild(interp->gs[k]->interpolator, d[k]->points);
   }
-
-  for(i = 0; i < df->npoints; i++)
-    for (k = 0; k < nz; ++k)
-      v[k][i] = 1.0;
-  /*v[k][i] = get_missing(var);*/
-  for (i = 0; i < df->npoints; ++i) {
-    for (k = 0; k < nz; ++k){
-      if (d[k] == NULL) continue;
-      id = data->eds[i];
-      v[k][i] = get_var_value(df, var, id, i, k);
-    }
-  }
-
-  start[0] = data->nextrec;
-  start[1] = 0;
-  start[2] = 0;
-  count[0] = 1;
-  count[1] = nz;
-  count[2] = df->npoints;
-
-  nc_put_vara_double(fid, varid, start, count, v[0]);
-
-  d_free_2d(v);
 }
 
 
@@ -5852,43 +6101,23 @@ static void df_parray_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &data->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = data->de;
-  GRID_SPECS **gs = data->ge;
+  df_interp_t *interp = data->interp;
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
-  int i, k, e, id;
-  int fi, fj;
+  int i, id;
+  int k = dumpdata->nz-1;
   double *v = d_alloc_1d(df->npoints);
   size_t start[2];
   size_t count[2];
 
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < data->neells; i++) {
-    e = data->eells[i];
-    if (e == geom->m2de[e]) {
-      id = data->eds[i];
-      k = data->e2k[i];
-      d[k]->vid = 0;
-      if (df->filter)
-	d[k]->points[id].v[0] = df_filter(geom, df, values, e);
-      else
-	d[k]->points[id].v[0] = values[e];
-      d[k]->points[id].z = d[k]->points[id].v[0];
-    }
-  }
-
-  /* Rebuild the weights.                                            */
-  k = geom->nz-1;
-  gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
+  df_interp_writevec_2d(dumpdata, df, interp, values);
 
   for(i = 0; i < df->npoints; i++) {
     v[i] = get_missing(var);
   }
   for (i = 0; i < df->npoints; ++i) {
-    id = data->eds[i];
-    v[i] = get_var_value(df, var, id, i, k);
+    id = interp->eds[i];
+    v[i] = get_var_value(df, var, interp, id, i, k);
   }
 
   start[0] = data->nextrec;
@@ -5902,47 +6131,54 @@ static void df_parray_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
 }
 
 
+static void df_interp_writevec_2d(dump_data_t *dumpdata, 
+				  dump_file_t *df,
+				  df_interp_t *interp,
+                                  double *values)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  delaunay **d = interp->de;
+  GRID_SPECS **gs = interp->ge;
+  int i, k, e, id;
+
+  /* Fill the Delaunay structure with values */
+  for (i = 0; i < interp->neells; i++) {
+    e = interp->eells[i];
+    if (e == geom->m2de[e]) {
+      id = interp->eds[i];
+      k = interp->e2k[i];
+      d[k]->vid = 0;
+      if (df->filter)
+	d[k]->points[id].v[0] = df_filter(geom, df, values, e);
+      else
+	d[k]->points[id].v[0] = values[e];
+      d[k]->points[id].z = d[k]->points[id].v[0];
+    }
+  }
+
+  /* Rebuild the weights.                                            */
+  k = geom->nz-1;
+  gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
+}
+
+
 static void df_parray_writevec_cen_2d(dump_data_t *dumpdata, dump_file_t *df,
 				      int vid, double *values_i,
 				      double *values_j)
 {
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &data->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = data->d;
+  df_interp_t *interp = data->interp;
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, k, c, id;
-  int ee, e, es;
-  int fi, fj;
-  double nu, nv, a;
   double *v = d_alloc_1d(df->npoints);
   size_t start[2];
   size_t count[2];
 
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < data->ncells; i++) {
-    c = data->cells[i];
-    if (c == geom->m2d[c]) {
-      id = data->ids[i];
-      k = data->c2k[i];
-      d[k]->points[id].v[0] = 0.0;
-      d[k]->points[id].v[1] = 0.0;
-      nu = nv = 0.0;
-      for (ee = 1; ee <= geom->npe[c]; ee++) {
-	e = geom->c2e[ee][c];
-	/* Get the cell centered east and north velocity               */
-	a = 0.5 * geom->h1au1[es] * geom->h2au1[es];
-	d[k]->points[id].v[0] += a * (values_i[e] * geom->costhu1[es] + values_j[e] * geom->costhu2[es]);
-	nu += a;
-	d[k]->points[id].v[1] += a * (values_i[e] * geom->sinthu1[es] + values_j[e] * geom->sinthu2[es]);
-	nv += a;
-      }
-      d[k]->points[id].v[0] = (nu) ? d[k]->points[id].v[0] / nu : 0.0;
-      d[k]->points[id].v[1] = (nv) ? d[k]->points[id].v[1] / nv : 0.0;
-    }
-  }
+
+  df_interp_writevec_cen_2d(dumpdata, df, interp, values_i, values_j);
 
   k = geom->nz-1;
   for(i = 0; i < df->npoints; i++)
@@ -5950,13 +6186,13 @@ static void df_parray_writevec_cen_2d(dump_data_t *dumpdata, dump_file_t *df,
 
   for (i = 0; i < df->npoints; ++i) {
     double vi, vj;
-    id = data->ids[i];
-    c = data->cells[i];
+    id = interp->ids[i];
+    c = interp->cells[i];
     if (c == geom->m2d[c]) {
-      d[k]->vid = 0;
-      vi = get_var_value(df, var, id, i, k);
-      d[k]->vid = 1;
-      vj = get_var_value(df, var, id, i, k);
+      interp->d[k]->vid = 0;
+      vi = get_var_value(df, var, interp, id, i, k);
+      interp->d[k]->vid = 1;
+      vj = get_var_value(df, var, interp, id, i, k);
       v[i] =
         get_vector_component(dumpdata, vi, vj, c,
                              var->vector_mode);
@@ -5973,31 +6209,112 @@ static void df_parray_writevec_cen_2d(dump_data_t *dumpdata, dump_file_t *df,
   d_free_1d(v);
 }
 
+
+static void df_interp_writevec_cen_2d(dump_data_t *dumpdata, 
+				      dump_file_t *df,
+				      df_interp_t *interp,
+				      double *values_i,
+				      double *values_j)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  delaunay **d = interp->d;
+  int i, k, c, id;
+  int ee, e, es;
+  double nu, nv, a;
+
+  /* Fill the Delaunay structure with values */
+  for (i = 0; i < interp->ncells; i++) {
+    c = interp->cells[i];
+    if (c == geom->m2d[c]) {
+      id = interp->ids[i];
+      k = interp->c2k[i];
+      d[k]->points[id].v[0] = 0.0;
+      d[k]->points[id].v[1] = 0.0;
+      nu = nv = 0.0;
+      for (ee = 1; ee <= geom->npe[c]; ee++) {
+	e = geom->c2e[ee][c];
+	/* Get the cell centered east and north velocity               */
+	a = 0.5 * geom->h1au1[es] * geom->h2au1[es];
+	d[k]->points[id].v[0] += a * (values_i[e] * geom->costhu1[es] + values_j[e] * geom->costhu2[es]);
+	nu += a;
+	d[k]->points[id].v[1] += a * (values_i[e] * geom->sinthu1[es] + values_j[e] * geom->sinthu2[es]);
+	nv += a;
+      }
+      d[k]->points[id].v[0] = (nu) ? d[k]->points[id].v[0] / nu : 0.0;
+      d[k]->points[id].v[1] = (nv) ? d[k]->points[id].v[1] / nv : 0.0;
+    }
+  }
+}
+
 static void df_parray_writevec_cen_3d(dump_data_t *dumpdata, dump_file_t *df,
 				      int vid, double *values_i,
 				      double *values_j, int klower, int nz)
 {
   df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &data->vars[vid];
+  df_interp_t *interp = data->interp;
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
-  delaunay **d = data->d;
   int fid = data->fid;
   int varid = ncw_var_id(fid, df->vars[vid]);
   int i, j, k, c, c2, id;
   int ee, e, es;
-  int fi, fj;
   double nu, nv, a;
   double **v = d_alloc_2d(df->npoints, nz);
   size_t start[3];
   size_t count[3];
 
+  df_interp_writevec_cen_3d(dumpdata, df, interp, values_i, values_j);
+
+  for(i = 0; i < df->npoints; i++)
+    for (k = 0; k < nz; ++k)
+      v[k][i] = get_missing(var);
+  for (i = 0; i < df->npoints; ++i) {
+    for (k = 0; k < nz; ++k){
+      double vi, vj;
+      if (interp->d[k] == NULL) continue;
+      id = interp->ids[i];
+      c = interp->cells[i];
+      interp->d[k]->vid = 0;
+      vi = get_var_value(df, var, interp, id, i, klower + k);
+      interp->d[k]->vid = 1;
+      vj = get_var_value(df, var, interp, id, i, klower + k);
+      v[k][i] = get_vector_component(dumpdata, vi, vj, c,
+				     var->vector_mode);
+    }
+  }
+
+  start[0] = data->nextrec;
+  start[1] = 0;
+  start[2] = 0;
+  count[0] = 1;
+  count[1] = nz;
+  count[2] = df->npoints;
+
+  nc_put_vara_double(fid, varid, start, count, v[0]);
+
+  d_free_2d(v);
+}
+
+
+static void df_interp_writevec_cen_3d(dump_data_t *dumpdata, dump_file_t *df,
+				      df_interp_t *interp, double *values_i,
+				      double *values_j)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  delaunay **d = interp->d;
+  int i, j, k, c, c2, id;
+  int ee, e, es;
+  double nu, nv, a;
+
   /* Fill the Delaunay structure with values */
-  for (i = 0; i < data->ncells; i++) {
-    c = data->cells[i];
+  for (i = 0; i < interp->ncells; i++) {
+    c = interp->cells[i];
     c2 = geom->m2d[c];
-    id = data->ids[i];
-    k = data->c2k[i];
+    id = interp->ids[i];
+    k = interp->c2k[i];
     d[k]->points[id].v[0] = 0.0;
     d[k]->points[id].v[1] = 0.0;
     nu = nv = 0.0;
@@ -6014,35 +6331,6 @@ static void df_parray_writevec_cen_3d(dump_data_t *dumpdata, dump_file_t *df,
     d[k]->points[id].v[0] = (nu) ? d[k]->points[id].v[0] / nu : 0.0;
     d[k]->points[id].v[1] = (nv) ? d[k]->points[id].v[1] / nv : 0.0;
   }
-
-  for(i = 0; i < df->npoints; i++)
-    for (k = 0; k < nz; ++k)
-      v[k][i] = get_missing(var);
-  for (i = 0; i < df->npoints; ++i) {
-    for (k = 0; k < nz; ++k){
-      double vi, vj;
-      if (d[k] == NULL) continue;
-      id = data->ids[i];
-      c = data->cells[i];
-      d[k]->vid = 0;
-      vi = get_var_value(df, var, id, i, klower + k);
-      d[k]->vid = 1;
-      vj = get_var_value(df, var, id, i, klower + k);
-      v[k][i] = get_vector_component(dumpdata, vi, vj, c,
-				     var->vector_mode);
-    }
-  }
-
-  start[0] = data->nextrec;
-  start[1] = 0;
-  start[2] = 0;
-  count[0] = 1;
-  count[1] = nz;
-  count[2] = df->npoints;
-
-  nc_put_vara_double(fid, varid, start, count, v[0]);
-
-  d_free_2d(v);
 }
 
 static double get_vector_component(dump_data_t *dumpdata, double vi,
@@ -6138,11 +6426,10 @@ int find_next_restart_record(dump_file_t *df, int cdfid,
 /* Creates a GRID_SPEC structure and Delaunay triangulation for      */
 /* triangular linear interpolation of output.                        */
 /*-------------------------------------------------------------------*/
-void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
+void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df, df_interp_t *interp)
 {
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
-  df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   char *uvrule = df->irule;
   int cc, c, c2, cn, ci, k, kk;
   int i, j, id, fi, fj;
@@ -6158,25 +6445,26 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
   int isalloc;
   int usegst = 1;
 
-  isalloc = (data->gs && data->d) ? 1 : 0;
+  if (df->flag & DF_STO) usegst = 0;
+  isalloc = (interp->gs && interp->d) ? 1 : 0;
 
   if (!isalloc) {
     /* Get the number of points for the triangulation                */
     np = 0;
-    data->ncells = 0;
-    data->nz = geom->nz - 1;
-    data->botk = i_alloc_1d(df->npoints);
+    interp->ncells = 0;
+    interp->nz = geom->nz - 1;
+    interp->botk = i_alloc_1d(df->npoints);
     mask = i_alloc_1d(geom->szc);
     memset(mask, 0, geom->szc * sizeof(int));
     for (i = 0; i < df->npoints; ++i) {
       c = hd_grid_xytoij(master, df->x[i], df->y[i], &fi, &fj);
-      data->botk[i] = data->nz;
+      interp->botk[i] = interp->nz;
       if (c > 0 && c < geom->szcS) {
 	c2 = geom->m2d[c];
 	while (c != geom->zm1[c]) {
 	  if (!mask[c]) {
 	    if (c == geom->m2d[c]) np++;
-	    data->ncells ++;
+	    interp->ncells ++;
 	    mask[c] = 1;
 	  }
 
@@ -6185,24 +6473,24 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 	    if (!usegst && geom->wgst[cn]) continue;
 	    if (!mask[cn]) {
 	      if (cn == geom->m2d[cn]) np++;
-	      data->ncells ++;
+	      interp->ncells ++;
 	      mask[cn] = 1;
 	    }
 	  }
 
-	  data->nz = min(data->nz, geom->s2k[c]);
-	  data->botk[i] = geom->s2k[c];
+	  interp->nz = min(interp->nz, geom->s2k[c]);
+	  interp->botk[i] = geom->s2k[c];
 	  c = geom->zm1[c];
 	}
       }
     }
-    if (!data->ncells) hd_quit("parray_grid_init: Can't find any cells for file %s Delaunay interpolation.\n", df->name);
+    if (!interp->ncells) hd_quit("parray_grid_init: Can't find any cells for file %s Delaunay interpolation.\n", df->name);
 
     /* Allocate                                                      */
-    data->cells = i_alloc_1d(data->ncells);
-    data->ids = i_alloc_1d(data->ncells);
-    data->c2k = i_alloc_1d(data->ncells);
-    n2i = i_alloc_1d(data->ncells);
+    interp->cells = i_alloc_1d(interp->ncells);
+    interp->ids = i_alloc_1d(interp->ncells);
+    interp->c2k = i_alloc_1d(interp->ncells);
+    n2i = i_alloc_1d(interp->ncells);
     p = (point **)alloc_2d(np, nz, sizeof(point));
     nk = i_alloc_1d(nz);
     memset(nk, 0, nz * sizeof(int));
@@ -6217,33 +6505,35 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 	k = geom->s2k[c];
 	if (!mask[c]) {
 	  n2i[n] = i;
-	  data->ids[n] = nk[k];
-	  data->c2k[n] = k;
-	  data->cells[n++] = c;
+	  interp->ids[n] = nk[k];
+	  interp->c2k[n] = k;
+	  interp->cells[n++] = c;
 	  mask[c] = nk[k] + 1;
 	  p[k][nk[k]].x = geom->cellx[c2];
 	  p[k][nk[k]++].y = geom->celly[c2];
 	  /*
 	  if(strcmp(df->name,"/home/her127/work/meco/compas/est/tile0/bdry0-1_uv_nor.mpk.nc")==0)
 	    if(c==c2)printf("%f %f\n",p[k][nk[k]-1].x,p[k][nk[k]-1].y);
+	  printf("%f %f p%d\n",p[k][nk[k]-1].x,p[k][nk[k]-1].y,nk[k]-1);
 	  */
 	}
       }
     }
-    data->ncs = n;
+
+    interp->ncs = n;
     /* Set the sub-surface cell centres for the triangulation        */
-    for (i = 0; i < data->ncs; i++) {
-      c = data->cells[i];
+    for (i = 0; i < interp->ncs; i++) {
+      c = interp->cells[i];
       c2 = geom->m2d[c];
       c = geom->zm1[c];
-      id = data->ids[i];
+      id = interp->ids[i];
       while (c != geom->zm1[c]) {
 	k = geom->s2k[c];
 	if (!mask[c]) {
 	  n2i[n] = i;
-	  data->ids[n] = nk[k];
-	  data->c2k[n] = k;
-	  data->cells[n++] = c;
+	  interp->ids[n] = nk[k];
+	  interp->c2k[n] = k;
+	  interp->cells[n++] = c;
 	  mask[c] = nk[k] + 1;
 	  p[k][nk[k]].x = geom->cellx[c2];
 	  p[k][nk[k]++].y = geom->celly[c2];
@@ -6251,21 +6541,22 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 	c = geom->zm1[c];	
       }
     }
-    data->nc = n;
+    interp->nc = n;
 
     /* Set the cells surrounding the cell centres                    */
-    for (i = 0; i < data->ncs; i++) {
-      c = data->cells[i];
+    for (i = 0; i < interp->ncs; i++) {
+      c = interp->cells[i];
       c2 = geom->m2d[c];
       while (c != geom->zm1[c]) {
 	k = geom->s2k[c];
+	/*if(k==0)printf("a1 %d %d %d\n",c2,c,geom->npe[c2]);*/
 	for (j = 1; j <= geom->npe[c2]; j++) {
 	  cn = geom->c2c[j][c];
 	  if (!usegst && geom->wgst[cn]) continue;
 	  if (!mask[cn]) {
-	    data->ids[n] = nk[k];
-	    data->c2k[n] = k;
-	    data->cells[n++] = cn;
+	    interp->ids[n] = nk[k];
+	    interp->c2k[n] = k;
+	    interp->cells[n++] = cn;
 	    mask[cn] = nk[k] + 1;
 	    /* The geographic location of ghost cells is set to the  */
 	    /* cell edge so as to account for multiple ghost cells   */
@@ -6281,6 +6572,7 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 	    /*
 	  if(strcmp(df->name,"/home/her127/work/meco/compas/est/tile0/bdry0-1_uv_nor.mpk.nc")==0)
 	    if(c==c2)printf("%f %f\n",p[k][nk[k]].x,p[k][nk[k]].y);
+	    if(c==c2)printf("%f %f p%d\n",p[k][nk[k]].x,p[k][nk[k]].y,nk[k]);
 	    */
 	    nk[k]++;
 	  }
@@ -6293,17 +6585,18 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
     /* Fill the points array and create the triangulation for every  */
     /* layer. Note this is designed to be used with COMPAS arrays,   */
     /* which start at index 1, hence use [c+1].                      */
-    data->d = (delaunay **)calloc(nz, sizeof(delaunay *));
+    interp->d = (delaunay **)calloc(nz, sizeof(delaunay *));
     for (k = 0; k < nz; k++) {
       delaunay *dk;
-      data->d[k] = NULL;
+      interp->d[k] = NULL;
       if (nk[k] == 0) continue;
       /*
       if(strcmp(df->name,"/home/her127/work/meco/compas/est/tile0/bdry0-1_uv_nor.mpk.nc")==0)
-	if(k==nz-1)for(i=0;i<nk[k];i++)printf("%f %f\n",p[k][i].x,p[k][i].y);
+	if(k==nz-1)for(i=0;i<nk[k];i++)printf("%f %f p%d\n",p[k][i].x,p[k][i].y,nk[k]);
+	if(k==0)for(i=0;i<nk[k];i++)printf("%f %f p%d\n",p[k][i].x,p[k][i].y,i);
       */
-      data->d[k] = delaunay_build(nk[k], p[k], 0, NULL, 0, NULL);
-      dk = data->d[k];
+      interp->d[k] = delaunay_build(nk[k], p[k], 0, NULL, 0, NULL);
+      dk = interp->d[k];
       dk->vid = 0;
       dk->ptf = 1;
 
@@ -6321,16 +6614,16 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
     }
 
     /* Set the new Delaunay point triangles for the interpolation    */
-    for (i = 0; i < data->ncells; i++) {
+    for (i = 0; i < interp->ncells; i++) {
       delaunay *dk;
-      c = data->cells[i];
+      c = interp->cells[i];
       c2 = geom->m2d[c];
       k = geom->s2k[c];
-      id = data->ids[i];
-      dk = data->d[k];
+      id = interp->ids[i];
+      dk = interp->d[k];
 
       /* Cell centres in the triangulation                           */
-      if (i < data->nc) {
+      if (i < interp->nc) {
 	dk->n_point_triangles[id] = geom->npe[c2] + 1;
 	dk->point_triangles[id] = malloc(dk->n_point_triangles[id] * sizeof(int));
 	dk->point_triangles[id][0] = id;
@@ -6352,36 +6645,36 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
     for (k = 0; k < nz; k++) {
       
       gs[k] = grid_spec_create();
-      if (data->d[k] == NULL) continue;
+      if (interp->d[k] == NULL) continue;
       
-      grid_interp_init_t(gs[k], data->d[k], uvrule, 0);
+      grid_interp_init_t(gs[k], interp->d[k], uvrule, 0);
     }
 
     /*---------------------------------------------------------------*/
     /* Set the grid_spec structure                                   */
-    data->gs = gs;
+    interp->gs = gs;
 
   }
 
   /*-----------------------------------------------------------------*/
   /* Fill the points array in the delaunay structure.                */
-  for (i = 0; i < data->nc; i++) {
-    c = data->cells[i];
+  for (i = 0; i < interp->nc; i++) {
+    c = interp->cells[i];
     k = geom->s2k[c];
-    id = data->ids[i];
+    id = interp->ids[i];
     /*
-    data->d[k]->points[id].x = df->x[n2i[i]];
-    data->d[k]->points[id].y = df->y[n2i[i]];
+    interp->d[k]->points[id].x = df->x[n2i[i]];
+    interp->d[k]->points[id].y = df->y[n2i[i]];
     */
-    data->d[k]->points[id].z = (double)id;
+    interp->d[k]->points[id].z = (double)id;
   }
 
   /*-----------------------------------------------------------------*/
   /* Rebuild the weights. Note: this is cumulative (i.e. weights are */
   /* added to new cells) for each parray point.                      */
   for (k = 0; k < nz; k++) {
-    if (data->d[k] == NULL) continue;
-    data->gs[k]->rebuild(data->gs[k]->interpolator, data->d[k]->points);
+    if (interp->d[k] == NULL) continue;
+    interp->gs[k]->rebuild(interp->gs[k]->interpolator, interp->d[k]->points);
   }
   i_free_1d(mask);
   i_free_1d(n2i);
@@ -6397,11 +6690,10 @@ void parray_grid_init(dump_data_t *dumpdata, dump_file_t *df)
 /* are the nearest edge to a dump location, and all edges            */
 /* surrounding vertices at either end of that edge.                  */
 /*-------------------------------------------------------------------*/
-void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
+void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df, df_interp_t *interp)
 {
   master_t *master = dumpdata->master;
   geometry_t *geom = master->geom;
-  df_parray_data_t *data = (df_parray_data_t *)df->private_data;
   char *uvrule = "nearest";
   int c, c2, ee, e, e2, en, ei, k, kk;
   int i, j, id, fi, fj, n;
@@ -6417,28 +6709,20 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
   int isalloc;
   double x, y, dist, dm;
 
-  isalloc = (data->ge && data->de) ? 1 : 0;
-  /* Check for edge vectors requiring output                         */
-  if (!isalloc) {
-    isalloc = 1;
-    for (n = 0; n < df->nvars; n++) {
-      if (data->vars[n].vector_mode & (VM_NOR|VM_TAN))
-	isalloc = 0;
-    }
-  }
+  isalloc = (interp->ge && interp->de) ? 1 : 0;
   if (isalloc) return;
 
     /* Get the number of points for the triangulation                */
     np = 0;
-    data->neells = 0;
-    data->nz = geom->nz - 1;
-    data->botek = i_alloc_1d(df->npoints);
+    interp->neells = 0;
+    interp->nz = geom->nz - 1;
+    interp->botek = i_alloc_1d(df->npoints);
     mask = i_alloc_1d(geom->sze);
     memset(mask, 0, geom->sze * sizeof(int));
     eloc = i_alloc_1d(df->npoints);
     for (i = 0; i < df->npoints; ++i) {
       c = hd_grid_xytoij(master, df->x[i], df->y[i], &fi, &fj);
-      data->botek[i] = data->nz;
+      interp->botek[i] = interp->nz;
       if (c > 0 && c < geom->szcS) {
 	/* Find the edge closest to the dump location                */
 	c2 = geom->m2d[c];
@@ -6458,7 +6742,7 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	while (e != geom->zm1e[e]) {
 	  if (!mask[e]) {
 	    if (e == geom->m2de[e]) np++;
-	    data->neells ++;
+	    interp->neells ++;
 	    mask[e] = 1;
 	  }
 	  for (j = 0; j < 2; j++) {
@@ -6468,23 +6752,23 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	      en = geom->v2e[v][vv];
 	      if (!mask[en]) {
 		if (en == geom->m2de[en]) np++;
-		data->neells ++;
+		interp->neells ++;
 		mask[en] = 1;
 	      }
 	    }
 	  }
-	  data->nz = min(data->nz, geom->e2k[e]);
-	  data->botek[i] = geom->e2k[e];
+	  interp->nz = min(interp->nz, geom->e2k[e]);
+	  interp->botek[i] = geom->e2k[e];
 	  e = geom->zm1e[e];
 	}
       }
     }
 
     /* Allocate                                                      */
-    data->eells = i_alloc_1d(data->neells);
-    data->eds = i_alloc_1d(data->neells);
-    data->e2k = i_alloc_1d(data->neells);
-    n2i = i_alloc_1d(data->neells);
+    interp->eells = i_alloc_1d(interp->neells);
+    interp->eds = i_alloc_1d(interp->neells);
+    interp->e2k = i_alloc_1d(interp->neells);
+    n2i = i_alloc_1d(interp->neells);
     p = (point **)alloc_2d(np, nz, sizeof(point));
     nk = i_alloc_1d(nz);
     memset(nk, 0, nz * sizeof(int));
@@ -6498,27 +6782,27 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
       k = geom->e2k[e];
       if (!mask[e]) {
 	n2i[n] = i;
-	data->eds[n] = nk[k];
-	data->e2k[n] = k;
-	data->eells[n++] = e;
+	interp->eds[n] = nk[k];
+	interp->e2k[n] = k;
+	interp->eells[n++] = e;
 	mask[e] = nk[k] + 1;
 	p[k][nk[k]].x = geom->u1x[e2];
 	p[k][nk[k]++].y = geom->u1y[e2];
       }
     }
-    data->nes = n;
+    interp->nes = n;
     /* Set the sub-surface cell centres for the triangulation        */
-    for (i = 0; i < data->nes; i++) {
-      e = data->eells[i];
+    for (i = 0; i < interp->nes; i++) {
+      e = interp->eells[i];
       e2 = geom->m2de[e];
       e = geom->zm1e[e];
       while (e != geom->zm1e[e]) {
 	k = geom->e2k[e];
 	if (!mask[e]) {
 	  n2i[n] = i;
-	  data->eds[n] = nk[k];
-	  data->e2k[n] = k;
-	  data->eells[n++] = e;
+	  interp->eds[n] = nk[k];
+	  interp->e2k[n] = k;
+	  interp->eells[n++] = e;
 	  mask[e] = nk[k] + 1;
 	  p[k][nk[k]].x = geom->u1x[e2];
 	  p[k][nk[k]++].y = geom->u1y[e2];
@@ -6526,10 +6810,10 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	e = geom->zm1e[e];
       }
     }
-    data->ec = n;
+    interp->ec = n;
     /* Set the edges surrounding the edge vertices                   */
-    for (i = 0; i < data->nes; i++) {
-      e = data->eells[i];
+    for (i = 0; i < interp->nes; i++) {
+      e = interp->eells[i];
       e2 = geom->m2de[e];
       while (e != geom->zm1e[e]) {
 	k = geom->e2k[e];
@@ -6540,9 +6824,9 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
 	    en = geom->v2e[v][vv];
 	    if (!mask[en]) {
 	      e2 = geom->m2de[en];
-	      data->eds[n] = nk[k];
-	      data->e2k[n] = k;
-	      data->eells[n++] = en;
+	      interp->eds[n] = nk[k];
+	      interp->e2k[n] = k;
+	      interp->eells[n++] = en;
 	      mask[en] = nk[k] + 1;
 	      p[k][nk[k]].x = geom->u1x[e2];
 	      p[k][nk[k]].y = geom->u1y[e2];
@@ -6558,14 +6842,14 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
     /* Fill the points array and create the triangulation for every  */
     /* layer. Note this is designed to be used with COMPAS arrays,   */
     /* which start at index 1, hence use [c+1].                      */
-    data->de = (delaunay **)calloc(nz, sizeof(delaunay *));
+    interp->de = (delaunay **)calloc(nz, sizeof(delaunay *));
     for (k = 0; k < nz; k++) {
       delaunay *dk;
-      data->de[k] = NULL;
+      interp->de[k] = NULL;
       if (nk[k] == 0) continue;
 
-      data->de[k] = delaunay_build(nk[k], p[k], 0, NULL, 0, NULL);
-      dk = data->de[k];
+      interp->de[k] = delaunay_build(nk[k], p[k], 0, NULL, 0, NULL);
+      dk = interp->de[k];
 
       dk->vid = 0;
       dk->ptf = 1;
@@ -6584,19 +6868,19 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
     }
 
     /* Set the new Delaunay point triangles for the interpolation    */
-    for (i = 0; i < data->neells; i++) {
+    for (i = 0; i < interp->neells; i++) {
       delaunay *dk;
-      e = data->eells[i];
+      e = interp->eells[i];
       e2 = geom->m2de[e];
       k = geom->e2k[e];
-      id = data->eds[i];
-      dk = data->de[k];
+      id = interp->eds[i];
+      dk = interp->de[k];
 
       /* Edges in the triangulation; these point_trianges are the    */
       /* indices corresponding to all vertices in the triangulation  */
       /* (i.e. edge locations) whose triangles share a common edge   */
       /* index.                                                      */
-      if (i < data->ec) {
+      if (i < interp->ec) {
 	n = 0;
 	dk->n_point_triangles[id] = 4 + 1;
 	dk->point_triangles[id] = malloc(dk->n_point_triangles[id] * sizeof(int));
@@ -6635,36 +6919,36 @@ void parray_gride_init(dump_data_t *dumpdata, dump_file_t *df)
     ge = (GRID_SPECS **)calloc(nz, sizeof(GRID_SPECS *));
     for (k = 0; k < nz; k++) {
       ge[k] = grid_spec_create();
-      if (data->de[k] == NULL) continue;
+      if (interp->de[k] == NULL) continue;
       
-      grid_interp_init_t(ge[k], data->de[k], uvrule, 0);
+      grid_interp_init_t(ge[k], interp->de[k], uvrule, 0);
     }
 
     /*---------------------------------------------------------------*/
     /* Set the grid_spec structure                                   */
-    data->ge = ge;
+    interp->ge = ge;
 
 
 
   /*-----------------------------------------------------------------*/
   /* Fill the points array in the delaunay structure.                */
-  for (i = 0; i < data->ec; i++) {
-    e = data->eells[i];
+  for (i = 0; i < interp->ec; i++) {
+    e = interp->eells[i];
     k = geom->e2k[e];
-    id = data->eds[i];
+    id = interp->eds[i];
     /*
-    data->de[k]->points[id].x = df->x[n2i[i]];
-    data->de[k]->points[id].y = df->y[n2i[i]];
+    interp->de[k]->points[id].x = df->x[n2i[i]];
+    interp->de[k]->points[id].y = df->y[n2i[i]];
     */
-    data->de[k]->points[id].z = (double)id;
+    interp->de[k]->points[id].z = (double)id;
   }
 
   /*-----------------------------------------------------------------*/
   /* Rebuild the weights. Note: this is cumulative (i.e. weights are */
   /* added to new cells) for each parray point.                      */
   for (k = 0; k < nz; k++) {
-    if (data->de[k] == NULL) continue;
-    data->ge[k]->rebuild(data->ge[k]->interpolator, data->de[k]->points);
+    if (interp->de[k] == NULL) continue;
+    interp->ge[k]->rebuild(interp->ge[k]->interpolator, interp->de[k]->points);
   }
 
   i_free_1d(mask);
@@ -6720,8 +7004,9 @@ typedef struct {
 
 static void df_memory_init_data(dump_data_t *dumpdata, dump_file_t *df)
 {
-  int i;
+  int i, n;
   df_parray_data_t *mem = NULL;
+  df_interp_t *interp;
 
   df_parse_vars(dumpdata,df,PARRAY_EXCLUDE_VARS,PARRAY_ALL_VARS);
   
@@ -6743,10 +7028,15 @@ static void df_memory_init_data(dump_data_t *dumpdata, dump_file_t *df)
       hd_quit("dumpfile:df_memory_init_data: Unknown variable '%s'.", df->vars[i]);
   }
 
-  /* Allocate and initialize the grid_spec structures for            */
-  /* interpolation.                                                  */
-  parray_grid_init(dumpdata, df);
-  parray_gride_init(dumpdata, df);
+  /* Initialise the interpolation structures */
+  interp = (df_interp_t *)malloc(sizeof(df_interp_t));
+  memset(interp, 0, sizeof(df_interp_t));
+  /* Check for edge vectors requiring output                         */
+  i = 1;
+  for (n = 0; n < df->nvars; n++)
+    if (mem->vars[n].vector_mode & (VM_NOR|VM_TAN)) i = 0;
+  df_interp_init_data(dumpdata, df, interp, i);
+  mem->interp = interp;
 
 }
 
@@ -6925,56 +7215,15 @@ static void df_memory_writesub_2d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_parray_data_t *mem = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &mem->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = mem->d;
-  GRID_SPECS **gs = mem->gs;
-  int i, k, c, id;
-  int fi, fj;
+  df_interp_t *interp = mem->interp;
+  int i, id;
+  int k = dumpdata->nz-1;
 
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < mem->ncells; i++) {
-    c = mem->cells[i];
-    if (c == geom->m2d[c]) {
-      id = mem->ids[i];
-      k = mem->c2k[i];
-      d[k]->vid = 0;
-      if (df->filter)
-	d[k]->points[id].v[0] = df_filter(geom,df, values, c);
-      else
-	d[k]->points[id].v[0] = values[c];
-      d[k]->points[id].z = d[k]->points[id].v[0];
-      if (df->osl & (L_BAYLIN|L_BILIN)) {
-	d[k]->points[id].z = (double)id;
-	d[k]->points[id].v[0] = (double)id;
-      }
-    }
-  }
-
-  /* Rebuild the weights.                                            */
-  k = geom->nz-1;
-  if (df->osl & (L_SIB|L_NONSIB))
-    for (i = 0; i < d[k]->npoints; i++)
-      gs[k]->rebuild(gs[k]->interpolator, &d[k]->points[i]);
-  else
-    gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
-  if(df->osl & (L_BILIN|L_BAYLIN)) {
-    for (i = 0; i < mem->ncells; i++) {
-      c = mem->cells[i];
-      if (c == geom->m2d[c]) {
-	id = mem->ids[i];
-	k = mem->c2k[i];
-	if (df->filter)
-	  d[k]->points[id].v[0] = df_filter(geom, df, values, c);
-	else
-	  d[k]->points[id].v[0] = values[c];
-      }
-    }
-  }
+  df_interp_writesub_2d(dumpdata, df, interp, v2d);
 
   for (i = 0; i < df->npoints; ++i) {
-    id = mem->ids[i];
-    v2d[i] = get_var_value(df, var, id, i, k);
+    id = interp->ids[i];
+    v2d[i] = get_var_value(df, var, interp, id, i, k);
   }
 }
 
@@ -6986,50 +7235,10 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_parray_data_t *mem = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &mem->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = mem->d;
-  GRID_SPECS **gs = mem->gs;
+  df_interp_t *interp = mem->interp;
   int i, k, c, id;
-  int fi, fj;
 
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < mem->ncells; i++) {
-    c = mem->cells[i];
-    id = mem->ids[i];
-    k = mem->c2k[i];
-    d[k]->vid = 0;
-    if (df->filter)
-      d[k]->points[id].v[0] = df_filter(geom, df, values, c);
-    else
-      d[k]->points[id].v[0] = values[c];
-    d[k]->points[id].z = d[k]->points[id].v[0];
-    if (df->osl & (L_BAYLIN|L_BILIN)) {
-      d[k]->points[id].z = (double)id;
-      d[k]->points[id].v[0] = (double)id;
-    }
-  }
-
-  /* Rebuild the weights.                                            */
-  for (k = 0; k < geom->nz; k++) {
-    if (d[k] == NULL) continue;
-    if (df->osl & (L_SIB|L_NONSIB))
-      for (i = 0; i < d[k]->npoints; i++)
-	mem->gs[k]->rebuild(mem->gs[k]->interpolator, &d[k]->points[i]);
-    else
-      mem->gs[k]->rebuild(mem->gs[k]->interpolator, d[k]->points);
-  }
-  if(df->osl & (L_BILIN|L_BAYLIN)) {
-    for (i = 0; i < mem->ncells; i++) {
-      c = mem->cells[i];
-      id = mem->ids[i];
-      k = mem->c2k[i];
-      if (df->filter)
-	d[k]->points[id].v[0] = df_filter(geom, df, values, c);
-      else
-	d[k]->points[id].v[0] = values[c];
-    }
-  }
+  df_interp_writesub_3d(dumpdata, df, interp, v3d);
   /*
   c = 0;
   for (i = 0; i < df->npoints; ++i) {
@@ -7043,16 +7252,16 @@ static void df_memory_writesub_3d(dump_data_t *dumpdata, dump_file_t *df,
   for (i = 0; i < df->npoints; ++i) {
     double vb;
     for (k = 0; k < nz; k++) {
-      if (d[k] != NULL && k >= mem->botk[i]) {
-	vb = get_var_value(df, var, id, i, k);
+      if (interp->d[k] != NULL && k >= interp->botk[i]) {
+	vb = get_var_value(df, var, interp, id, i, k);
 	break;
       }
     }
     for (k = 0; k < nz; k++) {
       v3d[c] = 0.0;
-      if (d[k] != NULL && k >= mem->botk[i]) {
-	id = mem->ids[i];
-	v3d[c] = get_var_value(df, var, id, i, k);
+      if (interp->d[k] != NULL && k >= interp->botk[i]) {
+	id = interp->ids[i];
+	v3d[c] = get_var_value(df, var, interp, id, i, k);
       }
       /* Set a no-gradient below the sea bed. d[k] may != NULL, but  */
       /* have no points surrounding (df->x,df->y) because this df    */
@@ -7073,30 +7282,11 @@ static void df_memory_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_parray_data_t *mem = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &mem->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = mem->de;
-  GRID_SPECS **gs = mem->ge;
-  int i, k, e, id;
+  df_interp_t *interp = mem->interp;
+  int i, id;
+  int k = dumpdata->nz-1;
 
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < mem->neells; i++) {
-    e = mem->eells[i];
-    if (e == geom->m2de[e]) {
-      id = mem->eds[i];
-      k = mem->e2k[i];
-      d[k]->vid = 0;
-      if (df->filter)
-	d[k]->points[id].v[0] = df_filter(geom, df, values, e);
-      else
-	d[k]->points[id].v[0] = values[e];
-      d[k]->points[id].z = d[k]->points[id].v[0];
-    }
-  }
-
-  /* Rebuild the weights.                                            */
-  k = geom->nz-1;
-  gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
+  df_interp_writevec_2d(dumpdata, df, interp, v2d);
 
   /*
   for(i = 0; i < df->npoints; i++) {
@@ -7104,8 +7294,8 @@ static void df_memory_writevec_2d(dump_data_t *dumpdata, dump_file_t *df,
   }
   */
   for (i = 0; i < df->npoints; ++i) {
-    id = mem->eds[i];
-    v2d[i] = get_var_value(df, var, id, i, k);
+    id = interp->eds[i];
+    v2d[i] = get_var_value(df, var, interp, id, i, k);
   }
 }
 
@@ -7115,46 +7305,26 @@ static void df_memory_writevec_3d(dump_data_t *dumpdata, dump_file_t *df,
 {
   df_parray_data_t *mem = (df_parray_data_t *)df->private_data;
   df_parray_var_t *var = &mem->vars[vid];
-  master_t *master = dumpdata->master;
-  geometry_t *geom = master->geom;
-  delaunay **d = mem->de;
-  GRID_SPECS **gs = mem->ge;
+  df_interp_t *interp = mem->interp;
   int i, k, e, id;
 
-  /* Fill the Delaunay structure with values */
-  for (i = 0; i < mem->neells; i++) {
-    e = mem->eells[i];
-    id = mem->eds[i];
-    k = mem->e2k[i];
-    d[k]->vid = 0;
-    if (df->filter)
-      d[k]->points[id].v[0] = df_filter(geom, df, values, e);
-    else
-      d[k]->points[id].v[0] = values[e];
-    d[k]->points[id].z = d[k]->points[id].v[0];
-  }
-
-  /* Rebuild the weights.                                            */
-  for (k = 0; k < geom->nz; k++) {
-    if (d[k] == NULL) continue;
-    gs[k]->rebuild(gs[k]->interpolator, d[k]->points);
-  }
+  df_interp_writevec_2d(dumpdata, df, interp, v3d);
 
   e = 0;
   for (i = 0; i < df->npoints; ++i) {
     double vb;
     for (k = 0; k < nz; k++) {
-      if (d[k] != NULL && k >= mem->botek[i]) {
-	vb = get_var_value(df, var, id, i, k);
+      if (interp->d[k] != NULL && k >= interp->botek[i]) {
+	vb = get_var_value(df, var, interp, id, i, k);
 	break;
       }
     }
     for (k = 0; k < nz; ++k){
       v3d[e] = get_missing(var);
       v3d[e] = 0.0;
-      if (d[k] != NULL && k >= mem->botek[i]) {
-	id = mem->eds[i];
-	v3d[e] = get_var_value(df, var, id, i, k);
+      if (interp->d[k] != NULL && k >= interp->botek[i]) {
+	id = interp->eds[i];
+	v3d[e] = get_var_value(df, var, interp, id, i, k);
       } else {
 	v3d[e] = vb;
       }

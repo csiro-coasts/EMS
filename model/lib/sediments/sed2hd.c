@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sed2hd.c 5975 2018-09-26 00:09:12Z mar644 $
+ *  $Id: sed2hd.c 7572 2024-05-30 03:34:39Z riz008 $
  *
  */
 
@@ -57,7 +57,6 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
   void *hmodel = sediment->hmodel;
   int k, n, m;
   int tk,bk;
-  double *point = malloc(sizeof *point);
   sed_params_t *param = sediment->msparam;
   int col_index = sm->col_number-1;
   /* Copy internal spatial sediment variables */
@@ -184,6 +183,7 @@ void sed2hd(sediment_t *sediment, sed_column_t *sm, int c)
 //NMY 2018
 // material fluxes across water and sediments
  for(n=0; n < param->ntrB; n++) {
+   double *point = NULL;
      if (param->fluxsedimap_inst[n] > 0) {
          point = sinterface_getpointerBtracer(hmodel, n, c); //get pointer to 2D diag tracer
          m = param->fluxsedimap_inst[n]; // get the number of the corresponding 3D tracer (i.e. erdepflux[m])

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology_internal.h 6903 2021-09-07 06:55:37Z bai155 $
+ *  $Id: ecology_internal.h 7576 2024-05-30 03:47:52Z riz008 $
  *
  */
 
@@ -58,6 +58,8 @@
 #define OMP_NUM_THREADS_DEF 1
 #endif
 
+#define ECO_PARAMS_SETUP "ecology_parameter_setup.nc"
+  
 #define ISDEBUG() (is_log_enabled(LDEBUG))
 
 typedef struct {
@@ -277,6 +279,9 @@ struct ecology {
     /* Ecology setup.txt file */
     FILE *eco_setup;
     FILE *eco_osetup; // output path copy
+
+    /* ECO_PARAMS_SETUP file */
+    int eco_params_ncid;
 
 #if (NCPU > 1)
     int multithreaded;          /* flag */

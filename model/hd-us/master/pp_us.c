@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: pp_us.c 7434 2023-10-25 01:29:54Z her127 $
+ *  $Id: pp_us.c 7538 2024-05-03 05:41:46Z riz008 $
  *
  */
 
@@ -3273,7 +3273,7 @@ void build_sparse_grid_us(parameters_t *params,
     open->t_transfer = NULL;
     if (open->ntt) {
       open->ttsz = open->no3_t + i * open->no3_e1 + 1;
-      open->t_transfer = d_alloc_2d(open->ttsz, open->ntt);
+      open->t_transfer = d_alloc_2d(open->ttsz+1, open->ntt);
       open->t_imap = i_alloc_2d(i + 1, open->ttsz);
     }
   }
@@ -4660,7 +4660,7 @@ void make_geom_obc(parameters_t *params, geometry_t *sgrid, int laus, int *maske
     open->t_transfer = NULL;
     if (open->ntt) {
       open->ttsz = open->no3_t + i * open->no3_e1 + 1;
-      open->t_transfer = d_alloc_2d(open->ttsz, open->ntt);
+      open->t_transfer = d_alloc_2d(open->ttsz+1, open->ntt);
       open->t_imap = i_alloc_2d(i + 1, open->ttsz);
     }
   }

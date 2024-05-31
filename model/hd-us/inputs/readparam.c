@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: readparam.c 7463 2023-12-13 03:51:41Z her127 $
+ *  $Id: readparam.c 7561 2024-05-27 05:00:21Z her127 $
  *
  */
 
@@ -109,6 +109,7 @@ char *cflname(int m);
 char *substepname(int m);
 char *heatfluxname(int m);
 char *meansname(int m, char *buf);
+char *ulname(int m, char *buf);
 char *btname(int m);
 char *adname(int m);
 char *tf(int m);
@@ -186,6 +187,7 @@ void set_default_param(parameters_t *params)
   params->visc_method = US_LAPLACIAN;
   params->visc_fact = 0.0;
   params->stab = NONE;
+  params->trsf = 0.8;
   params->atr = 0;
   params->ntr = 0;
   params->ntrS = 0;
@@ -608,12 +610,10 @@ parameters_t *params_read(FILE *fp)
   sprintf(keyword, "MESH_INFO");
   if (prm_read_char(fp, keyword, buf))
     params->meshinfo = is_true(buf);
-  if (prm_read_char(fp, "REORDER_WRITE", params->mesh_reorder))
-    params->mrf |= MR_WRITE;
-  if (prm_read_char(fp, "REORDER_WRITEX", params->mesh_reorder))
-    params->mrf |= MR_WRITEX;
-  if (prm_read_char(fp, "REORDER_READ", params->mesh_reorder))
-    params->mrf |= MR_READ;
+
+  /* Mesh reordering                                                 */
+  read_reorder(params, fp);
+
   sprintf(keyword, "ETAMAX");
   prm_read_double(fp, keyword, &params->etamax);
   sprintf(keyword, "MIN_CELL_THICKNESS");
@@ -684,6 +684,8 @@ parameters_t *params_read(FILE *fp)
     if (strcmp(buf, "SUB-STEP-TRACER") == 0)
       params->stab = SUB_STEP_TRACER;
   }
+  sprintf(keyword, "SUB-STEP_SAFETY");
+  prm_read_double(fp, keyword, &params->trsf);
 
   /* Thin layer merging                                              */
   sprintf(keyword, "MERGE_THIN");
@@ -1011,7 +1013,7 @@ parameters_t *params_read(FILE *fp)
   /* River flow diagnostic                                           */
   if (check_river_bdry(params, fp)) {
     params->riverflow = 1;
-    params->ntrS++;
+    params->ntrS += 2;
     if (check_bdry_options(params, fp) & OP_DYNAHC) {
       params->riverflow = 2;
       params->ntrS++;
@@ -2166,13 +2168,9 @@ parameters_t *auto_params(FILE * fp, int autof)
   prm_read_int(fp, keyword, &nce2);
   params->nce1 = nce1;
   params->nce2 = nce2;
-  if (prm_read_char(fp, "REORDER_WRITE", params->mesh_reorder))
-    params->mrf |= MR_WRITE;
-  if (prm_read_char(fp, "REORDER_WRITEX", params->mesh_reorder))
-    params->mrf |= MR_WRITEX;
-  if (prm_read_char(fp, "REORDER_READ", params->mesh_reorder))
-    params->mrf |= MR_READ;
-  prm_set_errfn(hd_silent_warn);
+
+  /* Mesh reordering                                                 */
+  read_reorder(params, fp);
 
   /* Add a quad grid to the structured mesh                          */
   sprintf(keyword, "ADD_QUAD");
@@ -2765,7 +2763,7 @@ parameters_t *auto_params(FILE * fp, int autof)
   /* River flow diagnostic                                           */
   if (check_river_bdry(params, fp)) {
     params->riverflow = 1;
-    params->ntrS++;
+    params->ntrS += 2;
     if (check_bdry_options(params, fp) & OP_DYNAHC) {
       params->riverflow = 2;
       params->ntrS++;
@@ -6984,7 +6982,7 @@ void params_write(parameters_t *params, dump_data_t *dumpdata, char *name)
   fprintf(op, "# Advection\n");
   fprintf(op, "MOM_SCHEME           %s\n", adname(params->momsc));
   fprintf(op, "TRA_SCHEME           %s\n", adname(params->trasc));
-  fprintf(op, "ULTIMATE             %s\n\n", tf(params->ultimate));
+  fprintf(op, "ULTIMATE             %s\n\n", ulname(params->ultimate, key));
 
   fprintf(op, "# Horizontal mixing\n");
   if (params->u1vh > 1.0)
@@ -8071,12 +8069,16 @@ void read_grid(parameters_t *params)
 
   } else if (prm_read_double(fp, "DLAMBDA", &xinc) &&
              prm_read_double(fp, "DPHI", &yinc)) {
+    double deg2m = 60.0 * 1852.0;
     /*---------------------------------------------------------------*/
     /* Structured defined by a corner location and (deg) resolution  */
     strcpy(params->gridtype, "GEOGRAPHIC_RECTANGULAR");
     strcpy(params->projection, "geographic"); /* Override projection */
     prm_read_double(fp, "X00", &x00);
     prm_read_double(fp, "Y00", &y00);
+
+    if (xinc > 1.0) xinc /= deg2m;
+    if (yinc > 1.0) yinc /= deg2m;
 
     if (prm_read_double(fp, "POLE_LATITUDE", &params->flat) &&
         prm_read_double(fp, "POLE_LONGITUDE", &params->flon)) {
@@ -8093,7 +8095,7 @@ void read_grid(parameters_t *params)
       if (prm_read_double(fp, "ELLIPSE", &elf)) {
 	jigsaw_msh_t J_mesh;
 	jigsaw_msh_t J_hfun;
-	double deg2m = 60.0 * 1852.0;
+	/*double deg2m = 60.0 * 1852.0;*/
 	double ores;       /* Outer ellipse resolution                 */
 	strcpy(params->gridtype, "UNSTRUCTURED");
 	params->gridcode = UNSTRUCTURED;
@@ -8105,6 +8107,7 @@ void read_grid(parameters_t *params)
 
 	if (!(prm_read_double(fp, "OUTER_RES", &ores))) 
 	  ores = 3000.0 / deg2m;
+	if (ores > 1.0) ores /= deg2m;
 
 	create_ellipse(params, nce1, nce2,
 		       x00, y00, params->flon, params->flat,
@@ -9251,12 +9254,12 @@ void read_window_info(parameters_t *params, FILE *fp)
     if (prm_read_char(fp, keyword, buf)) {
       if (is_true(buf)) {
 	/*if (params->show_win == 0)*/
-	  params->ntrS += 2;
+	params->ntrS += 2;
 	params->show_win = 1;
       }
     }
-    if (params->show_win) params->ntrS += 2;
-      
+    /*if (params->show_win) params->ntrS += 2;*/
+
     sprintf(keyword, "WINDOW_RESET");
     prm_read_int(fp, keyword, &params->win_reset);
     params->win_size = NULL;
@@ -9311,7 +9314,6 @@ void read_window_info(parameters_t *params, FILE *fp)
       }
     }
   }
-
   sprintf(keyword, "DP_MODE");
   if(!prm_read_char(fp, keyword, params->dp_mode)) {
     sprintf(keyword, "DPMODE");
@@ -10075,6 +10077,53 @@ void read_advect(parameters_t *params, FILE *fp)
 
 
 /*-------------------------------------------------------------------*/
+/* Routine to read ultimate limiter options                          */
+/*-------------------------------------------------------------------*/
+void read_ultimate(parameters_t *params, FILE *fp)
+{
+  char keyword[MAXSTRLEN], buf[MAXSTRLEN], ult[MAXSTRLEN];
+  char *fields[MAXSTRLEN * MAXNUMARGS];
+  int n;
+
+  params->ultimate = 0;
+  sprintf(keyword, "ULTIMATE");
+  if (prm_read_char(fp, keyword, ult)) {
+    strcpy(buf, ult);
+    n = parseline(ult, fields, MAXNUMARGS);
+    if (n == 1 && is_true(buf)) {
+      params->ultimate = UL_DO;
+      if (params->trasc == FFSL) params->ultimate |=( UL_IPROJ|UL_SPROJ);
+    } else if (contains_token(buf, "NO") != NULL) {
+      params->ultimate = 0;
+    } else {
+      params->ultimate = 0;
+      if (contains_token(buf, "YES") != NULL)
+	params->ultimate |= UL_DO;
+      if (contains_token(buf, "CLIP") != NULL)
+	params->ultimate |= UL_CLIP;
+      if (contains_token(buf, "INIT_PROJ") != NULL)
+	params->ultimate |= UL_IPROJ;
+      if (contains_token(buf, "INIT_TR") != NULL)
+	params->ultimate |= UL_ITR;
+      if (contains_token(buf, "STREAMLINE") != NULL)
+	params->ultimate |= UL_SPROJ;
+      if (contains_token(buf, "STENCIL") != NULL)
+	params->ultimate |= UL_SSTCL;
+      if (contains_token(buf, "REFINE") != NULL)
+	params->ultimate |= UL_REFINE;
+      if (!(params->ultimate & UL_IPROJ) && !(params->ultimate & UL_ITR))
+	params->ultimate |= UL_IPROJ;
+      if (!(params->ultimate & UL_SPROJ) && !(params->ultimate & UL_SSTCL))
+	params->ultimate |= UL_SPROJ;
+    }
+  }
+}
+
+/* END read_ultimate()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to read n tidal energy extraction                         */
 /*-------------------------------------------------------------------*/
 void read_turb(parameters_t *params, FILE *fp)
@@ -10460,6 +10509,49 @@ void read_monotone(parameters_t *params, FILE *fp, int mode)
 }
 
 /* END read_monotone()                                               */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Reads mesh re-ordering information.                               */
+/*-------------------------------------------------------------------*/
+int read_reorder(parameters_t *params, FILE *fp)
+{
+  char buf[MAXSTRLEN], keyword[MAXSTRLEN], val[MAXSTRLEN];
+
+  params->mrf |= (MR_READM|MR_HORZ);
+  sprintf(keyword, "MESH_REORDER");
+  if (prm_read_char(fp, keyword, buf)) {
+    if (contains_token(buf, "NONE") != NULL)
+      params->mrf = NONE;
+    else {
+      params->mrf = 0;
+      if (contains_token(buf, "METIS") != NULL)
+	params->mrf |= MR_READM;
+      if (contains_token(buf, "HORZ") != NULL)
+	params->mrf |= MR_HORZ;
+      if (contains_token(buf, "VERT") != NULL)
+	params->mrf |= MR_VERT;
+      if (decode_tag(buf, "WRITE", val)) {
+	strcpy(params->mesh_reorder, val);
+	params->mrf |= MR_WRITEX;
+      }
+      if (decode_tag(buf, "READ", val)) {
+	strcpy(params->mesh_reorder, val);
+	params->mrf |= MR_READ;
+      }
+    }
+  }
+  /* Old code                                                        */
+  if (prm_read_char(fp, "REORDER_WRITE", params->mesh_reorder))
+    params->mrf |= MR_WRITE;
+  if (prm_read_char(fp, "REORDER_WRITEX", params->mesh_reorder))
+    params->mrf |= MR_WRITEX;
+  if (prm_read_char(fp, "REORDER_READ", params->mesh_reorder))
+    params->mrf |= MR_READ;
+}
+
+/* END read_reorder()                                                */
 /*-------------------------------------------------------------------*/
 
 
@@ -12878,6 +12970,28 @@ char *adname(int m)
     return ("LAGRANGE|VANLEER");
   }
   return ("NULL");
+}
+
+char *ulname(int m, char *buf)
+{
+  sprintf(buf, "%c", '\0');
+  if (m & UL_DO)
+    sprintf(buf, "YES ", buf);
+  if (m & UL_CLIP)
+    sprintf(buf, "%s CLIP ", buf);
+  if (m & UL_IPROJ)
+    sprintf(buf, "%s INIT_PROJ ", buf);
+  if (m & UL_ITR)
+    sprintf(buf, "%s INIT_TR ", buf);
+  if (m & UL_SPROJ)
+    sprintf(buf, "%s STREAMLINE ", buf);
+  if (m & UL_SSTCL)
+    sprintf(buf, "%s STENCIL ", buf);
+  if (m == 0)
+    sprintf(buf, "NO");
+  if (m == 1)
+    sprintf(buf, "YES");
+  return (buf);
 }
 
 double get_restart_time(char *filename, char *itimeunits) {

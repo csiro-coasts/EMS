@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 7470 2023-12-13 04:02:25Z her127 $
+ *  $Id: load_tracer.c 7530 2024-04-03 21:47:01Z her127 $
  *
  */
 
@@ -63,15 +63,16 @@ void interp_data_s(master_t *master, char *fname, char *vname, double *ret, int 
 		   int *mask, double t);
 void filter_tracer(tracer_info_t *trinfo, geometry_t *window, double **tr, int n);
 void glider_scaling(parameters_t *params, master_t *master, char *mapname, int tm);
-int find_autotracer_by_name(char *name);
-void copy_autotracer_by_name(char *name, tracer_info_t tr[], int ntr, int *n, 
+int find_autotracer_by_name(int type, char *name);
+void copy_autotracer_by_name(int type, char *name, tracer_info_t tr[], int ntr, int *n, 
 			     double **tra, double **trp);
-int set_autotracer_by_name(char *name, tracer_info_t tr[], int ntr, int *n, 
+int set_autotracer_by_name(int type, char *name, tracer_info_t tr[], int ntr, int *n, 
 			   double **tra, double **trp, char *buf);
-void find_autotracer_by_groupkey(char *name, int *tra, int *n);
-int copy_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, int *n);
-int set_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, 
-			       int *n, char *key);
+void find_autotracer_by_groupkey(int type, char *name, int *tra, int *n);
+int copy_autotracer_by_groupkey(int type, char *name, tracer_info_t tr[], 
+				int ntr, int *n);
+int set_autotracer_by_groupkey(int type, char *name, tracer_info_t tr[], 
+			       int ntr, int *n, char *key);
 void update_autotracer(tracer_info_t tr[], int ntr, int *atr, int *mtr);
 void typename(int code, char *name);
 int set_tracer_3d(parameters_t *params, master_t *master, int ntr, 
@@ -635,7 +636,8 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
   master->u1_rad = master->u2_rad = master->sonic = master->wetcell = NULL;
   master->surfz = master->slope_x = NULL;
   master->tau_be1 = master->tau_be2 = master->tau_bm =  NULL;
-  master->sederr = master->ecoerr = master->riverflow = master->riverdepth = NULL;
+  master->sederr = master->ecoerr = master->riverflow = NULL;
+  master->riverdepth = master->iriverflow = NULL;
   master->bathy_range_max = master->bathy_range_min = NULL;
   master->bathy_grad_max = master->bathy_grad_min = master->eta_tc = master->eta_inc = NULL;
   master->cellres = master->equitide =   master->tpxotide = master->vhreg = NULL;
@@ -1271,11 +1273,11 @@ int set_tracer_3d(parameters_t *params,
 
   if (master != NULL) geom= master->geom;
 
-  copy_autotracer_by_name("salt", trinfo, ntr, &tn, tr, &master->sal);
-  copy_autotracer_by_name("temp", trinfo, ntr, &tn, tr, &master->temp);
+  copy_autotracer_by_name(WATER, "salt", trinfo, ntr, &tn, tr, &master->sal);
+  copy_autotracer_by_name(WATER, "temp", trinfo, ntr, &tn, tr, &master->temp);
 
   if (params->means & VEL3D) {
-    n = copy_autotracer_by_groupkey("vel3d_mean", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "vel3d_mean", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->u1m = tr[n++];
       master->u2m = tr[n++];
@@ -1286,12 +1288,12 @@ int set_tracer_3d(parameters_t *params,
     }
   }
   if (params->means & KZ_M) {
-    copy_autotracer_by_name("Kzmean", trinfo, ntr, &tn, tr, &master->Kzm);
+    copy_autotracer_by_name(WATER, "Kzmean", trinfo, ntr, &tn, tr, &master->Kzm);
     if (tr != NULL)
       memset(master->Kzm, 0, geom->sgsiz * sizeof(double));
   }
   if (params->means & TS) {
-    n = copy_autotracer_by_groupkey("ts_mean", trinfo, ntr, &tn);	
+    n = copy_autotracer_by_groupkey(WATER, "ts_mean", trinfo, ntr, &tn);	
     if (tr != NULL) {
       master->tempm = tr[n++];
       master->saltm = tr[n++];
@@ -1301,14 +1303,14 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->means & MTRA3D) {
     n = tn;
-    copy_autotracer_by_name("tracer_mean", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "tracer_mean", trinfo, ntr, &tn, 
 			    tr, &master->tram);
     sprintf(buf, "Mean %s", params->means_tra);
     strcpy(master->trinfo_3d[n].long_name, buf);
     memset(master->tram, 0, geom->sgsiz * sizeof(double));
   }
   if (strcmp(params->trflux, "NONE") != 0) {
-    n = m = copy_autotracer_by_groupkey("tr_flux", trinfo, ntr, &tn);
+    n = m = copy_autotracer_by_groupkey(WATER, "tr_flux", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->fluxe1 = tr[n++]; 
       master->fluxe2 = tr[n++]; 
@@ -1321,42 +1323,42 @@ int set_tracer_3d(parameters_t *params,
 	    params->trfd2);
   }
   if (strlen(params->regions)) {
-    n = copy_autotracer_by_groupkey("regions", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "regions", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->regionid = tr[n++];
       master->regres = tr[n++];
     }
   }
   if (params->trflsh) {
-    copy_autotracer_by_name("flush", trinfo, ntr, &tn, tr, &master->fltr);
+    copy_autotracer_by_name(WATER, "flush", trinfo, ntr, &tn, tr, &master->fltr);
   }
   if (strlen(params->trage)) {
-    copy_autotracer_by_name("age", trinfo, ntr, &tn, tr, &master->agetr);
+    copy_autotracer_by_name(WATER, "age", trinfo, ntr, &tn, tr, &master->agetr);
   }
   if (strcmp(params->trperc, "NONE") != 0) {
     n = tn;
     sprintf(buf, "percentile_%s", params->trperc);
-    copy_autotracer_by_name(buf, trinfo, ntr, &tn, tr, &master->perc);
+    copy_autotracer_by_name(WATER, buf, trinfo, ntr, &tn, tr, &master->perc);
     strcpy(master->trinfo_3d[n].name, buf);
     sprintf(buf, "Percentile for %s", params->trperc);
     strcpy(trinfo[n].long_name, buf);
   }
   if (strcmp(params->mixsc, "k-e") == 0) {
-    n = copy_autotracer_by_groupkey("k-e", trinfo, ntr, &tn); 
+    n = copy_autotracer_by_groupkey(WATER, "k-e", trinfo, ntr, &tn); 
     if (tr != NULL) {
       master->tke = tr[n++];
       master->diss = tr[n++];
     }
   }
   if (strcmp(params->mixsc, "k-w") == 0) {
-    n = copy_autotracer_by_groupkey("k-w", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "k-w", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->tke = tr[n++];
       master->omega = tr[n++];
     }
   }
   if (strcmp(params->mixsc, "W88") == 0) {
-    n = copy_autotracer_by_groupkey("k-w", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "k-w", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->tke = tr[n++];
       master->omega = tr[n++];
@@ -1364,14 +1366,14 @@ int set_tracer_3d(parameters_t *params,
   }
   if (strcmp(params->mixsc, "mellor_yamada_2_0") == 0 ||
       strcmp(params->mixsc, "mellor_yamada_2_0_estuarine") == 0) {
-    n = copy_autotracer_by_groupkey("my2.0", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "my2.0", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->L = tr[n++];
     }
   }
   if (strcmp(params->mixsc, "mellor_yamada_2_5") == 0 || 
       strcmp(params->mixsc, "harcourt") == 0) {
-    n = copy_autotracer_by_groupkey("my2.5", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "my2.5", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->Q2 = tr[n++];
       master->Q2L = tr[n++];
@@ -1380,15 +1382,15 @@ int set_tracer_3d(parameters_t *params,
     }
   }
   if (params->smagorinsky > 0.0) {
-    copy_autotracer_by_name("smagorinsky", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "smagorinsky", trinfo, ntr, &tn, 
 			    tr, &master->sdc);
   }
   if (params->show_layers) {
-    copy_autotracer_by_name("layer_thick", trinfo, ntr, &tn, tr, &master->layth);
+    copy_autotracer_by_name(WATER, "layer_thick", trinfo, ntr, &tn, tr, &master->layth);
   }
   if (params->save_force & OTEMP) {
     n = tn;
-    copy_autotracer_by_name("otemp", trinfo, ntr, &tn, tr, &master->otemp);
+    copy_autotracer_by_name(WATER, "otemp", trinfo, ntr, &tn, tr, &master->otemp);
     if (strlen(params->odata)) {
       if (params->save_force & ROAM)
 	sprintf(buf, "%s(otemp=temp)", params->tdata);
@@ -1400,7 +1402,7 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->save_force & OSALT) {
     n = tn;
-    copy_autotracer_by_name("osalt", trinfo, ntr, &tn, tr, &master->osalt);
+    copy_autotracer_by_name(WATER, "osalt", trinfo, ntr, &tn, tr, &master->osalt);
    if (strlen(params->odata)) {
       char buf[MAXSTRLEN];
       if (params->save_force & ROAM)
@@ -1413,7 +1415,7 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->rtemp) {
     n = tn;
-    copy_autotracer_by_name("rtemp", trinfo, ntr, &tn, tr, &master->rtemp);
+    copy_autotracer_by_name(WATER, "rtemp", trinfo, ntr, &tn, tr, &master->rtemp);
     if (strlen(params->tdata)) {
       char buf1[MAXSTRLEN];
       if (params->save_force & ROAM) {
@@ -1430,7 +1432,7 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->rsalt) {
     n = tn;
-    copy_autotracer_by_name("rsalt", trinfo, ntr, &tn, tr, &master->rsalt);
+    copy_autotracer_by_name(WATER, "rsalt", trinfo, ntr, &tn, tr, &master->rsalt);
     if (strlen(params->sdata)) {
       char buf[MAXSTRLEN];
       char buf1[MAXSTRLEN];
@@ -1448,7 +1450,7 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->save_force & FTEMP) {
     n = tn;
-    copy_autotracer_by_name("temp_force", trinfo, ntr, &tn, tr, &master->ftemp);
+    copy_autotracer_by_name(WATER, "temp_force", trinfo, ntr, &tn, tr, &master->ftemp);
     sprintf(buf, "%s(temp_force=temp)", params->tdata);
     strcpy(trinfo[n].reset_file, buf);
     strcpy(trinfo[n].reset_dt, params->ftemp_input_dt);
@@ -1456,7 +1458,7 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->save_force & FSALT) {
     n = tn;
-    copy_autotracer_by_name("salt_force", trinfo, ntr, &tn, tr, &master->fsalt);
+    copy_autotracer_by_name(WATER, "salt_force", trinfo, ntr, &tn, tr, &master->fsalt);
     sprintf(buf, "%s(salt_force=salt)", params->sdata);
     strcpy(trinfo[n].reset_file, buf);
     strcpy(trinfo[n].reset_dt, params->fsalt_input_dt);
@@ -1464,7 +1466,7 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->save_force & FVELU) {
     n = tn;
-    copy_autotracer_by_name("velu_force", trinfo, ntr, &tn, tr, &master->fvelu);
+    copy_autotracer_by_name(WATER, "velu_force", trinfo, ntr, &tn, tr, &master->fvelu);
     sprintf(buf, "%s(velu_force=u)", params->vdata);
     strcpy(trinfo[n].reset_file, buf);
     strcpy(trinfo[n].reset_dt, params->fvelu_input_dt);
@@ -1472,20 +1474,20 @@ int set_tracer_3d(parameters_t *params,
   }
   if (params->save_force & FVELV) {
     n = tn;
-    copy_autotracer_by_name("velv_force", trinfo, ntr, &tn, tr, &master->fvelv);
+    copy_autotracer_by_name(WATER, "velv_force", trinfo, ntr, &tn, tr, &master->fvelv);
     sprintf(buf, "%s(velv_force=v)", params->vdata);
     strcpy(trinfo[n].reset_file, buf);
     strcpy(trinfo[n].reset_dt, params->fvelv_input_dt);
     strcpy(trinfo[n].reset_interp, params->fvelv_interp);
   }
   if (params->rtemp & (RLX_ADPT|RLX_REG|RLX_OBC)) {
-    copy_autotracer_by_name("temp_tc", trinfo, ntr, &tn, tr, &master->temp_tc);
+    copy_autotracer_by_name(WATER, "temp_tc", trinfo, ntr, &tn, tr, &master->temp_tc);
   }  
   if (params->rsalt & (RLX_ADPT|RLX_REG|RLX_OBC)) {
-    copy_autotracer_by_name("salt_tc", trinfo, ntr, &tn, tr, &master->salt_tc);
+    copy_autotracer_by_name(WATER, "salt_tc", trinfo, ntr, &tn, tr, &master->salt_tc);
   }
   if (params->save_force & OVELU) {
-    copy_autotracer_by_name("ovelu", trinfo, ntr, &tn, tr, NULL);
+    copy_autotracer_by_name(WATER, "ovelu", trinfo, ntr, &tn, tr, NULL);
     if (strlen(params->vdata)) {
       char buf[MAXSTRLEN];
       if (params->save_force & ROAM)
@@ -1497,7 +1499,7 @@ int set_tracer_3d(parameters_t *params,
     }
   }
   if (params->save_force & OVELV) {
-    copy_autotracer_by_name("ovelv", trinfo, ntr, &tn, tr, NULL);
+    copy_autotracer_by_name(WATER, "ovelv", trinfo, ntr, &tn, tr, NULL);
     if (strlen(params->vdata)) {
       char buf[MAXSTRLEN];
       if (params->save_force & ROAM)
@@ -1512,95 +1514,95 @@ int set_tracer_3d(parameters_t *params,
 
 
   if (params->tendf) {
-    copy_autotracer_by_groupkey("tend", trinfo, ntr, &tn);
+    copy_autotracer_by_groupkey(WATER, "tend", trinfo, ntr, &tn);
     if (params->waves & STOKES_DRIFT) {
-      copy_autotracer_by_groupkey("tend_wave", trinfo, ntr, &tn);
+      copy_autotracer_by_groupkey(WATER, "tend_wave", trinfo, ntr, &tn);
     }
   }
   if (strlen(params->trtend)) {
-    copy_autotracer_by_groupkey("tr_tend", trinfo, ntr, &tn);
+    copy_autotracer_by_groupkey(WATER, "tr_tend", trinfo, ntr, &tn);
   }
   if (params->waves & SPECTRAL) {
-    n = copy_autotracer_by_groupkey("spec_wave", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "spec_wave", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->wave_stke1 = tr[n++]; 
       master->wave_stke2 = tr[n++]; 
     }
   }
   if (params->numbers & BRUNT) {
-    copy_autotracer_by_name("brunt", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "brunt", trinfo, ntr, &tn, 
 			    tr, &master->brunt);
   }
   if (params->numbers & INT_WAVE) {
-    copy_autotracer_by_name("int_wave_speed", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "int_wave_speed", trinfo, ntr, &tn, 
 			    tr, &master->int_wave);
   }
   if (params->numbers & RICHARD_GR) {
-    copy_autotracer_by_name("richardson_gr", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "richardson_gr", trinfo, ntr, &tn, 
 			    tr, &master->rich_gr);
   }
   if (params->numbers & RICHARD_FL) {
-    copy_autotracer_by_name("richardson_fl", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "richardson_fl", trinfo, ntr, &tn, 
 			    tr, &master->rich_fl);
   }
   if (params->numbers & REYNOLDS) {
-    copy_autotracer_by_name("reynolds", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "reynolds", trinfo, ntr, &tn, 
 			    tr, &master->reynolds);
   }
   if (params->numbers & FROUDE) {
-    copy_autotracer_by_name("froude", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "froude", trinfo, ntr, &tn, 
 			    tr, &master->froude);
   }
   if (params->numbers & SIGMA_T) {
-    copy_autotracer_by_name("sigma_t", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "sigma_t", trinfo, ntr, &tn, 
 			    tr, &master->sigma_t);
   }
   if (params->numbers & ENERGY) {
-    copy_autotracer_by_name("energy", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "energy", trinfo, ntr, &tn, 
 			    tr, &master->energy);
   }
   if (params->numbers & KINETIC) {
-    copy_autotracer_by_name("kenergy", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "kenergy", trinfo, ntr, &tn, 
 			    tr, &master->kenergy);
   }
   if (params->do_pt) {
-    copy_autotracer_by_name("ptconc", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "ptconc", trinfo, ntr, &tn, 
 			    tr, &master->ptconc);
   }
   if (params->numbers & SOUND) {
-    n = copy_autotracer_by_groupkey("sound", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "sound", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->sound = tr[n++];
       master->schan = tr[n++];
     }
   }
   if (params->numbers & ROSSBY_IN) {
-    copy_autotracer_by_name("rossby_internal", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "rossby_internal", trinfo, ntr, &tn, 
 			    tr, &master->rossby_in);
   }
   if (params->numbers & SPEED_3D) {
-    copy_autotracer_by_name("current_speed_3d", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "current_speed_3d", trinfo, ntr, &tn, 
 			    tr, &master->speed_3d);
   }
   if (params->numbers & SHEAR_V) {
-    copy_autotracer_by_name("shear_vert", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "shear_vert", trinfo, ntr, &tn, 
 			    tr, &master->shear_v);
   }
   if (params->numbers & BUOY_PROD) {
-    copy_autotracer_by_name("buoy_prod", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "buoy_prod", trinfo, ntr, &tn, 
 			    tr, &master->b_prod);
   }
   if (params->numbers & SHEAR_PROD) {
-    copy_autotracer_by_name("shear_prod", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "shear_prod", trinfo, ntr, &tn, 
 			    tr, &master->s_prod);
   }
   if (!(params->decf & (NONE|DEC_ETA))) {
-    copy_autotracer_by_name("decorr_e1", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "decorr_e1", trinfo, ntr, &tn, 
 			    tr, &master->decv1);
   }
   if (strlen(params->imp3df)) {
     n = tn;
-    copy_autotracer_by_name("imp3df", trinfo, ntr, &tn, tr, NULL);
+    copy_autotracer_by_name(WATER, "imp3df", trinfo, ntr, &tn, tr, NULL);
     strcpy(trinfo[n].name, params->imp3dn);
     strcpy(trinfo[n].long_name, params->imp3dn);
     strcpy(trinfo[n].units, params->imp3du);
@@ -1613,7 +1615,7 @@ int set_tracer_3d(parameters_t *params,
       sprintf(trinfo[n].data, "[data=%s]", params->imp3df);
   }
   if (params->numbers & DUMMIES) {
-    n = copy_autotracer_by_groupkey("dummies", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "dummies", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->dum1 = tr[n++];
       master->dum2 = tr[n++];
@@ -1621,52 +1623,52 @@ int set_tracer_3d(parameters_t *params,
     }
   }
   if (params->numbers & UNIT) {
-    copy_autotracer_by_name("unit", trinfo, ntr, &tn, tr, &master->unit);
+    copy_autotracer_by_name(WATER, "unit", trinfo, ntr, &tn, tr, &master->unit);
   }
   if (params->numbers & PASS) {
-    copy_autotracer_by_name("passive", trinfo, ntr, &tn, tr, NULL);
+    copy_autotracer_by_name(WATER, "passive", trinfo, ntr, &tn, tr, NULL);
   }
   if (params->numbers & GLIDER) {
-    copy_autotracer_by_name("glider", trinfo, ntr, &tn, tr, &master->glider);
+    copy_autotracer_by_name(WATER, "glider", trinfo, ntr, &tn, tr, &master->glider);
   }
   if (params->numbers1 & U1VHC) {
-    copy_autotracer_by_name("u1vhc", trinfo, ntr, &tn, tr, &master->u1vhc);
+    copy_autotracer_by_name(WATER, "u1vhc", trinfo, ntr, &tn, tr, &master->u1vhc);
   }
   if (params->numbers1 & VOLCONT) {
-    copy_autotracer_by_name("vol_cont", trinfo, ntr, &tn, tr, &master->volcont);
+    copy_autotracer_by_name(WATER, "vol_cont", trinfo, ntr, &tn, tr, &master->volcont);
   }
   if (params->numbers1 & CENTI) {
-    copy_autotracer_by_name("cell_index", trinfo, ntr, &tn, tr, &master->centi);
+    copy_autotracer_by_name(WATER, "cell_index", trinfo, ntr, &tn, tr, &master->centi);
   }
   if (strlen(params->nprof)) {
-    copy_autotracer_by_name("nprof", trinfo, ntr, &tn, tr, &master->nprof);
+    copy_autotracer_by_name(WATER, "nprof", trinfo, ntr, &tn, tr, &master->nprof);
   }
   if (params->closf & VZ_R) {
-    copy_autotracer_by_name("VZ0", trinfo, ntr, &tn, tr, &master->vz0b);
+    copy_autotracer_by_name(WATER, "VZ0", trinfo, ntr, &tn, tr, &master->vz0b);
   }
   if (params->closf & KZ_R) {
-    copy_autotracer_by_name("KZ0", trinfo, ntr, &tn, tr, &master->kz0b);
+    copy_autotracer_by_name(WATER, "KZ0", trinfo, ntr, &tn, tr, &master->kz0b);
   }
   if (strlen(params->monotr)) {
     n = tn;
-    copy_autotracer_by_name("mono", trinfo, ntr, &tn, tr, &master->mono);
+    copy_autotracer_by_name(WATER, "mono", trinfo, ntr, &tn, tr, &master->mono);
     sprintf(trinfo[n].long_name, "Monotinicity of %s", params->monotr);
   }
   if (params->porusplate) {
-    n = copy_autotracer_by_groupkey("porusplate", trinfo, ntr, &tn);
+    n = copy_autotracer_by_groupkey(WATER, "porusplate", trinfo, ntr, &tn);
     if (tr != NULL) {
       master->reefe1 =  tr[n++];
       master->reefe2 =  tr[n++];
     }
   }
   if (params->riverflow == 2) {
-    copy_autotracer_by_name("flow_salt", trinfo, ntr, &tn, 
+    copy_autotracer_by_name(WATER, "flow_salt", trinfo, ntr, &tn, 
 			    tr, &master->riversalt);
   }
   if (params->swr_type & SWR_3D && strlen(params->swr_attn)) {
     n = tn;
     if (tracer_find_index("swr_attenuation", ntr, trinfo) == -1) {
-      copy_autotracer_by_name("swr_attenuation", trinfo, ntr, &tn, 
+      copy_autotracer_by_name(WATER, "swr_attenuation", trinfo, ntr, &tn, 
 			      tr, &master->swr_attn);
       if (tr != NULL)
 	trn_dataset(params->swr_attn, trinfo, n, master->ntr, 
@@ -1793,7 +1795,7 @@ int set_tracer_2d(parameters_t *params,
   sprintf(buf, "%c", '\0');
 
   if (!(params->cfl & NONE)) {
-    n = set_autotracer_by_groupkey("cfl", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "cfl", trinfo, ntr, &tn, buf);
     master->cfl2d = tr[n++];
     master->cfl3d = tr[n++];
     master->cour = tr[n++];
@@ -1802,17 +1804,17 @@ int set_tracer_2d(parameters_t *params,
     master->courn = tr[n++];
   }
   if (!(params->mixlayer & NONE))
-    set_autotracer_by_name("mixed_layer", trinfo, ntr, &tn, tr, &master->mixl, buf);
+    set_autotracer_by_name(INTER, "mixed_layer", trinfo, ntr, &tn, tr, &master->mixl, buf);
   if (params->lnm != 0.0)
-    set_autotracer_by_name("steric", trinfo, ntr, &tn, tr, &master->steric, buf);
+    set_autotracer_by_name(INTER, "steric", trinfo, ntr, &tn, tr, &master->steric, buf);
   if (params->vorticity & ABSOLUTE)
-    set_autotracer_by_name("abs_vor", trinfo, ntr, &tn, tr, &master->av, buf);
+    set_autotracer_by_name(INTER, "abs_vor", trinfo, ntr, &tn, tr, &master->av, buf);
   if (params->vorticity & RELATIVE)
-    set_autotracer_by_name("rel_vor", trinfo, ntr, &tn, tr, &master->rv, buf);
+    set_autotracer_by_name(INTER, "rel_vor", trinfo, ntr, &tn, tr, &master->rv, buf);
   if (params->vorticity & POTENTIAL)
-    set_autotracer_by_name("pot_vor", trinfo, ntr, &tn, tr, &master->pv, buf);
+    set_autotracer_by_name(INTER, "pot_vor", trinfo, ntr, &tn, tr, &master->pv, buf);
   if (params->vorticity & TENDENCY) {
-    n = set_autotracer_by_groupkey("vorticity", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "vorticity", trinfo, ntr, &tn, buf);
     master->rv_drvdt = tr[n++];
     master->rv_nonlin = tr[n++];
     master->rv_beta = tr[n++];
@@ -1822,64 +1824,64 @@ int set_tracer_2d(parameters_t *params,
     master->rv_bsc = tr[n++];
   }
   if (params->diff_scale & VH_REG)
-    set_autotracer_by_name("u1vh_region", trinfo, ntr, &tn, tr, &master->vhreg, buf);
+    set_autotracer_by_name(INTER, "u1vh_region", trinfo, ntr, &tn, tr, &master->vhreg, buf);
   if (params->numbers & ROSSBY_EX)
-    set_autotracer_by_name("rossby_external", trinfo, ntr, &tn, tr, &master->rossby_ex, buf);
+    set_autotracer_by_name(INTER, "rossby_external", trinfo, ntr, &tn, tr, &master->rossby_ex, buf);
   if (params->numbers & SPEED_2D)
-    set_autotracer_by_name("current_speed_2d", trinfo, ntr, &tn, tr, &master->speed_2d, buf);
+    set_autotracer_by_name(INTER, "current_speed_2d", trinfo, ntr, &tn, tr, &master->speed_2d, buf);
   if (params->numbers & SPEED_SQ)
-    set_autotracer_by_name("speed_sq", trinfo, ntr, &tn, tr, &master->speed_sq, buf);
+    set_autotracer_by_name(INTER, "speed_sq", trinfo, ntr, &tn, tr, &master->speed_sq, buf);
   if (params->numbers & OBC_PHASE)
-    set_autotracer_by_name("obc_phase", trinfo, ntr, &tn, tr, &master->obc_phase, buf);
+    set_autotracer_by_name(INTER, "obc_phase", trinfo, ntr, &tn, tr, &master->obc_phase, buf);
   if (params->numbers & WIND_CD)
-    set_autotracer_by_name("wind_Cd", trinfo, ntr, &tn, tr, &master->wind_Cd, buf);
+    set_autotracer_by_name(INTER, "wind_Cd", trinfo, ntr, &tn, tr, &master->wind_Cd, buf);
   if (params->numbers & CELLRES) {
-    n = set_autotracer_by_groupkey("resolution", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "resolution", trinfo, ntr, &tn, buf);
     master->cellres = tr[n++];
     master->sarea = tr[n++];
     master->searea = tr[n++];
   }
   if (params->numbers1 & CELLAREA) {
-    n = set_autotracer_by_groupkey("area", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "area", trinfo, ntr, &tn, buf);
     master->carea = tr[n++];
     master->earea = tr[n++];
   }
   if (params->numbers1 & MESHUN)
-    set_autotracer_by_name("mesh_uniformity", trinfo, ntr, &tn, tr, &master->meshun, buf);
+    set_autotracer_by_name(INTER, "mesh_uniformity", trinfo, ntr, &tn, tr, &master->meshun, buf);
   if (params->waves & (TAN_RAD|WAVE_FOR) && params->tendf) {
-    n = set_autotracer_by_groupkey("rad_stress", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "rad_stress", trinfo, ntr, &tn, buf);
     master->u1_rad = tr[n++];
     master->u2_rad = tr[n++];
   }
   if (params->means & ETA_M)
-    set_autotracer_by_name("eta_mean", trinfo, ntr, &tn, tr, &master->etam, buf);
+    set_autotracer_by_name(INTER, "eta_mean", trinfo, ntr, &tn, tr, &master->etam, buf);
   if (params->save_force & FETA) {
-    n = set_autotracer_by_name("eta_force", trinfo, ntr, &tn, tr, &master->feta, buf);
+    n = set_autotracer_by_name(INTER, "eta_force", trinfo, ntr, &tn, tr, &master->feta, buf);
     sprintf(buf, "%s(eta_force=eta)", params->edata);
     strcpy(master->trinfo_2d[n].reset_file, buf);
     strcpy(master->trinfo_2d[n].reset_dt, params->feta_input_dt);
     strcpy(master->trinfo_2d[n].reset_interp, params->feta_interp);
   }
   if (params->means & WIND) {
-    n = set_autotracer_by_groupkey("wind_mean", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "wind_mean", trinfo, ntr, &tn, buf);
     master->w1m = tr[n++];
     master->w2m = tr[n++];
   }
   if (params->means & VEL2D) {
-    n = set_autotracer_by_groupkey("vel2d_mean", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "vel2d_mean", trinfo, ntr, &tn, buf);
     master->u1am = tr[n++];
     master->u2am = tr[n++];
   }
   if (params->means & MTRA2D) {
     char key[MAXSTRLEN];
-    n = set_autotracer_by_name("tracer_mean_2d", trinfo, ntr, &tn, tr, &master->tram, buf);
+    n = set_autotracer_by_name(INTER, "tracer_mean_2d", trinfo, ntr, &tn, tr, &master->tram, buf);
     strcpy(master->trinfo_2d[n].name, "tracer_mean");
     sprintf(key, "Mean %s", params->means_tra);
     strcpy(master->trinfo_2d[n].long_name, key);
     memset(master->tram, 0, geom->sgsizS * sizeof(double));
   }
   if (params->heatflux & ADVANCED) {
-    n = set_autotracer_by_groupkey("heatflux", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "heatflux", trinfo, ntr, &tn, buf);
     master->nhfd = tr[n++];
     master->swrd = tr[n++];
     master->lwrd = tr[n++];
@@ -1887,9 +1889,9 @@ int set_tracer_2d(parameters_t *params,
     master->shfd = tr[n++];
   }
   if (params->heatflux & (INVERSE|COMP_HEAT|COMP_HEAT_MOM))
-    set_autotracer_by_name("nhf", trinfo, ntr, &tn, tr, &master->nhfd, buf);
+    set_autotracer_by_name(INTER, "nhf", trinfo, ntr, &tn, tr, &master->nhfd, buf);
   if (params->heatflux & (COMP_HEAT | COMP_HEAT_MOM | COMP_HEAT_NONE)) {
-    n = set_autotracer_by_groupkey("heatcomp", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "heatcomp", trinfo, ntr, &tn, buf);
     if (params->heatflux & (COMP_HEAT_MOM | COMP_HEAT_NONE)) {
       /* See logic in heatflux.c:comp_heat_mom */
       master->swr = tr[n++];
@@ -1900,48 +1902,48 @@ int set_tracer_2d(parameters_t *params,
     master->shfn = n++;
     if (params->heatflux & COMP_HEAT_NONE) {
       if (strlen(params->precip)) {
-	n = set_autotracer_by_name("precip", trinfo, ntr, &tn, tr, NULL, buf);
+	n = set_autotracer_by_name(INTER, "precip", trinfo, ntr, &tn, tr, NULL, buf);
 	master->precipn = n;
       }
       if (strlen(params->evap)) {
-	n = set_autotracer_by_name("evap", trinfo, ntr, &tn, tr, NULL, buf);
+	n = set_autotracer_by_name(INTER, "evap", trinfo, ntr, &tn, tr, NULL, buf);
 	master->evapn = n;
       }
     }
   }
   if (params->heatflux & NET_HEAT) {
-    n = set_autotracer_by_groupkey("netheat", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "netheat", trinfo, ntr, &tn, buf);
     master->nhfd = tr[n++];
     master->swrd = tr[n++];
   }
   if (params->saltflux & (ADVANCED | BULK | ORIGINAL))
-    set_autotracer_by_name("nsf", trinfo, ntr, &tn, tr, &master->nsfd, buf);
+    set_autotracer_by_name(INTER, "nsf", trinfo, ntr, &tn, tr, &master->nsfd, buf);
   if (params->saltflux & (ADVANCED | ORIGINAL)) {
-    n = set_autotracer_by_groupkey("saltflux", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "saltflux", trinfo, ntr, &tn, buf);
     master->precipn = n++;
     master->evapn = n++;
   }
   if (params->waves & BOT_STR)
-    set_autotracer_by_name("wave_Cd", trinfo, ntr, &tn, tr, &master->wave_Cd, buf);
+    set_autotracer_by_name(INTER, "wave_Cd", trinfo, ntr, &tn, tr, &master->wave_Cd, buf);
   if (params->waves & TAN_RAD) {
-    n = set_autotracer_by_groupkey("rad_force", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "rad_force", trinfo, ntr, &tn, buf);
     master->wave_Sxy = tr[n++];
     master->wave_Syx = tr[n++];
   }
   if (params->waves & WAVE_FOR) {
-    n = set_autotracer_by_groupkey("wave_force", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "wave_force", trinfo, ntr, &tn, buf);
     master->wave_Fx = tr[n++];
     master->wave_Fy = tr[n++];
   }
   if (params->waves & (NEARSHORE|STOKES|SPECTRAL)) {
-    set_autotracer_by_name("wave_k", trinfo, ntr, &tn, tr, &master->wave_k, buf);
+    set_autotracer_by_name(INTER, "wave_k", trinfo, ntr, &tn, tr, &master->wave_k, buf);
   }
   if (params->waves & (STOKES|SPECTRAL)) {
-    n = set_autotracer_by_groupkey("wave_stokes", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "wave_stokes", trinfo, ntr, &tn, buf);
     master->wave_ste1 = tr[n++];
     master->wave_ste2 = tr[n++];
     if (params->waves & STOKES_DRIFT) {
-      n = set_autotracer_by_groupkey("wave_stress", trinfo, ntr, &tn, buf);
+      n = set_autotracer_by_groupkey(INTER, "wave_stress", trinfo, ntr, &tn, buf);
       master->tau_w1 = tr[n++];
       master->tau_w2 = tr[n++];
       master->tau_diss1 = tr[n++];
@@ -1949,7 +1951,7 @@ int set_tracer_2d(parameters_t *params,
     }
   }
   if (params->waves & NEARSHORE) {
-    n = set_autotracer_by_groupkey("wave_nearshore", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "wave_nearshore", trinfo, ntr, &tn, buf);
     master->wave_Kb = tr[n++];
     /*master->wave_k = tr[n++];*/
     master->wave_P = tr[n++];
@@ -1969,7 +1971,7 @@ int set_tracer_2d(parameters_t *params,
     master->wave_froly = tr[n++];
   }
   if (!(params->do_wave & NONE)) {
-    n = set_autotracer_by_groupkey("waves", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "waves", trinfo, ntr, &tn, buf);
     master->ustrcw = tr[n++];
     master->wave_ub = tr[n++];
     master->wave_period = tr[n++];
@@ -1977,15 +1979,15 @@ int set_tracer_2d(parameters_t *params,
     master->wave_amp = tr[n++];
   }
   if (params->etarlx & (RELAX|ALERT|BOUNDARY))
-    set_autotracer_by_name("oeta", trinfo, ntr, &tn, tr, NULL, buf);
+    set_autotracer_by_name(INTER, "oeta", trinfo, ntr, &tn, tr, NULL, buf);
   if (params->etarlx & ETA_TPXO || params->etarlx & ETA_ADPT)
-    set_autotracer_by_name("eta_tc", trinfo, ntr, &tn, tr, &master->eta_tc, buf);
+    set_autotracer_by_name(INTER, "eta_tc", trinfo, ntr, &tn, tr, &master->eta_tc, buf);
   if (params->etarlx & ETA_ADPT)
-    set_autotracer_by_name("eta_inc", trinfo, ntr, &tn, tr, &master->eta_inc, buf);
+    set_autotracer_by_name(INTER, "eta_inc", trinfo, ntr, &tn, tr, &master->eta_inc, buf);
   if (params->avhrr)
-    set_autotracer_by_name("AVHRR", trinfo, ntr, &tn, tr, &master->avhrr, buf);
+    set_autotracer_by_name(INTER, "AVHRR", trinfo, ntr, &tn, tr, &master->avhrr, buf);
   if (params->ghrsst) {
-    n = set_autotracer_by_groupkey("ghrsst", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "ghrsst", trinfo, ntr, &tn, buf);
     strcpy(master->trinfo_2d[n].reset_file, params->ghrsst_path);
     strcpy(master->trinfo_2d[n].reset_dt, params->ghrsst_dt);
     if (strlen(params->ghrsst_irule))
@@ -1997,61 +1999,61 @@ int set_tracer_2d(parameters_t *params,
     /* Window index tracer currently not used, as it's the same as  */
     /* cell_index. In the surface layer cc and w2_t[cc] are the     */
     /* same for windows.                                            */
-    n = set_autotracer_by_groupkey("windiag", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "windiag", trinfo, ntr, &tn, buf);
     master->shwin = tr[n++];
     master->shinx= tr[n++];
-    /*set_autotracer_by_name("windows", trinfo, ntr, &tn, tr, &master->shwin, buf);*/
+    /*set_autotracer_by_name(INTER, "windows", trinfo, ntr, &tn, tr, &master->shwin, buf);*/
   }
   if (strlen(params->bathystats)) {
-    n = set_autotracer_by_groupkey("bathystat", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "bathystat", trinfo, ntr, &tn, buf);
     master->bathy_range_min = tr[n++];
     master->bathy_range_max = tr[n++];
     master->bathy_grad_min = tr[n++];
     master->bathy_grad_max = tr[n++];
   }
   if (contains_token(params->alert, "ACTIVE") != NULL) {
-    n = set_autotracer_by_groupkey("alerts", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "alerts", trinfo, ntr, &tn, buf);
     master->alert_a = tr[n++];
     master->alert_c = tr[n++];
     master->u1vhin = tr[n++];
     master->u2vhin = tr[n++];
   }
   if (params->fillf & (WEIGHTED|MONOTONIC) || (params->tmode & SP_FFSL))
-    set_autotracer_by_name("vol_cons", trinfo, ntr, &tn, tr, &master->vol_cons, buf);
+    set_autotracer_by_name(INTER, "vol_cons", trinfo, ntr, &tn, tr, &master->vol_cons, buf);
   if (params->numbers & SOUND)
-    set_autotracer_by_name("sonic_depth", trinfo, ntr, &tn, tr, &master->sonic, buf);
+    set_autotracer_by_name(INTER, "sonic_depth", trinfo, ntr, &tn, tr, &master->sonic, buf);
   if (params->numbers & EKPUMP) {
-    n = set_autotracer_by_groupkey("ekman", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "ekman", trinfo, ntr, &tn, buf);
     master->sep = tr[n++];
     master->bep = tr[n++];
   }
   if (params->numbers & TIDEFR)
-    set_autotracer_by_name("SH_tide_front", trinfo, ntr, &tn, tr, &master->tfront, buf);
+    set_autotracer_by_name(INTER, "SH_tide_front", trinfo, ntr, &tn, tr, &master->tfront, buf);
   if (params->numbers1 & WINDSPDI) {
-    n = set_autotracer_by_groupkey("wind", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "wind", trinfo, ntr, &tn, buf);
     master->windcs = tr[n++];
     master->windcd = tr[n++];
   }
   if (params->numbers & WET_CELLS)
-    set_autotracer_by_name("wet_cells", trinfo, ntr, &tn, tr, &master->wetcell, buf);
+    set_autotracer_by_name(INTER, "wet_cells", trinfo, ntr, &tn, tr, &master->wetcell, buf);
   if (params->numbers & SURF_LAYER)
-    set_autotracer_by_name("surf_layer", trinfo, ntr, &tn, tr, &master->surfz, buf);
+    set_autotracer_by_name(INTER, "surf_layer", trinfo, ntr, &tn, tr, &master->surfz, buf);
   if (params->numbers & SLOPE)
-    set_autotracer_by_name("surf_slope", trinfo, ntr, &tn, tr, &master->slope_x, buf);
+    set_autotracer_by_name(INTER, "surf_slope", trinfo, ntr, &tn, tr, &master->slope_x, buf);
   if (params->numbers & BOTSTRESS) {
-    n = set_autotracer_by_groupkey("botstress", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "botstress", trinfo, ntr, &tn, buf);
     master->tau_be1 = tr[n++];
     master->tau_be2 = tr[n++];
     master->tau_bm = tr[n++];
   }
   if (strlen(params->swr_babs)) {
     n = tn;
-    copy_autotracer_by_name("swr_bot_absorb", trinfo, ntr, &tn, tr, &master->swr_babs);
+    copy_autotracer_by_name(INTER, "swr_bot_absorb", trinfo, ntr, &tn, tr, &master->swr_babs);
     trn_dataset(params->swr_babs, trinfo, n, params->ntrS, params->atrS, tr, 1.0);
   }
   if (params->swr_type & SWR_2D && strlen(params->swr_attn)) {
     n = tn;
-    copy_autotracer_by_name("swr_attenuation", trinfo, ntr, &tn, tr, &master->swr_attn);
+    copy_autotracer_by_name(INTER, "swr_attenuation", trinfo, ntr, &tn, tr, &master->swr_attn);
     if (strlen(params->swr_regions))
       trf_dataset(params->swr_attn, trinfo, n, params->ntrS, params->atrS, tr, 0.073);
     else
@@ -2059,53 +2061,56 @@ int set_tracer_2d(parameters_t *params,
   }
   if (strlen(params->swr_attn1)) {
     n = tn;
-    copy_autotracer_by_name("swr_deep_attenuation", trinfo, ntr, &tn, tr, &master->swr_attn1);
+    copy_autotracer_by_name(INTER, "swr_deep_attenuation", trinfo, ntr, &tn, tr, &master->swr_attn1);
     tr_dataset(params->swr_attn1, &trinfo[n], 0.073);
   }
   if (strlen(params->swr_tran)) {
     n = tn;
-    copy_autotracer_by_name("swr_transmission", trinfo, ntr, &tn, tr, &master->swr_tran);
+    copy_autotracer_by_name(INTER, "swr_transmission", trinfo, ntr, &tn, tr, &master->swr_tran);
     if (strlen(params->swr_regions))
       trf_dataset(params->swr_tran, trinfo, n, params->ntrS, params->atrS, tr, 0.26);
     else
       trn_dataset(params->swr_tran, trinfo, n, params->ntrS, params->atrS, tr, 0.26);
   }
   if (strlen(params->swr_regions)) {
-    n = set_autotracer_by_groupkey("swr_regions", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "swr_regions", trinfo, ntr, &tn, buf);
     master->swreg = tr[n++];
     master->swrms = tr[n++];
     master->attn_mean = tr[n++];
     master->tran_mean = tr[n++];
   }
   if (params->riverflow) {
-    set_autotracer_by_name("flow", trinfo, ntr, &tn, tr, &master->riverflow, buf);
+    n = set_autotracer_by_groupkey(INTER, "riverflow", trinfo, ntr, &tn, buf);
+    master->riverflow = tr[n++];
+    master->iriverflow = tr[n++];
+    /*set_autotracer_by_name(INTER, "flow", trinfo, ntr, &tn, tr, &master->riverflow, buf);*/
     if (params->riverflow == 2)
-      set_autotracer_by_name("flow_depth", trinfo, ntr, &tn, tr, &master->riverdepth, buf);
+      set_autotracer_by_name(INTER, "flow_depth", trinfo, ntr, &tn, tr, &master->riverdepth, buf);
   }
   if (params->tidep)
-    set_autotracer_by_name("equitide", trinfo, ntr, &tn, tr, &master->equitide, buf);
+    set_autotracer_by_name(INTER, "equitide", trinfo, ntr, &tn, tr, &master->equitide, buf);
   if (params->numbers1 & TPXO)
-    set_autotracer_by_name("tpxotide", trinfo, ntr, &tn, tr, &master->tpxotide, buf);
+    set_autotracer_by_name(INTER, "tpxotide", trinfo, ntr, &tn, tr, &master->tpxotide, buf);
   if (params->numbers1 & TPXOV) {
-    n = set_autotracer_by_groupkey("tpxo_vel", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "tpxo_vel", trinfo, ntr, &tn, buf);
     master->tpxovelu = tr[n++];
     master->tpxovelv = tr[n++];
   }
   if (params->numbers1 & TPXOT) {
-    n = set_autotracer_by_groupkey("tpxo_tran", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "tpxo_tran", trinfo, ntr, &tn, buf);
     master->tpxotranu = tr[n++];
     master->tpxotranv = tr[n++];
   }
   if (params->numbers1 & TRAN2D) {
-    n = set_autotracer_by_groupkey("transport_2d", trinfo, ntr, &tn, buf);
+    n = set_autotracer_by_groupkey(INTER, "transport_2d", trinfo, ntr, &tn, buf);
     master->uat = tr[n++];
     master->vat = tr[n++];
   }
   if (params->decf & DEC_ETA)
-    set_autotracer_by_name("decorr_e1", trinfo, ntr, &tn, tr, &master->decv1, buf);
+    set_autotracer_by_name(INTER, "decorr_e1", trinfo, ntr, &tn, tr, &master->decv1, buf);
   if (strlen(params->imp2df)) {
     n = tn;
-    set_autotracer_by_name("imp2df", trinfo, ntr, &tn, tr, NULL, buf);
+    set_autotracer_by_name(INTER, "imp2df", trinfo, ntr, &tn, tr, NULL, buf);
     strcpy(trinfo[n].name, params->imp2dn);
     strcpy(trinfo[n].long_name, params->imp2dn);
     strcpy(trinfo[n].units, params->imp2du);
@@ -2231,7 +2236,7 @@ void calc_scaling(parameters_t *params, /* Input parameters data     */
   int kbof = params->nz;     /* Bottom k level                       */
   int plotif = 1;            /* Print individual files               */
   int daf = 0;               /* Depth average scaling                */
-  geometry_t *geom = master->sgrid;
+  geometry_t *geom = master->geom;
 
   /*-----------------------------------------------------------------*/
   /* Open the input scaling data file                                */
@@ -2407,9 +2412,11 @@ void calc_scaling(parameters_t *params, /* Input parameters data     */
   fof = i_alloc_1d(npoints);
   fv = d_alloc_1d(params->nz + 1);
   sc = d_alloc_1d(params->nz + 1);
-  if (daf) scda = d_alloc_1d(npoints);
-  memset(scda, 0, sizeof(double) * npoints);
   memset(fof, 0, sizeof(int) * npoints);
+  if (daf) {
+    scda = d_alloc_1d(npoints);
+    memset(scda, 0, sizeof(double) * npoints);
+  }
 
   /*-----------------------------------------------------------------*/	
   /* Assign the point lat, lon and depth                             */
@@ -2425,7 +2432,7 @@ void calc_scaling(parameters_t *params, /* Input parameters data     */
       lon[j] = x[i];
       lat[j] = y[i];
       /* Get the bottom k value */
-      hd_xyztoindex_m(geom, lon[j], lat[j], 0.0, &kk, &cs[j], &cb[j]);
+      hd_xyztoindex_m(master, lon[j], lat[j], 0.0, &kk, &cs[j], &cb[j]);
       kbot[j] = geom->s2k[cb[j]];
       for (m = 0; m < ntsfiles; m++) {
 	if (x[m] != lon[j] && y[m] != lat[j]) continue;
@@ -5876,11 +5883,12 @@ void value_init_sed(master_t *master,      /* Master data            */
 /*-------------------------------------------------------------------*/
 /* Finds an autotracer in the global list by its name                */
 /*-------------------------------------------------------------------*/
-int find_autotracer_by_name(char *name)
+int find_autotracer_by_name(int type, char *name)
 {
   int i;
   for (i = 0; i < NAUTOTR; i++)
-    if (strcmp(autotracerlist[i].name, name) == 0) break;
+    if (autotracerlist[i].type & type &&
+	strcmp(autotracerlist[i].name, name) == 0) break;
   return(i);
 }
 
@@ -5892,7 +5900,8 @@ int find_autotracer_by_name(char *name)
 /* Copies an autotracer attributes to a tracer info structure given  */
 /* a tracer name.                                                    */
 /*-------------------------------------------------------------------*/
-void copy_autotracer_by_name(char *name, 
+void copy_autotracer_by_name(int type,
+			     char *name, 
 			     tracer_info_t tr[], 
 			     int ntr, 
 			     int *n, 
@@ -5904,7 +5913,8 @@ void copy_autotracer_by_name(char *name,
   if ((tn = tracer_find_index(name, ntr, tr)) < 0) {
     int i;
     for (i = 0; i < NAUTOTR; i++)
-      if (strcmp(autotracerlist[i].name, name) == 0) break;
+      if (autotracerlist[i].type & type &&
+	  strcmp(autotracerlist[i].name, name) == 0) break;
     tracer_copy(&tr[*n], &autotracerlist[i]);
     tr[*n].n = tr[*n].m = *n;
     if (tra != NULL && trp != NULL) *trp = tra[*n];
@@ -5921,14 +5931,15 @@ void copy_autotracer_by_name(char *name,
 /* Same as copy_autotracer_by_name() except includes tracer          */
 /* initialisation.                                                   */
 /*-------------------------------------------------------------------*/
-int set_autotracer_by_name(char *name, tracer_info_t tr[], int ntr, 
+int set_autotracer_by_name(int type, char *name, tracer_info_t tr[], int ntr, 
 			    int *n, double **tra, double **trp, char *buf)
 {
   int tn, sn = *n;
   if ((tn = tracer_find_index(name, ntr, tr) < 0)) {
     int i;
     for (i = 0; i < NAUTOTR; i++)
-      if (strcmp(autotracerlist[i].name, name) == 0) break;
+      if (autotracerlist[i].type & type &&
+	  strcmp(autotracerlist[i].name, name) == 0) break;
     tracer_copy(&tr[*n], &autotracerlist[i]);
     tr[*n].n = tr[*n].m = *n;
     tr_dataset(buf, &tr[*n], 0.0);
@@ -5946,13 +5957,14 @@ int set_autotracer_by_name(char *name, tracer_info_t tr[], int ntr,
 /*-------------------------------------------------------------------*/
 /* Finds an autotracer in the global list by its group key           */
 /*-------------------------------------------------------------------*/
-void find_autotracer_by_groupkey(char *name, int *tra, int *n)
+void find_autotracer_by_groupkey(int type, char *name, int *tra, int *n)
 {
   int i;
 
   *n = 0;
   for (i = 0; i < NAUTOTR; i++) {
-    if (strcmp(autotracerlist[i].groupkey, name) == 0) {
+    if (autotracerlist[i].type & type &&
+	strcmp(autotracerlist[i].groupkey, name) == 0) {
       tra[*n] = i;
       *n += 1;
     }
@@ -5967,7 +5979,7 @@ void find_autotracer_by_groupkey(char *name, int *tra, int *n)
 /* Copies an autotracer attributes to a tracer info structure given  */
 /* a tracer groupkey.                                                */
 /*-------------------------------------------------------------------*/
-int copy_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, int *n)
+int copy_autotracer_by_groupkey(int type, char *name, tracer_info_t tr[], int ntr, int *n)
 {
   int i, j;
   int nf, nt = 0;
@@ -5981,7 +5993,8 @@ int copy_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, int *n)
     strcpy(buf, autotracerlist[i].groupkey); 
     nf = parseline(buf, fields, MAXNUMARGS);
     for (j = 0; j < nf; j++) {
-      if (strcmp(fields[j], name) == 0) {
+      if (autotracerlist[i].type & type &&
+	  strcmp(fields[j], name) == 0) {
 	if ((tn = tracer_find_index(autotracerlist[i].name, ntr, tr)) < 0) {
 	  tracer_copy(&tr[*n], &autotracerlist[i]);
 	  tr[*n].n = tr[*n].m = *n;
@@ -5994,8 +6007,8 @@ int copy_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, int *n)
   return(sn);
 }
 
-int set_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr, 
-			       int *n, char *key)
+int set_autotracer_by_groupkey(int type, char *name, tracer_info_t tr[], 
+			       int ntr, int *n, char *key)
 {
   int i, j;
   int nf, nt = 0;
@@ -6008,7 +6021,8 @@ int set_autotracer_by_groupkey(char *name, tracer_info_t tr[], int ntr,
     strcpy(buf, autotracerlist[i].groupkey); 
     nf = parseline(buf, fields, MAXNUMARGS);
     for (j = 0; j < nf; j++) {
-      if (strcmp(fields[j], name) == 0) {
+      if (autotracerlist[i].type & type &&
+	  strcmp(fields[j], name) == 0) {
 	if ((tn = tracer_find_index(autotracerlist[i].name, ntr, tr)) < 0) {
 	  tracer_copy(&tr[*n], &autotracerlist[i]);
 	  tr_dataset(key, &tr[*n], tr[*n].fill_value_wc);
@@ -6277,7 +6291,7 @@ void write_autotracer(master_t *master)
   fprintf(fp," *  reserved. See the license file for disclaimer and full\n");
   fprintf(fp," *  use/redistribution conditions.\n");
   fprintf(fp," *  \n");
-  fprintf(fp," *  $Id: load_tracer.c 7470 2023-12-13 04:02:25Z her127 $\n", version, ctime(&t));
+  fprintf(fp," *  $Id: load_tracer.c 7530 2024-04-03 21:47:01Z her127 $\n", version, ctime(&t));
   fprintf(fp," *\n");
   fprintf(fp," */\n\n");
 
@@ -6286,7 +6300,7 @@ void write_autotracer(master_t *master)
   fprintf(fp,"#include \"hd.h\"\n");
   fprintf(fp,"#include \"tracer.h\"\n\n");
 
-  fprintf(fp, "int NAUTOTR = %d;\n", trt);
+  /*fprintf(fp, "int NAUTOTR = %d;\n", trt);*/
   fprintf(fp, "tracer_info_t autotracerlist[] = {\n");
   tc = 1;
   for (n = 0; n < ntr; n++) {
@@ -6310,6 +6324,7 @@ void write_autotracer(master_t *master)
     }
   }
   fprintf(fp, "};\n");
+  fprintf(fp, "\nint NAUTOTR = (int)(sizeof(autotracerlist) / sizeof(tracer_info_t));\n");
   i_free_1d(atr);
   i_free_1d(m3d);
   i_free_1d(m2d);

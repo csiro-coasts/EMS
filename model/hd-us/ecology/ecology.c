@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 7190 2022-09-09 06:25:00Z bai155 $
+ *  $Id: ecology.c 7519 2024-03-22 04:50:15Z riz008 $
  *
  */
 
@@ -981,14 +981,25 @@ void eco_step(geometry_t *window)
 	 wincon->ecodt, windat->dt);
       wincon->ecodt = windat->dt;
     }
-
     wincon->eco_timestep_ratio = wincon->ecodt / windat->dt;
+    if (ginterface_transport_mode())
+      if (wincon->eco_timestep_ratio != 1)
+	hd_quit("Ecology transport mode eco_timestep_ratio is != 1\n");
+    
     /* Trike introduces minor rounding errors due to timeunit conversions */
     if (fabs(wincon->ecodt - (windat->dt * wincon->eco_timestep_ratio)) > 1e-3)
       hd_quit("Inconsistency in setting ecology time step as a multiple of physical timestep: eco_dt=%f, phys_dt=%f\n", wincon->ecodt, windat->dt);
 
-    /* Run ecology if its the right time */
-    if (!(windat->nstep % wincon->eco_timestep_ratio)) {
+    /* 
+     * Run ecology if its the right time 
+     *
+     * For fully-coupled this will now run at ecodt-, meaning one
+     * hydro dt before the scheduled events are fired (eg. dumps). It
+     * used to run at ecodt+, meaning straight after scheduled events
+     * plus one hydro dt.
+     * ToDo: Verify any tracer resets are working as expected
+     */
+    if (!((windat->nstep+1) % wincon->eco_timestep_ratio)) {
       TIMING_SET;
       ecology_step(wincon->e, wincon->ecodt);
       TIMING_DUMP_WIN(3, "   eco_step", window->wn);

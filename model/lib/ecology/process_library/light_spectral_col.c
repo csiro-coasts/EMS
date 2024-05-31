@@ -60,25 +60,26 @@
  *         39. Colour_of_source_in_water (flu and bio) to add attribute to optical_setup.nc
  *         45. Add potassium decay as light source.
  *         47. Add passive fluorescence for all phytoplankton? Even Symbiodinium?
- *         53. Create function to read SWR at t+dt, perhaps using a tracer.
  *         63. Pigments are still in "csiro_siop_library.nc" - should be in csiro_optical_parameters_library.nc.
  *         64. Restart works for column.nc, but it produces extra times between restart time and last old write out.
  *         65. Make solar_azimuth from zenith a function.
  *         66. Should fulldisk be PAR-integrated?
  *         67. values_common_epi is still hardwired with some plant types.
  *         69. Time ranges and frequency for column output file.
- *         70. Code speed up: a. diffaa should do all wavelengths at one.
+ *         70. Code speed up: a. diffaa should do all wavelengths at once.
  *                            b. X x Omega(X) can be outside the wave loop.
  *                            c. m * red * MW_Nitr * 1000 could be done at initialisation.
- *                            d. 3D sensor - demon outside layer loop.
+ *                            d. 3D sensor - denom outside layer loop.
  *                            e. Secchi pathlength outside layer loop.
  *                            f. moon-phase once for all columns.
- *         71. Generalise fine sensor grid so it doesn't have to be 1 nm bandwidth.
+ *                            g. calculate clear water bb at 590 in init to save time later.
+ *                            h. re-order struct so largest are first (e.g. doubles before ints).
+ *                            i. avoid passing complete structures as parameters (moonlight)
+ *                            j. organize the algorithm so that your inner most loop iterates over the second index.
  *         72. We don't have a simulated satellite products for Secchi.
  *         73. Light_spectral_col doesn't work for KEYWORD specification of tracers.
  *         74. Likely to be problems with using col->b to identify output columns in fully-coupled version.
  *         75. Put in ems version into optical_setup.nc file attributes.
- *         76. write_date_created(ncid1) only works for shoc, so commented out.
  */
 
 #include <stdlib.h>
@@ -370,6 +371,9 @@ typedef struct {
 
   /* wavelengths at which sensor response are integrated */
 
+  double wave_sensor_finish;
+  double wave_sensor_start;
+  double wave_sensor_stride;
   int num_sensor_waves;
   double *sensor_waves;
 
@@ -509,7 +513,7 @@ void optdatascalarread(ecology *e, workspace *ws, char *source_file, int ncid, c
 void optdataspectralread(ecology *e, workspace *ws, char *source_file, int ncid, const char *varname, const char *wavename, const char *codename, double* out);
 void optdataspectralread_fine(ecology *e, workspace *ws, char *source_file, int ncid, const char *varname, const char *wavename, const char *codename, double* out);
 void scale_sensor_response(ecology *e, workspace *ws, const char *sensorname, double* in, double* out, double *scale); // NOT TESTED PROPERLY.
-void ModelRsestoBandRs(ecology *e, workspace *ws, double* response, double* modelR, double *obsR);
+void ModelRsestoBandRs(double* bandwidth, int num_wave, double* response, double* modelR, double *obsR);
 void OC4Me(double band3, double band4, double band5, double band6, double *oc4me_out);
 void OC3M(double band2, double band4, double band6, double *oc3m_out);
 void OC3V(double band3, double band4, double band6, double *oc3v_out);
@@ -517,7 +521,7 @@ void Hue3B(double band3, double band4, double band6, double band8, double band11
 void nFLH_modis(double band9, double band10, double band11, double *nFLH_modis_out);
 void TSSM(double band1, double *tssm_out);
 void KD490M(double band4, double band6, double *kd490m_out);
-void index_of_refraction(ecology *e, workspace *ws, double **y, double* n_stw);
+void index_of_refraction(double S, double T, double* wave, int num_wave, double* n_stw);
 void colour_in_seawater(ecology *e, workspace *ws, const char *varname);
 void colour_of_bottom_type(ecology *e, workspace *ws, const char *varname);
 void passive_fluorescence_per_cell(ecology *e,workspace *ws, double kI, double Iquota, double *fluorescence);
@@ -607,13 +611,34 @@ void light_spectral_col_init(eprocess* p)
 
   /* Set-up sensor response grid with Rrs_fine - only works for 1 nm at the moment. */
 
+  // add parameters for start, stride, count of sensor waves.
+
+  ws->wave_sensor_start = try_parameter_value(e, "wave_sensor_start");
+  if (isnan(ws->wave_sensor_start)){
+    ws->wave_sensor_start = 300.0;
+    eco_write_setup(e,"Code default of = wave_sensor_start %e \n",ws->wave_sensor_start);
+  }
+
+  ws->wave_sensor_stride = try_parameter_value(e, "wave_sensor_stride");
+  if (isnan(ws->wave_sensor_stride)){
+    ws->wave_sensor_stride = 1.0;
+    eco_write_setup(e,"Code default of = wave_sensor_stride %e \n",ws->wave_sensor_stride);
+  }
+
+  ws->wave_sensor_finish = try_parameter_value(e, "wave_sensor_finish");
+  if (isnan(ws->wave_sensor_finish)){
+    ws->wave_sensor_finish = 800.0;
+    eco_write_setup(e,"Code default of = wave_sensor_count %e \n",ws->wave_sensor_finish);
+  }
+
   int ii;
-  ws->num_sensor_waves = 501;
+  ws->num_sensor_waves = (int) (ws->wave_sensor_finish - ws->wave_sensor_start)/ws->wave_sensor_stride;
+  ws->num_sensor_waves += 1;
   ws->sensor_waves = d_alloc_1d(ws->num_sensor_waves);
-  ws->sensor_waves[0] = 300.0;
+  ws->sensor_waves[0] = ws->wave_sensor_start;
   
   for (ii = 1; ii<ws->num_sensor_waves; ii++) {
-    ws->sensor_waves[ii] = ws->sensor_waves[0]+ii;
+    ws->sensor_waves[ii] = ws->sensor_waves[ii-1]+ws->wave_sensor_stride;
   }
 
   /***********************************************************************************************/
@@ -2275,35 +2300,22 @@ void light_spectral_col_init(eprocess* p)
       nc_put_att_text(ncid, varid, "description", 17,"Relative humidity");
       nc_put_att_text(ncid, varid, "units",1,"%");
 
-      if (ws->Sentinel_3B_Band3_i){
-	nc_def_var(ncid,"Sentinel_3B_Band3",NC_DOUBLE,1,dims3,&varid);
-	nc_put_att_text(ncid, varid, "description", 47,"Remote-sensing reflectance on Sentinel_3B_Band3");
-	nc_put_att_text(ncid, varid, "units", 4,"sr-1");
-      }
-      if (ws->Sentinel_3B_Band4_i){
-	nc_def_var(ncid,"Sentinel_3B_Band4",NC_DOUBLE,1,dims3,&varid);
-	nc_put_att_text(ncid, varid, "description", 47,"Remote-sensing reflectance on Sentinel_3B_Band4");
-	nc_put_att_text(ncid, varid, "units", 4,"sr-1");
-      }
-      if (ws->Sentinel_3B_Band5_i){
-	nc_def_var(ncid,"Sentinel_3B_Band5",NC_DOUBLE,1,dims3,&varid);
-	nc_put_att_text(ncid, varid, "description", 47,"Remote-sensing reflectance on Sentinel_3B_Band5");
-	nc_put_att_text(ncid, varid, "units", 4,"sr-1");
-      }
-      if (ws->Sentinel_3B_Band6_i){
-	nc_def_var(ncid,"Sentinel_3B_Band6",NC_DOUBLE,1,dims3,&varid);
-	nc_put_att_text(ncid, varid, "description", 47,"Remote-sensing reflectance on Sentinel_3B_Band6");
-	nc_put_att_text(ncid, varid, "units", 4,"sr-1");
-      }
-      if (ws->Sentinel_3B_Band8_i){
-	nc_def_var(ncid,"Sentinel_3B_Band8",NC_DOUBLE,1,dims3,&varid);
-	nc_put_att_text(ncid, varid, "description", 47,"Remote-sensing reflectance on Sentinel_3B_Band8");
-	nc_put_att_text(ncid, varid, "units", 4,"sr-1");
-      }
-      if (ws->Sentinel_3B_Band11_i){
-	nc_def_var(ncid,"Sentinel_3B_Band11",NC_DOUBLE,1,dims3,&varid);
-	nc_put_att_text(ncid, varid, "description", 47,"Remote-sensing reflectance on Sentinel_3B_Band11");
-	nc_put_att_text(ncid, varid, "units", 4,"sr-1");
+      // loop through epi tracers with "OPITCAL FLAG"
+
+      char specresp2d_name1[MAXSTRLEN];
+      
+      for (i = 0; i < e->nepi; i++) {
+	strcpy(epiname,  e->epinames[i]);
+	if (einterface_is_optical2d(e->model,epiname)) {
+	  if (((epiname[0] == 'M') && (epiname[1] == 'A'))||((epiname[0] == 'S') && (epiname[1] == 'G'))){ // not a sensor 
+	    }else{
+	    einterface_get_specresp2d_name(e->model, epiname, specresp2d_name1);
+	    sprintf(specresp2d_name1, "Remote-sensing reflectance on %s",epiname);
+	    nc_def_var(ncid,epiname,NC_DOUBLE,1,dims3,&varid);
+	    nc_put_att_text(ncid, varid, "description",strlen(specresp2d_name1),specresp2d_name1);
+	    nc_put_att_text(ncid, varid, "units", 4,"sr-1");
+	  }
+	}
       }
       
       if (ws->Moonlight_i > -1){
@@ -3346,7 +3358,7 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
   ems_lunar_zenith = (fabs(ems_lunar_zenith)<1.0e-15)? 1.0e-15:ems_lunar_zenith;
   ems_lunar_zenith = ((ems_lunar_zenith-M_PI/2.0)-fabs(ems_lunar_zenith-M_PI/2.0))/2.0+M_PI/2.0;
 
-  index_of_refraction(e,ws,y,n_stw);
+  index_of_refraction(y[ws->salt_i][0],y[ws->temp_i][0],ws->wave, ws->num_wave, n_stw);
 
   for (w = 0; w<ws->num_wave; w++) {
     thetaw = asin(sin(zenith)/n_stw[w]); // old code was: asin(sin(zenith)/1.33);
@@ -4492,30 +4504,22 @@ void light_spectral_col_precalc(eprocess* p, void* pp)
 
     varid = ncw_var_id(ncid,"hyd_solar_azimuth");
     nc_put_var1_double(ncid,varid,&reclen,&hyd_azimuth);
-    
-    if (ws->Sentinel_3B_Band3_i){
-      varid = ncw_var_id(ncid,"Sentinel_3B_Band3");
-      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Sentinel_3B_Band3_i]);
-    }
-    if (ws->Sentinel_3B_Band4_i){
-      varid = ncw_var_id(ncid,"Sentinel_3B_Band4");
-      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Sentinel_3B_Band4_i]);
-    }
-    if (ws->Sentinel_3B_Band5_i){
-      varid = ncw_var_id(ncid,"Sentinel_3B_Band5");
-      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Sentinel_3B_Band5_i]);
-    }
-    if (ws->Sentinel_3B_Band6_i){
-      varid = ncw_var_id(ncid,"Sentinel_3B_Band6");
-      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Sentinel_3B_Band6_i]);
-    }
-    if (ws->Sentinel_3B_Band8_i){
-      varid = ncw_var_id(ncid,"Sentinel_3B_Band8");
-      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Sentinel_3B_Band8_i]);
-    }
-    if (ws->Sentinel_3B_Band11_i){
-      varid = ncw_var_id(ncid,"Sentinel_3B_Band11");
-      nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->Sentinel_3B_Band11_i]);
+
+    // Careful here - assumes search in init finds hits in the same order here. 
+    int bbb = -1;
+    char epiname[MAXSTRLEN] = "";
+    char specresp2d_name[MAXSTRLEN];
+    for (i = 0; i < e->nepi; i++) {
+      strcpy(epiname,  e->epinames[i]);
+      if (einterface_is_optical2d(e->model,epiname)) {
+	if (((epiname[0] == 'M') && (epiname[1] == 'A'))||((epiname[0] == 'S') && (epiname[1] == 'G'))){ // not a sensor 
+	}else{
+	  bbb = bbb+1;
+	  einterface_get_specresp2d_name(e->model, epiname, specresp2d_name);
+	  varid = ncw_var_id(ncid,epiname);
+	  nc_put_var1_double(ncid,varid,&reclen,&y_epi[ws->ind_sp2[bbb]]);
+	}
+      }
     }
 
     if (ws->Moonlight_i > -1){
@@ -5399,7 +5403,7 @@ void meb_swr_airtrans_and_albedo(double tcld, double lunar_dec, double lunar_ang
   *swr_albedo = albedo2;
 }
 
-void ModelRsestoBandRs(ecology *e,workspace *ws, double* response, double* modelR, double *obsR)
+void ModelRsestoBandRs(double* bandwidth, int num_wave, double* response, double* modelR, double *obsR)
 {
   /* This function takes model reflectances and spectral response curves and returns band reflectance */ 
   
@@ -5407,9 +5411,9 @@ void ModelRsestoBandRs(ecology *e,workspace *ws, double* response, double* model
   double sum = 0.0;
   double denom = 0.0;
 
-  for (w=0; w<ws->num_wave; w++){
-    sum += modelR[w]*response[w]*ws->bandwidth[w];
-    denom += response[w]*ws->bandwidth[w];
+  for (w=0; w<num_wave; w++){
+    sum += modelR[w]*response[w]*bandwidth[w];
+    denom += response[w]*bandwidth[w];
   }
   *obsR = sum/denom;
 }
@@ -5518,12 +5522,9 @@ void nFLH_modis(double band9, double band10, double band11,double *nFLH_modis_ou
   *nFLH_modis_out = nFLH;
 }
 
-void index_of_refraction(ecology *e,workspace *ws,double **y, double* n_stw)
+void index_of_refraction(double S, double T, double* wave, int num_wave, double* n_stw)
 {
   // Quan and Fry (1995) Appl. Opt. 34: 3477-3480.
-
-  double S = y[ws->salt_i][0];
-  double T = y[ws->temp_i][0];
 
   double n0 = 1.31405;
   double n1 = 1.779e-4;
@@ -5539,8 +5540,8 @@ void index_of_refraction(ecology *e,workspace *ws,double **y, double* n_stw)
   double W;
   int w;
 
-  for (w=0; w<ws->num_wave; w++){
-    W = ws->wave[w];
+  for (w=0; w<num_wave; w++){
+    W = wave[w];
     n_stw[w] = n0 + (n1 + n2*T + n3*T*T)*S + n4*T*T + (n5 + n6*S + n7*T)/W + n8/(W*W) + n9/(W*W*W);
   }
 }
@@ -5938,8 +5939,12 @@ void optdataspectralread(ecology *e, workspace *ws, char *source_file, int ncid,
       fprintf(fp,"xlabel('wavelength [nm]');\n");
       fprintf(fp,"ylabel([varname ,'[',units,']'],'Interpreter','none');\n");
       fprintf(fp,"title([desc,',: Interp. error: ',num2str(error),' %']);\n");
-      fprintf(fp,"set(gca,'xlim',[200 1000]);\n\n");
-      fprintf(fp,"text(xlim+0.05*diff(xlim),ylim+0.93*diff(ylim),['Source: ',sourcefile],'Interpreter','none');\n"); 
+      fprintf(fp,"set(gca,'xlim',[200 1000]);\n");
+      fprintf(fp,"text(xlim+0.05*diff(xlim),ylim+0.93*diff(ylim),['Source: ',sourcefile],'Interpreter','none');\n");
+      fprintf(fp,"text(xlim+0.05*diff(xlim),ylim+0.89*diff(ylim),['Origin: ',ncreadatt(sourcefile,sourcename,'Source')],'Interpreter','none');\n\n");
+      fprintf(fp,"fileID = fopen('references.txt','a');\n");
+      fprintf(fp,"fprintf(fileID,'%%s %%s \\n',varname,ncreadatt(sourcefile,sourcename,'Source'));\n");
+      fprintf(fp,"fclose(fileID);\n");
       fclose(fp);
 
       FILE *fp2;

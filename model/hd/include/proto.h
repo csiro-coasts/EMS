@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: proto.h 7477 2023-12-22 01:31:36Z riz008 $
+ *  $Id: proto.h 7577 2024-05-31 00:36:37Z riz008 $
  *
  */
 
@@ -26,7 +26,7 @@
 /*------------------------------------------------------------------*/
 #define SHOC_MAJOR_VERSION 1
 #define SHOC_MINOR_VERSION 3
-#define SHOC_PATCH_VERSION 1
+#define SHOC_PATCH_VERSION 2
 
 /*------------------------------------------------------------------*/
 /* Parameter input routines                                         */
@@ -1666,11 +1666,11 @@ void eco_set_tracer_defaults(tracer_info_t *tracer, char *trname,
 void eco_read_tr_atts(tracer_info_t *tr, FILE *fp, char *keyname);
 void read_ecology(parameters_t *params, FILE *fp, int *ntr);
 int ecology_autotracer_2d(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
-			  void *e, tracer_info_t *trinfo, int ntr, int tn);
+			  void *e, tracer_info_t *trinfo, int ntr, int tn, int isauto);
 int ecology_autotracer_3d(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
-			  void *e, tracer_info_t *trinfo, int ntr, int tn);
+			  void *e, tracer_info_t *trinfo, int ntr, int tn, int isauto);
 int ecology_autotracer_sed(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
-			   void *e, tracer_info_t *trinfo, int ntr, int tn);
+			   void *e, tracer_info_t *trinfo, int ntr, int tn, int isauto);
 int count_eco_3d(char *eco_vars);
 int count_eco_2d(char *eco_vars);
 void eco_write_tr_atts(tracer_info_t *tr, FILE *fp, int n);
@@ -1723,11 +1723,11 @@ int count_sed_classes(char *sed_vars);
 int count_sed_3d();
 int count_sed_2d();
 int sediment_autotracer_3d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs, 
-			    tracer_info_t *trinfo, int ntr, int tn);
+			   tracer_info_t *trinfo, int ntr, int tn, int isauto);
 int sediment_autotracer_2d(FILE *fp, int do_sed, char *sed_vars, char *sed_defs, 
-			    tracer_info_t *trinfo, int ntr, int tn);
+			   tracer_info_t *trinfo, int ntr, int tn, int isauto);
 int sediment_autotracer_sed(FILE *fp, int do_sed, char *sed_vars, char *sed_defs, 
-			     tracer_info_t *trinfo, int ntr, int tn);
+			    tracer_info_t *trinfo, int ntr, int tn, int isauto);
 int sediment_autotracer_write(master_t *master, FILE *op, int tn);
 void sed_write_tr_atts(tracer_info_t *tr, FILE *fp, int n);
 void print_tr_sed_atts(tracer_info_t *tr);

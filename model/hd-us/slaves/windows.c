@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: windows.c 7468 2023-12-13 03:54:09Z her127 $
+ *  $Id: windows.c 7564 2024-05-27 05:01:47Z her127 $
  *
  */
 
@@ -327,9 +327,10 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 	window_cells_linear_e1(geom, nwindows, ws2, wsz2D);
       else if (params->win_type & WIN_REG)
 	window_cells_region(geom, nwindows, ws2, wsz2D, params->win_file);
-      else if (params->win_type & WIN_METIS)
+      else if (params->win_type & WIN_METIS) {
+	if (params->mrf & MR_READM) params->metis_opts |= METIS_REORDER;
 	window_cells_metis(geom, nwindows, ws2, wsz2D, params->metis_opts);
-      else
+      } else
 	window_cells_grouped(geom, nwindows, ws2, wsz2D);
 
       /* Get the global to local maps                                */
@@ -357,7 +358,10 @@ void window_build(geometry_t *geom,     /* Global geometry           */
 	window[n]->sednz = geom->sednz;
 
 	/* Get the 3D local cells in window n                        */
-	get_window_cells_h(geom, n, wsa, wsz, ws2[n], wsz2D[n]);
+	if (params->mrf & MR_VERT)
+	  get_window_cells_v(geom, n, wsa, wsz, ws2[n], wsz2D[n]);
+	else
+	  get_window_cells_h(geom, n, wsa, wsz, ws2[n], wsz2D[n]);
 
 	/* Set the local wet array and local maps for window n       */
 	get_local_maps(geom, window[n], n, wsa, wsz[n], ws2[n], wsz2D[n], cellf);
@@ -620,8 +624,16 @@ void window_build(geometry_t *geom,     /* Global geometry           */
     if(geom->sm_e2)
       window[n]->sm_e2 = win_vector_build(geom, window[n], n, geom->sm_e2, 2);
 
-    /*reorder_cells(window[n], window[n]->w3_t, window[n]->w2_t, 
-      window[n]->b3_t, window[n]->b2_t, window[n]->bot_t, 1);*/
+    /* Reorder the work arrays to be vertical stacks                 */
+    if (params->mrf & MR_VERT) {
+      reorder_cells(window[n], window[n]->w3_t, window[n]->w2_t,
+		    window[n]->b3_t, window[n]->b2_t, window[n]->zm1, 1);
+      reorder_cells(window[n], window[n]->w3_e1, window[n]->w2_e1,
+		    window[n]->b3_e1, window[n]->b2_e1, window[n]->zm1e, 1);
+      reorder_cells(window[n], window[n]->w3_e2, window[n]->w2_e2,
+		    window[n]->b3_e2, window[n]->b2_e2, window[n]->zm1v, 1);
+    }
+
     get_inner_exmap(geom, window[n]);
     get_process_exclude(params, geom, window[n]);
     set_mask(window[n]);
@@ -1052,7 +1064,7 @@ void window_cells_metis(geometry_t *geom, /* Global geometery        */
   }
 
   /* Reorder the cells */
-  reorder_metis(geom, nwindows, ws2, wsizeS);
+  if (opts & METIS_REORDER) reorder_metis(geom, nwindows, ws2, wsizeS);
 
   /* Cleanup */
   free(eptr);
@@ -1843,6 +1855,59 @@ void get_window_cells_h(geometry_t *geom, /* Global geometery        */
 }
 
 /* END get_window_cells_h()                                          */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Routine to get the 3D local cells in window n given the surface   */
+/* window partitioning. Fills the loacl sparse array in vertical     */
+/* stacks first.                                                     */
+/*-------------------------------------------------------------------*/
+void get_window_cells_v(geometry_t *geom, /* Global geometery        */
+                        int wn,           /* Window number           */
+                        int *wsa,       /* 3D wet cells in window wn */
+                        int *wsize,     /* Size of wsa               */
+                        int *ws2,       /* 2D wet cells in window wn */
+                        int wsizeS      /* Size of ws2               */
+			)
+{
+  int c, cc, c1, zm1;                  /* Cell indices / counters    */
+  int *layer;                          /* Vertical layer map         */
+
+  /* Initialise the vertical layer map                               */
+  layer = i_alloc_1d(wsizeS + 1);
+  memcpy(layer, ws2, (wsizeS + 1) * sizeof(int));
+  layer[0] = 0;
+
+  /* Initialise auxiliary maps for this window                        */
+  for (c = 1; c <= geom->sgnum; c++)
+    geom->fm[c].ac = 0;
+
+  /* Get the global to local surface maps for the sub-surface layers  */
+  /* filling the array in the (k,i,j) direction.                      */
+  c1 = 1;                       /* 3D cell counter                    */
+  wsize[wn] = 0;                /* Initialise number of 3D cells      */
+  while (layer[0] < wsizeS) {
+    for (cc = 1; cc <= wsizeS; cc++) {
+      c = layer[cc];            /* Global coordinate in window wn     */
+      zm1 = geom->zm1[c];
+      while (c != zm1) {
+        wsa[c1] = c;
+        c1++;
+        wsize[wn]++;
+        layer[cc] = zm1;
+	c = zm1;
+	zm1 = geom->zm1[c];
+      }
+      if (layer[cc])
+	layer[0]++;
+      layer[cc] = 0;
+    }
+  }
+  i_free_1d(layer);
+}
+
+/* END get_window_cells_v()                                          */
 /*-------------------------------------------------------------------*/
 
 
@@ -6039,6 +6104,11 @@ window_t **win_data_build(master_t *master,   /* Master data         */
       }
     }
 
+    if(master->trasc & FFSL && master->ultimate) {
+      windat[n]->trmin = d_alloc_1d(window[n]->szc);
+      windat[n]->trmax = d_alloc_1d(window[n]->szc);
+    }
+
     /* Initialise all 3D and 2D variables required by the window     */
     for (cc = 1; cc <= window[n]->enon; cc++) {
       c = window[n]->wsa[cc];
@@ -6102,6 +6172,15 @@ window_t **win_data_build(master_t *master,   /* Master data         */
       master->shwin[c] = windat[n]->shwin[cs] = (double)n;
       master->shinx[c] = windat[n]->shinx[cs] = (double)cs;
     }
+    /*
+    for (n = 1; n <= nwindows; n++) {
+      for (cc = 1; cc <= window[n]->b2_t; cc++) {
+	cs = window[n]->w2_t[cc];
+	c = window[n]->wsa[cs];
+	master->shinx[c] = windat[n]->shinx[cs] = (double)cc;
+      }
+    }
+    */
   }
 
   return (windat);
@@ -6508,6 +6587,8 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
         windat->tran_mean = windat->tr_wcS[m];
       if (strcmp("flow", master->trinfo_2d[m].name) == 0)
         windat->riverflow = windat->tr_wcS[m];
+      if (strcmp("iflow", master->trinfo_2d[m].name) == 0)
+        windat->iriverflow = windat->tr_wcS[m];
       if (strcmp("flow_depth", master->trinfo_2d[m].name) == 0)
         windat->riverdepth = windat->tr_wcS[m];
       if (strcmp("equitide", master->trinfo_2d[m].name) == 0)
@@ -6730,6 +6811,7 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     windat->attn_mean = master->attn_mean;
     windat->tran_mean = master->tran_mean;
     windat->riverflow = master->riverflow;
+    windat->iriverflow = master->iriverflow;
     windat->riverdepth = master->riverdepth;
     windat->equitide = master->equitide;
     windat->tpxotide = master->tpxotide;
@@ -6830,6 +6912,8 @@ window_t *win_data_init(master_t *master,   /* Master data structure */
     memset(windat->tr_hdif, 0, winsize * sizeof(double));
   if (windat->tr_vdif)
     memset(windat->tr_vdif, 0, winsize * sizeof(double));
+  if (windat->iriverflow)
+    memset(windat->iriverflow, 0, window->szcS * sizeof(double));
   windat->sur_e1 = i_alloc_1d(window->szeS);
   winsize = window->enonS + 1;
   if (windat->sederr)
@@ -7077,10 +7161,11 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
       wincon[n]->crfxf = d_alloc_1d(szm);
       wincon[n]->crfyf = d_alloc_1d(szm);
       wincon[n]->Fzh = d_alloc_1d(window[n]->szc);
-      if (master->means & TRANSPORT)
+      if (master->means & TRANSPORT) {
 	wincon[n]->dzo = d_alloc_1d(szm);
-	wincon[n]->etao = d_alloc_1d(window[n]->szcS);
+        wincon[n]->etao = d_alloc_1d(window[n]->szcS);
 	wincon[n]->suro = i_alloc_1d(window[n]->szcS);
+      }
     }
     if(master->trasc & FCT) {
       wincon[n]->crfxc = d_alloc_1d(szm);
@@ -7308,6 +7393,7 @@ win_priv_t **win_consts_init(master_t *master,    /* Master data     */
     wincon[n]->visc_method = master->visc_method;
     wincon[n]->visc_fact = master->visc_fact;
     wincon[n]->stab = master->stab;
+    wincon[n]->trsf = master->trsf;
     wincon[n]->cfl = master->cfl;
     wincon[n]->cfl_dt = master->cfl_dt;
     wincon[n]->lnm = master->lnm;
@@ -8327,9 +8413,11 @@ void pre_run_setup(master_t *master,    /* Master data structure     */
       windat[n]->etab[c] = wincon[n]->oldeta[c] = windat[n]->eta[c];
     }
     if (wincon[n]->numbers1 & CENTI) {
+      int cg;
       for (cc = 1; cc <= window[n]->b3_t; cc ++) {
 	c = window[n]->w3_t[cc];
-	windat[n]->centi[c] = (double)c;
+	cg = window[n]->wsa[c];
+	master->centi[cg] = windat[n]->centi[c] = (double)c;
       }
     }
     /* Set the lateral boundary conditions for velocity.             */
@@ -9841,23 +9929,32 @@ void reorder_cells(geometry_t *window, /* Processing window          */
 		   int *cells,         /* Cells to process (ctp)     */
 		   int vc,             /* Number of ctp              */
 		   int vcs,            /* Surface number of ctp      */
-		   int *bot,           /* Bottom vector              */
+		   int *map,           /* Vertical map */
 		   int mode            /* Re-ordering method         */
 		   )
 {
   int c, cc, cs, cb, nc;
+  int zm1, zm2;
 
   nc = 1;
-
   /* Order from the surface to the bottom, for all i then j          */
   if(mode == 1) {
     for (cc = 1; cc <= vcs; cc++) {
-      c = cells[cc];
-      cb = bot[cc];
+      c = cb = cells[cc];
+      /* Find the bottom cell (centre and edges store this; vertices */
+      /* dont.                                                       */
+      zm1 = map[cb];
+      zm2 = map[zm1];
+      while (zm1 != zm2) {
+	cb = zm1;
+	zm1 = zm2;
+	zm2 = map[zm2];
+      }
+      /* Re-order in a vertical stack                                */
       while (c != cb) {
 	ncells[nc] = c;
 	nc++;
-	c = window->zm1[c];
+	c = map[c];
       }
       ncells[nc] = c;
       nc++;
@@ -9866,12 +9963,19 @@ void reorder_cells(geometry_t *window, /* Processing window          */
   /* Order from the bottom to the surface, for all i then j          */
   else if(mode == 2) {
     for (cc = 1; cc <= vcs; cc++) {
-      c = bot[cc];
+      c = cells[cc];
+      zm1 = map[cb];
+      zm2 = map[zm1];
+      while (zm1 != zm2) {
+	c = zm1;
+	zm1 = zm2;
+	zm2 = map[zm2];
+      }
       cs = cells[cc];
       while (c != cs) {
 	ncells[nc] = c;
 	nc++;
-	c = window->zp1[c];
+	c = map[c];
       }
       ncells[nc] = c;
       nc++;

@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: monitor.c 6709 2021-03-29 00:53:28Z her127 $
+ *  $Id: monitor.c 7574 2024-05-30 03:39:28Z riz008 $
  *
  */
 
@@ -4542,7 +4542,7 @@ void mass_diag(geometry_t *window,     /* Window geometry            */
   }
 
   /* Add sediment mass if this tracer has a sediment component       */
-  npor = tracer_find_index("porosity", wincon->ntr, wincon->trinfo_sed);
+  npor = tracer_find_index("porosity", wincon->nsed, wincon->trinfo_sed);
   for (n = 0; n < windat->ntot; n++) {
     if ((trn = windat->totid_sed[n]) >= 0) {
       for(cc = 1; cc <= window->b2_t; cc++) {

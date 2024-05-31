@@ -15,7 +15,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: boundaryio.c 7456 2023-12-13 03:49:13Z her127 $
+ *  $Id: boundaryio.c 7502 2024-03-11 22:37:07Z her127 $
  *
  */
 
@@ -2590,7 +2590,16 @@ void get_obc_list(open_bdrys_t *open, FILE *fp, int n, char *key) {
       sscanf(buf, "%lf %lf", &open->elon, &open->elat);
       sprintf(key5, "%s%1d.MID_LOC", key, n);
       if (prm_read_char(fp, key5, buf)) {
+	double x, y, d1, d2;
 	sscanf(buf, "%lf %lf", &open->mlon, &open->mlat);
+	/* Check distances */
+	x = open->mlon - open->slon;
+	y = open->mlat - open->slat;
+	d1 = sqrt(x * x + y * y);
+	x = open->elon - open->slon;
+	y = open->elat - open->slat;
+	d2 = sqrt(x * x + y * y);
+	if (d1 > d2) hd_warn("params_read: *** MID_LOC may be defined as END_LOC for OBC %s ***\n", open->name);
       }
     } /* else {
 	 hd_quit("params_read: cannot find %s in OBC%d (%s)\n", key5, n, open->name);

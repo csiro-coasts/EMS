@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: tracers.c 7472 2023-12-13 04:03:07Z her127 $
+ *  $Id: tracers.c 7565 2024-05-27 05:02:17Z her127 $
  *
  */
 
@@ -431,8 +431,8 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   )
 {
   int nn;                       /* Tracer index                      */
-  int c, cc;                    /* Sparse indices                    */
-  int c2;                       /* 2D cell corresponding to 3D cell  */
+  int c, cc, c1, c2;            /* Sparse indices                    */
+  int cs;                       /* 2D cell corresponding to 3D cell  */
   int cb;                       /* Bottom sparse coordinate (cell centre) */
   int vc;                       /* Tracer cells to process counter   */
   int vcs;                      /* Surface tracer cells to process counter */
@@ -458,6 +458,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   double minval = 1e-10;        /* Minimum value for velocity        */
   int slf = 1;                  /* Set to zero on the first sub-step */
   int itermax = 20;             /* Maximum number of substeps        */
+  int ssuf = 1;                 /* Use one sided Lipschitz condition */
   int courf;                    /* Flag to calculate Courant numbers */
   int ii = 0, jj = 0, kk = 0;   /* (i,j,k) location of sub-step violation */
   double vm = 0.0, vs = 0.0;    /* Sub-step Courant number & grid spacing */
@@ -565,6 +566,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 
   } else if (wincon->trasc & FFSL) {
     itermax = 200;
+    sf = wincon->trsf;
     memset(wincon->nw, 0, window->sgsiz * sizeof(double));
     /* Get the grid spacing.                                         */
     for (cc = 1; cc <= window->a3_t; cc++) {
@@ -610,45 +612,24 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
   dtm = dtu = windat->dt;
   if (wincon->means & TRANSPORT)   dtm = dtu = windat->dttr;
   if (wincon->stab & (SUB_STEP | SUB_STEP_NOSURF | SUB_STEP_TRACER)) {
-
     for (cc = 1; cc <= vc; cc++) {
       c = wincon->s1[cc];       /* Wet cell to process               */
-      c2 = window->m2d[c];      /* 2D cell corresponding to 3D cell  */
+      cs = window->m2d[c];      /* 2D cell corresponding to 3D cell  */
       zp1 = window->zp1[c];
-      /*
-      for (j = 1; j <= window->npe[c2] / 2; j++) {
-	e1 = window->c2e[j][c];
-	j1 = jo(j, window->npe[c2]);
-	e2 = window->c2e[j1][c];
-	d4 = 0.5 * (u1[e1] + u1[e2]);
-	if (wincon->trasc == FFSL)
-	  d4 = max(fabs(window->eSc[j][c2] * u1[e1] +
-			window->eSc[j1][c2] * u1[e2]), 
-		   wincon->u1kh[c]/ (2.0 * window->hacell[j][c2]));
-
-	if (fabs(d4) < minval)
-	  d4 = minval;
-	d1 = sf * fabs(2.0 * window->hacell[j][c2] / d4);
-	if (d1 < dtm) {
-	  dtm = d1;
-	  sprintf(vt, "u");
-	  vm = d4;
-	  vs = 2.0 * window->hacell[j][c2];
-	  ii = c2;
-	  jj = window->m2de[e1];
-	  kk = window->s2k[c];
-	}
-      }
-      */
-      for (j = 1; j <= window->npe[c2]; j++) {
-	e1 = window->c2e[j][c];
-	e2 = window->m2de[e1];
+      for (j = 1; j <= window->npe[cs]; j++) {
+	e = window->c2e[j][c];
+	e2 = window->m2de[e];
+	c1 = window->e2c[e][0];
+	c2 = window->e2c[e][1];
 	if (wincon->trasc & FFSL) {
-	  int c1 = window->c2c[j][c];
-	  d4 = (u[c] * window->costhu1[e2] + v[c] * window->sinthu1[e2]) -
-  	       (u[c1] * window->costhu1[e2] + v[c1] * window->sinthu1[e2]);
+	  /* Rotate the centered velocities to be normal to edge j   */
+	  d4 = (u[c1] * window->costhu1[e2] + v[c1] * window->sinthu1[e2]) -
+  	       (u[c2] * window->costhu1[e2] + v[c2] * window->sinthu1[e2]);
+	  /* Streamlines only cross if the downstream velocity is    */
+	  /* faster.                                                 */
+	  if (ssuf) d4 = (d4 < 0.0) ? -d4 : 0.0;
 	} else
-	  d4 = u1[e1];
+	  d4 = u1[e];
 
 	if (fabs(d4) < minval)
 	  d4 = minval;
@@ -658,8 +639,8 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	  sprintf(vt, "u");
 	  vm = d4;
 	  vs = window->h2au1[e2];
-	  ii = c2;
-	  jj = window->m2de[e1];
+	  ii = cs;
+	  jj = window->m2de[e];
 	  kk = window->s2k[c];
 	}
       }
@@ -668,9 +649,11 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
       /* Note : surface tracer values are calculated on the basis of */
       /* mass conservation, hence Courant violations need not be     */
       /* considered.                                                 */
-      if (wincon->trasc & FFSL)
-	d4 = (cc <= vcs) ? 0.0 : fabs(w[zp1] - w[c]);
-      else
+      if (wincon->trasc & FFSL) {
+	d4 = (cc <= vcs) ? 0.0 : w[zp1] - w[c];
+	if (window->cask[c] & W_BOT) d4 = 0.0;
+	if (ssuf) d4 = (d4 < 0.0) ? -d4 : 0.0;
+      } else
 	d4 = (cc <= vcs) ? 0.0 : 0.5 * (w[c] + w[zp1]);
       if (fabs(d4) < minval)
         d4 = minval;
@@ -682,7 +665,7 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
         vm = d4;
         vs = wincon->dz[c] * wincon->Ds[c2];
         ii = c;
-        jj = window->m2de[e1];
+        jj = window->m2de[e];
         kk = window->s2k[c];
       }
     }
@@ -1008,7 +991,6 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	      tr[c] *= wincon->Ds[c2];
 	    else
 	      tr[c] *= wincon->Hn1[c2];
-
 	    wincon->tr_gr[tc][c] = -((dtracer[c] / window->cellarea[c2] +
 			     (Fz[zp1] - Fz[c])) / wincon->dz[c]);
 	    tr[c] = runge_kutta(window, windat, wincon, 1.0, 1.0, tc, c, slf);
@@ -1107,8 +1089,10 @@ int advect_diffuse(geometry_t *window,  /* Window geometry           */
 	  if (bgzf) save_OBC_tr(window, windat, wincon, Fx, tr, n, 2);
 	  if (cdb) printf("end %f\n",tr[cdb]);
 	  /* Clip the tracer for FFSL schemes                        */
-	  if (wincon->trasc & FFSL &&  (wincon->fillf & (MONOTONIC|CLIP)))
-	    clip_ffsl(window, windat, wincon, tr);
+	  if (wincon->trasc & FFSL) {
+	    if (wincon->fillf & (MONOTONIC|CLIP)) clip_ffsl(window, windat, wincon, tr);
+	    if (wincon->ultimate & UL_CLIP) clip_ffsl_ultimate(window, windat, wincon, tr);
+	  }
 	  if (n == wincon->monon) 
 	    get_source_minmax(window, windat, wincon, tr, dtu, 1);
 	}                       /* rkstage loop end                  */

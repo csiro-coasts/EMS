@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *
- *  $Id: delaunay.h 6922 2021-10-08 04:40:51Z her127 $
+ *  $Id: delaunay.h 7533 2024-04-24 04:03:08Z tho861 $
  *
  */
 
@@ -21,6 +21,12 @@
 
 #include "grid_utils.h"
 #include "istack.h"
+#include "ems_conf.h" // added so we can switch the kdtree on/off
+
+#ifdef USE_KDTREE
+    #include "nanoflann_wrappers.h" // wrapper for c++ -> c 
+#endif
+
 
 #if !defined(_DELAUNAY_STRUCT)
 #define _DELAUNAY_STRUCT
@@ -59,6 +65,10 @@ typedef struct {
                                  * triangles i-th point belongs to */
     int** point_triangles;      /* point_triangles[i][j] is index of j-th
                                  * triangle i-th point belongs to */
+    #ifdef USE_KDTREE
+        point* centroids;               /* store the centroids for the tree*/
+        KDTreeContext *rt;              /* kdtree (called it rt since we originally implemented an rtree)*/
+    #endif
 
     int nedges;
     int* edges;                 /* n-th edge is formed by points[edges[n*2]]

@@ -17,7 +17,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: closure.c 7357 2023-05-09 04:07:20Z riz008 $
+ *  $Id: closure.c 7505 2024-03-11 22:38:15Z her127 $
  *
  */
 
@@ -144,7 +144,7 @@ void closure_init(parameters_t *params, /* Parameter data structure */
     if (strcmp(params->s_func, "CANUTO_A") == 0)
       master->s_func = s_canutoA;
     if (strcmp(params->s_func, "CANUTO_B") == 0)
-      master->s_func = s_canutoA;
+      master->s_func = s_canutoB;
     if (strcmp(params->s_func, "KANTHA&CLAYSON") == 0)
       master->s_func = s_kantha_clayson;
     if (strcmp(params->s_func, "GALPERIN") == 0)
@@ -229,7 +229,6 @@ void bdry_closure(geometry_t *window, /* Processing window */
               open[n]->obc_t, open[n]->oi1_t, open[n]->oi2_t,
               open[n]->cyc_t, windat->Vz, NULL, NULL, open[n]->bcond_Vz, 
               windat->dt, NULL, NULL, 0, 0);
-
     }
     if (!(open[n]->bcond_Kz & NOTHIN)) {
       set_OBC(window, windat, wincon, open[n], 1, open[n]->no3_t,
@@ -310,6 +309,13 @@ void s_canutoA(double aN, double aM, double *cmu, double *cmu_d)
 {
   double d, GH, GMmin;
 
+  /* Burchard and Bolding, 2001, Eq. 23                              
+  d = (1.0 + 1977.0*aN + 0.03154*aM + 0.005832*aN*aN + 0.004127*aN*aM - 0.000042*aM*aM);
+  *cmu = (0.127 + 0.01526*aN - 0.00016*aM) / d;
+  *cmu_d = (0.1190 + 0.00429*aN + 0.00066*aM) / d;
+  return;
+  */
+
   /* Get max and min in terms of GH; GH = -0.5aN */
   GH = -0.5 * aN;
 
@@ -320,6 +326,7 @@ void s_canutoA(double aN, double aM, double *cmu, double *cmu_d)
   */
   /* Set minimim and maximum shear and buoyancy numbers; Warner et.  */
   /* al. 2005, Table 4 and eq. 40b (note aN=-2GH).                   */
+
   d = (d0/(2.0*Cf) - d1*GH + d3*2.0*Cf*GH*GH) / (d2 - d4*2.0*Cf*GH);
   aM = min(aM, 2.0*d);
   aN = -2.0 * max(GHmin_CA, min(GH, GH0_CA));
@@ -447,7 +454,7 @@ void s_kantha_clayson(double aN, double aM, double *cmu, double *cmu_d)
   double d, GH;
 
   /* Scale buoyancy number applicable for these stability functions; */
-  /* uses GH = -L^2/2K as an argument (Warner 92005) Eq. 32.         */
+  /* uses GH = -L^2*N^2/2K as an argument (Warner, 2005) Eq. 32.     */
   GH = -0.5 * aN;
 
   /* Smooth GH near the maximum limit (Warner et. al. (2005) Eq. 33) */

@@ -12,7 +12,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpdata.c 7376 2023-07-26 04:35:19Z her127 $
+ *  $Id: dumpdata.c 7554 2024-05-16 03:40:54Z riz008 $
  *
  */
 
@@ -23,6 +23,7 @@
 
 void sigma_vmap(master_t *master, dump_data_t *dumpdata);
 static int contains_string(char *p, char *tag);
+void dumpdata_alloc_stgrid(dump_data_t *dumpdata);
 
 /*-------------------------------------------------------------------*/
 /* Routine to allocate memory for the parameter data structure       */
@@ -296,6 +297,11 @@ dump_data_t *dumpdata_build(parameters_t *params, /* Input parameter data
   dumpdata->we = d_alloc_2d(geom->szeS, geom->nz);
   dumpdata->wv = d_alloc_2d(geom->szvS, geom->nz);
 
+  /* Check to ensure sediments layers are always less than water column */
+  if (sednz)
+    if (sednz+1 > geom->nz)
+      hd_quit("dumpdata: dumpdata->wc buffer not large enough for Mesh2_layerfaces_sed\n");
+
   /* Layer geometry and flags */
   for (k = 0; k < nz; k++) {
     /* Assume the upper most layer is the sea surface at zero */
@@ -455,6 +461,139 @@ void dumpdata_init_geom(parameters_t *params, geometry_t *geom, dump_data_t *dum
 
 
 /*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+void dumpdata_alloc_stgrid(dump_data_t *dumpdata)
+{
+  int nce1 = dumpdata->nce1;
+  int nce2 = dumpdata->nce2;
+  int nz = dumpdata->nz;
+  int sednz = dumpdata->sednz;
+  int nfe1 = dumpdata->nfe1;
+  int nfe2 = dumpdata->nfe2;
+
+  dumpdata->gridx = d_alloc_2d(nce1 + 1, nce2 + 1);
+  dumpdata->gridy = d_alloc_2d(nce1 + 1, nce2 + 1);
+  dumpdata->cellx = d_alloc_2d(nce1, nce2);
+  dumpdata->celly = d_alloc_2d(nce1, nce2);
+  if (sednz) {
+    dumpdata->gridz_sed = d_alloc_3d(nce1, nce2, sednz + 1);
+    dumpdata->cellz_sed = d_alloc_3d(nce1, nce2, sednz);
+    dumpdata->cellzcsed = d_alloc_1d(sednz);
+  }
+  /*
+  dumpdata->u1x = d_alloc_2d(nce1 + 1, nce2);
+  dumpdata->u1y = d_alloc_2d(nce1 + 1, nce2);
+  dumpdata->u2x = d_alloc_2d(nce1, nce2 + 1);
+  dumpdata->u2y = d_alloc_2d(nce1, nce2 + 1);
+  */
+  dumpdata->botz = d_alloc_2d(nce1, nce2);
+  /*
+  dumpdata->h1au1 = d_alloc_2d(nce1 + 1, nce2);
+  dumpdata->h1au2 = d_alloc_2d(nce1, nce2 + 1);
+  dumpdata->h1acell = d_alloc_2d(nce1, nce2);
+  dumpdata->h1agrid = d_alloc_2d(nce1 + 1, nce2 + 1);
+  dumpdata->thetau1 = d_alloc_2d(nce1 + 1, nce2);
+  dumpdata->h2au1 = d_alloc_2d(nce1 + 1, nce2);
+  dumpdata->h2au2 = d_alloc_2d(nce1, nce2 + 1);
+  dumpdata->h2acell = d_alloc_2d(nce1, nce2);
+  dumpdata->h2agrid = d_alloc_2d(nce1 + 1, nce2 + 1);
+  dumpdata->thetau2 = d_alloc_2d(nce1, nce2 + 1);
+  dumpdata->coriolis = d_alloc_2d(nce1, nce2);
+  */
+  /* Time dependent dump variables */
+  /*
+  dumpdata->u1av = d_alloc_2d(nfe1, nce2);
+  dumpdata->u2av = d_alloc_2d(nce1, nfe2);
+  dumpdata->wind1 = d_alloc_2d(nfe1, nce2);
+  dumpdata->wind2 = d_alloc_2d(nce1, nfe2);
+  dumpdata->wtop = d_alloc_2d(nce1, nce2);
+  dumpdata->topz = d_alloc_2d(nce1, nce2);
+  dumpdata->eta = d_alloc_2d(nce1, nce2);
+  dumpdata->patm = d_alloc_2d(nce1, nce2);
+  dumpdata->u1 = d_alloc_3d(nfe1, nce2, nz);
+  dumpdata->u2 = d_alloc_3d(nce1, nfe2, nz);
+  dumpdata->w = d_alloc_3d(nce1, nce2, nz);
+  dumpdata->u = d_alloc_3d(nce1, nce2, nz);
+  dumpdata->v = d_alloc_3d(nce1, nce2, nz);
+  */
+  /* 
+   * Optional velocity means, volume fluxes and streamline origin and
+   * courant numbers
+   */
+  /*
+  if (master->u1m)
+    dumpdata->u1m = d_alloc_3d(nfe1, nce2, nz);
+  if (master->u2m)
+    dumpdata->u2m = d_alloc_3d(nce1, nfe2, nz);
+  */
+  /* u1vm is now an edge centered state variable
+     if (master->u1vm)
+     dumpdata->u1vm = d_alloc_3d(nfe1, nce2, nz);
+     if (master->u2vm)
+     dumpdata->u2vm = d_alloc_3d(nce1, nfe2, nz);
+  */
+  /*
+  if (master->origin)
+    dumpdata->origin = d_alloc_3d(nce1, nce2, nz);
+  if (master->pc)
+    dumpdata->pc = d_alloc_3d(nce1, nce2, nz);
+  if (master->qc)
+    dumpdata->qc = d_alloc_3d(nce1, nce2, nz);
+  if (master->rc)
+    dumpdata->rc = d_alloc_3d(nce1, nce2, nz);
+  
+  dumpdata->dzu1 = d_alloc_3d(nfe1, nce2, nz);
+  dumpdata->dzu2 = d_alloc_3d(nce1, nfe2, nz);
+  dumpdata->dzcell = d_alloc_3d(nfe1, nfe2, nz);
+  dumpdata->u1vh = d_alloc_2d(nce1, nce2);
+  dumpdata->u2vh = d_alloc_2d(nce1, nce2);
+  dumpdata->u1bot = d_alloc_2d(nfe1, nce2);
+  dumpdata->u2bot = d_alloc_2d(nce1, nfe2);
+  if (master->ntr)
+    dumpdata->tr_wc = d_alloc_4d(nce1, nce2, nz, dumpdata->ntr);
+  if (master->ntrS)
+    dumpdata->tr_wcS = d_alloc_3d(nce1, nce2, master->ntrS);
+  if (sednz && master->nsed)
+    dumpdata->tr_sed = d_alloc_4d(nce1, nce2, geom->sednz, master->nsed);
+  */
+  /* Time dependent diagnostic dump variables */
+  /*
+  dumpdata->dens = d_alloc_3d(nce1, nce2, nz);
+  dumpdata->dens_0 = d_alloc_3d(nce1, nce2, nz);
+  dumpdata->Kz = d_alloc_3d(nce1, nce2, nz);
+  dumpdata->Vz = d_alloc_3d(nce1, nce2, nz);
+  dumpdata->Cd = d_alloc_2d(nce1, nce2);
+  */
+  /* Cell mapping */
+  /*
+  dumpdata->crci = s_alloc_1d(nce1);
+  dumpdata->clci = s_alloc_1d(nce1);
+  dumpdata->frci = s_alloc_1d(nce1);
+  dumpdata->flci = s_alloc_1d(nce1);
+  dumpdata->crfi = s_alloc_1d(nfe1);
+  dumpdata->clfi = s_alloc_1d(nfe1);
+  dumpdata->frfi = s_alloc_1d(nfe1);
+  dumpdata->flfi = s_alloc_1d(nfe1);
+  dumpdata->cfcj = s_alloc_1d(nce2);
+  dumpdata->cbcj = s_alloc_1d(nce2);
+  dumpdata->ffcj = s_alloc_1d(nce2);
+  dumpdata->fbcj = s_alloc_1d(nce2);
+  dumpdata->cffj = s_alloc_1d(nfe2);
+  dumpdata->cbfj = s_alloc_1d(nfe2);
+  dumpdata->fffj = s_alloc_1d(nfe2);
+  dumpdata->fbfj = s_alloc_1d(nfe2);
+  */
+  /* Dummies, maps */
+  dumpdata->flag = (unsigned long ***)l_alloc_3d(nfe1, nfe2, nz);
+  dumpdata->w2 = d_alloc_2d(nfe1, nfe2);
+  dumpdata->w3 = d_alloc_3d(nfe1, nfe2, nz);
+}
+
+/* END dumpdata_alloc_stgrid()                                       */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
 /* Routine to free memory in the dump data structure                 */
 /*-------------------------------------------------------------------*/
 void dumpdata_cleanup(dump_data_t *dumpdata,  /* Dump data structure */
@@ -553,6 +692,92 @@ void dumpdata_cleanup(dump_data_t *dumpdata,  /* Dump data structure */
 }
 
 /* END dumpdata_cleanup()                                            */
+/*-------------------------------------------------------------------*/
+
+
+/*-------------------------------------------------------------------*/
+/* Creates a regular structured grid that encompasses the            */
+/* unstructured mesh and sets up geographic arrays.                  */
+/*-------------------------------------------------------------------*/
+void dumpadata_create_stgrid(dump_data_t *dumpdata, double r)
+{
+  master_t *master = dumpdata->master;
+  geometry_t *geom = master->geom;
+  double dx = r;
+  double dy = r;
+  double lat, lon;
+  int nce1, nce2;
+  int n, i, j, cc, c;
+  double mnlon, mxlon, mnlat, mxlat;
+  GRID_SPECS *gs = NULL;
+  double *x, *y, *b;
+  double deg2m = 60.0 * 1852.0;
+  point *p;
+  poly_t *pl;
+
+  /* Get the geographic bounds                                       */
+  mnlon = mnlat = HUGE;
+  mxlon = mxlat = -HUGE;
+  for (cc = 1; cc <= geom->b2_t; cc++) {
+    c = geom->w2_t[cc];
+    mnlon = min(mnlon, geom->cellx[c]);
+    mnlat = min(mnlat, geom->celly[c]);
+    mxlon = max(mxlon, geom->cellx[c]);
+    mxlat = max(mxlat, geom->celly[c]);
+  }
+  nce1 = (int)((mxlon - mnlon) * deg2m / dx);
+  nce2 = (int)((mxlat - mnlat) * deg2m / dy);
+  dumpdata->nce1 = nce1;
+  dumpdata->nce2 = nce2;
+  dumpdata->nfe1 = nce1 + 1;
+  dumpdata->nfe2 = nce2 + 1;
+
+  /* Allocate                                                        */
+  dumpdata->ij2c = i_alloc_2d(dumpdata->nfe1, dumpdata->nfe2);
+  dumpdata_alloc_stgrid(dumpdata);
+
+  /* Set the grid                                                    */
+  for(j = 0; j < nce2; j++) {
+    lat = mnlat + (double)j * dy / deg2m;
+    for(i = 0; i < nce1; i++) {
+      lon = mnlon + (double)i * dx / deg2m;
+      dumpdata->cellx[j][i] = lon;
+      dumpdata->celly[j][i] = lat;
+    }
+  }
+
+  /* Find the concave hull of the mesh                               */
+  pl = poly_create();
+  p = concave_hull(geom->d, NULL, &n, NULL, NULL);
+  for (j = 0; j < n; j++)
+    poly_add_point(pl, p[j].x, p[j].y);
+  for(j = 0; j < nce2; j++) {
+    for(i = 0; i < nce1; i++) {
+      if (poly_contains_point(pl, dumpdata->cellx[j][i], dumpdata->celly[j][i]))
+	dumpdata->flag[geom->nz-1][j][i] = ALLWATER;
+      else
+	dumpdata->flag[geom->nz-1][j][i] = SOLID;
+    }
+  }
+  poly_destroy(pl);
+
+  /* Set the bathymetry                                              */
+  gs = grid_interp_init(geom->cellx, geom->celly, geom->botz, 
+			geom->b2_t, "linear");
+  for(j = 0; j < nce2; j++) {
+    for(i = 0; i < nce1; i++) {
+      if (!(dumpdata->flag[geom->nz-1][j][i] & SOLID)) {
+	dumpdata->botz[j][i] = grid_interp_on_point(gs, 
+						    dumpdata->cellx[j][i], 
+						    dumpdata->celly[j][i]); 
+      } else
+	dumpdata->botz[j][i] = NaN;
+    }
+  }
+  grid_specs_destroy(gs);
+}
+
+/* END dumpadata_create_stgrid()                                     */
 /*-------------------------------------------------------------------*/
 
 

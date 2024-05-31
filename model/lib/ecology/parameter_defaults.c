@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: parameter_defaults.c 7356 2023-05-09 04:03:42Z riz008 $
+ *  $Id: parameter_defaults.c 7570 2024-05-27 07:15:45Z riz008 $
  *
  */
 
@@ -2138,7 +2138,7 @@ void eco_params_bgc3p1(parameter_info **params, int *nprm)
   // parameters[n].value[0] = 396.48;
   // parameters[n].ref = "Mean 2013 at Mauna Loa: http://co2now.org/current-co2/co2-now/";
   // parameters[n].index = n;
-  n++;
+  // n++;
 
   parameters[n].name  = "N2";
   parameters[n].desc  = "Concentration of dissolved N2";

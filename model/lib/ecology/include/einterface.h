@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: einterface.h 7107 2022-04-20 11:44:57Z bai155 $
+ *  $Id: einterface.h 7576 2024-05-30 03:47:52Z riz008 $
  *
  */
 
@@ -301,6 +301,7 @@ int einterface_get_eco_flag(void* model, char* name);
 /* Generic interface */
 extern void i_set_error(void* hmodel, int col, int errorf, char *text);
 extern int i_get_error(void* hmodel, int col);
+extern int ginterface_is_window1(void *hmodel);
 
 /* Optical functions */
 extern int einterface_is_optical(void* model, char *name);

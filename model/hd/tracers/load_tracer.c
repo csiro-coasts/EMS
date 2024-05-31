@@ -14,7 +14,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: load_tracer.c 7453 2023-12-13 03:45:53Z her127 $
+ *  $Id: load_tracer.c 7568 2024-05-27 07:06:54Z riz008 $
  *
  */
 
@@ -1833,7 +1833,7 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     tn++;
     /* Set up sediment tracers if required */
     tn = sediment_autotracer_2d(params->prmfd, params->do_sed, params->sed_vars, 
-				params->sed_defs, master->trinfo_2d, master->ntrS, tn);
+				params->sed_defs, master->trinfo_2d, master->ntrS, tn, (params->runmode & AUTO));
   }
 #endif
   /* Ecology error maps */
@@ -1852,7 +1852,8 @@ void init_tracer_2d(parameters_t *params, /* Input parameters data   */
     /* Set up sediment tracers if required */
     tn = ecology_autotracer_2d(params->prmfd, params->do_eco, params->eco_vars, 
 			       params->eco_defs, params->pre_eco, 
-			       master->trinfo_2d, master->ntrS, tn);
+			       master->trinfo_2d, master->ntrS, tn,
+			       (params->runmode & AUTO));
   }
 #endif
 }
@@ -1882,7 +1883,7 @@ void init_tracer_sed(parameters_t *params, /* Input parameters data  */
   if (params->do_sed) {
     /* Set up sediment tracers if required */
     tn = sediment_autotracer_sed(params->prmfd, params->do_sed, params->sed_vars, 
-				 params->sed_defs, master->trinfo_sed, master->nsed, tn);
+				 params->sed_defs, master->trinfo_sed, master->nsed, tn, (params->runmode & AUTO));
   }
 #endif
 
@@ -1892,7 +1893,8 @@ void init_tracer_sed(parameters_t *params, /* Input parameters data  */
     tn = ecology_autotracer_sed(params->prmfd, params->do_eco, 
 				params->eco_vars, params->eco_defs, 
 				params->pre_eco, 
-				master->trinfo_sed, master->nsed, tn);
+				master->trinfo_sed, master->nsed, tn,
+				(params->runmode & AUTO));
   }
 #endif
 
@@ -4042,7 +4044,7 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
   if (params->do_sed) {
     /* Set up sediment tracers if required */
     tn = sediment_autotracer_3d(params->prmfd, params->do_sed, params->sed_vars, 
-				params->sed_defs, master->trinfo_3d, master->ntr, tn);
+				params->sed_defs, master->trinfo_3d, master->ntr, tn, (params->runmode & AUTO));
   }
 #endif
 
@@ -4051,7 +4053,8 @@ void init_tracer_3d(parameters_t *params, /* Input parameters data   */
     /* Set up ecology tracers if required */
     tn = ecology_autotracer_3d(params->prmfd, params->do_eco, params->eco_vars,
 			       params->eco_defs, params->pre_eco,
-			       master->trinfo_3d, master->ntr, tn);
+			       master->trinfo_3d, master->ntr, tn,
+			       (params->runmode & AUTO));
   }
 #endif
 
@@ -5874,7 +5877,8 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
   if (params->do_sed) {
     /* Set up sediment tracers if required */
     tn = sediment_autotracer_3d(params->prmfd, params->do_sed, params->sed_vars, 
-				params->sed_defs, trinfo, params->ntr, tn);
+				params->sed_defs, trinfo, params->ntr, tn,
+				(params->runmode & AUTO));
   }
 #endif
 
@@ -5883,7 +5887,8 @@ void create_tracer_3d(parameters_t *params)   /* Input parameters    */
     /* Set up ecology tracers if required */
     tn = ecology_autotracer_3d(params->prmfd, params->do_eco, params->eco_vars, 
 			       params->eco_defs, params->pre_eco,
-			       trinfo, params->ntr, tn);
+			       trinfo, params->ntr, tn,
+			       (params->runmode & AUTO));
   }
 #endif
 

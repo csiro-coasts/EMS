@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: sparse.h 7461 2023-12-13 03:51:01Z her127 $
+ *  $Id: sparse.h 7560 2024-05-27 04:59:55Z her127 $
  *
  */
 
@@ -490,6 +490,7 @@ struct win_priv {
   int smagcode;                 /* Variables using Smagorinsky */
   int diff_scale;               /* Horizontal mixing scaling */
   int stab;                     /* Stability compensation method */
+  double trsf;                  /* Tracer advection sub-step safety factor */
   int thin_merge;               /* Thin layer merging flag */
   int sigma;                    /* Sigma coordinate flag */
   int nonlinear;                /* Non-linearity flag */
@@ -1341,6 +1342,7 @@ typedef struct {
   int diff_scale;               /* Horizontal diffusion scaling method */
   int visc_method;              /* Horizontal diffusion method */
   int stab;                     /* Stability compensation method */
+  double trsf;                  /* Tracer advection sub-step safety factor */
   int thin_merge;               /* Thin layer merging flag */
   int sigma;                    /* Sigma coordinate flag */
   int nonlinear;                /* Non-linearity flag */
@@ -1873,6 +1875,7 @@ struct master {
   int diff_scale;               /* Horizontal diffusion scaling method */
   int visc_method;              /* Horizontal diffusion method */
   int stab;                     /* Stability compensation method */
+  double trsf;                  /* Tracer advection sub-step safety factor */
   int thin_merge;               /* Thin layer merging flag */
   int sigma;                    /* Sigma coordinate flag */
   int nonlinear;                /* Non-linearity flag */
@@ -2071,6 +2074,7 @@ struct master {
   double *rv_wsc;               /* Wind stress curl rv tendency */
   double *rv_bsc;               /* Bottom stress curl rv tendency */
   double *riverflow;            /* River flow diagnostic */
+  double *iriverflow;           /* Integrated river flow diagnostic */
   double *riverdepth;           /* River depth diagnostic */
   double *riversalt;            /* River ghost salinity diagnostic */
   double *equitide;             /* Equilibrium tide */
@@ -3055,6 +3059,7 @@ struct window {
   double *rv_wsc;               /* Wind stress curl rv tendency */
   double *rv_bsc;               /* Bottom stress curl rv tendency */
   double *riverflow;            /* River flow diagnostic */
+  double *iriverflow;           /* Integrated river flow diagnostic */
   double *riverdepth;           /* River depth diagnostic */
   double *riversalt;            /* River ghost salinity diagnostic */
   double *equitide;             /* Equilibrium tide */
@@ -3145,6 +3150,8 @@ struct window {
   double *mono;                 /* Monotinicity diagnostic */
   double *monon;                /* Monotinicity diagnostic */
   double *monox;                /* Monotinicity diagnostic */
+  double *trmin;                /* ULTIMATE minimum tacer */
+  double *trmax;                /* ULTIMATE maximum tacer */
   double sederrstep;            /* Sediment error step */
   double ecoerrstep;            /* Ecology error step */
   int ntot;                     /* Number of additional total tracers */

@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: ecology.c 7284 2023-01-09 23:03:51Z bai155 $
+ *  $Id: ecology.c 7568 2024-05-27 07:06:54Z riz008 $
  *
  */
 
@@ -1340,7 +1340,8 @@ static int eco_set_autotracer(FILE *fp,
 			      int ntr, int tn,
 			      int         necoclass,
 			      const char *ecoclass[][2],
-			      int trinfo_type)
+			      int trinfo_type,
+			      int isauto)  /* params->runmode & AUTO */
 {
   char *vars[ECO_MAXNUMARGS], buf[MAXSTRLEN];
   int m, n, i;
@@ -1371,9 +1372,11 @@ static int eco_set_autotracer(FILE *fp,
 	    trinfo[tn].m = -1; // does not exist in the prm-file
 	    tracer_re_read(&trinfo[tn], fp, trinfo_type);
 	    /*
-	     * Fill in the tracer number
+	     * Fill in the tracer number, for AUTO model only
 	     */
-	    trinfo[tn].n = tn;
+	    trinfo[tn].m = -1;
+	    if (isauto)
+	      trinfo[tn].m = tn;
 	    tn++;
 	  }
 	}
@@ -1388,11 +1391,12 @@ static int eco_set_autotracer(FILE *fp,
 /* Routine to initialise the 2D tracers in the master                */
 /*-------------------------------------------------------------------*/
 int ecology_autotracer_3d(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
-			  void *e, tracer_info_t *trinfo, int ntr, int tn)
+			  void *e, tracer_info_t *trinfo, int ntr, int tn,
+			  int isauto)
 {
   /* ECO 3D */
   tn = eco_set_autotracer(fp,  do_eco, eco_vars, eco_defs, e, trinfo, ntr, tn,
-			  NUM_ECO_VARS_3D, ECONAME3D, WATER);
+			  NUM_ECO_VARS_3D, ECONAME3D, WATER, isauto);
   return(tn);
 }
 
@@ -1404,11 +1408,12 @@ int ecology_autotracer_3d(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
 /* Routine to initialise the 2D tracers in the master                */
 /*-------------------------------------------------------------------*/
 int ecology_autotracer_2d(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
-			  void *e, tracer_info_t *trinfo, int ntr, int tn)
+			  void *e, tracer_info_t *trinfo, int ntr, int tn,
+			  int isauto)
 {
   /* ECO 2D */
   tn = eco_set_autotracer(fp,  do_eco, eco_vars, eco_defs, e, trinfo, ntr, tn,
-			  NUM_ECO_VARS_2D, ECONAME2D, INTER);
+			  NUM_ECO_VARS_2D, ECONAME2D, INTER, isauto);
   
   return(tn);
 }
@@ -1421,11 +1426,12 @@ int ecology_autotracer_2d(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
 /* Routine to initialise the 2D tracers in the master                */
 /*-------------------------------------------------------------------*/
 int ecology_autotracer_sed(FILE *fp, int do_eco, char *eco_vars, char *eco_defs,
-			   void *e, tracer_info_t *trinfo, int ntr, int tn)
+			   void *e, tracer_info_t *trinfo, int ntr, int tn,
+			   int isauto)
 {
   /* ECO SED */
   tn = eco_set_autotracer(fp,  do_eco, eco_vars, eco_defs, e, trinfo, ntr, tn,
-			  NUM_ECO_VARS_3D, ECONAME3D, SEDIM);
+			  NUM_ECO_VARS_3D, ECONAME3D, SEDIM, isauto);
   return(tn);
 }
 

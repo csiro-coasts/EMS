@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: column.c 6910 2021-09-27 05:57:34Z bai155 $
+ *  $Id: column.c 7539 2024-05-03 05:45:11Z riz008 $
  *
  */
 
@@ -42,7 +42,7 @@
  */
 column* column_create(ecology* e, int b)
 {
-  column* col = malloc(sizeof(column));
+  column* col = calloc(1, sizeof(column));
 
   /*
    * k range, empty layers included 
@@ -81,7 +81,7 @@ column* column_create(ecology* e, int b)
   col->n_wc = 0;
   col->n_sed = 0;
 
-  col->cells = calloc(n_wc + n_sed - 1, sizeof(void*));
+  col->cells = calloc(n_wc + n_sed, sizeof(void*));
 
   /*
    * What is attempted here is to automatically exclude empty water or
@@ -233,7 +233,7 @@ column* column_create(ecology* e, int b)
   /* Column based tracers */
   col->y = d_alloc_2d(col->ncells, e->ntr);
   col->y_sed0 = d_alloc_1d(e->ntr);
-  col->y_epi  = d_alloc_1d(e->nepi);
+  if (e->nepi) col->y_epi  = d_alloc_1d(e->nepi);
   col->zc = d_alloc_1d(n_wc);
   col->dz = d_alloc_1d(n_wc);
   i = 0;

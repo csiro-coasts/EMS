@@ -13,7 +13,7 @@
  *  reserved. See the license file for disclaimer and full
  *  use/redistribution conditions.
  *  
- *  $Id: dumpfile.h 7162 2022-07-07 02:33:06Z her127 $
+ *  $Id: dumpfile.h 7525 2024-04-03 21:45:04Z her127 $
  *
  */
 
@@ -426,6 +426,7 @@ struct dump_data {
   int *i1s;
   int **i2s;
   int **i3s;
+  int **ij2c;
 
   short *crci;
   short *clci;
