@@ -431,8 +431,8 @@ if test "$HAVE_DA"; then
        DAINC=-I../${MODEL_LIB_OFFSET}${DADIR}/include
        DALIB="-L../${MODEL_LIB_OFFSET}${DADIR} -lda"
        dnl Locate GSL
-       AC_FIND_HEADER(gsl/gsl_matrix.h, GSL_INC=$header_path, GSL_INC=) 
-       if test -z "$GSL_INC" ; then
+       AC_FIND_HEADER(gsl/gsl_matrix.h, GSLINC=$header_path, GSLINC=) 
+       if test -z "$GSLINC" ; then
        	 AC_MSG_ERROR('Unable to find the gsl headers as needed by DA')
        fi
        AC_FIND_LIB(gsl, GSLLIB=$lib_path, GSLLIB=)
